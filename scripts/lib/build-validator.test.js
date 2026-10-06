@@ -86,6 +86,14 @@ test('parseCompileErrors: caminho fora do worktree fica absoluto; saída sem err
     assert.deepStrictEqual(bv.parseCompileErrors('[INFO] BUILD SUCCESS', '/w/app'), []);
 });
 
+test('parseCompileErrors: worktree acessado por link simbólico relativiza o caminho físico', () => {
+    const real = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'bv-real-')));
+    const link = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bv-link-')), 'wt');
+    fs.symlinkSync(real, link);
+    const out = `[ERROR] ${real}/src/main/java/br/Foo.java:[12,9] cannot find symbol`;
+    assert.deepStrictEqual(bv.parseCompileErrors(out, link), ['src/main/java/br/Foo.java:12 — cannot find symbol']);
+});
+
 function fakeExec(err, stdout = '', stderr = '', calls = []) {
     return (cmd, opts, cb) => { calls.push({ cmd, opts }); setImmediate(() => cb(err, stdout, stderr)); };
 }

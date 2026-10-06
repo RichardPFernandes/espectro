@@ -88,10 +88,17 @@ const JDK_MISMATCH_RE = /release version \d+ not supported|invalid (?:target|sou
 // "Failed to execute goal ..." — deduplica por arquivo+linha+mensagem.
 const JAVA_ERROR_RE = /^\[ERROR\]\s+(.+?\.java):\[(\d+)(?:,(\d+))?\]\s*(.*)$/;
 
+// O build pode reportar o caminho físico do worktree (ex: /private/var no macOS, onde
+// /var é link simbólico), diferente do caminho passado pelo watcher.
 function relPath(file, worktreePath) {
     if (!worktreePath || !path.isAbsolute(file)) return file;
-    const rel = path.relative(worktreePath, file);
-    return rel && !rel.startsWith('..') ? rel : file;
+    const roots = [worktreePath];
+    try { roots.push(fs.realpathSync(worktreePath)); } catch { /* worktree inexistente: só o literal */ }
+    for (const root of roots) {
+        const rel = path.relative(root, file);
+        if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return rel;
+    }
+    return file;
 }
 
 function parseCompileErrors(output, worktreePath = null) {
