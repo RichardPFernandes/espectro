@@ -1,0 +1,29 @@
+# Dependências e produtos locais
+node_modules/
+dist/
+build/
+coverage/
+
+# Credenciais e configuração local
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Estado/índices locais conhecidos: esta lista não escolhe onde eles devem residir
+memory/runs/
+memory/archive/
+memory/knowledge-graph.json
+.graph/ac-registry.json
+
+# Saída e preferências locais
+*.log
+*.tmp
+*.pid
+.DS_Store
+dashboard/.env
+dashboard/local-checkout.json
+dashboard/dashboard-prefs.json

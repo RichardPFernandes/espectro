@@ -1,0 +1,51 @@
+{
+  "artifact_kind": "bootstrap_provenance_reference",
+  "status": "BOOTSTRAP_PROVENANCE_METADATA_ONLY",
+  "source_project": "app-back",
+  "source_role": "first_consumer_and_current_source_host",
+  "source_head": "a1ac43307cc5f275caf5a70ad3068c9af099b127",
+  "source_branch": "removendo-memory",
+  "source_identity": "HEAD plus per-file accepted working-tree hashes, including dirty tracked and local untracked/ignored files",
+  "approved_list": {
+    "issue": "PRI-58",
+    "url": "https://linear.app/prisma-app/document/pri-58-fonte-fronteira-e-lista-por-arquivo-approved-7d18b9730d11",
+    "sha256": "e3ba5c9ffa43c6fb2cb1e955ec1a2715af1337df5f11835941a42ae9b104ca84",
+    "original_rows": 297,
+    "deferred_additional_rows": 29,
+    "selected_candidates": 230
+  },
+  "source_manifest": {
+    "proposed_manifest_sha256": "cffe2aa5b5fccfc53f6b1b2fef6b1a93002f7b47e70e33a7254e49a122426c32",
+    "accepted_manifest_sha256": "65fb5176cda97741e0a52baeac25cc774e95c3ed9244b36f5ec6cb4f6cb74692",
+    "url": "https://linear.app/prisma-app/document/pri-58-handoff-final-inventario-e-fronteira-aceitos-0549fe570619",
+    "scope": "Accepted baseline of metadata/hash; not a physical source snapshot"
+  },
+  "selected_git_states": {
+    "TRACKED": 4,
+    "UNTRACKED": 64,
+    "IGNORED": 162
+  },
+  "dirty_tracked_selected": [
+    ".graph/graph.yaml",
+    ".graph/schemas/state.schema.json"
+  ],
+  "source_rechecked_at": "2026-10-06T20:47:46.269632+00:00",
+  "source_hashes_rechecked": 230,
+  "source_hash_changes": [],
+  "rights_accepted": false,
+  "physical_source_snapshot_created": false,
+  "source_recovery_demonstrated": false,
+  "code_copied_into_bootstrap": false,
+  "consumer_integration_enabled": false,
+  "residuals_reference": "Canonical Linear registries and approved baselines; unchanged by this bootstrap",
+  "previous_bootstrap_revision": null,
+  "destination": {
+    "host": "github.com",
+    "owner": "RichardPFernandes",
+    "repository": "prisma",
+    "url": "https://github.com/RichardPFernandes/prisma",
+    "visibility": "private",
+    "initial_branch": "main",
+    "user_confirmation": "GitHub personal account RichardPFernandes specified for PRI-59; initial content/visibility/local path are the presented bootstrap defaults"
+  }
+}
