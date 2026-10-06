@@ -1,0 +1,2151 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Estado de uma execução do grafo (memory/runs/<task-id>/state.json)",
+  "type": "object",
+  "required": [
+    "task_id",
+    "node",
+    "history",
+    "status"
+  ],
+  "properties": {
+    "state_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Versão monotônica do estado (scripts/state-writer.js — o único que grava). Incrementa SÓ quando muda um campo crítico: node, status, execution_id, spec_hash, spec.hash, spec.version, artifact_validity.<fase>.validity.status ou retries. Base do compare-and-set (scripts/cas.js, docs/concurrency-map.md). Ausente = run anterior ao controle de concorrência (conta como 0)."
+    },
+    "critical_fingerprint": {
+      "type": "string",
+      "description": "Hash curto dos campos críticos na última escrita do state-writer. Divergente do conteúdo = edição fora do state-writer (conta como state_version + 1 no CAS)."
+    },
+    "execution_id": {
+      "type": "string",
+      "description": "UUID da execução dona do run: nasce no início do ciclo (state-writer.js init, /fetch-ticket), gira em takeover (resume-session, QA retry, replay = run novo). Sessão com execution_id antigo recebe SESSION_CONFLICT ao persistir (scripts/cas.js)."
+    },
+    "processed_operations": {
+      "type": "array",
+      "description": "Operações humanas já aplicadas neste ciclo (idempotência — scripts/cas.js). Zerado no início de ciclo (state-writer.js init).",
+      "items": {
+        "type": "object",
+        "required": ["operation_id", "type", "processed_at"],
+        "properties": {
+          "operation_id": { "type": "string", "description": "change_id da SPEC_CHANGE (SC-NNN@task), human_input:<message_hash>, spec_approval:<journal>, dashboard:<uuid do clique> ou UUID do QA retry." },
+          "type": { "type": "string", "description": "SPEC_CHANGE_APPROVAL | SPEC_APPROVAL | HUMAN_INPUT | QA_RETRY" },
+          "processed_at": { "type": "string" }
+        }
+      }
+    },
+    "pending_operations": {
+      "type": "array",
+      "description": "Reservas de operação humana com efeito externo em andamento (ex.: comentário de aprovação no Redmine) — scripts/cas.js reserveOperation/finishOperation. Campo secundário (não muda state_version). Some quando o desfecho é registrado.",
+      "items": {
+        "type": "object",
+        "required": ["operation_id", "type", "reserved_at"],
+        "properties": {
+          "operation_id": { "type": "string" },
+          "type": { "type": "string" },
+          "reserved_at": { "type": "string" },
+          "pid": { "type": "integer" },
+          "uncertain": { "type": "boolean", "description": "Efeito pode ter acontecido (timeout/5xx): a próxima tentativa confere antes de repetir." },
+          "uncertain_at": { "type": "string" }
+        }
+      }
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "node": {
+      "type": "string",
+      "enum": [
+        "fetch_ticket",
+        "plan",
+        "implement",
+        "review",
+        "test",
+        "verify",
+        "commit",
+        "escalated"
+      ]
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Sequência de nós já visitados, na ordem, incluindo repetições por loop."
+    },
+    "retries": {
+      "type": "object",
+      "description": "Contador de retries por nó, ex: {\"review\": 1, \"test\": 0}.",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "selected_context": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Caminhos relativos em memory/spec/ selecionados pelo nó Plan."
+    },
+    "scope": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object"
+        }
+      ],
+      "description": "Escopo gravado pelo Plan — normalmente texto; alguns planos gravaram objeto estruturado."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Obrigatório por convenção (fetch-ticket.md passo 6 grava), mas fora de `required`: há state.json reais sem ele e o watcher cai em updated_at."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "in_progress",
+        "running",
+        "blocked",
+        "escalated",
+        "committed",
+        "planned",
+        "completed",
+        "spec-invalid",
+        "spec-pending-approval",
+        "needs_human_review",
+        "state_corrupted",
+        "fully_merged",
+        "pre-build-failed",
+        "plan-escalation",
+        "churn-escalation",
+        "interrupted",
+        "session_limit",
+        "spec-drift",
+        "spec-change-pending-approval",
+        "spec-change-rejected"
+      ],
+      "description": "spec-change-pending-approval: o /implement registrou uma SPEC_CHANGE (scripts/lib/spec-change.js record — decisão que remove/enfraquece AC, muda comportamento esperado, regra de negócio, exceção/restrição/escopo funcional) e não pode aprová-la; proposta em spec_change_pending e em memory/runs/<task-id>/spec-change-audit.json, publicada no Redmine pelo watcher (runSpecChangeGate). Nada é despachado até a resposta humana: SPEC_APPROVAL_KEYWORD aprova (spec + Histórico de Mudanças, spec_hash novo, stale_artifacts, node=plan, status=in_progress); SPEC_REJECTION_KEYWORD rejeita (spec-change-rejected). spec-change-rejected: SPEC_CHANGE rejeitada por humano (ver spec_change_rejected) — spec inalterada, nunca redespachado sozinho; para seguir implementando a spec como está, grave node=\"implement\" e status=\"in_progress\". spec-drift: portão de drift da spec (watcher, runSpecDriftGate; scripts/lib/spec-authority.js check --write dentro do nó) — a spec mudou depois que o /plan gravou spec_hash, sem SPEC_CHANGE aprovado; implement/review/test/verify não rodam (ver spec_drift). Volta pra in_progress sozinho quando spec_change_approved=true + spec_change_hash=hash atual, quando a spec volta ao spec_hash, ou quando um humano grava node=\"plan\" (replanejar sobre a spec nova). plan-escalation: portão de qualidade do plano (watcher, runPlanGate; scripts/lib/plan-scorer.js) — plano abaixo de PLAN_SCORE_THRESHOLD depois de 2 re-plans automáticos, revisão humana pedida no Redmine; volta pra in_progress (node=implement) com \"aceito\", --aceitar-plano ou plano editado que passe. spec-invalid: portão de spec (watcher, runTaskSpecGate). spec-pending-approval: portão de spec com draft do auto-repair (scripts/lib/spec-repairer.js) comentado no Redmine, aguardando SPEC_APPROVAL_KEYWORD (\"aprovado\") — ver spec_pending_approval; volta pra in_progress quando aprovado/aceito ou a spec passar. running: gravado pelo watcher ao despachar um nó (lease — ver node_started_at); volta pra in_progress quando o agente sai, ou é tratado como órfão no startup se passar de node_timeout_ms. needs_human_review: aguardando decisão humana (inclui commit órfão). state_corrupted: gravado pelo watcher quando este state.json falhou na validação — nunca redespachado, escala pra humano (ver state_error). fully_merged: gravado pelo polling de PRs do watcher (scripts/lib/pr-status-poll.js) quando todos os PRs de pull_request estão MERGED — sucessor de committed, a task sai do polling. planned/completed: legado, aparecem em tasks antigas. pre-build-failed: portão de build pré-implement do watcher (runPreBuildGate) — `mvn compile` falhou depois do /plan; implement não é despachado até o worktree mudar ou alguém responder \"aceito\" no Redmine (ver preBuildErrors). churn-escalation: portão de churn de implementação do watcher (runChurnGate; scripts/lib/churn-detector.js) — antes de um re-implement, algum arquivo apareceu em >= CHURN_THRESHOLD rodadas de implement do ciclo (padrão 3; dobrado pra arquivo de teste); relatório no Redmine e o ciclo para (ver churnReport); volta pra in_progress (node=implement) com \"aceito\" no Redmine ou --aceitar-churn. interrupted: gravado pelo shutdown graceful do watcher (scripts/lib/graceful-shutdown.js) quando ele recebe SIGTERM durante um nó que está conduzindo — ver interruptedAt/activeNodeAtInterruption; nunca redespachado sozinho, retome gravando status=\"in_progress\". session_limit: gravado pelo watcher (dispatchTicket, looksLikeSessionLimit) quando a sessão do agente morreu por estouro de janela de contexto/tokens (não indisponibilidade do provedor — ver looksUnavailable) — ver session_interrupted/interrupted_node/interrupted_at/resume_count; nunca redespachado sozinho, retomada é manual via POST /api/runs/:taskId/resume-session no dashboard, limitada a 3 tentativas (resume_count)."
+    },
+    "spec_pending_approval": {
+      "type": "object",
+      "description": "Gravado pelo watcher junto de status=\"spec-pending-approval\" (cópia de memory/runs/<ticket>-spec-gate.json, que é a fonte). Removido quando a pendência acaba (draft aprovado e mesclado, \"aceito\", ou spec editada que passou no portão).",
+      "required": [
+        "draft_path",
+        "posted_at",
+        "reminder_sent"
+      ],
+      "properties": {
+        "comment_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Id do journal do Redmine com o draft. Só respostas depois dele contam como aprovação. null: não deu pra reler o id — cai em posted_at."
+        },
+        "draft_path": {
+          "type": "string",
+          "description": "Relativo à raiz do app-back: memory/spec/<ticket-id>-spec.draft.md."
+        },
+        "posted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reminder_sent": {
+          "type": "boolean",
+          "description": "Lembrete único de SPEC_APPROVAL_REMINDER_HOURS (padrão 48h) já postado."
+        },
+        "reminder_sent_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "missing_sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Keys de spec-validator REQUIRED_SECTIONS geradas no draft (criterios_aceite, problema_contexto, solucao)."
+        },
+        "keyword": {
+          "type": "string",
+          "description": "Palavra de aprovação vigente quando o draft foi postado (SPEC_APPROVAL_KEYWORD)."
+        }
+      }
+    },
+    "current_agent": {
+      "type": "string",
+      "description": "Agente de orquestração (não subagente) que executou/está executando `node` por último — hoje sempre \"claude\" (\"codex\" em tasks anteriores a 2026-09-18, ver memory/decisions/2026-09-18-remocao-codex-workflow.md)."
+    },
+    "agent_log": {
+      "type": "array",
+      "description": "Um registro por despacho de agente (não por node do grafo — um agente pode cobrir mais de um node no mesmo despacho, ex: claude cobre fetch_ticket+plan de uma vez). Aditivo, nunca reescrito; é o histórico de handoffs/checkpoints da tarefa.",
+      "items": {
+        "type": "object",
+        "required": [
+          "agent"
+        ],
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "claude | codex | human (registro manual) — outros valores aparecem em tasks antigas."
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Nós cobertos neste despacho, na ordem. Recomendado; ausente em registros antigos."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Recomendado; ausente em registros antigos."
+          },
+          "fallback": {
+            "type": "boolean",
+            "description": "true se este agente não era o preferred do node em agentes_workflow (assumiu por indisponibilidade do preferido)."
+          },
+          "codex_session_scope": {
+            "type": "string",
+            "description": "cwd (worktree) em que a sessão Codex rodou, para permitir `codex exec resume --last` escopado corretamente num despacho futuro."
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "handoff_path": {
+      "type": "string",
+      "description": "Caminho relativo (a partir da raiz do repo) do handoff.md mais recente da tarefa, tipicamente memory/runs/<task_id>/handoff.md. Representa só o ESTADO OPERACIONAL atual — não duplica context.md nem a memória permanente."
+    },
+    "ac_ids": {
+      "type": "array",
+      "description": "IDs dos Critérios de Aceite da spec aplicáveis a esta execução (ex: [\"AC-01\",\"AC-02\"]). Só os IDs — o texto vive em memory/spec/<ticket>-spec.md, que é a fonte primária. Gravado pelo /fetch-ticket ([] se a spec ainda não tem critérios) e sincronizado pelo watcher (runTaskSpecGate) quando a spec passa no portão. Ausente = run anterior aos IDs AC-XX (spec-validator isLegacyAcRun: sem IDs vira aviso, não erro).",
+      "items": {
+        "type": "string",
+        "pattern": "^AC-\\d+$"
+      },
+      "uniqueItems": true
+    },
+    "spec_template_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Versão de templates/spec.md.template que memory/spec/<ticket>-spec.md segue (frontmatter spec_template_version). Gravado pelo /fetch-ticket (node scripts/lib/spec-validator.js <spec> --state <state.json>, ou scripts/lib/spec-template.js record-version) e sincronizado pelo watcher (runTaskSpecGate). Ausente = spec legada, anterior ao template (o validador só avisa: SPEC_TEMPLATE_VERSION_MISSING)."
+    },
+    "spec_path": {
+      "type": "string",
+      "description": "Spec da task (relativo à raiz do checkout/worktree), autoridade do WHAT: critérios de aceite, restrições funcionais, comportamento esperado, escopo funcional. Gravado junto de spec_hash (scripts/lib/spec-authority.js baseline). Ausente = memory/spec/<redmine_ticket.id>-spec.md."
+    },
+    "spec_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 da parte normativa da spec que o /plan leu (sem \"## Decisões de Implementação\" e \"## Contexto Histórico\", que ferramentas acrescentam por APPEND; sem comentários HTML). Implement/review/test/verify só rodam com a spec neste hash, ou com SPEC_CHANGE aprovado (spec_change_approved + spec_change_hash). Gravado pelo /plan; pelo watcher se ausente (spec_hash_by=watcher) e no retry de Recusa QA (qa_retry)."
+    },
+    "spec_hash_scope": {
+      "type": "string",
+      "description": "Algoritmo/escopo de spec_hash: id de HASH_SCOPE em .claude/spec-hash-config.json (run versionado, hash contratual) ou legacy_normative (run legado). Gravado no baseline."
+    },
+    "spec_hash_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "spec_version que spec_hash representa (o elo Plan → versão da spec). Só em run versionado; ausente quando spec_hash não é o hash da versão vigente."
+    },
+    "spec": {
+      "type": "object",
+      "description": "Versionamento formal da spec (scripts/lib/spec-version.js, docs/spec-versioning.md). Gravado pelo /fetch-ticket (spec-version.js init) ao criar a spec; selado pelo /plan (spec-authority.js baseline); incrementado só por SPEC_CHANGE aprovada que altera o HASH_SCOPE (spec-change.js approve / aprovação manual de drift). AUSENTE = run legado/unversioned: todo leitor degrada (nunca falha) e spec_hash segue o algoritmo legado.",
+      "required": [
+        "version",
+        "hash",
+        "hash_scope",
+        "path",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "spec_id: id do ticket (ou o task-id, sem ticket)."
+        },
+        "path": {
+          "type": "string",
+          "description": "Spec relativa à raiz do checkout/worktree."
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "spec_version — versão humana/semântica do contrato."
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "spec_hash contratual (SHA-256 do HASH_SCOPE) da versão."
+        },
+        "hash_scope": {
+          "type": "string",
+          "description": "Id do escopo em .claude/spec-hash-config.json usado neste run (recalculado sempre com ele)."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "active"
+          ],
+          "description": "draft = criada pelo /fetch-ticket, ainda em autoria (hash pode mudar sem versão nova); active = selada pelo /plan."
+        },
+        "changelog_path": {
+          "type": "string",
+          "description": "Changelog append-only da spec (<spec>-changelog.json, schema .graph/schemas/spec-changelog.schema.json)."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "initial_hash": {
+          "type": "string",
+          "description": "Hash no momento da criação (antes do preenchimento humano)."
+        },
+        "sealed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "sealed_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_by": {
+          "type": "string",
+          "description": "fetch_ticket | plan | watcher | qa_retry | spec-change-approval | drift-approval"
+        },
+        "last_change": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Última SPEC_CHANGE que gerou versão: spec_change_id, approval_ref, from_version, at.",
+          "properties": {
+            "spec_change_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "approval_ref": {
+              "type": "string"
+            },
+            "from_version": {
+              "type": "integer"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    },
+    "spec_hash_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando spec_hash foi gravado."
+    },
+    "spec_hash_by": {
+      "type": "string",
+      "description": "Quem gravou spec_hash: plan | watcher (baseline tardio, run anterior ao spec_hash ou /plan que não gravou) | qa_retry."
+    },
+    "spec_change_approved": {
+      "type": "boolean",
+      "description": "SPEC_CHANGE: gravado por HUMANO, nunca por agente. true + spec_change_hash igual ao hash atual da spec = mudança da spec depois do Plan é legítima e o pipeline segue. Qualquer outro caso (ausente, false, hash vazio ou de outra versão) = drift não autorizado (status spec-drift)."
+    },
+    "spec_change_hash": {
+      "type": "string",
+      "description": "Hash (node scripts/lib/spec-authority.js hash <spec>) da versão da spec aprovada em spec_change_approved. Vale só para essa versão: nova edição da spec pausa de novo."
+    },
+    "spec_change_pending": {
+      "type": "object",
+      "description": "Gravado pelo /implement (scripts/lib/spec-change.js record) junto de status=\"spec-change-pending-approval\": a SPEC_CHANGE proposta, igual à entrada \"proposed\" de spec-change-audit.json (a fonte auditável). comment_id/posted_at/keyword/rejection_keyword são gravados pelo watcher quando publica a proposta no Redmine. Removido na aprovação ou rejeição. human_input_refs[] (opcional): {message_hash, at?} de state.human_input_interpretations[] que motivou a proposta — vínculo estruturado que vira provenance HUMAN_CLARIFICATION na aprovação, se conferir (docs/ac-provenance.md).",
+      "required": [
+        "id",
+        "type",
+        "ac_affected",
+        "previous_behavior",
+        "proposed_behavior",
+        "rationale",
+        "agent",
+        "timestamp"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^SC-\\d+$"
+        },
+        "type": {
+          "const": "SPEC_CHANGE"
+        },
+        "ac_affected": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^AC-\\d+$"
+          }
+        },
+        "previous_behavior": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proposed_behavior": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ac_changes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "comment_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "posted_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "spec_change_rejected": {
+      "type": "object",
+      "description": "Gravado junto de status=\"spec-change-rejected\": a proposta rejeitada + rejected_by=\"human\", rejector, rejected_at. Mantido como histórico (a fonte é spec-change-audit.json)."
+    },
+    "stale_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "plan.md",
+          "handoff.md",
+          "acceptance-evidence.json"
+        ]
+      },
+      "description": "Artefatos derivados da spec antiga, marcados na aprovação de uma SPEC_CHANGE (scripts/lib/spec-change.js). context.md nunca entra (é histórico). Sai da lista o que foi regerado depois de stale_since (mtime) — plan.md/handoff.md pelo /plan, acceptance-evidence.json pelo /test. Com plan.md/handoff.md stale, nó guardado volta para o /plan; o Verify reprova (STALE_ARTIFACTS) enquanto houver qualquer um."
+    },
+    "stale_since": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando stale_artifacts foi marcado (aprovação da SPEC_CHANGE)."
+    },
+    "artifact_validity": {
+      "type": "object",
+      "description": "Validade de cada artefato derivado da spec, por fase da cadeia SPEC → PLAN → IMPLEMENTATION → REVIEW → EVIDENCE → VERIFY (scripts/invalidate.js, docs/dependency-invalidation.md). Gravado pelo nó que produz o artefato (plan: spec-authority baseline; implement: portão de drift do implement; review: review-result.js record; evidence: acceptance-evidence.js finalize; verify: spec-authority verify --write) e pela invalidação (SPEC_CHANGE aprovada, aprovação manual de drift, replay). Ausente = run legado: invalidate.js deriva do que cada artefato registrou, sem reescrever nada.",
+      "properties": {
+        "plan": {
+          "$ref": "#/definitions/artifactValidityEntry"
+        },
+        "implement": {
+          "$ref": "#/definitions/artifactValidityEntry"
+        },
+        "review": {
+          "$ref": "#/definitions/artifactValidityEntry"
+        },
+        "evidence": {
+          "$ref": "#/definitions/artifactValidityEntry"
+        },
+        "verify": {
+          "$ref": "#/definitions/artifactValidityEntry"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pending_invalidation": {
+      "type": "object",
+      "description": "FORMATO ANTIGO — ainda lido, não é mais gravado. Transições de contrato pendentes ficam em memory/runs/<task-id>/pending-invalidation.jsonl (append-only, fora do state.json porque CLIs dentro do nó fazem read-modify-write dele), consumidas por transition_id em invalidations[] (scripts/invalidate.js).",
+      "required": [
+        "triggered_by",
+        "new_spec_hash",
+        "case",
+        "registered_at"
+      ],
+      "properties": {
+        "triggered_by": {
+          "type": "string"
+        },
+        "new_spec_version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "new_spec_hash": {
+          "type": "string"
+        },
+        "old_spec_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "old_spec_version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "case": {
+          "type": "string",
+          "enum": [
+            "active_phase",
+            "plan_phase",
+            "idle"
+          ]
+        },
+        "phase": {
+          "type": "string",
+          "description": "Nó que estava rodando."
+        },
+        "registered_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "transition_id": {
+          "type": "string"
+        },
+        "cause": {
+          "type": "string"
+        }
+      }
+    },
+    "invalidations": {
+      "type": "array",
+      "description": "Histórico append-only das invalidações aplicadas por scripts/invalidate.js (invalidateDerivedArtifacts).",
+      "items": {
+        "type": "object",
+        "required": [
+          "at",
+          "triggered_by",
+          "case",
+          "new_spec_hash",
+          "phases",
+          "stale_acs"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "triggered_by": {
+            "type": "string"
+          },
+          "case": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "active_phase",
+              "plan_phase",
+              "replay",
+              "closed"
+            ]
+          },
+          "old_spec_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "new_spec_hash": {
+            "type": "string"
+          },
+          "old_spec_version": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "new_spec_version": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "phases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "plan",
+                "implement",
+                "review",
+                "evidence",
+                "verify"
+              ]
+            }
+          },
+          "stale_acs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "transition_id": {
+            "type": "string",
+            "description": "Identidade da transição de contrato (ex.: 'SC-001@<task>', 'manual-approval:<hash12>', 'replay:<a>→<b>') — idempotência e consumo do journal."
+          },
+          "cause": {
+            "type": "string",
+            "enum": [
+              "spec_change_approved",
+              "replay",
+              "manual",
+              "hash_changed"
+            ]
+          },
+          "hash_scope_changed": {
+            "type": "boolean",
+            "description": "false = SPEC_CHANGE aprovada fora do HASH_SCOPE: invalida mesmo assim (INV-SPEC-CHANGE-REPLAN)."
+          }
+        }
+      }
+    },
+    "execution_spec": {
+      "type": "object",
+      "description": "Spec que governa a execução do nó atual (scripts/invalidate.js): gravada pelo watcher no lease do despacho (ou pelo portão de drift dentro do nó, em execução manual). stampProduced só carimba VALID se a spec atual no fim for a mesma — execution_spec ≠ spec atual no fim.",
+      "required": [
+        "node",
+        "spec_hash",
+        "started_at"
+      ],
+      "properties": {
+        "node": {
+          "type": "string"
+        },
+        "spec_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spec_version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "spec_drift": {
+      "type": "object",
+      "description": "Gravado junto de status=spec-drift; removido quando o drift é resolvido (aprovação, spec revertida ou replanejamento).",
+      "properties": {
+        "detected_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "node": {
+          "type": "string",
+          "description": "Nó que não foi despachado por causa do drift."
+        },
+        "spec_path": {
+          "type": "string"
+        },
+        "expected_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "spec_hash do Plan."
+        },
+        "current_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Hash atual da spec (null = spec removida)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Motivo legível (inclui por que a aprovação, se houver, não vale)."
+        },
+        "notified_hash": {
+          "type": "string",
+          "description": "Versão da spec já comentada no Redmine (um comentário por versão)."
+        }
+      }
+    },
+    "spec_conformance": {
+      "type": "object",
+      "description": "Resultado de node scripts/lib/spec-authority.js verify --write, gravado pelo /verify: conformidade Spec → Plan → Handoff → evidência (relatório em memory/runs/<task-id>/spec-conformance.md).",
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "FAIL",
+            "N/A"
+          ]
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "spec_path": {
+          "type": "string"
+        },
+        "spec_version": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "spec_version verificada (null = legado ou hash fora da versão vigente)."
+        },
+        "spec_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "spec_hash verificado."
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "acceptance": {
+          "type": "object",
+          "description": "Resumo da matriz acceptance-evidence.json (summary) + veredito CONFERIDO por AC (verified). Base de métricas: % AC automatizados, ACs NOT_AUTOMATED/FAIL por run.",
+          "properties": {
+            "total": {
+              "type": "integer"
+            },
+            "automated": {
+              "type": "integer"
+            },
+            "automated_pct": {
+              "type": "number"
+            },
+            "by_status": {
+              "type": "object"
+            },
+            "by_evidence_type": {
+              "type": "object"
+            },
+            "not_automated": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "failed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "blocked": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "verified": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "enum": [
+                  "PASS",
+                  "FAIL",
+                  "NOT_AUTOMATED",
+                  "BLOCKED",
+                  "MISSING"
+                ]
+              }
+            }
+          }
+        },
+        "validity": {
+          "$ref": "#/definitions/validity"
+        }
+      }
+    },
+    "redmine_ticket": {
+      "type": "object",
+      "description": "Metadados literais do ticket de origem, gravados pelo Fetch Ticket — usados pelo Commit pra montar o título do PR sem precisar re-consultar o Redmine.",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "tracker": {
+          "type": "string",
+          "description": "Nome do tracker/tipo do Redmine (ex: Problema, Funcionalidade, Melhoria, Suporte)."
+        },
+        "base_branch": {
+          "type": "string",
+          "description": "Branch base usada (development ou master), decidida pelo campo \"Branch Liberação\"."
+        }
+      }
+    },
+    "pull_request": {
+      "type": "object",
+      "description": "Preenchido pelo Commit depois de abrir o(s) PR(s) (se a automação de push+PR estiver habilitada). Uma entrada por repo tocado — chave é o nome do repo (app-back, app-front, app-core, mo-entity), nunca só uma entrada plana sobrescrita quando mais de um repo é commitado na mesma task.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "id": {
+                "type": "integer"
+              },
+              "opened_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "pr_id": {
+                "type": "integer",
+                "description": "Número do PR no Bitbucket. Gravado pelo polling de PRs quando a entrada não tem `id` (senão é deduzido da URL)."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "OPEN",
+                  "MERGED",
+                  "DECLINED",
+                  "SUPERSEDED",
+                  "open",
+                  "merged",
+                  "declined",
+                  "superseded"
+                ],
+                "description": "Estado do PR no Bitbucket na última checagem do polling de PRs do watcher (a cada PR_STATUS_POLL_INTERVAL_MS, só tasks committed). Minúsculas: legado gravado à mão pelo /commit."
+              },
+              "last_checked_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Quando o polling de PRs consultou este PR pela última vez com sucesso."
+              },
+              "spec_version": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "spec_version usada no PR (gravada pelo /commit a partir de state.spec) — base da aresta PR→SpecVersion do knowledge graph."
+              },
+              "spec_hash": {
+                "type": "string",
+                "description": "spec_hash da versão usada no PR."
+              }
+            }
+          },
+          {
+            "type": "string",
+            "description": "Legado: só a URL do PR."
+          }
+        ]
+      }
+    },
+    "pull_requests": {
+      "type": "object",
+      "description": "Legado (typo de pull_request em tasks antigas) — não gravar em tasks novas."
+    },
+    "technical_decisions": {
+      "type": "array",
+      "description": "Decisões técnicas conscientes que divergem da spec SEM alterar comportamento funcional. O /review só aceita uma divergência classificada como DOCUMENTED_TECHNICAL_DECISION quando há entrada aqui (ou no technical_decisions[] do spec gate, memory/runs/<ticket>-spec-gate.json) para o AC. Gravado pelo /implement ao tomar a decisão (ou por humano); nunca pelo /review. Decisão que altera comportamento é SPEC_CHANGE e não é salva por esta lista. Dois formatos: o legado {ac, rationale, approved_at} e o tipado do /implement (scripts/lib/spec-change.js record) {type: TECHNICAL_DECISION|SPEC_CLARIFICATION, description, rationale, agent, timestamp} — TECHNICAL_DECISION com ac ganha approved_at=timestamp (segue sozinha); cada entrada tipada é conferida pelo /review em decision_reviews[]. Ver scripts/lib/review-result.js.",
+      "items": {
+        "type": "object",
+        "anyOf": [
+          {
+            "required": [
+              "ac",
+              "rationale",
+              "approved_at"
+            ]
+          },
+          {
+            "required": [
+              "type",
+              "description",
+              "rationale",
+              "agent",
+              "timestamp"
+            ]
+          }
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "TECHNICAL_DECISION",
+              "SPEC_CLARIFICATION"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "agent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ac": {
+            "type": "string",
+            "pattern": "^AC-\\d+$"
+          },
+          "ac_affected": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^AC-\\d+$"
+            }
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
+          "approved_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "review_results": {
+      "type": "object",
+      "description": "Resultado estruturado do último /review (scripts/lib/review-result.js record), em duas dimensões independentes: spec_compliance (cada AC ativo + restrições/escopo/decisões/comportamento não especificado) e engineering (checklist técnico de 8 itens). verdict = PASS somente com as duas PASS (N/A conta como PASS). Renderizado em memory/runs/<task-id>/review-result.md.",
+      "required": [
+        "verdict",
+        "failure_origin",
+        "spec_compliance",
+        "engineering"
+      ],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "failure_origin": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "spec_compliance",
+            "engineering",
+            "both",
+            null
+          ],
+          "description": "Qual dimensão reprovou; null quando PASS. Usado pelo memory-consolidator para identificar a origem dos loops Implement↔Review."
+        },
+        "spec_compliance": {
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "PASS",
+                "FAIL",
+                "N/A"
+              ]
+            },
+            "acs": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "result": {
+                    "type": "string",
+                    "enum": [
+                      "PASS",
+                      "FAIL",
+                      "N/A"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "checks": {
+              "type": "object"
+            }
+          }
+        },
+        "engineering": {
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "PASS",
+                "FAIL"
+              ]
+            },
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "divergences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "classification": {
+                "type": "string",
+                "enum": [
+                  "IMPLEMENTATION_BUG",
+                  "DOCUMENTED_TECHNICAL_DECISION",
+                  "SPEC_CLARIFICATION",
+                  "SPEC_CHANGE_REQUIRED",
+                  "UNREGISTERED_TECHNICAL_DECISION"
+                ]
+              },
+              "declared_classification": {
+                "type": "string"
+              },
+              "reclassified_reason": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Achados que reprovam, no formato do handoff: category, ac, file, line, expected, found, action."
+        },
+        "spec_clarifications": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "SPEC_CLARIFICATION aceitos — chegam ao Verify como REVIEW_SPEC_CLARIFICATION."
+        },
+        "technical_decisions_applied": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "decision_reviews": {
+          "type": "array",
+          "description": "Conferência pelo Review de cada decisão tipada do /implement (state.technical_decisions[]): verdict CONFIRMED, ou SPEC_CHANGE_REQUIRED (TECHNICAL_DECISION que altera comportamento; SPEC_CLARIFICATION que altera comportamento ou reduz AC) — reprova.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string"
+              },
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "CONFIRMED",
+                  "SPEC_CHANGE_REQUIRED"
+                ]
+              }
+            }
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reviewed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "spec_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spec_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Hash da spec que o Review avaliou."
+        },
+        "spec_version": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "spec_version que o Review avaliou (null = legado ou SPEC_CHANGE mid-run, alertado)."
+        },
+        "history": {
+          "type": "array",
+          "description": "Uma entrada por rodada de review (preservada entre rodadas).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "round": {
+                "type": "integer"
+              },
+              "reviewed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "PASS",
+                  "FAIL"
+                ]
+              },
+              "failure_origin": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "spec_compliance",
+                  "engineering",
+                  "both",
+                  null
+                ]
+              }
+            }
+          }
+        },
+        "validity": {
+          "$ref": "#/definitions/validity"
+        },
+        "implement_validity": {
+          "type": "object",
+          "description": "Validade do implement avaliado (scripts/invalidate.js guardReview): STALE/UNKNOWN alertam, não bloqueiam.",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "VALID",
+                "STALE",
+                "UNKNOWN"
+              ]
+            },
+            "alert": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "compliance_valid": {
+          "type": "boolean",
+          "description": "false = o implement avaliado não comprova a spec atual (STALE/UNKNOWN) — chega ao Verify como REVIEW_COMPLIANCE_NOT_VALID."
+        }
+      }
+    },
+    "review_verdict": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object"
+        }
+      ],
+      "description": "Veredito do último /review (ex: aprovado/reprovado). Texto ou objeto estruturado. Runs novos: \"aprovado\" / \"reprovado (<failure_origin>)\", gravado junto de review_results."
+    },
+    "test_result": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object"
+        }
+      ],
+      "description": "Resultado do último /test. Texto ou objeto estruturado."
+    },
+    "verify_verdict": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object"
+        }
+      ],
+      "description": "Veredito do último /verify. Texto ou objeto estruturado."
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": [
+        "high",
+        "low"
+      ],
+      "description": "Gravado pelo /verify (verify.md passo 4). \"high\" faz o watcher despachar o /commit com PR draft HIGH-RISK (commitRiskNote)."
+    },
+    "risk_reason": {
+      "type": "string",
+      "description": "Critério(s) de risco atingido(s), gravado junto de risk_level pelo /verify."
+    },
+    "pr_status": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "draft",
+        "ready",
+        "merged",
+        null
+      ],
+      "description": "Estado do(s) PR(s) da task no ciclo de teste: \"draft\" gravado pelo /commit ao abrir (bitbucket-open-pr.sh abre sempre como Draft) e sincronizado pelo polling de PRs do watcher com o campo draft do Bitbucket; \"ready\" quando o dev marca como pronto (dashboard, POST /api/pr/<ticket>/ready) ou tira de Draft no Bitbucket; \"merged\" quando o polling confirma todos MERGED (junto do cleanup de worktrees). Ausente/null = PR ainda não aberto."
+    },
+    "pr_id": {
+      "type": [
+        "string",
+        "integer"
+      ],
+      "description": "Número do PR do app-back (ou do primeiro repo de pull_request), gravado junto de pr_status. \"\" = ainda não aberto. Os PRs de cada repo continuam em pull_request."
+    },
+    "worktrees_cleaned_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Quando o watcher removeu os worktrees do ticket (scripts/lib/worktree-cleanup.js), depois do merge confirmado pelo Bitbucket. null = não removidos."
+    },
+    "worktrees_removed_on_pr_open_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Quando o watcher tentou remover os worktrees do ticket logo após o PR aberto (commit.md passo 7.6 — readmine-watcher.js > cleanupWorktreesAfterPrOpen; resultado no evento worktrees_removed/worktree_cleanup_failed e em worktrees_cleanup_errors). Uma tentativa por ciclo de commit — zerado pelo retry de Recusa QA. Ausente = push/PR não aconteceu, limpeza adiada ou desligada (WORKTREE_CLEANUP_ON_PR_OPEN=0)."
+    },
+    "worktrees_cleanup_errors": {
+      "type": "array",
+      "description": "Worktrees que o cleanup pós-merge não conseguiu remover (remoção manual pedida no Redmine). Vazio/ausente = sem falha.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "human_input_interpretations": {
+      "type": "array",
+      "description": "Como o watcher interpretou mensagens do dashboard enquanto a task estava blocked (scripts/lib/human-input-intent.js). Append-only. action resume = destravou (ver unblocked); hold/ask = continuou blocked e reply foi devolvido ao dev.",
+      "items": {
+        "type": "object",
+        "required": [
+          "at",
+          "message_hash",
+          "intent",
+          "action"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_hash": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "resume",
+              "hold",
+              "unclear"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "resume",
+              "hold",
+              "ask"
+            ]
+          },
+          "node": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "reply": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "human_inputs": {
+      "type": "array",
+      "description": "Mensagens do dashboard consumidas pelo watcher (checkHumanInput) antes de um despacho. Aditivo.",
+      "items": {
+        "type": "object",
+        "required": [
+          "timestamp",
+          "content"
+        ],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "state_error": {
+      "type": "object",
+      "description": "Gravado pelo watcher junto de status=\"state_corrupted\": por que este state.json foi rejeitado. Pra destravar: corrija o arquivo (ou restaure de `backup`), volte `status` pro valor certo e apague este campo.",
+      "properties": {
+        "detected_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "parse_error",
+            "schema"
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "backup": {
+          "type": "string",
+          "description": "Caminho da cópia do conteúdo original (só quando o JSON estava malformado e precisou ser reescrito)."
+        },
+        "previous_status": {
+          "description": "Valor original de status (pode ser de tipo errado)."
+        }
+      }
+    },
+    "node_started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Lease do último despacho (scripts/lib/node-lease.js) — quando o nó atual começou. Fica gravado depois do release (auditoria)."
+    },
+    "node_timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Lease: timeout do nó em ms (NODE_TIMEOUT_MS, padrão 60 min). Passado disto sem agente vivo, o nó é tratado como órfão."
+    },
+    "agent_pid": {
+      "type": "integer",
+      "description": "Lease: pid do processo do agente em execução (removido no release)."
+    },
+    "recovered_from_orphan": {
+      "type": "object",
+      "description": "Marcador de redespacho após recuperação de nó órfão (consumido no próximo acquire).",
+      "properties": {
+        "node": {
+          "type": "string"
+        },
+        "orphan_since": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "detected_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "description": "Log estruturado de eventos por nó, gravado pelo watcher (append-only — nunca remover/reescrever; ausente = []). Emissão central em scripts/lib/node-events.js: node_start ao despachar (dispatchTicket), e na saída do agente (release do lease, nos dois modos) node_end (exit 0) + node_retry (retries[node] incrementado pelo comando) / escalation (status ou node \"escalated\"; max_retries de .graph/graph.yaml) / checkpoint (status blocked/needs_human_review/spec-invalid, ou pausa de NEVER_AUTO_DISPATCH), ou node_error (exit code != 0 / sem exit code). Outros tipos gravados por outros módulos: node_error (nó órfão redespachado; state.json inválido → state_corrupted), escalation (commit órfão; PR inconsistência cross-repo — um repo MERGED e outro DECLINED, gravado uma vez por combinação pelo polling de PRs), fully_merged, worktrees_removed/worktree_cleanup_failed (limpeza dos worktrees logo após o PR aberto — cleanupWorktreesAfterPrOpen, agent \"watcher\"), replay, plan_replan, plan_escalation, churn_escalation, spec_drift/spec_change_accepted/spec_drift_resolved/spec_drift_replan/spec_baseline (portão de drift da spec — scripts/lib/spec-authority.js), spec_change_proposed/spec_change_approved/spec_change_rejected/stale_artifacts_replan (governança de SPEC_CHANGE — scripts/lib/spec-change.js), ac_provenance_failed (aprovação de SPEC_CHANGE aplicada, mas a provenance dos ACs não pôde ser gravada em memory/spec/<ticket>-ac-provenance.json — scripts/lib/ac-provenance.js), pre_build_failed, interrupted, human_input_interpreted (mensagem do dashboard interpretada com a task blocked — readmine-watcher.js interpretBlockedHumanInput, agent \"watcher\"). Eventos novos têm `ts` (ISO 8601) e `at` com o mesmo valor; eventos antigos só `at`.",
+      "items": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "ts"
+            ]
+          },
+          {
+            "required": [
+              "at"
+            ]
+          }
+        ],
+        "properties": {
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Momento do evento (ISO 8601)."
+          },
+          "type": {
+            "type": "string",
+            "description": "node_start | node_end | node_retry | node_error | checkpoint | escalation (log por nó) — ou um dos tipos específicos de outros módulos listados acima."
+          },
+          "node": {
+            "type": "string",
+            "description": "plan | implement | review | test | verify | commit | fetch_ticket."
+          },
+          "agent": {
+            "type": "string",
+            "description": "claude | codex — agente de orquestração do despacho."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Legado/compatibilidade: mesmo valor de ts nos eventos novos."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Descrição curta do evento."
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Só em node_end/node_error: exit code do processo do agente (null = saiu por sinal/falha no spawn)."
+          }
+        }
+      }
+    },
+    "replayOf": {
+      "type": "object",
+      "description": "Presente só em run de replay (scripts/replay-cycle.js, scripts/lib/cycle-replayer.js): o run é uma retomada de originalRun a partir de fromNode, no mesmo worktree, reaproveitando os nós anteriores. O state.json de originalRun não é tocado; ao lado dele fica state-replay-<task_id deste run>.json com o estado inicial do replay.",
+      "required": [
+        "originalRun",
+        "fromNode",
+        "replayedAt"
+      ],
+      "properties": {
+        "originalRun": {
+          "type": "string",
+          "description": "task_id do run retomado (pode ser outro replay)."
+        },
+        "fromNode": {
+          "type": "string",
+          "enum": [
+            "plan",
+            "implement",
+            "review",
+            "test",
+            "verify",
+            "commit"
+          ]
+        },
+        "replayedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "cost_tracking": {
+      "type": "object",
+      "description": "Custo por nó (scripts/lib/cost-tracking.js), gravado pelo watcher ao fechar cada despacho. Cópia autoritativa em memory/runs/<ticket>-cost.json.",
+      "properties": {
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string"
+              },
+              "input_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "output_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "duration_ms": {
+                "type": "number",
+                "minimum": 0
+              },
+              "runs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "retries": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "runs_without_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "also_covers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "input_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "output_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "duration_ms": {
+              "type": "number",
+              "minimum": 0
+            },
+            "loop_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "transcripts": {
+      "type": "array",
+      "description": "Transcrições completas do agente por nó/tentativa, pra post-mortem (scripts/lib/transcript-writer.js), gravadas pelo watcher ao fechar cada despacho (mesmo ponto do cost_tracking). Cópia autoritativa em memory/runs/<task-id>/transcripts/index.json, reaplicada aqui a cada gravação. Conteúdo sensível — só disco local. Ausente = nenhuma transcrição.",
+      "items": {
+        "type": "object",
+        "required": [
+          "nodeId",
+          "attempt",
+          "path",
+          "sizeBytes",
+          "status"
+        ],
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Nó do grafo (último nó do despacho — fetch_ticket+plan vira plan)."
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Tentativa do nó (1 = primeira; retries somam)."
+          },
+          "path": {
+            "type": "string",
+            "description": "Relativo à task: transcripts/<node>-<attempt>.json ou .json.gz."
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tamanho em disco (comprimido, se .gz)."
+          },
+          "compressed": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "success",
+              "failed"
+            ]
+          },
+          "tokenUsage": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Mesmos campos de cost_tracking (input_tokens, output_tokens, cache_*, cost_usd)."
+          },
+          "messages": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "transcripts_total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Quantidade de transcrições em transcripts[]."
+    },
+    "transcripts_size_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Soma de transcripts[].sizeBytes."
+    },
+    "affectedServices": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[^/]+/[^/]+$"
+      },
+      "uniqueItems": true,
+      "description": "Módulos Maven de microsserviço tocados pelo diff do ticket (ex: \"backend/ms-pedidos\"), gravado pelo watcher (scripts/lib/service-detector.js) ao despachar test/verify/commit. O nó test roda `mvn test -pl <affectedServices>`. [] = suíte completa (diff vazio, ou toca raiz/configuração fora de backend/<svc>/). Ausente = ainda não calculado."
+    },
+    "schema_changes_detected": {
+      "type": "boolean",
+      "description": "true = o diff do ticket altera schema (migration Flyway V*__*.sql, anotações JPA, persistence.xml), gravado pelo watcher (scripts/lib/schema-watcher.js) a cada despacho de task ativa, junto da seção \"## ⚠️ Schema Migration Checklist\" no context.md. Só alerta — não bloqueia o ciclo. Ausente = ainda não calculado."
+    },
+    "schema_risk_level": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        null
+      ],
+      "description": "Risco da mudança de schema (ADD=low, ALTER=medium, RENAME/DROP=high; o maior vence). null quando schema_changes_detected=false. Não confundir com risk_level (risco do PR, gravado pelo /verify)."
+    },
+    "planScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Score (0–100) do último plano avaliado pelo portão de qualidade do plano (watcher, runPlanGate; scripts/lib/plan-scorer.js) — heurística, sem LLM. Gravado quando o plan termina, antes do implement."
+    },
+    "planAttempts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Re-plans automáticos já despachados pelo portão do plano (0 = plano original; máximo 2, depois plan-escalation). A tentativa atual do plano é planAttempts + 1."
+    },
+    "planFeedback": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Pontos específicos que o portão do plano apontou no último plano avaliado (ex: \"Step 3 não especifica arquivo a modificar\"). [] = nada a apontar. Vai no prompt do re-plan."
+    },
+    "planScoreThreshold": {
+      "type": "number",
+      "description": "Score mínimo usado na última avaliação do plano (PLAN_SCORE_THRESHOLD, padrão 60)."
+    },
+    "planSignature": {
+      "type": "string",
+      "description": "Hash do plano avaliado — plano igual não é reavaliado como tentativa nova."
+    },
+    "planAccepted": {
+      "type": "object",
+      "properties": {
+        "signature": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Aceite humano de um plano abaixo do score (plan-escalation), pra esse planSignature."
+    },
+    "planEscalationNotifiedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando o watcher postou no Redmine o pedido de revisão do plano (plan-escalation)."
+    },
+    "churnReport": {
+      "type": "object",
+      "required": [
+        "detectedAt",
+        "files"
+      ],
+      "properties": {
+        "detectedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "threshold": {
+          "type": "integer",
+          "description": "CHURN_THRESHOLD usado na detecção (arquivos de teste usam o dobro)."
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "modificationCount",
+              "commits"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "modificationCount": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "commits": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "\"<sha> <mensagem>\" das rodadas que tocaram o arquivo, mais recente primeiro (até 10)."
+              },
+              "threshold": {
+                "type": "integer",
+                "description": "Limite aplicado a este arquivo (CHURN_THRESHOLD, dobrado se for teste)."
+              }
+            }
+          }
+        }
+      },
+      "description": "Gravado pelo watcher (runChurnGate; scripts/lib/churn-detector.js) junto de status=\"churn-escalation\": arquivos modificados em >= CHURN_THRESHOLD rodadas de implement do ciclo, contadas nos snapshots refs/churn/<task_id>/start..rounds do worktree. Mantido depois do aceite (histórico)."
+    },
+    "churnAccepted": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Rodadas por arquivo no momento do aceite — baseline: o arquivo só escala de novo com mais CHURN_THRESHOLD rodadas depois disto."
+        }
+      },
+      "description": "Aceite humano de um churn-escalation (\"aceito\" no Redmine ou --aceitar-churn)."
+    },
+    "churnEscalationNotifiedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando o watcher postou no Redmine o relatório de churn (churn-escalation)."
+    },
+    "preBuildStatus": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed",
+        "skipped"
+      ],
+      "description": "Resultado da validação de build pré-implement (scripts/lib/build-validator.js, `mvn compile -q`), gravado pelo watcher entre plan e implement. skipped = SKIP_PRE_BUILD_VALIDATION=true ou Maven ausente no PATH. Ausente = task anterior ao portão ou ainda não chegou em implement."
+    },
+    "preBuildErrors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Só com preBuildStatus=failed: erros no formato \"caminho/Arquivo.java:linha — mensagem\" (ou linhas [ERROR] cruas do Maven quando a falha não é de compilação Java)."
+    },
+    "preBuildDurationMs": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Duração da última validação de build pré-implement, em ms."
+    },
+    "preBuildAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando a última validação de build pré-implement rodou."
+    },
+    "preBuildFingerprint": {
+      "type": "string",
+      "description": "Interno do watcher: hash do worktree (HEAD + diff, fora de memory/) na falha — só recompila quando isto muda."
+    },
+    "preBuildAccepted": {
+      "type": "object",
+      "description": "Falha do pré-build aceita (\"aceito\" no Redmine ou --aceitar-build): implement roda com os erros no prompt.",
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "by": {
+          "type": "string"
+        }
+      }
+    },
+    "preBuildAiFix": {
+      "type": "object",
+      "description": "Botão \"Corrigir com IA\" do dashboard (POST /api/runs/:taskId/pre-build/ai-fix; scripts/lib/pre-build-ai-fix.js): um `claude -p` corrige a base no worktree e o build-validator dá o veredito no fim. Com status=running e pid vivo, o watcher não recompila nem despacha o implement (runPreBuildGate). Eventos do agente em <run>/pre-build-ai-fix.jsonl.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "running",
+            "passed",
+            "failed",
+            "cancelled",
+            "error"
+          ]
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "pid": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "costUsd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "preBuildSkipReason": {
+      "type": "string",
+      "description": "Só com preBuildStatus=skipped por problema de ambiente (Maven ausente, JDK incompatível com o release do pom): o motivo, pra não parecer que o portão rodou."
+    },
+    "preBuildJavaHome": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "JAVA_HOME usado na última validação de build (scripts/lib/build-validator.js > resolveJavaHome). JDK diferente numa task pre-build-failed faz o watcher recompilar."
+    },
+    "interruptedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando o watcher recebeu SIGTERM durante o nó (status interrupted)."
+    },
+    "activeNodeAtInterruption": {
+      "type": "string",
+      "description": "Nó que o watcher conduzia quando recebeu SIGTERM (status interrupted)."
+    },
+    "session_interrupted": {
+      "type": "boolean",
+      "description": "true quando a sessão do agente morreu por estouro de contexto/tokens (status session_limit) e ainda não foi retomada. Gravado pelo watcher (dispatchTicket) e limpo (false) pela rota POST /api/runs/:taskId/resume-session do dashboard ao disparar a retomada. Nomenclatura em snake_case por ser contrato direto entre watcher e dashboard — diferente do par camelCase interruptedAt/activeNodeAtInterruption acima (SIGTERM), que é mecanismo irmão e não relacionado."
+    },
+    "interrupted_node": {
+      "type": "string",
+      "description": "Nó (state.node no momento do crash) cuja sessão estourou o limite de contexto/tokens (status session_limit). Igual a activeNodeAtInterruption em espírito, mas para o caso session_limit em vez de SIGTERM."
+    },
+    "interrupted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando o watcher detectou o estouro de contexto/tokens (status session_limit)."
+    },
+    "resume_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Quantas vezes este run já foi retomado via POST /api/runs/:taskId/resume-session depois de um session_limit. A rota recusa (429) a partir de 3."
+    },
+    "resumed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando a retomada mais recente foi disparada pelo dashboard (POST /api/runs/:taskId/resume-session)."
+    },
+    "ticket_status": {
+      "type": "string",
+      "description": "Último status do ticket no Redmine visto pelo polling do watcher (syncQaRejection) ou gravado pelo retry de Recusa QA do dashboard. \"Recusa QA\"/\"Recusada QA\" liga o botão \"Corrigir recusa QA\"."
+    },
+    "qa_rejection": {
+      "type": "object",
+      "description": "Última recusa do QA: gravada pelo watcher quando ticket_status entra em Recusa QA e atualizada pelo POST /api/runs/:taskId/retry-qa-rejection do dashboard (scripts/lib/redmine-journal-fetcher.js).",
+      "properties": {
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Nota mais recente do ticket (fora comentários [Watcher]); null = nenhuma encontrada."
+        },
+        "rejected_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Quando o ticket foi para Recusa QA (journal com a troca de status), senão a data da nota."
+        },
+        "journal_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Id do journal de onde veio a nota."
+        },
+        "retry_requested_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Quando o retry foi pedido pelo dashboard."
+        }
+      }
+    },
+    "qa_rejections": {
+      "type": "array",
+      "description": "Histórico de recusas QA, uma entrada por recusa: o watcher cria ao detectar a Recusa QA (retry_requested_at null = aguardando correção) e o POST /api/runs/:taskId/retry-qa-rejection completa a mesma entrada com o início do retry e a base de custo (scripts/lib/qa-cycles.js). O dashboard separa cada recusa do ciclo principal a partir daqui. Preserve ao regravar o state.json.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "n": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejected_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "journal_id": {
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ]
+          },
+          "detected_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Quando o watcher detectou a recusa."
+          },
+          "retry_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Início do retry pelo dashboard; null = recusa ainda sem correção."
+          },
+          "history_len": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_baseline_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "cost_tracking.totals.cost_usd no início do retry."
+          },
+          "tokens_baseline": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Tokens (entrada + saída) acumulados no início do retry."
+          }
+        }
+      }
+    },
+    "qa_retry_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Quantos retries de Recusa QA este run já teve (incrementado pelo dashboard; reaproveita o mesmo task-id)."
+    }
+  },
+  "description": "Validado em runtime pelo watcher (scripts/validate-state.js) a cada leitura/escrita de state.json. Campos fora deste schema são permitidos (additionalProperties aberto) — só tipos/enums dos campos listados e os obrigatórios são checados. Enums e obrigatórios foram calibrados contra os state.json reais existentes (2026-09-22) pra não marcar como corrompida nenhuma task que já funcionava.",
+  "definitions": {
+    "validity": {
+      "type": "object",
+      "description": "Validade de um artefato derivado da spec (scripts/invalidate.js — o único que decide; as fases só leem). VALID: spec_hash do artefato == spec_hash atual. STALE: produzido contra outra versão ou invalidado por SPEC_CHANGE aprovada — só um artefato novo (stampProduced) volta a VALID. UNKNOWN: legado sem spec_hash — nunca VALID, nunca falha de teste; o dashboard mostra 'legado sem versão'. Mesmo formato em acceptance-evidence.json.",
+      "required": [
+        "status",
+        "stale_since_version",
+        "stale_acs"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "VALID",
+            "STALE",
+            "UNKNOWN"
+          ]
+        },
+        "stale_since_version": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "spec_version a partir da qual o artefato ficou STALE (null = VALID/UNKNOWN, ou run legado sem versão)."
+        },
+        "stale_acs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^AC-\\d{2,}$"
+          },
+          "description": "Reservado para invalidação por AC-ID. Sempre presente; vazio na v1 conservadora (invalidação total do artefato)."
+        }
+      }
+    },
+    "artifactValidityEntry": {
+      "type": "object",
+      "required": [
+        "artifact",
+        "validity"
+      ],
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "description": "Arquivo (ou registro) do artefato da fase."
+        },
+        "spec_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "spec_hash contra o qual o artefato foi produzido (null = legado sem hash)."
+        },
+        "spec_version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "produced_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "stale_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "invalidated_by": {
+          "type": "string",
+          "description": "O que invalidou (ex.: 'SPEC_CHANGE SC-001', 'replay', 'aprovação manual de drift (spec_change_hash)')."
+        },
+        "validity": {
+          "$ref": "#/definitions/validity"
+        },
+        "execution_spec_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "spec_hash de state.execution_spec do nó produtor no momento do carimbo (a spec que governou a execução)."
+        },
+        "stale_reason": {
+          "type": "string",
+          "description": "Por que ficou STALE (contrato alterado, SPEC_CHANGE fora do HASH_SCOPE, execução sob outra spec, transição pendente)."
+        }
+      }
+    }
+  }
+}

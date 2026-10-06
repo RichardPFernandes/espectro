@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "spec-changelog.schema.json",
+  "title": "Changelog de versões de uma spec (memory/spec/<ticket>-spec-changelog.json)",
+  "description": "Histórico auditável e APPEND-ONLY das versões de uma spec (scripts/lib/spec-version.js; ciclo de vida em docs/spec-versioning.md). Uma entrada em versions[] por spec_version: v1 'initial' quando o /plan sela a spec, v2+ só por SPEC_CHANGE aprovada que altera o HASH_SCOPE. rebaselines[] registra hash novo da MESMA versão (contrato mudou sem SPEC_CHANGE aprovada: notas de correção do /commit antes do retry de Recusa QA, revisão humana entre ciclos, replanejamento pós-drift). Nenhuma entrada é reescrita ou removida.",
+  "type": "object",
+  "required": ["schema_version", "spec_id", "versions"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "spec_id": { "type": ["string", "null"], "description": "Id da spec (ticket)." },
+    "spec_path": { "type": ["string", "null"] },
+    "hash_scope": { "type": "string", "description": "Escopo do hash da versão mais recente (.claude/spec-hash-config.json)." },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "versions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "hash", "created_at", "reason", "approval_ref", "diff_summary"],
+        "properties": {
+          "version": { "type": "integer", "minimum": 1, "description": "Sequencial, sem lacuna nem repetição." },
+          "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "spec_hash contratual da versão." },
+          "hash_scope": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "created_by": { "type": "string", "description": "plan (selagem) | spec-change-approval | drift-approval | reconstructed" },
+          "run_id": { "type": ["string", "null"], "description": "Task-id do run que gerou a versão." },
+          "reason": { "type": "string", "description": "'initial' ou 'SPEC_CHANGE <id>: <proposta>'." },
+          "approval_ref": { "type": ["string", "null"], "description": "Onde está a aprovação e o diff completo: spec-change-audit.json#entry-<n> (no run_id) ou state.json#spec_change_hash=<hash12>. null na v1." },
+          "spec_change_id": { "type": ["string", "null"], "pattern": "^SC-\\d+$" },
+          "approved_by": { "type": "string" },
+          "diff_summary": { "type": ["string", "null"], "description": "Texto legível do que mudou no HASH_SCOPE (ex.: 'AC-04 adicionado; AC-02 removido; Escopo alterada'). null na v1." },
+          "fingerprint": {
+            "type": ["object", "null"],
+            "description": "Hash curto (12) por AC e por seção contratual — base do diff_summary da próxima versão.",
+            "properties": {
+              "acs": { "type": "object", "additionalProperties": { "type": "string" } },
+              "sections": { "type": "object", "additionalProperties": { "type": "string" } },
+              "removed": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "rebaselines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "hash", "at", "by", "reason"],
+        "properties": {
+          "version": { "type": "integer", "minimum": 1 },
+          "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "at": { "type": "string", "format": "date-time" },
+          "by": { "type": "string" },
+          "run_id": { "type": ["string", "null"] },
+          "reason": { "type": "string" },
+          "diff_summary": { "type": ["string", "null"] },
+          "fingerprint": { "type": ["object", "null"] }
+        }
+      }
+    }
+  }
+}

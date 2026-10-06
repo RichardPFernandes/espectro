@@ -1,0 +1,436 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "acceptance-evidence.schema.json",
+  "title": "Matriz de cobertura dos Critérios de Aceite (memory/runs/<task-id>/acceptance-evidence.json)",
+  "description": "Escrita pelo /test (node scripts/lib/acceptance-evidence.js finalize carimba run_id/generated_at/spec_hash/summary), consumida pelo /verify (spec-authority.js verify → acceptance-evidence.js checkMatrix), que grava o bloco `verification`. Cadeia SPEC (AC) → PLAN (plan_steps) → IMPLEMENTATION (implementation) → TEST (evidence) → VERIFY (verification). O Verify nunca confia só em `result`: confere `artifact` no disco (e o testcase no relatório surefire/failsafe).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "generated_at",
+    "spec_hash",
+    "coverage"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Task-id do run (nome do diretório em memory/runs/)."
+    },
+    "ticket_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Id do ticket Redmine (chave do .graph/ac-registry.json) — agrega métricas por ticket entre ciclos."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "generated_by": {
+      "type": "string",
+      "description": "Nó que gerou (test)."
+    },
+    "spec_path": {
+      "type": "string",
+      "description": "Spec cujos ACs a matriz cobre (relativo à raiz do checkout)."
+    },
+    "spec_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{6,64}$",
+      "description": "spec_hash da spec no momento do Test, no algoritmo do run (spec-authority.js specHashFor: contratual/HASH_SCOPE em run versionado, normativo em run legado). Diferente do hash atual = matriz obsoleta (EVIDENCE_SPEC_STALE)."
+    },
+    "spec_version": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "description": "spec_version (state.json.spec.version — scripts/lib/spec-version.js) da spec que o Test usou. null = run legado/unversioned, ou spec com hash fora da versão vigente (SPEC_CHANGE mid-run, alertado no finalize). Ausente = matriz anterior ao versionamento. Diferente da versão vigente = EVIDENCE_SPEC_VERSION_MISMATCH."
+    },
+    "spec_hash_scope": {
+      "type": "string",
+      "description": "Escopo do spec_hash (id em .claude/spec-hash-config.json, ou legacy_normative)."
+    },
+    "validity": {
+      "$ref": "#/definitions/validity",
+      "description": "Validade da matriz contra a spec atual (scripts/invalidate.js): finalize grava VALID; SPEC_CHANGE aprovada marca STALE (o mtime é preservado: marcar não é regerar). Ausente = matriz legada (UNKNOWN se sem spec_hash). O Verify recusa STALE e UNKNOWN."
+    },
+    "module": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Módulo do memory/spec/index.yaml tocado pela task — métrica futura: módulos com baixa cobertura funcional."
+    },
+    "coverage": {
+      "type": "object",
+      "description": "Uma chave por AC ativo da spec (nunca repetida); múltiplas evidências do mesmo AC ficam agrupadas em `evidence`.",
+      "propertyNames": {
+        "pattern": "^AC-\\d{2,}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/acCoverage"
+      }
+    },
+    "summary": {
+      "$ref": "#/definitions/summary"
+    },
+    "verification": {
+      "$ref": "#/definitions/verification"
+    }
+  },
+  "definitions": {
+    "result": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL",
+        "NOT_AUTOMATED",
+        "BLOCKED"
+      ]
+    },
+    "evidenceType": {
+      "type": "string",
+      "enum": [
+        "automated-test",
+        "regression-test",
+        "integration-test",
+        "build",
+        "static-analysis",
+        "manual",
+        "not-applicable"
+      ]
+    },
+    "acCoverage": {
+      "type": "object",
+      "required": [
+        "status",
+        "evidence"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/result",
+          "description": "Agregado das evidências: FAIL > BLOCKED > PASS > NOT_AUTOMATED (not-applicable não conta). Divergir do agregado = AC_STATUS_INCONSISTENT."
+        },
+        "justification": {
+          "type": "string",
+          "description": "Obrigatória com status NOT_AUTOMATED ou BLOCKED: por que não dá pra automatizar / o que bloqueou."
+        },
+        "plan_steps": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "Passos do plan.md que atendem o AC (finalize preenche a partir do plano se vazio)."
+        },
+        "implementation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Arquivos alterados que implementam o AC (finalize usa os 'Arquivo:' dos passos do plano se vazio)."
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/evidence"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "NOT_AUTOMATED",
+                  "BLOCKED"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "justification"
+            ],
+            "properties": {
+              "justification": {
+                "minLength": 10
+              }
+            }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "description",
+        "type",
+        "result"
+      ],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Ex.: ResumoServiceTest#filtraRemessa, ou o que foi observado na verificação manual."
+        },
+        "type": {
+          "$ref": "#/definitions/evidenceType"
+        },
+        "result": {
+          "$ref": "#/definitions/result"
+        },
+        "test": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][\\w$.]*(#.+)?$",
+          "description": "Classe[#método] no relatório (default: extraído de description)."
+        },
+        "artifact": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Artefato real que prova a execução, relativo à raiz do checkout ou ao run (ex.: memory/runs/<id>/evidence/surefire/TEST-x.xml, target/surefire-reports/, build.log#L120). Obrigatório para testes, build e static-analysis."
+        },
+        "command": {
+          "type": "string",
+          "description": "Comando que gerou o artefato (ex.: mvn -q test -Dtest=ResumoServiceTest)."
+        },
+        "justification": {
+          "type": "string",
+          "description": "Obrigatória com result NOT_AUTOMATED/BLOCKED e com type not-applicable."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "automated-test",
+                  "regression-test",
+                  "integration-test",
+                  "build",
+                  "static-analysis"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "artifact"
+            ],
+            "properties": {
+              "artifact": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              {
+                "properties": {
+                  "result": {
+                    "enum": [
+                      "NOT_AUTOMATED",
+                      "BLOCKED"
+                    ]
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              },
+              {
+                "properties": {
+                  "type": {
+                    "const": "not-applicable"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "required": [
+              "justification"
+            ],
+            "properties": {
+              "justification": {
+                "minLength": 10
+              }
+            }
+          }
+        }
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "description": "Derivado (finalize) — base das métricas futuras: % AC automatizados, ACs NOT_AUTOMATED frequentes, ACs que mais falham.",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_evidence_type": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "automated": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "ACs com ao menos uma evidência automatizada (automated/regression/integration-test) PASS."
+        },
+        "automated_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "not_automated": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocked": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Gravado pelo /verify (spec-authority.js verify --write). Resultado CONFERIDO por AC (artefato e relatório), não o relato do Test.",
+      "required": [
+        "verified_at",
+        "verdict",
+        "results"
+      ],
+      "properties": {
+        "verified_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "spec_hash": {
+          "type": "string"
+        },
+        "spec_version": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "spec_version que o Verify conferiu."
+        },
+        "results": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^AC-\\d{2,}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "verdict"
+            ],
+            "properties": {
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "PASS",
+                  "FAIL",
+                  "NOT_AUTOMATED",
+                  "BLOCKED",
+                  "MISSING"
+                ]
+              },
+              "problems": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "validity": {
+      "type": "object",
+      "description": "Validade de um artefato derivado da spec (scripts/invalidate.js — o único que decide; as fases só leem). VALID: spec_hash do artefato == spec_hash atual. STALE: produzido contra outra versão ou invalidado por SPEC_CHANGE aprovada — só um artefato novo (stampProduced) volta a VALID. UNKNOWN: legado sem spec_hash — nunca VALID, nunca falha de teste; o dashboard mostra 'legado sem versão'. Mesmo formato em acceptance-evidence.json.",
+      "required": [
+        "status",
+        "stale_since_version",
+        "stale_acs"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "VALID",
+            "STALE",
+            "UNKNOWN"
+          ]
+        },
+        "stale_since_version": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "spec_version a partir da qual o artefato ficou STALE (null = VALID/UNKNOWN, ou run legado sem versão)."
+        },
+        "stale_acs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^AC-\\d{2,}$"
+          },
+          "description": "Reservado para invalidação por AC-ID. Sempre presente; vazio na v1 conservadora (invalidação total do artefato)."
+        }
+      }
+    }
+  }
+}

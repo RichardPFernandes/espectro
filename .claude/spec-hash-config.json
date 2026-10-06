@@ -1,0 +1,42 @@
+{
+  "config_version": 1,
+  "description": "HASH_SCOPE do spec_hash contratual (scripts/lib/spec-hash.js — implementação única; todo script e nó calcula o hash por ela). O hash cobre só as seções contratuais da spec (allowlist abaixo), na ordem deste arquivo, com comentários HTML, frontmatter e espaço normalizados fora. Mudança fora do escopo (contexto, referências, comentário, formatação) não muda o hash, não pausa run e não gera versão. NUNCA edite um escopo já usado: crie um id novo em `scopes` e aponte `current` para ele — runs gravados com o escopo antigo continuam sendo recalculados com ele. Ciclo de vida: docs/spec-versioning.md.",
+  "algorithm": "sha256",
+  "current": "contract_sections_v1",
+  "scopes": {
+    "contract_sections_v1": {
+      "description": "Seções funcionais do template de spec (templates/spec.md.template e o formato legado templates/spec-template.md): critérios de aceite, objetivo, escopo, regras de negócio, comportamento esperado, solução e restrições.",
+      "include_sections": [
+        { "id": "acceptance_criteria", "headings": ["^criterios? de aceit"] },
+        { "id": "objective", "headings": ["^objetivos?\\b"] },
+        { "id": "scope", "headings": ["^escopo\\b", "^fora de escopo\\b"] },
+        { "id": "business_rules", "headings": ["^regras? de negocio\\b"] },
+        { "id": "expected_behavior", "headings": ["^comportamento esperado\\b"] },
+        { "id": "solution", "headings": ["^solucao\\b"] },
+        { "id": "constraints", "headings": ["^restric", "^versao alvo\\b"] }
+      ],
+      "exclude_sections": [
+        "^casos?[- ]limites?\\b",
+        "^pontos? a esclarecer\\b",
+        "^decisoes de implementacao\\b",
+        "^contexto historico\\b",
+        "^historico de mudancas\\b"
+      ],
+      "excluded_by_omission": [
+        "Contexto", "Problema", "Referências", "Anexos", "Dependências / Dependências Técnicas",
+        "Arquivos Afetados", "Módulo Afetado", "Responsável", "Sugestão de Granularidade do Plan",
+        "Observações técnicas", "Casos-limite / Pontos a esclarecer", "Decisões de Implementação",
+        "Contexto Histórico", "Histórico de Mudanças", "frontmatter (metadados: ticket, data, autor, draft, spec_template_version)"
+      ],
+      "normalization": {
+        "strip_html_comments": true,
+        "strip_frontmatter": true,
+        "line_endings": "LF",
+        "collapse_inline_whitespace": true,
+        "drop_blank_lines": true,
+        "section_order": "config",
+        "heading_match": "normalizado: NFD sem acentos, minúsculo, sem * _ `"
+      }
+    }
+  }
+}

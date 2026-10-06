@@ -1,18 +1,19 @@
 # Prisma
 
-Prisma é uma plataforma de engenharia de software com agentes. Este bootstrap
-prepara o repositório próprio; a implementação existente será extraída e adaptada
-na PRI-60, a partir da fonte e da fronteira aceitas na PRI-58.
+Prisma é uma plataforma de engenharia de software com agentes. O bootstrap da
+PRI-59 preparou este repositório. A PRI-60 traz a versão candidata da plataforma,
+extraída da fronteira aceita na PRI-58, sem trocar a execução ativa do app-back.
 
 ## Estado desta entrega
 
-O conteúdo inicial reúne documentação nova, referências de proveniência e
-diretórios reservados. O destino confirmado na PRI-59 é o repo privado
-[RichardPFernandes/prisma](https://github.com/RichardPFernandes/prisma),
-com branch inicial `main`. A implementação será incorporada pela PRI-60.
+A candidata está neste checkout, na branch de extração. O destino confirmado na
+PRI-59 continua o repo privado
+[RichardPFernandes/prisma](https://github.com/RichardPFernandes/prisma).
+Consumo, retorno e o que ainda não foi trocado estão em
+[docs/pri-60-candidate.md](docs/pri-60-candidate.md).
 
-`app-back` será o primeiro projeto consumidor. Sua configuração, dados e estado
-continuam no projeto consumidor, conforme os contratos e condições aplicáveis.
+`app-back` segue o primeiro projeto consumidor e a origem em execução. A
+configuração, os dados e o estado dele permanecem no projeto consumidor.
 
 ## Organização mínima proposta
 

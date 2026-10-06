@@ -1,0 +1,69 @@
+---
+spec_template_version: 1
+ticket: {{TICKET_ID}}
+---
+<!--
+  Template canônico de spec (v1) — ponto de partida obrigatório de toda demanda nova.
+  Destino: memory/spec/<ticket>-spec.md. Guia de preenchimento: docs/spec-guide.md.
+
+  - O /fetch-ticket copia este arquivo (scripts/lib/spec-template.js) e preenche só o
+    que vem do Redmine: número, título e descrição (vai para ## Contexto). Nada mais é
+    preenchido automaticamente — Critérios de Aceite são sempre escritos por gente.
+  - Cada comentário HTML como este é instrução para quem escreve: leia, preencha a
+    seção e APAGUE o comentário. O validador (scripts/lib/spec-validator.js) reprova
+    spec com comentário do template ainda presente ou com seção obrigatória vazia.
+  - Obrigatórias: Contexto, Objetivo, Escopo, Critérios de Aceite (cabeçalho exato,
+    nível ##). Opcionais: Dependências Técnicas, Restrições, Referências — apague a
+    seção inteira se não se aplicar.
+  - Não mexa em `spec_template_version` no frontmatter: é o que diz ao validador qual
+    versão de regras aplicar e vai para o state.json do run.
+-->
+# Ticket #{{TICKET_ID}} — {{TITULO}}
+
+## Contexto
+<!-- O PROBLEMA. Situação atual: o que acontece hoje, quem é afetado, com que
+     frequência/impacto e por que precisa mudar agora. Fatos, não solução.
+     Preenchido pelo /fetch-ticket com a descrição do ticket — revise, corte o que for
+     ruído e complemente com o que só aparece nos comentários do Redmine. -->
+{{DESCRICAO}}
+
+## Objetivo
+<!-- O CRITÉRIO DE SUCESSO. Uma ou duas frases dizendo como o mundo fica depois da
+     entrega e como saber que deu certo (ex: "Transportadora consegue reenviar a NF
+     pela API sem abrir chamado"). Não descreva a implementação. -->
+
+## Escopo
+<!-- O que ENTRA e o que NÃO ENTRA nesta entrega, em duas listas:
+     **Inclui:**
+     - ...
+     **Não inclui:**
+     - ...
+     Itens de "Não inclui" evitam que o plan/implement cresçam além do pedido. -->
+
+## Critérios de Aceite
+<!-- Um critério verificável por linha, com ID estável em sequência:
+     - AC-01: Ao <ação/condição>, o sistema <resultado observável> <limite/medida>.
+     - AC-02: ...
+     Mínimo 1. Cada AC deve ser testável por QA sem perguntar nada a ninguém.
+     Dúvida ainda aberta? Escreva o AC assim mesmo e marque com [PENDING_CLARIFICATION]
+     (ex: "- AC-03: [PENDING_CLARIFICATION] Limite de itens por página — aguardando
+     PO"): o validador aceita, mas o /plan NÃO roda até o marcador sair.
+     Nunca reaproveite nem apague um ID: critério que deixou de valer fica como
+     "- AC-0N: (removido em <data>: motivo) <texto original>". -->
+
+## Dependências Técnicas
+<!-- OPCIONAL. Outros tickets, repos (app-front, app-core, mo-entity), serviços
+     externos, dados, acessos ou deploys que precisam existir antes/junto. Apague a
+     seção se não houver. -->
+
+## Restrições
+<!-- OPCIONAL. Limites que a solução precisa respeitar e que não são comportamento
+     novo a verificar: o que NÃO pode mudar ou quebrar, janela de deploy, cliente
+     específico, compatibilidade, performance mínima. Ver também
+     memory/project.yaml > regras_invioláveis. Apague a seção se não houver. -->
+
+## Referências
+<!-- OPCIONAL. Links e anexos: tickets relacionados, prints, documentos, specs
+     anteriores. Anexos baixados pelo /fetch-ticket entram aqui, um por linha:
+     - `{arquivo}` — {tipo}: {descrição em 1 linha} (memory/spec/<ticket>-attachments/...)
+     Apague a seção se não houver. -->
