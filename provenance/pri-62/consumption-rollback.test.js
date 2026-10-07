@@ -6,8 +6,8 @@
 // Maven, Bitbucket, .env real ou execução ativa é tocado.
 //
 // Entradas (todas obrigatórias; ausência é FAIL, nunca skip):
-//   PRI62_PREFLIGHT              candidate-source-preflight.json (230 fontes + 248 candidatas)
-//   PRI62_SOURCE_SNAPSHOT        snapshot dos 230 selecionados da fonte atual, restaurado aqui em tmp
+//   PRI62_PREFLIGHT              candidate-source-preflight.json (236 fontes + 248 candidatas)
+//   PRI62_SOURCE_SNAPSHOT        snapshot dos 236 selecionados da fonte atual, restaurado aqui em tmp
 //   PRI62_SCRIPTS_NODE_MODULES   node_modules de scripts/ (lock idêntico nos dois lados)
 //   PRI62_LIVE_CONSUMER_ROOT     checkout ativo do consumidor, lido só para hash
 //   PRI62_CONFIG_EXAMPLES        opcional: exemplos não contratuais (separados por ':'), só listados
@@ -21,7 +21,7 @@ const cp = require('node:child_process');
 
 const CANDIDATE_REVISION = 'fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c';
 const CANDIDATE_TREE = '4633d9fd5f5bdf30c6be9f990d84cb847a9cb3cc';
-const SOURCE_SNAPSHOT_SHA256 = 'ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03';
+const SOURCE_SNAPSHOT_SHA256 = '1191361d93f1a3dbe609a45bd881c0c8633bf8e491b99b5036b7d251aeda5731';
 const FULL_HISTORY = ['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify', 'commit'];
 // Config de consumo admitida (decisão do Richard na PRI-61/PRI-62), relativa à raiz do consumidor.
 const ADMITTED_CONFIG = {
@@ -194,10 +194,10 @@ test.after(() => {
     if (!keep) fs.rmSync(work, { recursive: true, force: true });
 });
 
-test('C0 identidades: fonte 230, candidata 248 e execução ativa igual à fonte recuperada', () => {
+test('C0 identidades: fonte 236, candidata 248 e execução ativa igual à fonte recuperada', () => {
     assert.equal(preflight.candidate_revision, CANDIDATE_REVISION);
     assert.equal(git(repoRoot, 'rev-parse', `${CANDIDATE_REVISION}^{tree}`), CANDIDATE_TREE);
-    assert.equal(preflight.source_entries.length, 230);
+    assert.equal(preflight.source_entries.length, 236);
     assert.equal(preflight.candidate_entries.length, 248);
     checkEntries(sourceRoot, preflight.source_entries);
     checkEntries(candidateRoot, preflight.candidate_entries);

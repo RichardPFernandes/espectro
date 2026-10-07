@@ -7,7 +7,7 @@ reverter ou trocar uma execução ativa. Ele só vale para a revisão acima; out
 revisão de cutover precisa de delta validado (ver "Cobertura").
 
 Hoje não há cutover: a execução ativa é `app-back/scripts/readmine-watcher.js`, cujos
-230 arquivos selecionados conferem por hash com o snapshot da fonte. Nesse estado, o
+236 arquivos selecionados conferem por hash com o snapshot da fonte. Nesse estado, o
 retorno é não usar o comando de consumo da candidata.
 
 ## O que muda entre os dois modos
@@ -50,9 +50,15 @@ põe aspas nesses valores e faz o `set -a`/`set +a` no próprio arquivo. Carrega
 
 1. **Fixar o par.** Candidata = revisão/tree acima. Fonte = app-back HEAD
    `a1ac43307cc5f275caf5a70ad3068c9af099b127` mais os bytes selecionados do snapshot
-   `source-selected-current.tar.gz` (sha256 `ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03`),
-   que já inclui a correção do comparador da PRI-61. O snapshot anterior (`ad618099…`)
-   difere só nos 6 arquivos do comparador (ver manifesto).
+   `memory/runs/pri-62-reversal-preparation/source-snapshot-2026-10-07-pri67-71/source-selected-current.tar.gz`
+   (sha256 `1191361d93f1a3dbe609a45bd881c0c8633bf8e491b99b5036b7d251aeda5731`),
+   236 arquivos. Inclui a correção do comparador da PRI-61 e, na fonte, PRI-67
+   (`--dry-run` sem escrita), PRI-68 (filtro `--ticket`), PRI-70 (trava e identidade
+   do agente) e PRI-71 (PR aberto reutilizado; 401/403 não segue para o POST).
+   O snapshot anterior permanece em
+   `memory/runs/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/source-selected-current.tar.gz`
+   (sha256 `ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03`, 230 arquivos).
+   O anterior a esse (`ad618099…`) difere só nos 6 arquivos do comparador (ver manifesto).
    Config admitida: os 2 arquivos acima, com hash em `provenance/pri-62-rollback.json`.
 2. **Parar o writer da candidata com SIGTERM** (botão Parar do dashboard da candidata ou
    `kill -TERM <pid>`), nunca SIGKILL. O graceful shutdown marca o nó em voo como
@@ -74,7 +80,10 @@ põe aspas nesses valores e faz o `set -a`/`set +a` no próprio arquivo. Carrega
    em `memory/`. Fonte e candidata enxergam a mesma trava quando as duas rodam este código.
    O segundo watcher não grava nada e sai com exit 75 enquanto o primeiro está vivo; trava
    de processo morto é retomada sem intervenção. `pgrep` antes do tick é checagem, não a garantia.
-5. **Conferir drift.** Os 230 arquivos selecionados do app-back devem bater com o
+   A revisão `fbb597c` não contém `scripts/lib/watcher-lock.js`. A trava está no snapshot
+   da fonte e no Prisma a partir da PRI-70. Enquanto a candidata em execução for
+   `fbb597c`, a recusa do segundo writer só passa a valer quando a fonte deste snapshot sobe.
+5. **Conferir drift.** Os 236 arquivos selecionados do app-back devem bater com o
    snapshot (`provenance/pri-62/consumption-rollback.test.js`, caso C0, faz essa leitura).
    Divergência: parar e decidir arquivo a arquivo. Sem `reset --hard`, `clean`, `stash`
    global ou restore em massa.
@@ -101,7 +110,7 @@ temporários, `DRY_RUN=true`, fixtures sintéticas. Resultado registrado no mani
 
 | Caso | O que prova | Limite |
 |---|---|---|
-| C0 | fonte 230 (hash, tamanho, bit de execução) restaurada do snapshot; candidata 248 do `git archive`; checkout ativo = fonte | só código/assets selecionados |
+| C0 | fonte 236 (hash, tamanho, bit de execução) restaurada do snapshot; candidata 248 do `git archive`; checkout ativo = fonte | só código/assets selecionados |
 | C1 | config admitida (2 arquivos) confere com o hash fixado, sem chave de segredo, fora do Prisma; exemplos só listados | não valida semântica da config |
 | C2 | nó em voo na candidata → SIGTERM → fonte não retoma sem decisão → retoma do mesmo nó, mesmo `execution_id`, 1 PR | dry-run; efeitos simulados |
 | C3 | gate humano aberto na candidata segue pendente na fonte, sem repostar; avança só com `aprovado` | journal do Redmine reproduzido no fixture |
