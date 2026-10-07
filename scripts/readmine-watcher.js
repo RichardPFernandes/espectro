@@ -2240,9 +2240,17 @@ function formatSpecDriftComment(ticket, taskId, node, result) {
 async function runSpecDriftGate(ticket, active, node) {
     const { taskId, state, dir } = active;
     const root = path.resolve(dir, '..', '..', '..');
-    const outcome = specAuthority.enforceSpecIntegrity(state, { root, taskId, node });
+    // --dry-run não escreve nada: baseline tardio e aprovação manual gravam o changelog da
+    // spec dentro do enforceSpecIntegrity, então ficam só no checkDrift; o resto roda numa cópia.
+    const probe = DRY_RUN && node !== 'plan' ? specAuthority.checkDrift(state, { root, taskId }) : null;
+    if (probe && (probe.status === 'no_baseline' || probe.status === 'approved')) {
+        console.log(`[dry-run] Task ${taskId}: gravaria state.json (e o changelog da spec, se versionada): spec integrity — ${probe.reason}.`);
+        return { proceed: true, result: probe };
+    }
+    const outcome = specAuthority.enforceSpecIntegrity(DRY_RUN ? structuredClone(state) : state, { root, taskId, node });
     if (outcome.changed) {
-        writeTaskState(dir, state);
+        if (DRY_RUN) console.log(`[dry-run] Task ${taskId}: gravaria state.json: spec integrity — ${outcome.message}.`);
+        else writeTaskState(dir, state);
         if (outcome.proceed) console.log(`Task ${taskId}: ${outcome.message}`);
     }
     if (outcome.proceed) return { proceed: true, result: outcome.result };
@@ -3775,7 +3783,10 @@ async function dispatchTicket(ticket) {
     if (Array.isArray(state.stale_artifacts) && state.stale_artifacts.length) {
         const refreshed = specChange.refreshStale(state, dir);
         const stale = specChange.staleGate(state, node);
-        if (refreshed || stale.rerouted) writeTaskState(dir, state);
+        if (refreshed || stale.rerouted) {
+            if (DRY_RUN) console.log(`[dry-run] Task ${taskId}: gravaria state.json: stale_artifacts (${stale.stale.join(', ') || 'regerados'}).`);
+            else writeTaskState(dir, state);
+        }
         if (stale.rerouted) {
             console.warn(`Task ${taskId}: ${stale.stale.join(', ')} stale depois da SPEC_CHANGE aprovada — ${node} não roda sobre o plano antigo, task volta pro /plan.`);
             node = state.node;
