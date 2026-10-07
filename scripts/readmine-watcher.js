@@ -2803,6 +2803,12 @@ function releaseLease(lease, code) {
             nodeLease.clearFetchDispatch(lease.gatePath, lease.startedAt);
             if (dir) nodeEvents.recordNodeExit(lease, code, dir);
         }
+        dom06.fulfillOnExit({
+            attemptFile: lease.dom06AttemptFile,
+            attemptId: lease.dom06AttemptId,
+            node: lease.node || (Array.isArray(lease.nodes) ? lease.nodes[0] : null),
+            code,
+        });
     } catch (e) {
         console.error('[recovery] falha liberando lease do nó:', e.message);
     }
@@ -3222,17 +3228,12 @@ function dom06SpecHash(state, worktreePath, ticketId) {
     return crypto.createHash('sha256').update(fs.readFileSync(specFile)).digest('hex');
 }
 
-function recordDom06NodeEffect(attemptFile, attemptId, code) {
-    if (!attemptFile || code !== 0) return;
-    try {
-        dom06.recordEffect(attemptFile, {
-            obligation_id: 'execute_node',
-            idempotency_key: `execute:${attemptId}`,
-            status: 'fulfilled',
-        });
-    } catch (e) {
-        console.error(`Falha registrando effect do Attempt ${attemptId}:`, e.message);
-    }
+function attachDom06Lease(lease, decision, node) {
+    if (!lease || !decision?.attempt || node === 'commit') return lease;
+    lease.dom06AttemptFile = decision.attemptFile;
+    lease.dom06AttemptId = decision.attempt.attempt_id;
+    if (!lease.node) lease.node = node;
+    return lease;
 }
 
 function repoWorktrees(ticketId, worktreePath) {
@@ -3683,6 +3684,7 @@ async function dispatchTicket(ticket) {
             console.warn(`Ticket #${id}: admissão DOM06 ${fetchAdmission.attempt.result} — fetch_ticket não despachado e não conta como PASS.`);
             return { action: 'skip', reason: `dom06_${String(fetchAdmission.attempt.result).toLowerCase()}`, node: 'fetch_ticket' };
         }
+        attachDom06Lease(newTaskLease, fetchAdmission, 'fetch_ticket');
         beginCycle({ ticketId: id, node: 'fetch_ticket' });
         logRun(id, '[watcher]', 'iniciando nós: fetch_ticket, plan');
         let fetchResult = null;
@@ -3728,7 +3730,6 @@ async function dispatchTicket(ticket) {
         } finally {
             endCycle(cycleOutcome(fetchResult));
         }
-        recordDom06NodeEffect(fetchAdmission.attemptFile, fetchAdmission.attempt.attempt_id, fetchResult?.code);
         logRun(id, '[watcher]', `nós "fetch_ticket, plan" finalizados (code=${fetchResult.code ?? 'detached'})`);
         if (looksUnavailable(fetchResult.output)) {
             console.warn(`Ticket #${id}: Claude pareceu indisponível rodando fetch_ticket (ver output) — tento de novo no próximo tick.`);
@@ -3958,6 +3959,7 @@ async function dispatchTicket(ticket) {
         return { action: 'skip', reason: `dom06_${String(nodeAdmission.attempt.result).toLowerCase()}`, taskId, node, admission: nodeAdmission.attempt.result };
     }
     const lease = nodeLease.acquireNode(dir, { node, timeoutMs: NODE_TIMEOUT_MS, extra: executionSpec ? { execution_spec: executionSpec } : null });
+    attachDom06Lease(lease, nodeAdmission, node);
     if (lease) lease.retriesBefore = Number(state.retries?.[node]) || 0; // node_retry na saída (nodeEvents)
     appendEvent(taskId, {
         type: 'node_start', node, agent: 'claude', ts: lease?.startedAt,
@@ -3988,7 +3990,6 @@ async function dispatchTicket(ticket) {
             ...dom06AttemptEnv(nodeAdmission),
         },
     });
-    if (node !== 'commit') recordDom06NodeEffect(nodeAdmission.attemptFile, nodeAdmission.attempt.attempt_id, segment?.code);
     } finally {
         endCycle(cycleOutcome(segment));
     }

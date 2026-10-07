@@ -327,6 +327,26 @@ async function applyExternalEffect(attemptFile, { obligationId, idempotencyKey, 
     return { ok: fulfilled, error: fulfilled ? null : 'EFFECT_FAILED', retry: false, duplicate: false, performed: true, status };
 }
 
+// Exit 0 de um nó que não é commit cumpre execute_node. Commit fica com as
+// obrigações externas, gravadas pelos scripts de push/PR/Redmine. Chamar de
+// novo com a mesma chave não duplica o effect. code null (despacho detached
+// ainda em voo) não cumpre nada.
+function fulfillOnExit({ attemptFile, attemptId, node, code } = {}) {
+    if (!attemptFile || !attemptId || node === 'commit') return false;
+    if (code === null || code === undefined || code === '' || Number(code) !== 0) return false;
+    try {
+        recordEffect(attemptFile, {
+            obligation_id: 'execute_node',
+            idempotency_key: `execute:${attemptId}`,
+            status: 'fulfilled',
+        });
+        return true;
+    } catch (err) {
+        console.error(`Falha registrando effect do Attempt ${attemptId}:`, err.message);
+        return false;
+    }
+}
+
 function summarize(attempt) {
     const obligations = Array.isArray(attempt?.obligations) ? attempt.obligations : null;
     const summary = {
@@ -439,7 +459,7 @@ async function main(argv) {
 module.exports = {
     beginAttempt, retryAttempt, prepareDispatch, causeFromState, spawnIfAdmitted,
     readAttempt, recordEffect, revoke, authorizeEffect, applyExternalEffect, summarize,
-    obligationsFor, listAttempts,
+    fulfillOnExit, obligationsFor, listAttempts,
 };
 
 if (require.main === module) {

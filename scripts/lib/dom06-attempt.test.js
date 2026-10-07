@@ -211,3 +211,31 @@ test('snapshot sem spec_hash fica null e retry não preenche com hash novo', () 
     assert.strictEqual(noBase.dispatch, false);
     assert.strictEqual(dom06.summarize(noBase.attempt).verdict, 'UNKNOWN');
 });
+
+test('exit 0 cumpre execute_node; commit, código diferente de 0 e repetição não duplicam', () => {
+    const dir = runDir();
+    const decision = dom06.beginAttempt(dir, {
+        node: 'implement', admission: admitted, obligations: [{ id: 'execute_node' }],
+    });
+    assert.strictEqual(dom06.fulfillOnExit({
+        attemptFile: decision.attemptFile, attemptId: decision.attempt.attempt_id, node: 'implement', code: null,
+    }), false);
+    assert.strictEqual(dom06.fulfillOnExit({
+        attemptFile: decision.attemptFile, attemptId: decision.attempt.attempt_id, node: 'implement', code: 0,
+    }), true);
+    assert.strictEqual(dom06.fulfillOnExit({
+        attemptFile: decision.attemptFile, attemptId: decision.attempt.attempt_id, node: 'implement', code: 0,
+    }), true);
+    const attempt = dom06.readAttempt(decision.attemptFile);
+    assert.strictEqual(attempt.obligations.find(item => item.id === 'execute_node').status, 'fulfilled');
+    assert.strictEqual(attempt.effects.length, 1);
+    const commit = dom06.beginAttempt(dir, {
+        node: 'commit',
+        admission: { ...admitted, snapshot: { ...snapshot, node: 'commit' } },
+        obligations: dom06.obligationsFor('commit'),
+    });
+    assert.strictEqual(dom06.fulfillOnExit({
+        attemptFile: commit.attemptFile, attemptId: commit.attempt.attempt_id, node: 'commit', code: 0,
+    }), false);
+    assert.ok(dom06.readAttempt(commit.attemptFile).obligations.every(item => item.status === 'pending'));
+});

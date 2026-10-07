@@ -333,6 +333,14 @@ if (require.main === module) {
             clearFetchDispatch(arg.gatePath, arg.startedAt);
             if (dir && code !== undefined) require('./node-events').recordNodeExit(arg, code, dir);
         }
+        if (code !== undefined) {
+            require('./dom06-attempt').fulfillOnExit({
+                attemptFile: arg.dom06AttemptFile,
+                attemptId: arg.dom06AttemptId,
+                node: arg.node || (Array.isArray(arg.nodes) ? arg.nodes[0] : null),
+                code,
+            });
+        }
     } catch (e) {
         console.error('[recovery] falha liberando lease:', e.message);
     }
