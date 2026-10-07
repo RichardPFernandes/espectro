@@ -195,20 +195,26 @@ function statusOutcome(status) {
 }
 const OUTCOME_RANK = { success: 2, in_progress: 1, unknown: 1, failure: 0 };
 
-// test_result é texto livre ou objeto ({ result: 'passou', total, failures, errors, ... }).
+// test_result é texto livre ou objeto ({ result: 'passou', total, failures, errors, missing, ... }).
+// Resultado parcial (missing > 0 ou texto PARTIAL/parcial/incompleto) nunca vira passed:
+// sem falha observada fica N/A (partial: true); falha observada continua failed.
 function testOutcome(value) {
-    if (value === undefined || value === null || value === '') return { outcome: NA, summary: NA, total: null, failures: null };
+    if (value === undefined || value === null || value === '') return { outcome: NA, summary: NA, total: null, failures: null, missing: null, partial: false };
     const obj = isObj(value) ? value : null;
     const text = obj ? [obj.result, obj.status, obj.verdict, obj.outcome].find(x => typeof x === 'string') : typeof value === 'string' ? value : null;
     const total = num(obj?.total);
     const failures = num(obj?.failures) !== null || num(obj?.errors) !== null ? (num(obj?.failures) || 0) + (num(obj?.errors) || 0) : null;
+    const missing = num(obj?.missing);
+    const partial = (missing !== null && missing > 0) || Boolean(text && /partial|parcial|incomplet/i.test(text));
     let outcome = NA;
     if (typeof obj?.passed === 'boolean') outcome = obj.passed ? 'passed' : 'failed';
     else if (text && /falh|fail|reprov|erro|error|quebr|vermelh|\bred\b/i.test(text)) outcome = 'failed';
     else if (text && /pass|aprov|\bok\b|success|sucesso|verde|green/i.test(text)) outcome = 'passed';
     else if (failures !== null) outcome = failures > 0 ? 'failed' : 'passed';
+    if (partial && outcome === 'passed') outcome = NA;
     const summary = text || (outcome !== NA ? outcome : typeof value === 'string' ? value : NA);
-    return { outcome, summary: total !== null ? `${summary} (${total} testes${failures ? `, ${failures} falhas` : ''})` : summary, total, failures };
+    const counts = `${failures ? `, ${failures} falhas` : ''}${missing ? `, ${missing} faltando` : ''}`;
+    return { outcome, summary: total !== null ? `${summary} (${total} testes${counts})` : summary, total, failures, missing, partial };
 }
 const TEST_RANK = { passed: 2, [NA]: 1, failed: 0 };
 
@@ -236,6 +242,13 @@ function totalOf(ct, field) {
     if (num(ct.totals?.[field]) !== null) return ct.totals[field];
     const vals = Object.values(costNodes(ct)).map(n => num(n?.[field])).filter(v => v !== null);
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+}
+
+// Soma parcial sinalizada pelo cost-tracking: runs_without_cost (custo) e
+// runs_without_tokens (tokens) por nó. null = sem cost_tracking.
+function runsWithout(ct, field) {
+    if (!isObj(ct)) return null;
+    return Object.values(costNodes(ct)).reduce((sum, n) => sum + (num(n?.[field]) || 0), 0);
 }
 
 function retriesTotal(state) {
@@ -404,13 +417,20 @@ function buildMetrics(runA, runB, tests, plan) {
     const sa = runA.state || {}, sb = runB.state || {};
     const ca = runA.cost_tracking, cb = runB.cost_tracking;
     const len = s => (Array.isArray(s.history) ? s.history.length : null);
+    const costA = round(totalOf(ca, 'cost_usd'), 4), costB = round(totalOf(cb, 'cost_usd'), 4);
+    const missingCost = { a: runsWithout(ca, 'runs_without_cost'), b: runsWithout(cb, 'runs_without_cost') };
+    const cost = {
+        ...metricRow('cost_usd', 'Custo (US$)', costA, costB, { format: 'usd' }),
+        complete: { a: costA !== null && missingCost.a === 0, b: costB !== null && missingCost.b === 0 },
+        missing: missingCost,
+    };
     return [
         metricRow('status', 'Status', sa.status, sb.status, { rank: v => OUTCOME_RANK[statusOutcome(v === NA ? null : v)] }),
         metricRow('node', 'Nó final', sa.node, sb.node, { numeric: false }),
         metricRow('test_result', 'Testes', tests.a.outcome, tests.b.outcome, { rank: v => TEST_RANK[v] ?? 1 }),
         metricRow('planScore', 'Plan score', plan?.a === NA ? null : plan?.a, plan?.b === NA ? null : plan?.b, { lowerIsBetter: false }),
         metricRow('tokens', 'Tokens (entrada+saída)', totalTokens(ca), totalTokens(cb), { format: 'int' }),
-        metricRow('cost_usd', 'Custo (US$)', round(totalOf(ca, 'cost_usd'), 4), round(totalOf(cb, 'cost_usd'), 4), { format: 'usd' }),
+        cost,
         metricRow('duration_ms', 'Duração dos agentes', totalOf(ca, 'duration_ms'), totalOf(cb, 'duration_ms'), { format: 'ms' }),
         metricRow('history_len', 'Nós executados', len(sa), len(sb), { format: 'int' }),
         metricRow('retries', 'Retries', retriesTotal(sa), retriesTotal(sb), { format: 'int' }),
@@ -419,7 +439,20 @@ function buildMetrics(runA, runB, tests, plan) {
 
 // ---------------------------------------------------------------------------------
 // Veredito: status (sucesso > neutro > falha) → testes (passou > N/A > falhou) → tokens
-// (diferença acima de SIGNIFICANT_PCT). Nada disso decidiu = equivalent.
+// (diferença acima de SIGNIFICANT_PCT). Nada disso decidiu = equivalent, desde que haja
+// prova: status ausente, testes parciais ou tokens parciais em algum lado = inconclusive.
+function missingEvidence(runA, runB, tests) {
+    const gaps = [];
+    const sides = (pred, what) => {
+        const a = pred(runA, tests.a), b = pred(runB, tests.b);
+        if (a || b) gaps.push(`${what} em ${a && b ? 'A e B' : a ? 'A' : 'B'}`);
+    };
+    sides(run => statusOutcome(run.state?.status) === 'unknown', 'status ausente');
+    sides((run, t) => t.partial, 'testes parciais');
+    sides(run => runsWithout(run.cost_tracking, 'runs_without_tokens') > 0, 'tokens parciais');
+    return gaps;
+}
+
 function decideVerdict(runA, runB, tests, tokens) {
     const oa = statusOutcome(runA.state?.status), ob = statusOutcome(runB.state?.status);
     if (OUTCOME_RANK[oa] !== OUTCOME_RANK[ob]) {
@@ -434,6 +467,8 @@ function decideVerdict(runA, runB, tests, tokens) {
     if (pct !== NA && Math.abs(pct) > SIGNIFICANT_PCT) {
         return { verdict: pct < 0 ? 'B-better' : 'A-better', reason: 'tokens', detail: `tokens ${pct > 0 ? '+' : ''}${pct}% em B` };
     }
+    const gaps = missingEvidence(runA, runB, tests);
+    if (gaps.length) return { verdict: 'inconclusive', reason: 'insufficient-evidence', detail: `sem prova suficiente: ${gaps.join('; ')}` };
     return { verdict: 'equivalent', reason: pct === NA ? 'no-token-data' : 'tokens', detail: pct === NA ? 'mesmo status/testes; tokens N/A' : `mesmo status/testes; tokens ${pct > 0 ? '+' : ''}${pct}% em B (limiar ${SIGNIFICANT_PCT}%)` };
 }
 
@@ -446,6 +481,7 @@ function outcomePhrase(status) {
 }
 
 function summarySentence(runA, runB, verdict, tokens) {
+    if (verdict.verdict === 'inconclusive') return `Comparação inconclusiva: ${verdict.detail}`;
     const subj = verdict.verdict === 'A-better' ? 'A' : 'B';
     const other = subj === 'A' ? 'B' : 'A';
     const subjState = (subj === 'A' ? runA : runB).state;

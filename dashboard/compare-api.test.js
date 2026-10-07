@@ -59,6 +59,10 @@ test('aceita registro de replay (%2F) e run sem campos (N/A)', async () => {
     const n = await get('/api/compare/95203-sem-campos/95202-ok');
     assert.strictEqual(n.status, 200);
     assert.strictEqual(n.body.metrics.find(m => m.key === 'status').a, 'N/A');
+    const empty = await get('/api/compare/95203-sem-campos/95203-sem-campos');
+    assert.strictEqual(empty.status, 200);
+    assert.strictEqual(empty.body.verdict, 'inconclusive');
+    assert.deepStrictEqual(empty.body.metrics.find(m => m.key === 'cost_usd').complete, { a: false, b: false });
 });
 
 test('run inexistente = 404; ref inválida = 400', async () => {

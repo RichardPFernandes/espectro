@@ -75,7 +75,7 @@ test('stateDiff: só o que mudou, objetos achatados, ausente = N/A, cost_trackin
 test('schema incompleto (campos faltando, state vazio, state ilegível) não quebra — N/A', () => {
     for (const [a, b] of [[{ status: 'committed' }, {}], [{}, {}], [null, { status: 'escalated' }], [{ cost_tracking: 'lixo', history: 'x', retries: 3, test_result: 7 }, { cost_tracking: { nodes: { plan: 'x' } } }]]) {
         const r = cmp.compareRuns(a, b);
-        assert.ok(['A-better', 'B-better', 'equivalent'].includes(r.verdict));
+        assert.ok(['A-better', 'B-better', 'equivalent', 'inconclusive'].includes(r.verdict));
         assert.ok(Array.isArray(r.stateDiff));
         assert.ok(typeof r.summary === 'string');
     }
@@ -113,6 +113,50 @@ test('testOutcome: texto, objeto, booleano, contadores', () => {
     assert.strictEqual(cmp.testOutcome({ total: 5, failures: 1 }).outcome, 'failed');
     assert.strictEqual(cmp.testOutcome(undefined).outcome, 'N/A');
     assert.strictEqual(cmp.testOutcome('???').outcome, 'N/A');
+});
+
+test('testOutcome: resultado parcial (missing/PARTIAL) nunca vira passed', () => {
+    const partial = cmp.testOutcome({ result: 'PARTIAL', total: 3, failures: 0, missing: 2 });
+    assert.deepStrictEqual([partial.outcome, partial.partial, partial.missing], ['N/A', true, 2]);
+    assert.match(partial.summary, /2 faltando/);
+    assert.strictEqual(cmp.testOutcome({ total: 5, failures: 0, missing: 1 }).outcome, 'N/A');
+    assert.strictEqual(cmp.testOutcome({ passed: true, missing: 1 }).outcome, 'N/A');
+    assert.strictEqual(cmp.testOutcome('passou parcialmente').outcome, 'N/A');
+    assert.strictEqual(cmp.testOutcome({ result: 'PARTIAL', total: 3, failures: 1, missing: 1 }).outcome, 'failed');
+    assert.strictEqual(cmp.testOutcome({ total: 5, failures: 0, missing: 0 }).outcome, 'passed');
+    assert.strictEqual(cmp.testOutcome({ total: 5, failures: 0 }).partial, false);
+});
+
+test('sem prova suficiente => inconclusive, nunca equivalent', () => {
+    for (const [a, b] of [[{}, {}], [null, null], [{ status: 'running' }, {}]]) {
+        const r = cmp.compareRuns(a, b);
+        assert.strictEqual(r.verdict, 'inconclusive');
+        assert.match(r.verdictReason, /status ausente/);
+        assert.match(r.summary, /^Comparação inconclusiva/);
+    }
+    const partial = { status: 'committed', test_result: { result: 'PARTIAL', total: 3, failures: 0, missing: 2 } };
+    const r = cmp.compareRuns(partial, partial);
+    assert.strictEqual(r.verdict, 'inconclusive');
+    assert.match(r.verdictReason, /testes parciais em A e B/);
+    const partialTok = { status: 'committed', test_result: 'passou', cost_tracking: cost({ plan: node(1000, 100, { runs_without_tokens: 1 }) }) };
+    const full = { status: 'committed', test_result: 'passou', cost_tracking: cost({ plan: node(1000, 100) }) };
+    assert.strictEqual(cmp.compareRuns(full, partialTok).verdict, 'inconclusive');
+    assert.match(cmp.compareRuns(full, partialTok).verdictReason, /tokens parciais em B/);
+    // prova num lado continua decidindo
+    assert.strictEqual(cmp.compareRuns({ status: 'committed' }, {}).verdict, 'A-better');
+    assert.strictEqual(cmp.compareRuns(full, full).verdict, 'equivalent');
+});
+
+test('custo parcial: metric cost_usd leva complete/missing por lado', () => {
+    const partialCost = cost({ test: node(20, 2, { cost_usd: 0.5, runs: 2, runs_without_cost: 1 }) }, { input_tokens: 20, output_tokens: 2, cost_usd: 0.5 });
+    const fullCost = cost({ test: node(20, 2, { cost_usd: 0.7 }) }, { input_tokens: 20, output_tokens: 2, cost_usd: 0.7 });
+    const r = cmp.compareRuns({ status: 'committed', cost_tracking: partialCost }, { status: 'committed', cost_tracking: fullCost });
+    const m = r.metrics.find(x => x.key === 'cost_usd');
+    assert.deepStrictEqual([m.a, m.b], [0.5, 0.7]);
+    assert.deepStrictEqual(m.complete, { a: false, b: true });
+    assert.deepStrictEqual(m.missing, { a: 1, b: 0 });
+    const none = cmp.compareRuns({ status: 'committed' }, { status: 'committed' }).metrics.find(x => x.key === 'cost_usd');
+    assert.deepStrictEqual([none.a, none.complete, none.missing], ['N/A', { a: false, b: false }, { a: null, b: null }]);
 });
 
 test('parseRunRef: task-id, replay file e refs inválidas', () => {

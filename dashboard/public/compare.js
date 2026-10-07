@@ -70,11 +70,18 @@
     return t ? `${t.num ? `${t.num} ` : ''}${t.text}` : id;
   };
 
+  // Custo com runs sem custo calculável (complete: false) é subtotal, não total.
+  function partialMark(m, side) {
+    if (m.complete?.[side] !== false || m[side] === NA) return '';
+    const n = m.missing?.[side];
+    return ` <small class="cmp-partial" title="Soma parcial: ${esc(String(n ?? '?'))} run(s) sem custo calculável">(parcial)</small>`;
+  }
+
   function metricsTable(metrics) {
     const rows = metrics.map(m => `<tr>
         <td>${esc(m.label)}</td>
-        <td class="n">${esc(fmt(m.a, m.format))}</td>
-        <td class="n">${esc(fmt(m.b, m.format))}</td>
+        <td class="n">${esc(fmt(m.a, m.format))}${partialMark(m, 'a')}</td>
+        <td class="n">${esc(fmt(m.b, m.format))}${partialMark(m, 'b')}</td>
         <td class="n ${tone(m)}">${esc(fmtDelta(m))}</td></tr>`).join('');
     return `<div class="cost-wrap"><table class="cost-table cmp-table">
       <thead><tr><th>Métrica</th><th class="n">Run A</th><th class="n">Run B</th><th class="n">Delta</th></tr></thead>
@@ -126,7 +133,7 @@
     if (cmp.loading) return `<div class="cmp">${head}<p class="cost-note">Comparando…</p></div>`;
     if (cmp.error) return `<div class="cmp">${head}<p class="cmp-error" role="alert">Não deu para comparar: ${esc(cmp.error)}</p></div>`;
     const d = cmp.data;
-    const vcls = d.verdict === 'B-better' ? 'cmp-up' : d.verdict === 'A-better' ? 'cmp-down' : '';
+    const vcls = d.verdict === 'B-better' ? 'cmp-up' : d.verdict === 'A-better' ? 'cmp-down' : d.verdict === 'inconclusive' ? 'cmp-unknown' : '';
     const warn = [d.runA, d.runB].filter(r => r.readError).map((r, i) => `<p class="cmp-error">Run ${i ? 'B' : 'A'}: ${esc(r.readError)} — campos aparecem como N/A.</p>`).join('');
     const tr = d.testResultsDiff;
     return `<div class="cmp">${head}${warn}
@@ -171,6 +178,8 @@
     .cmp-verdict-tag { font-family: var(--mono); font-size: 13px; font-weight: 700; }
     .cmp-verdict.cmp-up { background: var(--clear-bg); border-color: var(--clear); }
     .cmp-verdict.cmp-down { background: var(--stop-bg); border-color: var(--stop); }
+    .cmp-verdict.cmp-unknown { background: var(--attention-bg); border-color: var(--attention-line); }
+    .cmp-partial { color: var(--attention); font-weight: 600; }
     .cmp-table td.cmp-up { color: var(--clear); }
     .cmp-table td.cmp-down { color: var(--stop); }
     .cmp-table td.cmp-strong { font-weight: 700; }

@@ -50,6 +50,17 @@ test('json: objeto com stateDiff, tokenDiff e verdict', () => {
     assert.strictEqual(out.verdict, 'B-better');
 });
 
+test('texto: runs vazios => verdict inconclusive; custo parcial marcado', () => {
+    seed('95100-vazio-a', {});
+    seed('95100-vazio-b', {});
+    assert.match(run(['95100-vazio-a', '95100-vazio-b']).stdout, /verdict: inconclusive/);
+    const partial = { status: 'committed', cost_tracking: { nodes: { test: { input_tokens: 10, output_tokens: 1, cost_usd: 0.5, runs: 2, runs_without_cost: 1 } } } };
+    seed('95100-parcial', partial);
+    const r = run(['95100-parcial', '95100-parcial']);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /Custo \(US\$\)\s+│ \$0\.50 \(parcial\)/);
+});
+
 test('replay file como run', () => {
     const r = run(['95100-a', '95100-a/state-replay-95100-a-replay-1.json', '--format=json']);
     assert.strictEqual(r.status, 0, r.stderr);

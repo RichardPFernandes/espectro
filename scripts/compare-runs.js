@@ -100,7 +100,8 @@ function renderText(result, { color }) {
     out.push(table(['Métrica', 'Run A', 'Run B', 'Delta'], result.metrics.map(m => {
         const color = m.significant && (m.key === 'status' || m.key === 'test_result')
             ? (m.better === 'B' ? c.green : m.better === 'A' ? c.red : c.yellow) : s => s;
-        return [m.label, color(fmtValue(m.a, m.format)), color(fmtValue(m.b, m.format)), fmtDelta(m, c)];
+        const partial = side => (m.complete?.[side] === false && m[side] !== NA ? c.yellow(' (parcial)') : '');
+        return [m.label, color(fmtValue(m.a, m.format)) + partial('a'), color(fmtValue(m.b, m.format)) + partial('b'), fmtDelta(m, c)];
     })));
     out.push('');
 
