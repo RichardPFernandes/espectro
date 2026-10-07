@@ -1,0 +1,3 @@
+{"at":"2026-10-07T18:38:34.919Z","pid":94394,"event":"start","node":"review","task_arg":"92231-log","cwd":"/private/var/folders/4b/_cwvfg6x7sn7mv_08gyl3s4m0000gn/T/pri69-i-sanitizador-sem-follow-ChW2mB/app-back/.claude/worktrees/92231","ppid":94393,"session_id":"acdd886b-e14b-42fa-adcc-402b2258c9c5","claude_config_dir":null,"state_execution_id":"d0e027a9-3e05-4827-a1dc-2410f37a466a","recovery_note":false,"prompt_commands":["/review 92231-log"]}
+{"at":"2026-10-07T18:38:34.921Z","pid":94394,"event":"printed","node":"review","vars":["REDMINE_API_KEY"],"lengths":[32]}
+{"at":"2026-10-07T18:38:34.962Z","pid":94394,"event":"exit","node":"review","code":0}

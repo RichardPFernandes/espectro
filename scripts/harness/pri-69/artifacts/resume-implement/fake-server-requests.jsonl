@@ -1,0 +1,7 @@
+{"at":"2026-10-07T18:38:37.076Z","method":"GET","path":"/redmine/issues.json","query":"?assigned_to_id=me&status_id=11|13&sort=created_on:desc","body":null}
+{"at":"2026-10-07T18:38:37.080Z","method":"GET","path":"/redmine/issues/92241.json","query":"","body":null}
+{"at":"2026-10-07T18:38:37.769Z","method":"PUT","path":"/redmine/issues/92241.json","query":"","body":{"issue":{"notes":"⚠️ Watcher interrompido via SIGTERM durante nó implement. Ciclo deve ser retomado manualmente."}}}
+{"at":"2026-10-07T18:38:38.035Z","method":"GET","path":"/redmine/issues.json","query":"?assigned_to_id=me&status_id=11|13&sort=created_on:desc","body":null}
+{"at":"2026-10-07T18:38:38.040Z","method":"GET","path":"/redmine/issues/92241.json","query":"","body":null}
+{"at":"2026-10-07T18:38:39.311Z","method":"GET","path":"/bitbucket/2.0/repositories/harness-ws/app-back/effective-default-reviewers","query":"?pagelen=100","body":null}
+{"at":"2026-10-07T18:38:39.331Z","method":"POST","path":"/bitbucket/2.0/repositories/harness-ws/app-back/pullrequests","query":"","body":{"title":"Melhoria #92241 - harness","description":"PR da harness PRI-69","source":{"branch":{"name":"92241"}},"destination":{"branch":{"name":"development"}},"close_source_branch":false,"draft":true,"reviewers":[]}}

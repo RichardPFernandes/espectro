@@ -1,0 +1,230 @@
+{
+  "task_id": "92211-inv",
+  "history": [
+    "fetch_ticket",
+    "plan",
+    "implement"
+  ],
+  "started_at": "2026-10-07T18:38:29.429Z",
+  "updated_at": "2026-10-07T18:38:30.435Z",
+  "redmine_ticket": {
+    "id": 92211,
+    "subject": "Ticket harness 92211",
+    "base_branch": "development"
+  },
+  "spec_path": "memory/spec/92211-spec.md",
+  "spec_hash": "10df605669e44f6e94a3837e33b0c94c81f624461eb63920b68f3e4def004f2b",
+  "node": "plan",
+  "status": "running",
+  "execution_id": "f06f7ad7-0427-41bc-8ccf-cd02ec8e2f88",
+  "processed_operations": [],
+  "state_version": 5,
+  "critical_fingerprint": "7d6541a19e0a0180",
+  "ticket_status": "Em Desenvolvimento",
+  "execution_spec": {
+    "node": "plan",
+    "spec_hash": "10df605669e44f6e94a3837e33b0c94c81f624461eb63920b68f3e4def004f2b",
+    "spec_version": null,
+    "started_at": "2026-10-07T18:38:30.447Z"
+  },
+  "node_started_at": "2026-10-07T18:38:30.447Z",
+  "node_timeout_ms": 3600000,
+  "events": [
+    {
+      "ts": "2026-10-07T18:38:29.618Z",
+      "type": "node_start",
+      "node": "review",
+      "agent": "claude",
+      "detail": "Despachando review para Claude",
+      "at": "2026-10-07T18:38:29.618Z"
+    },
+    {
+      "ts": "2026-10-07T18:38:30.076Z",
+      "type": "node_end",
+      "node": "review",
+      "agent": "claude",
+      "detail": "Nó review concluído — node: review",
+      "exit_code": 0,
+      "at": "2026-10-07T18:38:30.076Z"
+    },
+    {
+      "ts": "2026-10-07T18:38:30.420Z",
+      "type": "artifacts_invalidated",
+      "node": "plan",
+      "at": "2026-10-07T18:38:30.420Z",
+      "detail": "Spec v1 → v2 (SPEC_CHANGE SC-001): plan, implement, review, evidence, verify STALE — o ciclo recomeça no /plan"
+    },
+    {
+      "ts": "2026-10-07T18:38:30.420Z",
+      "type": "invalidation_resolved",
+      "node": "plan",
+      "at": "2026-10-07T18:38:30.420Z",
+      "detail": "legacy:bbbbbbbbbbbb (nó review) — transição de contrato aplicada; task volta para o /plan"
+    },
+    {
+      "ts": "2026-10-07T18:38:30.447Z",
+      "type": "node_start",
+      "node": "plan",
+      "agent": "claude",
+      "detail": "Despachando plan para Claude",
+      "at": "2026-10-07T18:38:30.447Z"
+    }
+  ],
+  "schema_changes_detected": false,
+  "schema_risk_level": null,
+  "cost_tracking": {
+    "nodes": {
+      "review": {
+        "agent": "claude",
+        "input_tokens": 1000,
+        "output_tokens": 100,
+        "duration_ms": 158,
+        "runs": 1,
+        "retries": 0,
+        "runs_without_tokens": 0,
+        "cache_read_input_tokens": 900,
+        "cache_creation_input_tokens": 0,
+        "cost_usd": 0.00138,
+        "models": [
+          "claude-sonnet-5"
+        ]
+      }
+    },
+    "totals": {
+      "input_tokens": 1000,
+      "output_tokens": 100,
+      "cost_usd": 0.00138,
+      "duration_ms": 158,
+      "loop_count": 0
+    },
+    "pricing_source": "Preço de API Anthropic (skill claude-api, tabela de 2026-06-24)"
+  },
+  "transcripts": [
+    {
+      "nodeId": "review",
+      "attempt": 1,
+      "path": "transcripts/review-1.json",
+      "sizeBytes": 811,
+      "compressed": false,
+      "status": "success",
+      "tokenUsage": {
+        "input_tokens": 1000,
+        "output_tokens": 100,
+        "cache_read_input_tokens": 900,
+        "cache_creation_input_tokens": 0,
+        "cost_usd": 0.00138
+      },
+      "messages": 1,
+      "finishedAt": "2026-10-07T18:38:29.880Z"
+    }
+  ],
+  "transcripts_total": 1,
+  "transcripts_size_bytes": 811,
+  "artifact_validity": {
+    "plan": {
+      "artifact": "plan.md",
+      "spec_hash": "10df605669e44f6e94a3837e33b0c94c81f624461eb63920b68f3e4def004f2b",
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": 2,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:30.420Z",
+      "invalidated_by": "SPEC_CHANGE SC-001",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    },
+    "implement": {
+      "artifact": "implementação (diff do worktree)",
+      "spec_hash": "10df605669e44f6e94a3837e33b0c94c81f624461eb63920b68f3e4def004f2b",
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": 2,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:30.420Z",
+      "invalidated_by": "SPEC_CHANGE SC-001",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    },
+    "review": {
+      "artifact": "review-result.md",
+      "spec_hash": null,
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": 2,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:30.420Z",
+      "invalidated_by": "SPEC_CHANGE SC-001",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    },
+    "evidence": {
+      "artifact": "acceptance-evidence.json",
+      "spec_hash": null,
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": 2,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:30.420Z",
+      "invalidated_by": "SPEC_CHANGE SC-001",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    },
+    "verify": {
+      "artifact": "spec-conformance.md",
+      "spec_hash": null,
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": 2,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:30.420Z",
+      "invalidated_by": "SPEC_CHANGE SC-001",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    }
+  },
+  "stale_artifacts": [
+    "plan.md",
+    "handoff.md",
+    "acceptance-evidence.json"
+  ],
+  "stale_since": "2026-10-07T18:38:30.420Z",
+  "invalidations": [
+    {
+      "at": "2026-10-07T18:38:30.420Z",
+      "transition_id": "legacy:bbbbbbbbbbbb",
+      "triggered_by": "SPEC_CHANGE SC-001",
+      "cause": "spec_change_approved",
+      "case": "active_phase",
+      "hash_scope_changed": true,
+      "old_spec_hash": "10df605669e44f6e94a3837e33b0c94c81f624461eb63920b68f3e4def004f2b",
+      "new_spec_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "old_spec_version": 1,
+      "new_spec_version": 2,
+      "phases": [
+        "plan",
+        "implement",
+        "review",
+        "evidence",
+        "verify"
+      ],
+      "stale_acs": []
+    }
+  ],
+  "spec_change_approved": true,
+  "spec_change_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "ac_ids": [
+    "AC-01",
+    "AC-02"
+  ],
+  "agent_pid": 93543
+}

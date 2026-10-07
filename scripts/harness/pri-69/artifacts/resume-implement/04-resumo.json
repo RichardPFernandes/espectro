@@ -1,0 +1,10 @@
+{
+  "status": "interrupted",
+  "activeNodeAtInterruption": "implement",
+  "execution_id": "d4baa619-2596-4b93-bb40-cc15181a27dc",
+  "redmine_notes": 1,
+  "tool_sigterms": [
+    "mvn",
+    "java"
+  ]
+}

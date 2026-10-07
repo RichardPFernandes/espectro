@@ -1,0 +1,26 @@
+{
+  "task_id": "92201-orfao",
+  "history": [
+    "fetch_ticket",
+    "plan",
+    "implement",
+    "review",
+    "test"
+  ],
+  "started_at": "2026-10-07T18:38:26.105Z",
+  "updated_at": "2026-10-07T18:38:26.105Z",
+  "redmine_ticket": {
+    "id": 92201,
+    "subject": "Ticket harness 92201",
+    "base_branch": "development"
+  },
+  "node": "verify",
+  "status": "running",
+  "node_started_at": "2026-10-07T15:38:26.070Z",
+  "node_timeout_ms": 3600000,
+  "agent_pid": 92868,
+  "execution_id": "e54fdcc4-c58c-4943-897f-b74126f1cafe",
+  "processed_operations": [],
+  "state_version": 1,
+  "critical_fingerprint": "7faa25054570afb6"
+}

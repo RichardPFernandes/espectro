@@ -1,0 +1,7 @@
+{"at":"2026-10-07T18:38:26.423Z","method":"GET","path":"/redmine/issues.json","query":"?assigned_to_id=me&status_id=11|13&sort=created_on:desc","body":null}
+{"at":"2026-10-07T18:38:26.429Z","method":"GET","path":"/redmine/issues/92201.json","query":"","body":null}
+{"at":"2026-10-07T18:38:26.430Z","method":"GET","path":"/redmine/issues/92202.json","query":"","body":null}
+{"at":"2026-10-07T18:38:26.582Z","method":"PUT","path":"/redmine/issues/92202.json","query":"","body":{"issue":{"notes":"[Watcher] Ticket #92202 travou no nó \"commit\" (status: needs_human_review).\n\n(sem nota do agente no agent_log — ver handoff.md/context.md do worktree pro detalhe.)\n\nPara retomar, ajuste status/node em memory/runs/92202-commit-orfao/state.json no worktree deste ticket (ex.: status=\"in_progress\") — o próximo tick segue dali."}}}
+{"at":"2026-10-07T18:38:27.635Z","method":"GET","path":"/redmine/issues.json","query":"?assigned_to_id=me&status_id=11|13&sort=created_on:desc","body":null}
+{"at":"2026-10-07T18:38:27.640Z","method":"GET","path":"/redmine/issues/92201.json","query":"","body":null}
+{"at":"2026-10-07T18:38:27.641Z","method":"GET","path":"/redmine/issues/92202.json","query":"","body":null}

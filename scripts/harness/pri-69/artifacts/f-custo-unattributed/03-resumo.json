@@ -1,0 +1,6 @@
+{
+  "node": "plan",
+  "input_tokens": 40,
+  "output_tokens": 29,
+  "duration_ms": 800
+}

@@ -1,0 +1,67 @@
+{
+  "task_id": "92221-codex",
+  "history": [
+    "fetch_ticket",
+    "plan",
+    "implement",
+    "review",
+    "test"
+  ],
+  "started_at": "2026-10-07T18:38:31.647Z",
+  "updated_at": "2026-10-07T18:38:31.647Z",
+  "redmine_ticket": {
+    "id": 92221,
+    "subject": "Ticket harness 92221",
+    "base_branch": "development"
+  },
+  "node": "verify",
+  "status": "in_progress",
+  "execution_id": "88ca152f-c8f0-4575-adea-ff78ebde9e2a",
+  "processed_operations": [],
+  "state_version": 1,
+  "critical_fingerprint": "77039613b4ec8561",
+  "cost_tracking": {
+    "nodes": {
+      "test": {
+        "agent": "codex",
+        "input_tokens": 321,
+        "output_tokens": 654,
+        "duration_ms": 5000,
+        "runs": 1,
+        "retries": 0,
+        "runs_without_tokens": 0,
+        "cost_usd": null,
+        "runs_without_cost": 1
+      }
+    },
+    "totals": {
+      "input_tokens": 321,
+      "output_tokens": 654,
+      "cost_usd": null,
+      "duration_ms": 5000,
+      "loop_count": 0
+    },
+    "pricing_source": "Preço de API Anthropic (skill claude-api, tabela de 2026-06-24)"
+  },
+  "transcripts": [
+    {
+      "nodeId": "test",
+      "attempt": 1,
+      "path": "transcripts/test-1.json",
+      "sizeBytes": 848,
+      "compressed": false,
+      "status": "failed",
+      "tokenUsage": {
+        "input_tokens": 321,
+        "output_tokens": 654,
+        "cache_read_input_tokens": null,
+        "cache_creation_input_tokens": null,
+        "cost_usd": null
+      },
+      "messages": 1,
+      "finishedAt": "2026-10-07T18:38:31.664Z"
+    }
+  ],
+  "transcripts_total": 1,
+  "transcripts_size_bytes": 848
+}

@@ -1,0 +1,29 @@
+{
+  "ticket_id": 92222,
+  "pending": [],
+  "tasks": {},
+  "unattributed": [
+    {
+      "session_id": "pretask-f",
+      "agent": "claude",
+      "nodes": [
+        "fetch_ticket",
+        "plan"
+      ],
+      "started_at_ms": 1791398304141,
+      "pid": 2100000000,
+      "claude_config_dir": "/private/var/folders/4b/_cwvfg6x7sn7mv_08gyl3s4m0000gn/T/pri69-f-custo-unattributed-vbylf5/home/.claude",
+      "node": "plan",
+      "duration_ms": 800,
+      "input_tokens": 40,
+      "output_tokens": 29,
+      "cache_read_input_tokens": 23,
+      "cache_creation_input_tokens": 0,
+      "cost_usd": 0.000329,
+      "models": [
+        "claude-sonnet-5"
+      ],
+      "finished_at": "2026-10-07T18:38:32.192Z"
+    }
+  ]
+}

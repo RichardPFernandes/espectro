@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    "implement",
+    "implement",
+    "review",
+    "test",
+    "verify",
+    "commit"
+  ],
+  "execution_id": "d4baa619-2596-4b93-bb40-cc15181a27dc",
+  "prs": 1,
+  "pr": "http://127.0.0.1:61865/bitbucket/harness-ws/app-back/pull-requests/1",
+  "sigterm_notes": 1
+}
