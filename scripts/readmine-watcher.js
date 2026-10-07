@@ -3145,12 +3145,15 @@ function captureTranscript(ticketId, run, target, node, metrics, outcome = {}) {
 // Sem --follow: fecha os runs cujo processo já saiu. Roda no começo de cada tick, pra
 // todos os tickets com run pendente — inclusive os que não serão mais despachados
 // (ex: acabou de rodar /commit, sai da lista do Redmine e da task ativa local).
+// Com --ticket, só o ticket do filtro: fechar o custo grava state.json, *-cost.json e
+// transcripts/ da task, e o tick controlado não pode tocar em tasks de outro ticket.
 function finalizePendingCostRuns() {
     if (DRY_RUN || SIMULATE || !fs.existsSync(RUNS_DIR)) return;
     for (const f of fs.readdirSync(RUNS_DIR)) {
         const m = f.match(/^(\d+)-cost\.json$/);
         if (!m) continue;
         const ticketId = Number(m[1]);
+        if (ONLY_TICKET && ticketId !== ONLY_TICKET) continue;
         try {
             for (const run of readCostLedger(ticketId).pending) {
                 const tooOld = Date.now() - run.started_at_ms > MAX_COST_RUN_MS;
@@ -4276,8 +4279,10 @@ function runMemoryConsolidator() {
     });
 }
 
+// Com --ticket não roda: patterns.md e o contador agregam os runs de todos os tickets,
+// e consolidar só os do filtro reescreveria a memória global com uma amostra parcial.
 function runMemoryConsolidatorSafe() {
-    if (SIMULATE) return null; // ver syncAcRegistrySafe
+    if (SIMULATE || ONLY_TICKET) return null; // ver syncAcRegistrySafe
     try {
         const r = runMemoryConsolidator();
         if (r.ran) console.log(`[memory-consolidator] consolidado (${r.completedRuns} runs completados) → ${CONSOLIDATOR_PATTERNS_PATH}`);
