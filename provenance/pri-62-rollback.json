@@ -26,26 +26,85 @@
   },
   "previous_source": {
     "head": "a1ac43307cc5f275caf5a70ad3068c9af099b127",
-    "selected_files": 230,
+    "selected_files": 236,
     "accepted_list_sha256": "e3ba5c9ffa43c6fb2cb1e955ec1a2715af1337df5f11835941a42ae9b104ca84",
-    "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/source-selected-current.tar.gz",
-    "snapshot_sha256": "ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03",
-    "readback": "tar -xzf em tmp; hash, tamanho e bit de execução dos 230 contra o preflight",
+    "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/source-snapshot-2026-10-07-pri67-71/source-selected-current.tar.gz",
+    "snapshot_sha256": "1191361d93f1a3dbe609a45bd881c0c8633bf8e491b99b5036b7d251aeda5731",
+    "readback": "tar -xzf em tmp; hash, tamanho e bit de execução dos 236 contra o preflight",
     "live_checkout_matches_snapshot": true,
     "delta_vs_previous_snapshot": {
-      "previous_snapshot": "app-back/memory/runs/_archive/pri-60-platform-extraction/source-selected.tar.gz",
-      "previous_snapshot_sha256": "ad61809914fbca65f3657b98053a8ae9771f9e50f4bae3abcc0fdeb783163da0",
-      "changed_files": 6,
-      "files": [
-        { "path": "dashboard/compare-api.test.js", "old_sha256": "ee5b98acfc586ee4f66a7883f963edbb5d7f0d7e30c78171d55b04e9bda1600e", "new_sha256": "3eaddbf0dea6fc5a54d0d172a09c21a7d2412b5fbcea481a89453b70cfb56d1c", "source_equals_candidate": true },
-        { "path": "dashboard/public/compare.js", "old_sha256": "a33201958da73a297498ea90852d08b59dec622e8172708a5416559a8b076ef2", "new_sha256": "8a4634319b3beeab1250c25a157d7fc82799ccde3904069a51cb5959853929de", "source_equals_candidate": true },
-        { "path": "scripts/compare-runs.js", "old_sha256": "fad037101096e5fb3d4a87594c8983f4ae67eba23bd82a063d226510dcfc015e", "new_sha256": "08e1efd5381cf09894f78f732198a9ffd8c07ad44f64289bd126b2b38e6a5add", "source_equals_candidate": true },
-        { "path": "scripts/compare-runs.test.js", "old_sha256": "13eb4468b7a541bd79a10b1909b17de524d5b71fa24629e01a1bd9d34854bcec", "new_sha256": "1f49335528a9d0eb1dfd8e4fa6d61936b4d879acd9da54d113e556e464336125", "source_equals_candidate": true },
-        { "path": "scripts/lib/run-comparator.js", "old_sha256": "dd4bcafa8bb23f5b3e6d97f3826db23984fbd17eac2189f48e860b091d24f0e8", "new_sha256": "9a55d40a1ca38a1f11b66bd927b7b8e3307b541423b5132dd7b583c720dcc0fb", "source_equals_candidate": false },
-        { "path": "scripts/lib/run-comparator.test.js", "old_sha256": "1ddb15a1f2d156cbf27d8b4b8ca2f26fe26d8c2351b7b72221a5106064e911eb", "new_sha256": "07ad0667a074465d69a480bd00a154f45caf92f673584f71fa5dbb7afc2cf4ee", "source_equals_candidate": true }
+      "previous_snapshot": "app-back/memory/runs/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/source-selected-current.tar.gz",
+      "previous_snapshot_sha256": "ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03",
+      "previous_selected_files": 230,
+      "kept_in_place": true,
+      "changed_files": 10,
+      "added_files": 6,
+      "files_changed": [
+        ".graph/schemas/state.schema.json",
+        "docs/runbook.md",
+        "scripts/bitbucket-open-pr.sh",
+        "scripts/bitbucket-open-pr.test.js",
+        "scripts/lib/cycle-replayer.js",
+        "scripts/lib/graceful-shutdown.js",
+        "scripts/lib/node-lease.js",
+        "scripts/lib/node-lease.test.js",
+        "scripts/readmine-watcher.js",
+        "scripts/watcher-manager.js"
       ],
-      "pre_fix_originals": "app-back/memory/runs/pri-61-integration-validation/rerun-2026-10-07-fix/app-back-pre-fix/ (os 6 batem com o snapshot anterior)",
-      "note": "run-comparator.js já diferia entre fonte e candidata na PRI-60 (seam adaptado); continua diferindo."
+      "files_added": [
+        "scripts/lib/dry-run-flag-watcher.test.js",
+        "scripts/lib/agent-identity.test.js",
+        "scripts/lib/process-identity.js",
+        "scripts/lib/watcher-lock.js",
+        "scripts/lib/watcher-lock.test.js",
+        "scripts/lib/ticket-filter-tick.test.js"
+      ],
+      "reason": "Fonte do app-back passou a incluir PRI-67, PRI-68, PRI-70 e PRI-71. O tar ee42191d… fica no caminho antigo.",
+      "older_comparator_delta": {
+        "previous_snapshot": "app-back/memory/runs/_archive/pri-60-platform-extraction/source-selected.tar.gz",
+        "previous_snapshot_sha256": "ad61809914fbca65f3657b98053a8ae9771f9e50f4bae3abcc0fdeb783163da0",
+        "changed_files": 6,
+        "files": [
+          {
+            "path": "dashboard/compare-api.test.js",
+            "old_sha256": "ee5b98acfc586ee4f66a7883f963edbb5d7f0d7e30c78171d55b04e9bda1600e",
+            "new_sha256": "3eaddbf0dea6fc5a54d0d172a09c21a7d2412b5fbcea481a89453b70cfb56d1c",
+            "source_equals_candidate": true
+          },
+          {
+            "path": "dashboard/public/compare.js",
+            "old_sha256": "a33201958da73a297498ea90852d08b59dec622e8172708a5416559a8b076ef2",
+            "new_sha256": "8a4634319b3beeab1250c25a157d7fc82799ccde3904069a51cb5959853929de",
+            "source_equals_candidate": true
+          },
+          {
+            "path": "scripts/compare-runs.js",
+            "old_sha256": "fad037101096e5fb3d4a87594c8983f4ae67eba23bd82a063d226510dcfc015e",
+            "new_sha256": "08e1efd5381cf09894f78f732198a9ffd8c07ad44f64289bd126b2b38e6a5add",
+            "source_equals_candidate": true
+          },
+          {
+            "path": "scripts/compare-runs.test.js",
+            "old_sha256": "13eb4468b7a541bd79a10b1909b17de524d5b71fa24629e01a1bd9d34854bcec",
+            "new_sha256": "1f49335528a9d0eb1dfd8e4fa6d61936b4d879acd9da54d113e556e464336125",
+            "source_equals_candidate": true
+          },
+          {
+            "path": "scripts/lib/run-comparator.js",
+            "old_sha256": "dd4bcafa8bb23f5b3e6d97f3826db23984fbd17eac2189f48e860b091d24f0e8",
+            "new_sha256": "9a55d40a1ca38a1f11b66bd927b7b8e3307b541423b5132dd7b583c720dcc0fb",
+            "source_equals_candidate": false
+          },
+          {
+            "path": "scripts/lib/run-comparator.test.js",
+            "old_sha256": "1ddb15a1f2d156cbf27d8b4b8ca2f26fe26d8c2351b7b72221a5106064e911eb",
+            "new_sha256": "07ad0667a074465d69a480bd00a154f45caf92f673584f71fa5dbb7afc2cf4ee",
+            "source_equals_candidate": true
+          }
+        ],
+        "pre_fix_originals": "app-back/memory/runs/pri-61-integration-validation/rerun-2026-10-07-fix/app-back-pre-fix/ (os 6 batem com o snapshot anterior)",
+        "note": "run-comparator.js já diferia entre fonte e candidata na PRI-60 (seam adaptado); continua diferindo."
+      }
     }
   },
   "consumer_config": {
@@ -54,20 +113,50 @@
     "unchanged_since_previous_round": false,
     "decision": "Linear PRI-61/PRI-62, comentário 3928a7eb-e679-4742-8c79-9be5b0dc9041 (Richard): config de consumo admitida = prisma-consumer.env + config/consolidator-module-keywords.json; scripts/prisma-consumer.env.example e .claude/prisma-*.json são só exemplo",
     "admitted": [
-      { "path": "prisma-consumer.env", "git": "untracked", "bytes": 1020, "sha256": "767066520961af1bf36476ba52e217826d884220b4f82b61e95a575f0f69fa29" },
-      { "path": "config/consolidator-module-keywords.json", "git": "untracked", "bytes": 1061, "sha256": "423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c" }
+      {
+        "path": "prisma-consumer.env",
+        "git": "untracked",
+        "bytes": 1020,
+        "sha256": "767066520961af1bf36476ba52e217826d884220b4f82b61e95a575f0f69fa29"
+      },
+      {
+        "path": "config/consolidator-module-keywords.json",
+        "git": "untracked",
+        "bytes": 1061,
+        "sha256": "423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c"
+      }
     ],
     "examples": {
       "contractual": false,
       "note": "listados no C1 só como diagnóstico; fora da identidade da config e do PASS",
       "files": [
-        { "path": "scripts/prisma-consumer.env.example", "git": "ignored", "bytes": 1731, "sha256": "055a6f78800a075043a56cf102f6423475bc798e8efecc869b6601ba07f62ac9" },
-        { "path": ".claude/prisma-module-keywords.json", "git": "ignored", "bytes": 1269, "sha256": "c639d2e2f3c55b64137a86a8746552f9042c3ec2be96f34599d615d69e529885" },
-        { "path": ".claude/prisma-response-factory.json", "git": "ignored", "bytes": 302, "sha256": "18cc52e3fd8f32e4f24cd35daa6d119ed88b4012d30c3290646685caf7fb78c0" }
+        {
+          "path": "scripts/prisma-consumer.env.example",
+          "git": "ignored",
+          "bytes": 1731,
+          "sha256": "055a6f78800a075043a56cf102f6423475bc798e8efecc869b6601ba07f62ac9"
+        },
+        {
+          "path": ".claude/prisma-module-keywords.json",
+          "git": "ignored",
+          "bytes": 1269,
+          "sha256": "c639d2e2f3c55b64137a86a8746552f9042c3ec2be96f34599d615d69e529885"
+        },
+        {
+          "path": ".claude/prisma-response-factory.json",
+          "git": "ignored",
+          "bytes": 302,
+          "sha256": "18cc52e3fd8f32e4f24cd35daa6d119ed88b4012d30c3290646685caf7fb78c0"
+        }
       ]
     },
     "other_copied": [
-      { "path": "docs/prisma-candidate.md", "git": "untracked", "bytes": 3261, "sha256": "917ceb80daff51d8b75bc8b13f2848590aec3d5e96738802979bc9c0e5c7433b" }
+      {
+        "path": "docs/prisma-candidate.md",
+        "git": "untracked",
+        "bytes": 3261,
+        "sha256": "917ceb80daff51d8b75bc8b13f2848590aec3d5e96738802979bc9c0e5c7433b"
+      }
     ],
     "not_copied": [
       ".env",
@@ -87,19 +176,26 @@
         "reason": "source no zsh/bash não exportava PRE_BUILD_COMMAND/TEST_COMMAND/TEST_SCOPED_COMMAND (valor com espaço sem aspas); valores entre aspas simples e set -a/set +a no próprio arquivo",
         "same_keys_and_values": true,
         "evidence": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/ (env-load-check.log, prisma-consumer.env.diff)"
+      },
+      {
+        "issue": "PRI-62-snapshot",
+        "at": "2026-10-07",
+        "kind": "source_snapshot",
+        "old_snapshot_sha256": "ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03",
+        "old_selected_files": 230,
+        "new_snapshot_sha256": "1191361d93f1a3dbe609a45bd881c0c8633bf8e491b99b5036b7d251aeda5731",
+        "new_selected_files": 236,
+        "reason": "Novo snapshot da fonte depois de aplicar PRI-67, PRI-70 e PRI-71 no app-back (PRI-68 já estava no watcher). O snapshot anterior permanece no disco."
       }
     ]
   },
   "exercise": {
-    "folder": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/",
-    "preflight": "candidate-source-preflight.json (cópia byte a byte da rodada candidate-fbb597c-2026-10-07)",
-    "preflight_sha256": "d7901edf82676d72ce82cb531254b9809da07d189c02396fe2be658132f05ca4",
+    "folder": "app-back/memory/runs/pri-62-reversal-preparation/source-snapshot-2026-10-07-pri67-71/",
+    "preflight": "candidate-source-preflight.json (236 fontes + 248 candidatas fbb597c)",
     "preflight_builder_sha256": "777a1128a82442e50d60a1ac9928460a3ad1097b530167371da750494725a3e4",
     "preflight_workspace_restored": "workspace tmp do preflight recriado no mesmo caminho a partir do snapshot da fonte e do git archive de fbb597c (os 2 passos do builder, sem reescrever snapshot/preflight); 478 de 478 hashes conferem",
     "harness": "provenance/pri-62/consumption-rollback.test.js",
-    "harness_sha256": "a7c33c4ffc8a8ef9c2d4242bd8ea2274ef6f11738c087b50f844734e9e9dfcd8",
     "result": "consumption-rollback.tap",
-    "result_sha256": "eaba55e06bfe2168635c89bb34b0285edd316e1f171ba5cbeab063b80099bd33",
     "tests": 6,
     "pass": 6,
     "fail": 0,
@@ -119,15 +215,34 @@
     "environment": "diretórios temporários, DRY_RUN=true, fixtures sintéticas, env mínimo sem credenciais; app-back git status idêntico antes/depois",
     "c1_identity": "conjunto admitido fixado na harness (ADMITTED_CONFIG, 2 arquivos com sha256 esperado); exemplos via PRI62_CONFIG_EXAMPLES, só diagnóstico",
     "previous_rounds": [
+      "candidate-fbb597c-2026-10-07/source-selected-current.tar.gz (sha256 ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03, 230 arquivos; permanece no disco)",
       "config-admitted-2026-10-07/ (C1 com prisma-consumer.env 44a91f61…, antes da PRI-65; 6/6 + 7/7)",
       "candidate-fbb597c-2026-10-07/ (C1 com os 6 arquivos, inclusive exemplos)",
       "consumption-return-2026-10-07/ (candidata 04c130b)",
       "revalidation-2026-10-07/ (candidata 04c130b)"
-    ]
+    ],
+    "previous_exercise": {
+      "folder": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/",
+      "preflight_sha256": "d7901edf82676d72ce82cb531254b9809da07d189c02396fe2be658132f05ca4",
+      "preflight_builder_sha256": "777a1128a82442e50d60a1ac9928460a3ad1097b530167371da750494725a3e4",
+      "harness_sha256": "a7c33c4ffc8a8ef9c2d4242bd8ea2274ef6f11738c087b50f844734e9e9dfcd8",
+      "result": "consumption-rollback.tap",
+      "result_sha256": "eaba55e06bfe2168635c89bb34b0285edd316e1f171ba5cbeab063b80099bd33",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "note": "Rodada da PRI-65 contra o snapshot ee42191d… (230 arquivos). Esse tar não foi apagado."
+    },
+    "preflight_sha256": "bfb0a67fbe28e73edc95558bd3599fc4079591800798a3307f4d45852640444f",
+    "harness_sha256": "2108ad769f0dcedc8801ed59ee1ebf88f76670c8da542a9fadf840622bb3d2c3",
+    "result_sha256": "2cb107dbf2c755a7f17705993f3715d7b75e1c96fab7a0bf40fc1fe4eefc754f",
+    "snapshot_sha256": "1191361d93f1a3dbe609a45bd881c0c8633bf8e491b99b5036b7d251aeda5731",
+    "source_files": 236,
+    "candidate_files": 248
   },
   "findings": [
-    "Não há trava de instância do watcher: acquireNode não recusa task running; exclusividade entre fonte e candidata depende de parar a candidata e esperar seus agentes.",
-    "node-lease.agentAlive só reconhece pid cujo comando contém 'claude' (igual na fonte e na candidata).",
+    "A fonte deste snapshot tem trava de instância (PRI-70, scripts/lib/watcher-lock.js). A candidata fbb597c não tem: a recusa do segundo writer só existe quando os dois lados rodam esse código.",
+    "Na fonte deste snapshot, agente vivo é agent_pid + agent_started_at (PRI-70). A candidata fbb597c ainda reconhece pid cujo comando contém claude.",
     "O wrapper do agente destacado libera o lease por $PRISMA_ROOT/scripts/lib/node-lease.js: o checkout do Prisma precisa continuar no lugar até esses agentes saírem.",
     "Fonte e candidata leem o mesmo .env do consumidor; o retorno não restaura nem copia credenciais.",
     "Pré-build: a fonte usa mvn fixo; PRE_BUILD_COMMAND/TEST_COMMAND da config do consumidor só valem na candidata."
