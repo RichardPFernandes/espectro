@@ -1437,6 +1437,11 @@
         "detected_at": {
           "type": "string",
           "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["agent_dead", "timeout"],
+          "description": "Por que o nó foi tratado como órfão. timeout não rebinda owner/snapshot do Attempt (PRI-66)."
         }
       }
     },

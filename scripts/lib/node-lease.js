@@ -278,7 +278,7 @@ function recoverOrphans(runsDirs, { now = new Date(), defaultTimeoutMs, isAlive,
                 detail: `Nó órfão detectado pelo watcher (${cause}) — redespachando`,
             });
             state.status = RELEASED_STATUS;
-            state.recovered_from_orphan = { node, orphan_since: since, detected_at: at };
+            state.recovered_from_orphan = { node, orphan_since: since, detected_at: at, reason };
         }
         delete state.agent_pid;
         delete state.agent_started_at;
