@@ -1,8 +1,8 @@
 # Retorno do consumo do Prisma para os scripts do app-back (PRI-62)
 
 Procedimento para voltar o app-back a executar os próprios scripts depois de ter
-consumido a candidata `04c130b00b7cce38ee17b1edc1d26ba67cd8c59a` (tree
-`6a6b3f559e9270399e96e26bb56ab02c7642285b`). Este documento não autoriza parar,
+consumido a candidata `fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c` (tree
+`4633d9fd5f5bdf30c6be9f990d84cb847a9cb3cc`). Este documento não autoriza parar,
 reverter ou trocar uma execução ativa. Ele só vale para a revisão acima; outra
 revisão de cutover precisa de delta validado (ver "Cobertura").
 
@@ -39,7 +39,9 @@ tiver mudado, isso é drift (passo 5), não algo a reverter.
 
 1. **Fixar o par.** Candidata = revisão/tree acima. Fonte = app-back HEAD
    `a1ac43307cc5f275caf5a70ad3068c9af099b127` mais os bytes selecionados do snapshot
-   `source-selected.tar.gz` (sha256 `ad61809914fbca65f3657b98053a8ae9771f9e50f4bae3abcc0fdeb783163da0`).
+   `source-selected-current.tar.gz` (sha256 `ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03`),
+   que já inclui a correção do comparador da PRI-61. O snapshot anterior (`ad618099…`)
+   difere só nos 6 arquivos do comparador (ver manifesto).
    Config do consumidor: hashes em `provenance/pri-62-rollback.json`.
 2. **Parar o writer da candidata com SIGTERM** (botão Parar do dashboard da candidata ou
    `kill -TERM <pid>`), nunca SIGKILL. O graceful shutdown marca o nó em voo como
@@ -93,4 +95,4 @@ candidata (run local da PRI-62, `candidate-reversal.tap`).
 
 Não provado: Redmine/Bitbucket/agentes reais, revogação real de credencial, Decision
 formal além do "aprovado"/`state-writer set` do contrato atual, exclusividade global
-entre hosts, e qualquer revisão diferente de `04c130b`.
+entre hosts, e qualquer revisão diferente de `fbb597c`.

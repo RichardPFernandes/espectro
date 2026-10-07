@@ -2,27 +2,56 @@
   "artifact_kind": "pri62_rollback_manifest",
   "issue": "PRI-62",
   "status": "CONSUMPTION_RETURN_EXERCISED_ISOLATED",
-  "observed_at": "2026-10-07T14:25:00-03:00",
+  "observed_at": "2026-10-07T11:35:00-03:00",
   "active_execution": "app-back scripts (fonte); nenhum cutover, stop ou revert executado",
   "candidate": {
-    "revision": "04c130b00b7cce38ee17b1edc1d26ba67cd8c59a",
-    "tree": "6a6b3f559e9270399e96e26bb56ab02c7642285b",
+    "revision": "fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c",
+    "tree": "4633d9fd5f5bdf30c6be9f990d84cb847a9cb3cc",
     "files": 248,
-    "readback": "git archive da revisão, hash por arquivo contra candidate-source-preflight.json"
+    "readback": "git archive da revisão, hash por arquivo contra candidate-source-preflight.json",
+    "supersedes": {
+      "revision": "04c130b00b7cce38ee17b1edc1d26ba67cd8c59a",
+      "tree": "6a6b3f559e9270399e96e26bb56ab02c7642285b",
+      "changed_files": [
+        "dashboard/compare-api.test.js",
+        "dashboard/public/compare.js",
+        "scripts/compare-runs.js",
+        "scripts/compare-runs.test.js",
+        "scripts/lib/run-comparator.js",
+        "scripts/lib/run-comparator.test.js"
+      ],
+      "reason": "PRI-61: veredito inconclusive, PARTIAL nunca passed, custo com complete/missing",
+      "previous_result": "6/6 consumo + 7/7 código/refs em 04c130b (consumption-return-2026-10-07/, revalidation-2026-10-07/)"
+    }
   },
   "previous_source": {
     "head": "a1ac43307cc5f275caf5a70ad3068c9af099b127",
     "selected_files": 230,
     "accepted_list_sha256": "e3ba5c9ffa43c6fb2cb1e955ec1a2715af1337df5f11835941a42ae9b104ca84",
-    "snapshot": "app-back/memory/runs/_archive/pri-60-platform-extraction/source-selected.tar.gz",
-    "snapshot_sha256": "ad61809914fbca65f3657b98053a8ae9771f9e50f4bae3abcc0fdeb783163da0",
-    "snapshot_path_note": "source-recovery-proof.json da PRI-60 grava o caminho anterior ao arquivamento (memory/runs/pri-60-platform-extraction/)",
+    "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/source-selected-current.tar.gz",
+    "snapshot_sha256": "ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03",
     "readback": "tar -xzf em tmp; hash, tamanho e bit de execução dos 230 contra o preflight",
-    "live_checkout_matches_snapshot": true
+    "live_checkout_matches_snapshot": true,
+    "delta_vs_previous_snapshot": {
+      "previous_snapshot": "app-back/memory/runs/_archive/pri-60-platform-extraction/source-selected.tar.gz",
+      "previous_snapshot_sha256": "ad61809914fbca65f3657b98053a8ae9771f9e50f4bae3abcc0fdeb783163da0",
+      "changed_files": 6,
+      "files": [
+        { "path": "dashboard/compare-api.test.js", "old_sha256": "ee5b98acfc586ee4f66a7883f963edbb5d7f0d7e30c78171d55b04e9bda1600e", "new_sha256": "3eaddbf0dea6fc5a54d0d172a09c21a7d2412b5fbcea481a89453b70cfb56d1c", "source_equals_candidate": true },
+        { "path": "dashboard/public/compare.js", "old_sha256": "a33201958da73a297498ea90852d08b59dec622e8172708a5416559a8b076ef2", "new_sha256": "8a4634319b3beeab1250c25a157d7fc82799ccde3904069a51cb5959853929de", "source_equals_candidate": true },
+        { "path": "scripts/compare-runs.js", "old_sha256": "fad037101096e5fb3d4a87594c8983f4ae67eba23bd82a063d226510dcfc015e", "new_sha256": "08e1efd5381cf09894f78f732198a9ffd8c07ad44f64289bd126b2b38e6a5add", "source_equals_candidate": true },
+        { "path": "scripts/compare-runs.test.js", "old_sha256": "13eb4468b7a541bd79a10b1909b17de524d5b71fa24629e01a1bd9d34854bcec", "new_sha256": "1f49335528a9d0eb1dfd8e4fa6d61936b4d879acd9da54d113e556e464336125", "source_equals_candidate": true },
+        { "path": "scripts/lib/run-comparator.js", "old_sha256": "dd4bcafa8bb23f5b3e6d97f3826db23984fbd17eac2189f48e860b091d24f0e8", "new_sha256": "9a55d40a1ca38a1f11b66bd927b7b8e3307b541423b5132dd7b583c720dcc0fb", "source_equals_candidate": false },
+        { "path": "scripts/lib/run-comparator.test.js", "old_sha256": "1ddb15a1f2d156cbf27d8b4b8ca2f26fe26d8c2351b7b72221a5106064e911eb", "new_sha256": "07ad0667a074465d69a480bd00a154f45caf92f673584f71fa5dbb7afc2cf4ee", "source_equals_candidate": true }
+      ],
+      "pre_fix_originals": "app-back/memory/runs/pri-61-integration-validation/rerun-2026-10-07-fix/app-back-pre-fix/ (os 6 batem com o snapshot anterior)",
+      "note": "run-comparator.js já diferia entre fonte e candidata na PRI-60 (seam adaptado); continua diferindo."
+    }
   },
   "consumer_config": {
     "location": "app-back, fora do Git; nenhum arquivo contém chave de segredo",
     "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/consumption-return-2026-10-07/consumer-config-snapshot/",
+    "unchanged_since_previous_round": true,
     "files": [
       { "path": "prisma-consumer.env", "git": "untracked", "bytes": 847, "sha256": "44a91f61ab5add073bcdbad64ca4a4bdf4333bf853de213865671762c0a32f48" },
       { "path": "config/consolidator-module-keywords.json", "git": "untracked", "bytes": 1061, "sha256": "423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c" },
@@ -35,14 +64,24 @@
     "not_copied": [".env", "credenciais", "memory/runs reais", "dados TMS"]
   },
   "exercise": {
+    "folder": "app-back/memory/runs/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/",
+    "preflight": "candidate-source-preflight.json",
+    "preflight_sha256": "d7901edf82676d72ce82cb531254b9809da07d189c02396fe2be658132f05ca4",
+    "preflight_builder_sha256": "777a1128a82442e50d60a1ac9928460a3ad1097b530167371da750494725a3e4",
     "harness": "provenance/pri-62/consumption-rollback.test.js",
-    "harness_sha256": "a9844bb4050364f560e6e48e368ca4e58316d8cf152f59f65d5cadfbc5e52ff6",
-    "result": "app-back/memory/runs/pri-62-reversal-preparation/consumption-return-2026-10-07/consumption-rollback.tap",
-    "result_sha256": "a6f379653a6e0a2e74f8ce239ec3a7b647925d4420d2fb5dc0d0d3813d3df602",
+    "harness_sha256": "083eac0ad06a673161d8944df14bc1aa440ce691773c38fd370af3dfa79c4f44",
+    "result": "consumption-rollback.tap",
+    "result_sha256": "c686e33312bbf9f3225db026150a84aedef432c4c81cab1b8f73c79886031301",
     "tests": 6, "pass": 6, "fail": 0, "skipped": 0,
-    "negative_control": "sem as variáveis de entrada a harness falha (1 fail), não pula",
-    "environment": "diretórios temporários, DRY_RUN=true, fixtures sintéticas, env mínimo sem credenciais; app-back git status idêntico antes/depois",
-    "prior_code_reference_return": "candidate-reversal.test.js 7/7 PASS na mesma candidata, reexecutado em 2026-10-07"
+    "negative_control": "negative-control.tap (sha256 d03094fb0a4cb510e4259f1cbe2fdfda83bbd46bd14dc1f5d89273fd3c48cc76): sem as variáveis de entrada, 1 fail, 0 skip",
+    "code_reference_return": {
+      "harness": "candidate-reversal.test.js",
+      "harness_sha256": "1ca86532c70f81686da7db128c6cce216ce1fd1e05970e4c23bdd74737009b4f",
+      "result": "candidate-reversal.tap",
+      "result_sha256": "03749dfe240769d607eecfbf1e0c1fab27a2c6659b8057961e7c2e308ff6d61a",
+      "tests": 7, "pass": 7, "fail": 0, "skipped": 0
+    },
+    "environment": "diretórios temporários, DRY_RUN=true, fixtures sintéticas, env mínimo sem credenciais; app-back git status idêntico antes/depois"
   },
   "findings": [
     "Não há trava de instância do watcher: acquireNode não recusa task running; exclusividade entre fonte e candidata depende de parar a candidata e esperar seus agentes.",
@@ -52,16 +91,16 @@
     "Pré-build: a fonte usa mvn fixo; PRE_BUILD_COMMAND/TEST_COMMAND da config do consumidor só valem na candidata."
   ],
   "delta_from_candidate": {
-    "base": "04c130b00b7cce38ee17b1edc1d26ba67cd8c59a",
+    "base": "fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c",
     "added": ["docs/rollback.md", "provenance/pri-62-rollback.json", "provenance/pri-62/consumption-rollback.test.js"],
     "runtime_files_changed": 0,
-    "note": "O ensaio executa os bytes de 04c130b extraídos por git archive, não este commit."
+    "note": "O ensaio executa os bytes de fbb597c extraídos por git archive, não este commit."
   },
   "unproven": [
     "Redmine, Bitbucket, agentes e Maven reais",
     "revogação real de credencial e SecretResolver",
     "Decision formal além do 'aprovado' no Redmine e do state-writer set do contrato atual",
     "exclusividade global entre hosts/processos",
-    "revisão de cutover diferente de 04c130b"
+    "revisão de cutover diferente de fbb597c"
   ]
 }

@@ -7,7 +7,7 @@
 //
 // Entradas (todas obrigatórias; ausência é FAIL, nunca skip):
 //   PRI62_PREFLIGHT              candidate-source-preflight.json (230 fontes + 248 candidatas)
-//   PRI62_SOURCE_SNAPSHOT        source-selected.tar.gz da PRI-60, restaurado aqui em tmp
+//   PRI62_SOURCE_SNAPSHOT        snapshot dos 230 selecionados da fonte atual, restaurado aqui em tmp
 //   PRI62_SCRIPTS_NODE_MODULES   node_modules de scripts/ (lock idêntico nos dois lados)
 //   PRI62_LIVE_CONSUMER_ROOT     checkout ativo do consumidor, lido só para hash
 //   PRI62_CONSUMER_CONFIG        arquivos de config do consumidor (separados por ':'), só leitura
@@ -19,9 +19,9 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const cp = require('node:child_process');
 
-const CANDIDATE_REVISION = '04c130b00b7cce38ee17b1edc1d26ba67cd8c59a';
-const CANDIDATE_TREE = '6a6b3f559e9270399e96e26bb56ab02c7642285b';
-const SOURCE_SNAPSHOT_SHA256 = 'ad61809914fbca65f3657b98053a8ae9771f9e50f4bae3abcc0fdeb783163da0';
+const CANDIDATE_REVISION = 'fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c';
+const CANDIDATE_TREE = '4633d9fd5f5bdf30c6be9f990d84cb847a9cb3cc';
+const SOURCE_SNAPSHOT_SHA256 = 'ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03';
 const FULL_HISTORY = ['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify', 'commit'];
 const SECRET_KEY = /(TOKEN|API_KEY|SECRET|PASSWORD|WEBHOOK_URL)$/;
 
