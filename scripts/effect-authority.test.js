@@ -3,8 +3,9 @@
 // credencial revogada no meio do ciclo e repetição do mesmo efeito. Só transportes
 // falsos: Bitbucket falso em loopback (BITBUCKET_API_BASE) e fetch injetado no
 // redmine-fetch. Não existe seam de admissão DOM06/autoridade por Attempt nesta
-// revisão; os casos com `todo` são o contrato da PRI-66 que o comportamento legado
-// NÃO cumpre, e aparecem como "# TODO" (nunca como PASS).
+// revisão. PRI-71 faz o bitbucket-open-pr.sh cumprir o contrato que antes era
+// `# TODO`: 401/403 antes do POST não tenta o efeito, e repetir a abertura
+// reutiliza o PR OPEN em vez de criar outro.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -42,6 +43,21 @@ const server = http.createServer((req, res) => {
             if (fake.revokeAfterReviewers) fake.revoked = true;
             return send(200, { values: [] });
         }
+        if (u.pathname === `/2.0/repositories/${WS}/${REPO}/pullrequests` && req.method === 'GET') {
+            const q = u.searchParams.get('q') || '';
+            const values = prs.filter(pr =>
+                q.includes(`source.branch.name="${pr.source}"`) &&
+                q.includes(`destination.branch.name="${pr.destination}"`) &&
+                q.includes('state="OPEN"')
+            ).map(pr => ({
+                id: pr.id,
+                state: 'OPEN',
+                source: { branch: { name: pr.source } },
+                destination: { branch: { name: pr.destination } },
+                links: { html: { href: `https://bitbucket.org/${WS}/${REPO}/pull-requests/${pr.id}` } },
+            }));
+            return send(200, { values });
+        }
         if (u.pathname === `/2.0/repositories/${WS}/${REPO}/pullrequests` && req.method === 'POST') {
             const payload = JSON.parse(body);
             const id = prs.length + 1;
@@ -56,7 +72,7 @@ const base = () => `http://127.0.0.1:${server.address().port}/2.0`;
 function openPr() {
     return new Promise(resolve => {
         const child = execFile('bash', [script, REPO, '41948', 'development', 'Melhoria #41948'], {
-            env: { PATH: process.env.PATH, HOME: process.env.HOME, BITBUCKET_WORKSPACE: WS, BITBUCKET_API_TOKEN: TOKEN, BITBUCKET_API_BASE: base(), BITBUCKET_ACCOUNT_ID: 'acc-eu' },
+            env: { PATH: process.env.PATH, HOME: process.env.HOME, BITBUCKET_WORKSPACE: WS, BITBUCKET_API_TOKEN: TOKEN, BITBUCKET_API_BASE: base(), BITBUCKET_ACCOUNT_ID: 'acc-eu', REPO_PATH: tmp },
         }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr }));
         child.stdin.end('descrição');
     });
@@ -68,58 +84,64 @@ test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 test.beforeEach(() => { calls.length = 0; prs.length = 0; });
 
-test('Bitbucket: credencial revogada antes do ciclo => erro explícito, um POST só, sem PR e sem vazar token', async () => {
+test('Bitbucket: credencial revogada antes do ciclo => erro explícito, nenhum POST, sem PR e sem vazar token', async () => {
     fake = { revoked: true };
     const r = await openPr();
     assert.strictEqual(r.code, 1);
     assert.match(r.stderr, /ERROR: HTTP 401/);
     assert.strictEqual(r.stdout.trim(), '', 'nenhuma URL de PR em stdout');
-    assert.strictEqual(posts(), 1, 'sem retry cego do POST');
+    assert.strictEqual(posts(), 0, '401 antes do POST não tenta criar o PR');
     assert.strictEqual(prs.length, 0);
     assert.ok(!r.stderr.includes(TOKEN) && !r.stdout.includes(TOKEN));
 });
 
-test('Bitbucket: revogação no meio do ciclo (depois do GET de reviewers) => POST 401, erro explícito, sem retry', async () => {
+test('Bitbucket: revogação no meio do ciclo (depois do GET de reviewers) => consulta de PR 401, sem POST', async () => {
     fake = { revokeAfterReviewers: true };
     const r = await openPr();
     assert.strictEqual(r.code, 1);
     assert.match(r.stderr, /ERROR: HTTP 401/);
-    assert.strictEqual(posts(), 1);
+    assert.strictEqual(posts(), 0);
     assert.strictEqual(prs.length, 0);
+    assert.ok(calls.includes(`GET /2.0/repositories/${WS}/${REPO}/pullrequests`));
 });
 
-test('Bitbucket (legado): 401 no GET de reviewers vira WARN e o POST do PR ainda é tentado', async () => {
+test('Bitbucket: 401 no GET de reviewers aborta antes do POST', async () => {
     fake = { revoked: true };
     const r = await openPr();
-    assert.match(r.stderr, /WARN: não deu pra buscar os default reviewers .*HTTP 401/);
-    assert.deepStrictEqual(calls, [`GET /2.0/repositories/${WS}/${REPO}/effective-default-reviewers`, `POST /2.0/repositories/${WS}/${REPO}/pullrequests`]);
+    assert.strictEqual(r.code, 1);
+    assert.match(r.stderr, /ERROR: HTTP 401/);
+    assert.doesNotMatch(r.stderr, /WARN: não deu pra buscar os default reviewers/);
+    assert.deepStrictEqual(calls, [`GET /2.0/repositories/${WS}/${REPO}/effective-default-reviewers`]);
 });
 
-test('PRI-66 AC5: autoridade negada (401/403) no GET de reviewers bloqueia o efeito seguinte (nenhum POST)', {
-    todo: 'FAIL legado: bitbucket-open-pr.sh trata 401/403 dos reviewers como aviso e tenta o POST',
-}, async () => {
+test('PRI-66 AC5: autoridade negada (401/403) no GET de reviewers bloqueia o efeito seguinte (nenhum POST)', async () => {
     fake = { revoked: true, revokedStatus: 403 };
-    await openPr();
+    const r = await openPr();
+    assert.strictEqual(r.code, 1);
+    assert.match(r.stderr, /ERROR: HTTP 403/);
     assert.strictEqual(posts(), 0);
 });
 
-test('Bitbucket (legado): repetir o /commit para a mesma branch faz um segundo POST; unicidade fica com o servidor', async () => {
+test('Bitbucket: repetir a abertura consulta PRs OPEN e não faz o segundo POST', async () => {
     fake = {};
     const a = await openPr();
     const b = await openPr();
     assert.strictEqual(a.code, 0, a.stderr);
     assert.strictEqual(b.code, 0, b.stderr);
-    assert.strictEqual(posts(), 2, 'o script não consulta PR aberto antes do POST');
-    assert.ok(!calls.some(c => c.startsWith('GET') && c.endsWith('/pullrequests')));
+    assert.strictEqual(posts(), 1);
+    assert.ok(calls.filter(c => c.startsWith('GET') && c.endsWith('/pullrequests')).length >= 2);
+    assert.strictEqual(b.stdout.trim(), a.stdout.trim());
 });
 
-test('PRI-66 AC4: repetir a abertura de PR para a mesma branch não cria segundo PR', {
-    todo: 'FAIL legado: sem checagem de PR aberto nem chave de idempotência; um Bitbucket que aceite o POST cria o 2º PR',
-}, async () => {
+test('PRI-66 AC4: repetir a abertura de PR para a mesma branch não cria segundo PR', async () => {
     fake = {};
-    await openPr();
-    await openPr();
+    const a = await openPr();
+    const b = await openPr();
+    assert.strictEqual(a.code, 0, a.stderr);
+    assert.strictEqual(b.code, 0, b.stderr);
     assert.strictEqual(prs.length, 1);
+    assert.strictEqual(b.stdout.trim(), a.stdout.trim());
+    assert.match(b.stdout, /pull-requests\/1/);
 });
 
 // ── Redmine ─────────────────────────────────────────────────────────────────────
