@@ -2,10 +2,9 @@
 // PRI-66: efeitos externos do /commit (PR no Bitbucket, nota/status no Redmine) sob
 // credencial revogada no meio do ciclo e repetição do mesmo efeito. Só transportes
 // falsos: Bitbucket falso em loopback (BITBUCKET_API_BASE) e fetch injetado no
-// redmine-fetch. Não existe seam de admissão DOM06/autoridade por Attempt nesta
-// revisão. PRI-71 faz o bitbucket-open-pr.sh cumprir o contrato que antes era
-// `# TODO`: 401/403 antes do POST não tenta o efeito, e repetir a abertura
-// reutiliza o PR OPEN em vez de criar outro.
+// redmine-fetch. O bitbucket-open-pr.sh só chama a API com Attempt admitido
+// (DOM06_ATTEMPT_FILE). 401/403 revoga o Attempt. Repetir o PR cumprido não
+// faz outro request.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -14,6 +13,7 @@ const path = require('path');
 const http = require('http');
 const { execFile } = require('child_process');
 const { createRedmineFetch } = require('./lib/redmine-fetch');
+const dom06 = require('./lib/dom06-attempt');
 
 const WS = 'ws';
 const REPO = 'app-front';
@@ -24,6 +24,23 @@ fs.mkdirSync(path.join(tmp, 'scripts'));
 const script = path.join(tmp, 'scripts', 'bitbucket-open-pr.sh');
 fs.copyFileSync(path.join(__dirname, 'bitbucket-open-pr.sh'), script);
 fs.chmodSync(script, 0o755);
+const authorizeBin = path.join(__dirname, 'lib', 'dom06-attempt.js');
+
+function admitPr() {
+    const run = fs.mkdtempSync(path.join(tmp, 'run-'));
+    const decision = dom06.beginAttempt(run, {
+        node: 'commit',
+        admission: {
+            status: 'ADMITTED',
+            owner: 'dom06',
+            snapshot: { ticket_id: 41948, node: 'commit', base_branch: 'development', spec_hash: 'hash-pri66' },
+        },
+        obligations: dom06.obligationsFor('commit'),
+    });
+    return decision.attemptFile;
+}
+
+let attemptFile;
 
 // Bitbucket falso: `revoked` faz toda chamada autenticada responder 401 a partir dali;
 // `revokeAfterReviewers` revoga logo depois do GET de reviewers (meio do ciclo).
@@ -72,7 +89,17 @@ const base = () => `http://127.0.0.1:${server.address().port}/2.0`;
 function openPr() {
     return new Promise(resolve => {
         const child = execFile('bash', [script, REPO, '41948', 'development', 'Melhoria #41948'], {
-            env: { PATH: process.env.PATH, HOME: process.env.HOME, BITBUCKET_WORKSPACE: WS, BITBUCKET_API_TOKEN: TOKEN, BITBUCKET_API_BASE: base(), BITBUCKET_ACCOUNT_ID: 'acc-eu', REPO_PATH: tmp },
+            env: {
+                PATH: process.env.PATH,
+                HOME: process.env.HOME,
+                BITBUCKET_WORKSPACE: WS,
+                BITBUCKET_API_TOKEN: TOKEN,
+                BITBUCKET_API_BASE: base(),
+                BITBUCKET_ACCOUNT_ID: 'acc-eu',
+                REPO_PATH: tmp,
+                DOM06_ATTEMPT_FILE: attemptFile,
+                DOM06_AUTHORIZE_BIN: authorizeBin,
+            },
         }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr }));
         child.stdin.end('descrição');
     });
@@ -82,7 +109,18 @@ const posts = () => calls.filter(c => c.endsWith('/pullrequests') && c.startsWit
 
 test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
-test.beforeEach(() => { calls.length = 0; prs.length = 0; });
+test.beforeEach(() => { calls.length = 0; prs.length = 0; attemptFile = admitPr(); });
+
+test('PRI-66 AC5: Attempt revogado não chega a fazer request', async () => {
+    dom06.revoke(attemptFile, { reason: 'revoked-before' });
+    fake = {};
+    const r = await openPr();
+    assert.strictEqual(r.code, 1);
+    assert.match(r.stderr, /AUTHORITY_REVOKED/);
+    assert.strictEqual(calls.length, 0);
+    assert.strictEqual(prs.length, 0);
+    assert.notStrictEqual(dom06.summarize(dom06.readAttempt(attemptFile)).verdict, 'PASS');
+});
 
 test('Bitbucket: credencial revogada antes do ciclo => erro explícito, nenhum POST, sem PR e sem vazar token', async () => {
     fake = { revoked: true };
@@ -122,14 +160,15 @@ test('PRI-66 AC5: autoridade negada (401/403) no GET de reviewers bloqueia o efe
     assert.strictEqual(posts(), 0);
 });
 
-test('Bitbucket: repetir a abertura consulta PRs OPEN e não faz o segundo POST', async () => {
+test('Bitbucket: repetir a abertura não faz o segundo POST; o Attempt cumprido nem consulta de novo', async () => {
     fake = {};
     const a = await openPr();
+    const callsAfterFirst = calls.length;
     const b = await openPr();
     assert.strictEqual(a.code, 0, a.stderr);
     assert.strictEqual(b.code, 0, b.stderr);
     assert.strictEqual(posts(), 1);
-    assert.ok(calls.filter(c => c.startsWith('GET') && c.endsWith('/pullrequests')).length >= 2);
+    assert.strictEqual(calls.length, callsAfterFirst, 'a segunda abertura é DUPLICATE e não chama a API');
     assert.strictEqual(b.stdout.trim(), a.stdout.trim());
 });
 

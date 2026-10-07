@@ -59,8 +59,13 @@
 # aborta com erro explícito e NÃO segue para o POST.
 #
 # 401/403 em qualquer chamada antes do POST (default reviewers, GET /2.0/user,
-# consulta de PR) imprime "ERROR: HTTP <status> - <body>" em stderr e sai 1,
-# sem POST.
+# consulta de PR) imprime "ERROR: HTTP <status> - <body>" em stderr, revoga a
+# autoridade do Attempt e sai 1, sem POST.
+#
+# Autoridade DOM06 (PRI-66): DOM06_ATTEMPT_FILE aponta para o Attempt admitido
+# pelo watcher. Sem arquivo, ou com autoridade recusada/revogada, o script sai
+# 1 antes de qualquer request. A mesma chave pr:<repo>:<source>:<dest> já
+# cumprida reimprime a URL e não chama a API de novo.
 #
 # Requer no ambiente: BITBUCKET_WORKSPACE, BITBUCKET_API_TOKEN.
 # Opcionais: BITBUCKET_ACCOUNT_ID (ver acima), BITBUCKET_API_BASE (padrão
@@ -122,6 +127,32 @@ api_base="${BITBUCKET_API_BASE:-https://api.bitbucket.org/2.0}"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
+attempt_file="${DOM06_ATTEMPT_FILE:-}"
+authorize_js="${DOM06_AUTHORIZE_BIN:-$(cd "$(dirname "$0")/lib" && pwd)/dom06-attempt.js}"
+pr_key="pr:${repo}:${source_branch}:${dest_branch}"
+if [[ -z "$attempt_file" || ! -f "$authorize_js" ]]; then
+  echo "ERROR: AUTHORITY_INVALID — pull_request sem Attempt DOM06 admitido; nenhum request foi enviado." >&2
+  exit 1
+fi
+set +e
+auth_line="$(node "$authorize_js" authorize --attempt "$attempt_file" --obligation pull_request --key "$pr_key" 2>"$tmp_dir/auth.err")"
+auth_rc=$?
+set -e
+if [[ "$auth_rc" != 0 ]]; then
+  cat "$tmp_dir/auth.err" >&2
+  echo "ERROR: pull_request recusado; nenhum request foi enviado." >&2
+  exit 1
+fi
+if [[ "$auth_line" == DUPLICATE* ]]; then
+  echo "PR já registrado neste Attempt ($pr_key)." >&2
+  printf '%s\n' "${auth_line#DUPLICATE }"
+  exit 0
+fi
+
+record_pr() {
+  node "$authorize_js" record --attempt "$attempt_file" --obligation pull_request --key "$pr_key" --status fulfilled --detail "$1" >/dev/null
+}
+
 # GET autenticado; escreve o corpo em $1 e devolve o HTTP status no stdout.
 bb_get() {
   curl -s -o "$1" -w '%{http_code}' -H "Authorization: Bearer $BITBUCKET_API_TOKEN" -H "Accept: application/json" "$2" || echo 000
@@ -129,6 +160,9 @@ bb_get() {
 
 # Para antes do POST. $1=status $2=arquivo do corpo $3=motivo.
 die_before_post() {
+  if [[ "$1" == 401 || "$1" == 403 ]]; then
+    node "$authorize_js" revoke --attempt "$attempt_file" --reason "http_$1" >/dev/null || true
+  fi
   echo "ERROR: HTTP $1 - $(cat "$2")" >&2
   echo "ERROR: $3; PR não será criado." >&2
   exit 1
@@ -218,6 +252,7 @@ lookup_open_pr() {
 }
 lookup_open_pr
 if [[ -n "$existing_url" ]]; then
+  record_pr "$existing_url"
   echo "PR já aberto em $repo ($source_branch -> $dest_branch): $existing_url" >&2
   echo "$existing_url"
   exit 0
@@ -260,6 +295,9 @@ if [[ "$http_status" == 400 ]] && grep -q 'cannot be included as a reviewer' "$r
   fi
 fi
 
+if [[ "$http_status" == 401 || "$http_status" == 403 ]]; then
+  node "$authorize_js" revoke --attempt "$attempt_file" --reason "http_$http_status" >/dev/null || true
+fi
 if [[ "$http_status" != 2* ]]; then
   echo "ERROR: HTTP $http_status - $(cat "$response_file")" >&2
   exit 1
@@ -267,6 +305,7 @@ fi
 
 id="$(jq -r '.id' "$response_file")"
 url="$(jq -r '.links.html.href' "$response_file")"
+record_pr "$url"
 echo "PR #$id aberto em $repo ($source_branch -> $dest_branch): $url" >&2
 echo "Reviewers: $(jq -r '[.reviewers[]?.display_name] | if length == 0 then "nenhum" else join(", ") end' "$response_file")" >&2
 echo "$url"

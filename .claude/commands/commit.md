@@ -100,8 +100,14 @@ permanente em `memory/`.
      **pare aqui, não dê push em nenhum repo** — avise o usuário que faltou
      configurar e continue o resto do fluxo (git commit local já feito em
      todos, cada um fica pronto pra push/PR manual).
-   - `git push -u origin <branch>` (branch = mesmo nome do ticket, já em uso
-     em todos os repos tocados).
+   - Push com `scripts/git-push-effect.sh` (asset de plataforma). O watcher
+     exporta `DOM06_ATTEMPT_FILE` no ambiente do nó. Sem Attempt admitido o
+     script sai 1 e **não** chama `git push`. Repetir o mesmo push no mesmo
+     Attempt não faz um segundo push.
+     ```
+     "$PRISMA_ROOT/scripts/git-push-effect.sh" push -u origin <branch>
+     ```
+     (branch = mesmo nome do ticket, já em uso em todos os repos tocados).
    - Monte o título do PR a partir de `state.json.redmine_ticket`, no formato
      `<tracker> #<id> - <subject>` (ex: `Problema #43425 - Correção do comportamento informado`) — literal, sem sufixos, sem reformatar
      o assunto. **Mesmo título em todos os repos** — é a mesma demanda.
@@ -179,7 +185,16 @@ permanente em `memory/`.
      `"pr_status": "draft"` e `"pr_id"` = número do PR do consumidor principal (ou primeiro repo pertinente) — é o que o painel de preview usa pro badge.
    - Se o PR abriu com sucesso e a task tem `state.json.redmine_ticket.id`
      (veio de `/fetch-ticket`): mova o ticket Redmine pro status **"Ag
-     Merge"** (id 20 — `mcp__redmine__updateIssue` com `status_id: 20`). Só
+     Merge"** (id 20) pelo efeito governado, não pelo MCP:
+     ```
+     node "$PRISMA_ROOT/scripts/lib/dom06-attempt.js" redmine-effect \
+       --attempt "$DOM06_ATTEMPT_FILE" --obligation redmine_status \
+       --url "$REDMINE_URL/issues/<id>.json" --method PUT <<'EOF'
+     {"issue":{"status_id":20}}
+     EOF
+     ```
+     Exit 3 = autoridade recusada ou revogada: pare, sem retry. Exit 0 com
+     `DUPLICATE` = a mesma nota/status já foi aplicada neste Attempt. Só
      faça isso se o PR realmente abriu — não mova o status se o push/PR foi
      pulado por falta de credencial. **Achado ao vivo (ticket #43425):** essa
      transição de status pode exigir campo customizado obrigatório que não é
@@ -206,7 +221,7 @@ permanente em `memory/`.
      e lê task-id/ticket/PR do `state.json`.
    - Em cada repo onde o script anotou algo: commit separado só com esses arquivos
      (`git add <arquivos listados>`; mensagem `<id do ticket> - rastreabilidade @spec`)
-     e `git push` na mesma branch — o PR aberto no passo 7 recebe o commit sozinho.
+     e o push seguinte também passa por `git-push-effect.sh` na mesma branch — o PR aberto no passo 7 recebe o commit sozinho.
      Confira `git diff --cached --name-only` antes: só os `.java` anotados.
    - `node "$PRISMA_ROOT/scripts/lib/knowledge-graph.js" record <task-id>` — grava em
      `memory/knowledge-graph.json` (checkout principal, local) os nós do ticket,
@@ -237,13 +252,22 @@ permanente em `memory/`.
    limpar só depois do merge.
 8. **Preencha "Apontamentos Desenvolvedor" no ticket Redmine** (habilitado
    desde 2026-09-02, ver `memory/decisions/2026-09-02-apontamentos-
-   desenvolvedor.md`) via `mcp__redmine__updateIssue` no ticket
-   `state.json.redmine_ticket.id` (se a task não veio de `/fetch-ticket`, ou
-   se o MCP do Redmine estiver indisponível, pule este passo e avise — não
-   bloqueia o resto do commit). Preencha o campo customizado "Apontamentos
-   Desenvolvedor" com este template, cada seção com conteúdo real (nunca
-   deixe em branco — escreva "N/A" ou "Nenhum" explicitamente quando não
-   houver):
+   desenvolvedor.md`) pelo mesmo efeito governado, obrigação `redmine_notes`:
+   ```
+   node "$PRISMA_ROOT/scripts/lib/dom06-attempt.js" redmine-effect \
+     --attempt "$DOM06_ATTEMPT_FILE" --obligation redmine_notes \
+     --url "$REDMINE_URL/issues/<id>.json" --method PUT <<'EOF'
+   {"issue":{"custom_fields":[{"id":<id do campo "Apontamentos Desenvolvedor">,"value":"<template abaixo>"}]}}
+   EOF
+   ```
+   Sem `DOM06_ATTEMPT_FILE`, ou com exit 3, pare e avise — não caia no MCP
+   (o MCP não consulta a autoridade do Attempt e pode duplicar a nota).
+   `DUPLICATE` no stdout significa que o mesmo corpo já foi gravado. Se a
+   task não veio de `/fetch-ticket`, ou se o Redmine estiver indisponível,
+   pule este passo e avise — não bloqueia o resto do commit. O `value` é o
+   campo customizado "Apontamentos Desenvolvedor", cada seção com conteúdo
+   real (nunca deixe em branco — escreva "N/A" ou "Nenhum" explicitamente
+   quando não houver):
 
    ```
    Resolução do Desenvolvimento:

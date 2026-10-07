@@ -278,7 +278,7 @@ function recoverOrphans(runsDirs, { now = new Date(), defaultTimeoutMs, isAlive,
                 detail: `Nó órfão detectado pelo watcher (${cause}) — redespachando`,
             });
             state.status = RELEASED_STATUS;
-            state.recovered_from_orphan = { node, orphan_since: since, detected_at: at };
+            state.recovered_from_orphan = { node, orphan_since: since, detected_at: at, reason };
         }
         delete state.agent_pid;
         delete state.agent_started_at;
@@ -332,6 +332,14 @@ if (require.main === module) {
             const dir = stampNewTask(arg.runsDir, arg.prefix, arg);
             clearFetchDispatch(arg.gatePath, arg.startedAt);
             if (dir && code !== undefined) require('./node-events').recordNodeExit(arg, code, dir);
+        }
+        if (code !== undefined) {
+            require('./dom06-attempt').fulfillOnExit({
+                attemptFile: arg.dom06AttemptFile,
+                attemptId: arg.dom06AttemptId,
+                node: arg.node || (Array.isArray(arg.nodes) ? arg.nodes[0] : null),
+                code,
+            });
         }
     } catch (e) {
         console.error('[recovery] falha liberando lease:', e.message);

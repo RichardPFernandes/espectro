@@ -49,6 +49,7 @@ const { redmineFetch: realRedmineFetch } = require('./lib/redmine-fetch');
 const specGenerator = require('./lib/spec-generator');
 const cycleNotifications = require('./lib/cycle-notifications');
 const humanInputIntent = require('./lib/human-input-intent');
+const dom06 = require('./lib/dom06-attempt');
 
 // Consumer env loads before watcher initialization. Explicit REPO_PATH wins;
 // otherwise the caller must run in the consumer root. Candidate code has no .env.
@@ -2802,6 +2803,12 @@ function releaseLease(lease, code) {
             nodeLease.clearFetchDispatch(lease.gatePath, lease.startedAt);
             if (dir) nodeEvents.recordNodeExit(lease, code, dir);
         }
+        dom06.fulfillOnExit({
+            attemptFile: lease.dom06AttemptFile,
+            attemptId: lease.dom06AttemptId,
+            node: lease.node || (Array.isArray(lease.nodes) ? lease.nodes[0] : null),
+            code,
+        });
     } catch (e) {
         console.error('[recovery] falha liberando lease do nó:', e.message);
     }
@@ -3205,6 +3212,30 @@ function siblingAddDirArgs(ticketId) {
 // do ticket e context.md truncados, nomes de arquivos (plan) ou o diff real + pré-checagens
 // de secret/lint (review). Sanitizado — vai pro argv do `claude -p`. Falha aqui nunca
 // bloqueia o despacho: o nó roda sem o bloco, como antes (os comandos sabem ler sozinhos).
+function dom06AttemptEnv(decision) {
+    if (!decision?.attemptFile) return {};
+    return {
+        DOM06_ATTEMPT_FILE: decision.attemptFile,
+        DOM06_AUTHORIZE_BIN: path.join(__dirname, 'lib', 'dom06-attempt.js'),
+    };
+}
+
+function dom06SpecHash(state, worktreePath, ticketId) {
+    if (state?.spec?.hash) return state.spec.hash;
+    if (state?.spec_hash) return state.spec_hash;
+    const specFile = path.join(worktreePath, 'memory', 'spec', `${ticketId}-spec.md`);
+    if (!fs.existsSync(specFile)) return null;
+    return crypto.createHash('sha256').update(fs.readFileSync(specFile)).digest('hex');
+}
+
+function attachDom06Lease(lease, decision, node) {
+    if (!lease || !decision?.attempt || node === 'commit') return lease;
+    lease.dom06AttemptFile = decision.attemptFile;
+    lease.dom06AttemptId = decision.attempt.attempt_id;
+    if (!lease.node) lease.node = node;
+    return lease;
+}
+
 function repoWorktrees(ticketId, worktreePath) {
     const repos = [{ name: process.env.WATCHER_MAIN_REPO_NAME || path.basename(REPO_PATH), path: worktreePath }];
     for (const repo of SIBLING_REPOS) {
@@ -3641,12 +3672,26 @@ async function dispatchTicket(ticket) {
         } catch (e) {
             console.error(`Ticket #${id}: falha gravando marcador de despacho no gate file:`, e.message);
         }
+        const fetchAdmission = dom06.prepareDispatch({
+            runDir: path.join(taskRunsDir(id), '_dom06'),
+            node: 'fetch_ticket',
+            ticketId: id,
+            baseBranch: base,
+            specHash: null,
+            cause: 'dispatch',
+        });
+        if (!fetchAdmission.dispatch) {
+            console.warn(`Ticket #${id}: admissão DOM06 ${fetchAdmission.attempt.result} — fetch_ticket não despachado e não conta como PASS.`);
+            return { action: 'skip', reason: `dom06_${String(fetchAdmission.attempt.result).toLowerCase()}`, node: 'fetch_ticket' };
+        }
+        attachDom06Lease(newTaskLease, fetchAdmission, 'fetch_ticket');
         beginCycle({ ticketId: id, node: 'fetch_ticket' });
         logRun(id, '[watcher]', 'iniciando nós: fetch_ticket, plan');
         let fetchResult = null;
         try {
         fetchResult = await dispatchClaudeSegment({
             ticket, isRecusaQA, qaFeedback, worktreePath, lease: newTaskLease,
+            extraEnv: dom06AttemptEnv(fetchAdmission),
             commands: [`/fetch-ticket ${id}`, '/plan (use o task-id que acabou de gerar)'],
             nodes: ['fetch_ticket', 'plan'],
             contextBlock: nodeContextBlock('plan', { ticket, worktreePath }),
@@ -3901,7 +3946,20 @@ async function dispatchTicket(ticket) {
     } catch (e) {
         console.warn(`Task ${taskId}: execution_spec não registrada (${e.message}) — o carimbo do nó compara só com a spec atual.`);
     }
+    const nodeAdmission = dom06.prepareDispatch({
+        runDir: dir,
+        node,
+        ticketId: id,
+        baseBranch: base,
+        specHash: dom06SpecHash(state, worktreePath, id),
+        state,
+    });
+    if (!nodeAdmission.dispatch) {
+        console.warn(`Task ${taskId}: admissão DOM06 ${nodeAdmission.attempt.result} (${nodeAdmission.reason}) — ${node} não despachado e não conta como PASS.`);
+        return { action: 'skip', reason: `dom06_${String(nodeAdmission.attempt.result).toLowerCase()}`, taskId, node, admission: nodeAdmission.attempt.result };
+    }
     const lease = nodeLease.acquireNode(dir, { node, timeoutMs: NODE_TIMEOUT_MS, extra: executionSpec ? { execution_spec: executionSpec } : null });
+    attachDom06Lease(lease, nodeAdmission, node);
     if (lease) lease.retriesBefore = Number(state.retries?.[node]) || 0; // node_retry na saída (nodeEvents)
     appendEvent(taskId, {
         type: 'node_start', node, agent: 'claude', ts: lease?.startedAt,
@@ -3927,7 +3985,10 @@ async function dispatchTicket(ticket) {
                 ? `Se memory/runs/${taskId}/context.md tiver o bloco entre ${specValidator.CONTEXT_BEGIN} e ` +
                   `${specValidator.CONTEXT_END} (avisos do portão de spec), preserve-o ao reescrever o arquivo.` + planFeedbackNote(state) + invalidate.promptNote(state)
                 : '') + (testScope ? testScopeNote(node, testScope.services) : '') + schemaChecklistNote(schemaResult) + preBuildNote + recovery + humanInputNote(humanInput, unblock) + cycleReplayer.replayPromptNote(state) + qaRetryNote(taskId, node),
-        extraEnv: testScope ? { AFFECTED_SERVICES: testScope.services.join(',') } : {},
+        extraEnv: {
+            ...(testScope ? { AFFECTED_SERVICES: testScope.services.join(',') } : {}),
+            ...dom06AttemptEnv(nodeAdmission),
+        },
     });
     } finally {
         endCycle(cycleOutcome(segment));
