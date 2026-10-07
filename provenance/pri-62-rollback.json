@@ -1,0 +1,67 @@
+{
+  "artifact_kind": "pri62_rollback_manifest",
+  "issue": "PRI-62",
+  "status": "CONSUMPTION_RETURN_EXERCISED_ISOLATED",
+  "observed_at": "2026-10-07T14:25:00-03:00",
+  "active_execution": "app-back scripts (fonte); nenhum cutover, stop ou revert executado",
+  "candidate": {
+    "revision": "04c130b00b7cce38ee17b1edc1d26ba67cd8c59a",
+    "tree": "6a6b3f559e9270399e96e26bb56ab02c7642285b",
+    "files": 248,
+    "readback": "git archive da revisão, hash por arquivo contra candidate-source-preflight.json"
+  },
+  "previous_source": {
+    "head": "a1ac43307cc5f275caf5a70ad3068c9af099b127",
+    "selected_files": 230,
+    "accepted_list_sha256": "e3ba5c9ffa43c6fb2cb1e955ec1a2715af1337df5f11835941a42ae9b104ca84",
+    "snapshot": "app-back/memory/runs/_archive/pri-60-platform-extraction/source-selected.tar.gz",
+    "snapshot_sha256": "ad61809914fbca65f3657b98053a8ae9771f9e50f4bae3abcc0fdeb783163da0",
+    "snapshot_path_note": "source-recovery-proof.json da PRI-60 grava o caminho anterior ao arquivamento (memory/runs/pri-60-platform-extraction/)",
+    "readback": "tar -xzf em tmp; hash, tamanho e bit de execução dos 230 contra o preflight",
+    "live_checkout_matches_snapshot": true
+  },
+  "consumer_config": {
+    "location": "app-back, fora do Git; nenhum arquivo contém chave de segredo",
+    "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/consumption-return-2026-10-07/consumer-config-snapshot/",
+    "files": [
+      { "path": "prisma-consumer.env", "git": "untracked", "bytes": 847, "sha256": "44a91f61ab5add073bcdbad64ca4a4bdf4333bf853de213865671762c0a32f48" },
+      { "path": "config/consolidator-module-keywords.json", "git": "untracked", "bytes": 1061, "sha256": "423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c" },
+      { "path": "scripts/prisma-consumer.env.example", "git": "ignored", "bytes": 1731, "sha256": "055a6f78800a075043a56cf102f6423475bc798e8efecc869b6601ba07f62ac9" },
+      { "path": ".claude/prisma-module-keywords.json", "git": "ignored", "bytes": 1269, "sha256": "c639d2e2f3c55b64137a86a8746552f9042c3ec2be96f34599d615d69e529885" },
+      { "path": ".claude/prisma-response-factory.json", "git": "ignored", "bytes": 302, "sha256": "18cc52e3fd8f32e4f24cd35daa6d119ed88b4012d30c3290646685caf7fb78c0" },
+      { "path": "docs/prisma-candidate.md", "git": "untracked", "bytes": 3261, "sha256": "917ceb80daff51d8b75bc8b13f2848590aec3d5e96738802979bc9c0e5c7433b" }
+    ],
+    "open_question": "Dois conjuntos de config de consumo coexistem (prisma-consumer.env + config/ e scripts/prisma-consumer.env.example + .claude/prisma-*.json). Qual é o admitido para o cutover é decisão da PRI-61/PRI-63; os dois estão preservados.",
+    "not_copied": [".env", "credenciais", "memory/runs reais", "dados TMS"]
+  },
+  "exercise": {
+    "harness": "provenance/pri-62/consumption-rollback.test.js",
+    "harness_sha256": "a9844bb4050364f560e6e48e368ca4e58316d8cf152f59f65d5cadfbc5e52ff6",
+    "result": "app-back/memory/runs/pri-62-reversal-preparation/consumption-return-2026-10-07/consumption-rollback.tap",
+    "result_sha256": "a6f379653a6e0a2e74f8ce239ec3a7b647925d4420d2fb5dc0d0d3813d3df602",
+    "tests": 6, "pass": 6, "fail": 0, "skipped": 0,
+    "negative_control": "sem as variáveis de entrada a harness falha (1 fail), não pula",
+    "environment": "diretórios temporários, DRY_RUN=true, fixtures sintéticas, env mínimo sem credenciais; app-back git status idêntico antes/depois",
+    "prior_code_reference_return": "candidate-reversal.test.js 7/7 PASS na mesma candidata, reexecutado em 2026-10-07"
+  },
+  "findings": [
+    "Não há trava de instância do watcher: acquireNode não recusa task running; exclusividade entre fonte e candidata depende de parar a candidata e esperar seus agentes.",
+    "node-lease.agentAlive só reconhece pid cujo comando contém 'claude' (igual na fonte e na candidata).",
+    "O wrapper do agente destacado libera o lease por $PRISMA_ROOT/scripts/lib/node-lease.js: o checkout do Prisma precisa continuar no lugar até esses agentes saírem.",
+    "Fonte e candidata leem o mesmo .env do consumidor; o retorno não restaura nem copia credenciais.",
+    "Pré-build: a fonte usa mvn fixo; PRE_BUILD_COMMAND/TEST_COMMAND da config do consumidor só valem na candidata."
+  ],
+  "delta_from_candidate": {
+    "base": "04c130b00b7cce38ee17b1edc1d26ba67cd8c59a",
+    "added": ["docs/rollback.md", "provenance/pri-62-rollback.json", "provenance/pri-62/consumption-rollback.test.js"],
+    "runtime_files_changed": 0,
+    "note": "O ensaio executa os bytes de 04c130b extraídos por git archive, não este commit."
+  },
+  "unproven": [
+    "Redmine, Bitbucket, agentes e Maven reais",
+    "revogação real de credencial e SecretResolver",
+    "Decision formal além do 'aprovado' no Redmine e do state-writer set do contrato atual",
+    "exclusividade global entre hosts/processos",
+    "revisão de cutover diferente de 04c130b"
+  ]
+}
