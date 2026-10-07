@@ -37,9 +37,30 @@
 # GET .../effective-default-reviewers e manda em "reviewers". O autor (dono do
 # token) não pode ser reviewer — o Bitbucket responde 400 — então ele sai da
 # lista: por BITBUCKET_ACCOUNT_ID, ou GET /2.0/user (exige o escopo
-# read:user:bitbucket); sem nenhum dos dois, se o POST voltar 400 "is the author
-# and cannot be included as a reviewer", tira o reviewer citado e tenta uma vez
-# mais. Falha ao buscar os reviewers nunca impede o PR: abre sem e avisa no stderr.
+# read:user:bitbucket). Sem BITBUCKET_ACCOUNT_ID, 401/403 nesse GET /2.0/user
+# interrompe sem criar o PR (token sem o escopo também cai aqui — defina
+# BITBUCKET_ACCOUNT_ID pra não chamar /user). Outro erro no GET /2.0/user segue
+# sem identidade: se o POST voltar 400 "is the author and cannot be included as
+# a reviewer", tira o reviewer citado e tenta uma vez mais.
+# 401/403 na busca de reviewers também interrompe, sem POST. Erro de outro tipo
+# nessa busca não impede o PR: abre sem reviewers e avisa no stderr.
+#
+# PR já aberto (PRI-71): antes do POST, consulta os PRs OPEN da branch de origem
+# para o mesmo destino na API Bitbucket Cloud 2.0
+# (GET /2.0/repositories/{workspace}/{repo}/pullrequests). O filtro vai em `q`
+# — source.branch.name AND destination.branch.name AND state="OPEN" — porque,
+# com `q` presente, o Bitbucket ignora o parâmetro `state` (o mesmo achado de
+# scripts/lib/bitbucket-pr.js). Workspace, repo e o valor de `q` são
+# URL-encoded (RFC 3986, via jq @uri). Aspas, barras invertidas e controles no
+# nome da branch entram escapados como string BBQL. Se já existe um, imprime a
+# URL html dele na última linha do stdout e sai 0, sem criar outro (mais de um
+# na página: usa o primeiro). A consulta segue o `next` enquanto não achar.
+# Falha dessa consulta — 401/403 ou qualquer outro HTTP, rede ou JSON inválido —
+# aborta com erro explícito e NÃO segue para o POST.
+#
+# 401/403 em qualquer chamada antes do POST (default reviewers, GET /2.0/user,
+# consulta de PR) imprime "ERROR: HTTP <status> - <body>" em stderr e sai 1,
+# sem POST.
 #
 # Requer no ambiente: BITBUCKET_WORKSPACE, BITBUCKET_API_TOKEN.
 # Opcionais: BITBUCKET_ACCOUNT_ID (ver acima), BITBUCKET_API_BASE (padrão
@@ -49,7 +70,7 @@
 #
 # Saída em sucesso (exit 0): imprime só a URL html do PR na última linha de
 # stdout (fácil de capturar com $(...)); detalhes completos (id incluso) vão
-# pra stderr.
+# pra stderr. PR reutilizado usa o mesmo contrato de URL.
 # Saída em falha (exit 1): imprime "ERROR: HTTP <status> - <body>" em stderr.
 # Nunca loga o valor do token.
 
@@ -106,11 +127,31 @@ bb_get() {
   curl -s -o "$1" -w '%{http_code}' -H "Authorization: Bearer $BITBUCKET_API_TOKEN" -H "Accept: application/json" "$2" || echo 000
 }
 
+# Para antes do POST. $1=status $2=arquivo do corpo $3=motivo.
+die_before_post() {
+  echo "ERROR: HTTP $1 - $(cat "$2")" >&2
+  echo "ERROR: $3; PR não será criado." >&2
+  exit 1
+}
+
+# String BBQL entre aspas, com escape de JSON (aspas, barra invertida, controles).
+bbql_quote() {
+  jq -nr --arg v "$1" '"\"" + ($v | @json | .[1:-1]) + "\""'
+}
+
+# encodeURIComponent (RFC 3986), pra path e pra o valor de `q`.
+bb_uri() {
+  jq -nr --arg v "$1" '$v|@uri'
+}
+
 # Reviewers default efetivos do repo (repo + projeto), paginado.
 reviewers='[]'
-next_url="$api_base/repositories/$BITBUCKET_WORKSPACE/$repo/effective-default-reviewers?pagelen=100"
+next_url="$api_base/repositories/$(bb_uri "$BITBUCKET_WORKSPACE")/$(bb_uri "$repo")/effective-default-reviewers?pagelen=100"
 while [[ -n "$next_url" ]]; do
   status="$(bb_get "$tmp_dir/dr.json" "$next_url")"
+  if [[ "$status" == 401 || "$status" == 403 ]]; then
+    die_before_post "$status" "$tmp_dir/dr.json" "busca de default reviewers recusou a credencial (HTTP $status)"
+  fi
   if [[ "$status" != 2* ]]; then
     echo "WARN: não deu pra buscar os default reviewers de $repo (HTTP $status); PR abre sem reviewers" >&2
     reviewers='[]'
@@ -123,12 +164,63 @@ done
 # Dono do token, pra sair da lista (autor não pode ser reviewer).
 me="${BITBUCKET_ACCOUNT_ID:-}"
 if [[ -z "$me" && "$reviewers" != '[]' ]]; then
-  if [[ "$(bb_get "$tmp_dir/me.json" "$api_base/user")" == 2* ]]; then
+  user_status="$(bb_get "$tmp_dir/me.json" "$api_base/user")"
+  if [[ "$user_status" == 401 || "$user_status" == 403 ]]; then
+    die_before_post "$user_status" "$tmp_dir/me.json" "GET /2.0/user recusou a credencial (HTTP $user_status)"
+  fi
+  if [[ "$user_status" == 2* ]]; then
     me="$(jq -r '.account_id // empty' "$tmp_dir/me.json")"
   fi
 fi
 if [[ -n "$me" ]]; then
   reviewers="$(jq -c --arg me "$me" 'map(select(.account_id != $me))' <<<"$reviewers")"
+fi
+
+# PRs OPEN da mesma origem e destino. existing_url fica vazio se não houver.
+existing_url=""
+lookup_open_pr() {
+  local src_q dst_q q list_url status found
+  src_q="$(bbql_quote "$source_branch")"
+  dst_q="$(bbql_quote "$dest_branch")"
+  q="source.branch.name=${src_q} AND destination.branch.name=${dst_q} AND state=\"OPEN\""
+  list_url="$api_base/repositories/$(bb_uri "$BITBUCKET_WORKSPACE")/$(bb_uri "$repo")/pullrequests?q=$(bb_uri "$q")&pagelen=50"
+  while [[ -n "$list_url" ]]; do
+    status="$(bb_get "$tmp_dir/prs.json" "$list_url")"
+    if [[ "$status" == 401 || "$status" == 403 ]]; then
+      die_before_post "$status" "$tmp_dir/prs.json" "consulta de PRs OPEN recusou a credencial (HTTP $status)"
+    fi
+    if [[ "$status" != 2* ]]; then
+      die_before_post "$status" "$tmp_dir/prs.json" "falha ao consultar PRs OPEN de $source_branch para $dest_branch (HTTP $status)"
+    fi
+    found="$(jq -r --arg src "$source_branch" --arg dst "$dest_branch" '
+      ([.values[]?
+        | select((.state // "OPEN") == "OPEN")
+        | select(.source.branch.name == $src and .destination.branch.name == $dst)
+        | (.links.html.href // "__MISSING__")
+      ] | .[0]) // empty
+    ' "$tmp_dir/prs.json")" || {
+      echo "ERROR: resposta inválida ao consultar PRs OPEN; PR não será criado." >&2
+      exit 1
+    }
+    if [[ "$found" == "__MISSING__" ]]; then
+      echo "ERROR: PR OPEN de $source_branch para $dest_branch sem URL html; PR não será criado." >&2
+      exit 1
+    fi
+    if [[ -n "$found" ]]; then
+      existing_url="$found"
+      return 0
+    fi
+    list_url="$(jq -r '.next // empty' "$tmp_dir/prs.json")" || {
+      echo "ERROR: resposta inválida ao consultar PRs OPEN; PR não será criado." >&2
+      exit 1
+    }
+  done
+}
+lookup_open_pr
+if [[ -n "$existing_url" ]]; then
+  echo "PR já aberto em $repo ($source_branch -> $dest_branch): $existing_url" >&2
+  echo "$existing_url"
+  exit 0
 fi
 
 build_payload() {
@@ -150,7 +242,7 @@ post_pr() {
     -X POST \
     -H "Authorization: Bearer $BITBUCKET_API_TOKEN" \
     -H "Content-Type: application/json" \
-    "$api_base/repositories/$BITBUCKET_WORKSPACE/$repo/pullrequests" \
+    "$api_base/repositories/$(bb_uri "$BITBUCKET_WORKSPACE")/$(bb_uri "$repo")/pullrequests" \
     -d @"$tmp_dir/payload.json"
 }
 

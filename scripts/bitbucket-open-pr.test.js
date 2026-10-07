@@ -1,7 +1,7 @@
 // node --test scripts/bitbucket-open-pr.test.js
 // bitbucket-open-pr.sh contra um Bitbucket falso (BITBUCKET_API_BASE). O
-// script roda de uma cópia num dir temporário: ele carrega ../.env relativo a
-// si mesmo, e o .env real (token de verdade) não pode entrar no teste.
+// script roda com REPO_PATH num dir temporário sem .env: o .env real (token de
+// verdade) não pode entrar no teste. Só transporte falso, em loopback.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -23,6 +23,7 @@ fs.chmodSync(script, 0o755);
 // Comportamento do Bitbucket falso, trocado por teste.
 let fake;
 const posts = [];
+const listGets = [];
 const page = (users, next) => ({ values: users.map(([account_id, display_name]) => ({ reviewer_type: 'repository', user: { account_id, display_name } })), next });
 
 const server = http.createServer((req, res) => {
@@ -31,13 +32,33 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
         const u = new URL(req.url, 'http://x');
         const send = (status, obj) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
-        if (u.pathname === '/2.0/user') return fake.user ? send(200, { account_id: fake.user }) : send(403, { error: { message: 'lack scopes' } });
+        if (u.pathname === '/2.0/user') {
+            if (fake.userStatus) return send(fake.userStatus, { error: { message: 'nope' } });
+            return fake.user ? send(200, { account_id: fake.user }) : send(403, { error: { message: 'lack scopes' } });
+        }
         if (u.pathname === `/2.0/repositories/${WS}/${REPO}/effective-default-reviewers`) {
             if (fake.reviewersStatus) return send(fake.reviewersStatus, { error: { message: 'nope' } });
-            const pages = fake.pages;
+            const pages = fake.pages && fake.pages.length ? fake.pages : [[]];
             const i = Number(u.searchParams.get('page') || 0);
             const next = i + 1 < pages.length ? `${base()}/repositories/${WS}/${REPO}/effective-default-reviewers?page=${i + 1}` : undefined;
             return send(200, page(pages[i], next));
+        }
+        if (u.pathname === `/2.0/repositories/${WS}/${REPO}/pullrequests` && req.method === 'GET') {
+            listGets.push(u.searchParams.get('q'));
+            if (fake.prListStatus) return send(fake.prListStatus, { error: { message: 'nope' } });
+            const q = u.searchParams.get('q') || '';
+            const values = (fake.openPrs || []).filter(pr =>
+                q.includes(`source.branch.name="${pr.source}"`) &&
+                q.includes(`destination.branch.name="${pr.destination}"`) &&
+                q.includes('state="OPEN"')
+            ).map(pr => ({
+                id: pr.id,
+                state: 'OPEN',
+                source: { branch: { name: pr.source } },
+                destination: { branch: { name: pr.destination } },
+                links: { html: { href: pr.href } },
+            }));
+            return send(200, { values });
         }
         if (u.pathname === `/2.0/repositories/${WS}/${REPO}/pullrequests` && req.method === 'POST') {
             const payload = JSON.parse(body);
@@ -53,10 +74,12 @@ const server = http.createServer((req, res) => {
 });
 const base = () => `http://127.0.0.1:${server.address().port}/2.0`;
 
-function run(extraEnv = {}) {
+function run(extraEnv = {}, branches = {}) {
+    const source = branches.source || '41948';
+    const dest = branches.dest || 'development';
     return new Promise(resolve => {
-        const child = execFile('bash', [script, REPO, '41948', 'development', 'Melhoria #41948'], {
-            env: { PATH: process.env.PATH, HOME: process.env.HOME, BITBUCKET_WORKSPACE: WS, BITBUCKET_API_TOKEN: 'tok-fake', BITBUCKET_API_BASE: base(), ...extraEnv },
+        const child = execFile('bash', [script, REPO, source, dest, 'Melhoria #41948'], {
+            env: { PATH: process.env.PATH, HOME: process.env.HOME, BITBUCKET_WORKSPACE: WS, BITBUCKET_API_TOKEN: 'tok-fake', BITBUCKET_API_BASE: base(), REPO_PATH: tmp, ...extraEnv },
         }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr }));
         child.stdin.end('descrição');
     });
@@ -64,7 +87,7 @@ function run(extraEnv = {}) {
 
 test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
-test.beforeEach(() => { posts.length = 0; });
+test.beforeEach(() => { posts.length = 0; listGets.length = 0; });
 
 test('BITBUCKET_ACCOUNT_ID: manda os default reviewers sem o autor, num POST só (com paginação)', async () => {
     fake = { pages: [[['acc-ana', 'Ana'], [ME, 'Eu Mesmo']], [['acc-beto', 'Beto']]] };
@@ -75,6 +98,7 @@ test('BITBUCKET_ACCOUNT_ID: manda os default reviewers sem o autor, num POST só
     assert.strictEqual(posts[0].draft, true);
     assert.strictEqual(r.stdout.trim(), `https://bitbucket.org/${WS}/${REPO}/pull-requests/42`);
     assert.match(r.stderr, /Reviewers: Ana, Beto/);
+    assert.strictEqual(listGets[0], 'source.branch.name="41948" AND destination.branch.name="development" AND state="OPEN"');
 });
 
 test('/user com escopo: usa o account_id dele pra tirar o autor', async () => {
@@ -84,8 +108,8 @@ test('/user com escopo: usa o account_id dele pra tirar o autor', async () => {
     assert.deepStrictEqual(posts.map(p => p.reviewers), [[{ account_id: 'acc-caio' }]]);
 });
 
-test('sem identidade (/user 403): 400 "is the author" => tira o citado e tenta de novo uma vez', async () => {
-    fake = { pages: [[['acc-ana', 'Ana'], [ME, 'Eu Mesmo']]] };
+test('GET /2.0/user com erro que não é 401/403 segue, e 400 do autor tenta de novo uma vez', async () => {
+    fake = { userStatus: 500, pages: [[['acc-ana', 'Ana'], [ME, 'Eu Mesmo']]] };
     const r = await run();
     assert.strictEqual(r.code, 0, r.stderr);
     assert.strictEqual(posts.length, 2);
@@ -93,11 +117,101 @@ test('sem identidade (/user 403): 400 "is the author" => tira o citado e tenta d
     assert.match(r.stderr, /Reviewers: Ana/);
 });
 
-test('falha ao buscar os default reviewers não impede o PR: abre sem e avisa', async () => {
-    fake = { reviewersStatus: 403 };
+test('GET /2.0/user 401/403 interrompe sem POST', async () => {
+    for (const status of [401, 403]) {
+        posts.length = 0;
+        listGets.length = 0;
+        fake = { userStatus: status, pages: [[['acc-ana', 'Ana'], [ME, 'Eu Mesmo']]] };
+        const r = await run();
+        assert.notStrictEqual(r.code, 0, String(status));
+        assert.match(r.stderr, new RegExp(`ERROR: HTTP ${status}`));
+        assert.match(r.stderr, /PR não será criado/);
+        assert.strictEqual(posts.length, 0, String(status));
+        assert.strictEqual(listGets.length, 0, String(status));
+        assert.ok(!r.stderr.includes('tok-fake') && !r.stdout.includes('tok-fake'));
+    }
+});
+
+test('falha que não é 401/403 ao buscar os default reviewers não impede o PR: abre sem e avisa', async () => {
+    fake = { reviewersStatus: 500 };
     const r = await run();
     assert.strictEqual(r.code, 0, r.stderr);
     assert.deepStrictEqual(posts[0].reviewers, []);
     assert.match(r.stderr, /WARN: não deu pra buscar os default reviewers/);
     assert.ok(!r.stderr.includes('tok-fake') && !r.stdout.includes('tok-fake'), 'token nunca aparece na saída');
+});
+
+test('401/403 ao buscar os default reviewers interrompe sem POST', async () => {
+    for (const status of [401, 403]) {
+        posts.length = 0;
+        listGets.length = 0;
+        fake = { reviewersStatus: status };
+        const r = await run();
+        assert.notStrictEqual(r.code, 0, String(status));
+        assert.match(r.stderr, new RegExp(`ERROR: HTTP ${status}`));
+        assert.match(r.stderr, /PR não será criado/);
+        assert.strictEqual(posts.length, 0, String(status));
+        assert.strictEqual(listGets.length, 0, String(status));
+    }
+});
+
+test('PR OPEN da mesma origem e destino é reutilizado: URL na última linha, sem POST', async () => {
+    const href = `https://bitbucket.org/${WS}/${REPO}/pull-requests/7`;
+    fake = {
+        pages: [[]],
+        openPrs: [{ id: 7, source: '41948', destination: 'development', href }],
+    };
+    const r = await run({ BITBUCKET_ACCOUNT_ID: ME });
+    assert.strictEqual(r.code, 0, r.stderr);
+    assert.strictEqual(posts.length, 0);
+    const lines = r.stdout.replace(/\s+$/, '').split('\n');
+    assert.strictEqual(lines[lines.length - 1], href);
+    assert.match(r.stderr, /já aberto/);
+    assert.ok(!r.stderr.includes('tok-fake') && !r.stdout.includes('tok-fake'));
+});
+
+test('PR OPEN para outro destino não é reutilizado', async () => {
+    fake = {
+        pages: [[]],
+        openPrs: [{ id: 8, source: '41948', destination: 'main', href: `https://bitbucket.org/${WS}/${REPO}/pull-requests/8` }],
+    };
+    const r = await run({ BITBUCKET_ACCOUNT_ID: ME });
+    assert.strictEqual(r.code, 0, r.stderr);
+    assert.strictEqual(posts.length, 1);
+    assert.strictEqual(posts[0].destination.branch.name, 'development');
+});
+
+test('consulta de PR com branch especial usa q URL-encoded e state dentro do filtro', async () => {
+    const source = 'feat/a b"c\\d';
+    const dest = 'release/1.0';
+    fake = { pages: [[]] };
+    const r = await run({ BITBUCKET_ACCOUNT_ID: ME }, { source, dest });
+    assert.strictEqual(r.code, 0, r.stderr);
+    assert.strictEqual(posts.length, 1);
+    assert.strictEqual(listGets[0], 'source.branch.name="feat/a b\\"c\\\\d" AND destination.branch.name="release/1.0" AND state="OPEN"');
+    assert.strictEqual(posts[0].source.branch.name, source);
+});
+
+test('consulta de PR 401/403 interrompe sem POST', async () => {
+    for (const status of [401, 403]) {
+        posts.length = 0;
+        listGets.length = 0;
+        fake = { pages: [[]], prListStatus: status };
+        const r = await run({ BITBUCKET_ACCOUNT_ID: ME });
+        assert.notStrictEqual(r.code, 0, String(status));
+        assert.match(r.stderr, new RegExp(`ERROR: HTTP ${status}`));
+        assert.match(r.stderr, /PR não será criado/);
+        assert.strictEqual(posts.length, 0, String(status));
+        assert.strictEqual(listGets.length, 1, String(status));
+    }
+});
+
+test('consulta de PR com erro que não é 401/403 também não segue para o POST', async () => {
+    fake = { pages: [[]], prListStatus: 500 };
+    const r = await run({ BITBUCKET_ACCOUNT_ID: ME });
+    assert.strictEqual(r.code, 1, r.stderr);
+    assert.match(r.stderr, /ERROR: HTTP 500/);
+    assert.match(r.stderr, /PR não será criado/);
+    assert.strictEqual(posts.length, 0);
+    assert.strictEqual(listGets.length, 1);
 });
