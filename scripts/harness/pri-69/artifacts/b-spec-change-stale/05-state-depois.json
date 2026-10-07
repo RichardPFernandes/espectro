@@ -1,0 +1,176 @@
+{
+  "task_id": "92210-spec",
+  "history": [
+    "fetch_ticket",
+    "plan",
+    "implement"
+  ],
+  "started_at": "2026-10-07T18:38:28.058Z",
+  "updated_at": "2026-10-07T18:38:28.533Z",
+  "redmine_ticket": {
+    "id": 92210,
+    "subject": "Ticket harness 92210",
+    "base_branch": "development"
+  },
+  "spec_path": "memory/spec/92210-spec.md",
+  "spec_hash": "3e3fb3df4e353436b3aa4e90ce4f7c8576ba3d02b4ac56697d594afe15687c4b",
+  "node": "plan",
+  "status": "in_progress",
+  "execution_id": "9ce81033-2c15-4529-9e8b-32e19671a1aa",
+  "processed_operations": [],
+  "state_version": 5,
+  "critical_fingerprint": "68574411b49ee4f3",
+  "ticket_status": "Em Desenvolvimento",
+  "events": [
+    {
+      "ts": "2026-10-07T18:38:28.246Z",
+      "type": "spec_drift",
+      "node": "review",
+      "at": "2026-10-07T18:38:28.246Z",
+      "detail": "Pipeline pausado antes de review: a spec memory/spec/92210-spec.md mudou depois do Plan (spec_hash 3e3fb3df4e35 → atual 4dbf26b00da3); sem aprovação: state.json não tem spec_change_approved"
+    },
+    {
+      "ts": "2026-10-07T18:38:28.533Z",
+      "type": "artifacts_invalidated",
+      "node": "plan",
+      "at": "2026-10-07T18:38:28.533Z",
+      "detail": "Spec de spec_hash 3e3fb3df4e35 → de spec_hash 4dbf26b00da3 (aprovação manual de drift (spec_change_hash)): plan, implement, review, evidence, verify STALE — o ciclo recomeça no /plan"
+    },
+    {
+      "ts": "2026-10-07T18:38:28.533Z",
+      "type": "spec_change_accepted",
+      "node": "review",
+      "at": "2026-10-07T18:38:28.533Z",
+      "detail": "SPEC_CHANGE aprovado (spec_change_hash 4dbf26b00da3) — pipeline retomado em plan (artefatos da versão anterior STALE)"
+    },
+    {
+      "ts": "2026-10-07T18:38:28.550Z",
+      "type": "node_start",
+      "node": "plan",
+      "agent": "claude",
+      "detail": "Despachando plan para Claude",
+      "at": "2026-10-07T18:38:28.550Z"
+    },
+    {
+      "ts": "2026-10-07T18:38:28.917Z",
+      "type": "node_end",
+      "node": "plan",
+      "agent": "claude",
+      "detail": "Nó plan concluído — node: plan",
+      "exit_code": 0,
+      "at": "2026-10-07T18:38:28.917Z"
+    }
+  ],
+  "spec_change_approved": true,
+  "spec_change_hash": "4dbf26b00da3307810bd077da50c59ece755a04178e0394a942b88d86ce16ba2",
+  "artifact_validity": {
+    "plan": {
+      "artifact": "plan.md",
+      "spec_hash": "3e3fb3df4e353436b3aa4e90ce4f7c8576ba3d02b4ac56697d594afe15687c4b",
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": null,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:28.533Z",
+      "invalidated_by": "aprovação manual de drift (spec_change_hash)",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    },
+    "implement": {
+      "artifact": "implementação (diff do worktree)",
+      "spec_hash": "3e3fb3df4e353436b3aa4e90ce4f7c8576ba3d02b4ac56697d594afe15687c4b",
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": null,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:28.533Z",
+      "invalidated_by": "aprovação manual de drift (spec_change_hash)",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    },
+    "review": {
+      "artifact": "review-result.md",
+      "spec_hash": null,
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": null,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:28.533Z",
+      "invalidated_by": "aprovação manual de drift (spec_change_hash)",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    },
+    "evidence": {
+      "artifact": "acceptance-evidence.json",
+      "spec_hash": null,
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": null,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:28.533Z",
+      "invalidated_by": "aprovação manual de drift (spec_change_hash)",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    },
+    "verify": {
+      "artifact": "spec-conformance.md",
+      "spec_hash": null,
+      "spec_version": null,
+      "produced_at": null,
+      "validity": {
+        "status": "STALE",
+        "stale_since_version": null,
+        "stale_acs": []
+      },
+      "stale_at": "2026-10-07T18:38:28.533Z",
+      "invalidated_by": "aprovação manual de drift (spec_change_hash)",
+      "stale_reason": "contrato (HASH_SCOPE) alterado"
+    }
+  },
+  "stale_artifacts": [
+    "plan.md",
+    "handoff.md",
+    "acceptance-evidence.json"
+  ],
+  "stale_since": "2026-10-07T18:38:28.533Z",
+  "invalidations": [
+    {
+      "at": "2026-10-07T18:38:28.533Z",
+      "transition_id": "manual-approval:4dbf26b00da3",
+      "triggered_by": "aprovação manual de drift (spec_change_hash)",
+      "cause": "spec_change_approved",
+      "case": "idle",
+      "hash_scope_changed": true,
+      "old_spec_hash": "3e3fb3df4e353436b3aa4e90ce4f7c8576ba3d02b4ac56697d594afe15687c4b",
+      "new_spec_hash": "4dbf26b00da3307810bd077da50c59ece755a04178e0394a942b88d86ce16ba2",
+      "old_spec_version": null,
+      "new_spec_version": null,
+      "phases": [
+        "plan",
+        "implement",
+        "review",
+        "evidence",
+        "verify"
+      ],
+      "stale_acs": []
+    }
+  ],
+  "execution_spec": {
+    "node": "plan",
+    "spec_hash": "4dbf26b00da3307810bd077da50c59ece755a04178e0394a942b88d86ce16ba2",
+    "spec_version": null,
+    "started_at": "2026-10-07T18:38:28.550Z"
+  },
+  "node_started_at": "2026-10-07T18:38:28.550Z",
+  "node_timeout_ms": 3600000,
+  "schema_changes_detected": false,
+  "schema_risk_level": null
+}

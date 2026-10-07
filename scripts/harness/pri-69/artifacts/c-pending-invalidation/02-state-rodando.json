@@ -1,0 +1,45 @@
+{
+  "task_id": "92211-inv",
+  "history": [
+    "fetch_ticket",
+    "plan",
+    "implement"
+  ],
+  "started_at": "2026-10-07T18:38:29.429Z",
+  "updated_at": "2026-10-07T18:38:29.429Z",
+  "redmine_ticket": {
+    "id": 92211,
+    "subject": "Ticket harness 92211",
+    "base_branch": "development"
+  },
+  "spec_path": "memory/spec/92211-spec.md",
+  "spec_hash": "10df605669e44f6e94a3837e33b0c94c81f624461eb63920b68f3e4def004f2b",
+  "node": "review",
+  "status": "running",
+  "execution_id": "f06f7ad7-0427-41bc-8ccf-cd02ec8e2f88",
+  "processed_operations": [],
+  "state_version": 2,
+  "critical_fingerprint": "7caa7a46c6f1880d",
+  "ticket_status": "Em Desenvolvimento",
+  "execution_spec": {
+    "node": "review",
+    "spec_hash": "10df605669e44f6e94a3837e33b0c94c81f624461eb63920b68f3e4def004f2b",
+    "spec_version": null,
+    "started_at": "2026-10-07T18:38:29.618Z"
+  },
+  "node_started_at": "2026-10-07T18:38:29.618Z",
+  "node_timeout_ms": 3600000,
+  "events": [
+    {
+      "ts": "2026-10-07T18:38:29.618Z",
+      "type": "node_start",
+      "node": "review",
+      "agent": "claude",
+      "detail": "Despachando review para Claude",
+      "at": "2026-10-07T18:38:29.618Z"
+    }
+  ],
+  "schema_changes_detected": false,
+  "schema_risk_level": null,
+  "agent_pid": 93429
+}

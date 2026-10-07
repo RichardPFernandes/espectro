@@ -1,0 +1,42 @@
+{
+  "task_id": "92210-spec",
+  "history": [
+    "fetch_ticket",
+    "plan",
+    "implement"
+  ],
+  "started_at": "2026-10-07T18:38:28.058Z",
+  "updated_at": "2026-10-07T18:38:28.246Z",
+  "redmine_ticket": {
+    "id": 92210,
+    "subject": "Ticket harness 92210",
+    "base_branch": "development"
+  },
+  "spec_path": "memory/spec/92210-spec.md",
+  "spec_hash": "3e3fb3df4e353436b3aa4e90ce4f7c8576ba3d02b4ac56697d594afe15687c4b",
+  "node": "review",
+  "status": "spec-drift",
+  "execution_id": "9ce81033-2c15-4529-9e8b-32e19671a1aa",
+  "processed_operations": [],
+  "state_version": 2,
+  "critical_fingerprint": "b60ef7f7b0c7bd93",
+  "ticket_status": "Em Desenvolvimento",
+  "spec_drift": {
+    "detected_at": "2026-10-07T18:38:28.246Z",
+    "node": "review",
+    "spec_path": "memory/spec/92210-spec.md",
+    "expected_hash": "3e3fb3df4e353436b3aa4e90ce4f7c8576ba3d02b4ac56697d594afe15687c4b",
+    "current_hash": "4dbf26b00da3307810bd077da50c59ece755a04178e0394a942b88d86ce16ba2",
+    "reason": "a spec memory/spec/92210-spec.md mudou depois do Plan (spec_hash 3e3fb3df4e35 → atual 4dbf26b00da3); sem aprovação: state.json não tem spec_change_approved",
+    "notified_hash": "4dbf26b00da3307810bd077da50c59ece755a04178e0394a942b88d86ce16ba2"
+  },
+  "events": [
+    {
+      "ts": "2026-10-07T18:38:28.246Z",
+      "type": "spec_drift",
+      "node": "review",
+      "at": "2026-10-07T18:38:28.246Z",
+      "detail": "Pipeline pausado antes de review: a spec memory/spec/92210-spec.md mudou depois do Plan (spec_hash 3e3fb3df4e35 → atual 4dbf26b00da3); sem aprovação: state.json não tem spec_change_approved"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+2026-10-07T18:38:34.671Z [watcher] iniciando nó review
+2026-10-07T18:38:34.766Z [watcher] nó review finalizado (code=detached)
+2026-10-07T18:38:35.017Z [claude] out [REDACTED]
+2026-10-07T18:38:35.017Z [claude] err [REDACTED]

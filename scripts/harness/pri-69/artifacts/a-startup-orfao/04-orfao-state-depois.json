@@ -1,0 +1,54 @@
+{
+  "task_id": "92201-orfao",
+  "history": [
+    "fetch_ticket",
+    "plan",
+    "implement",
+    "review",
+    "test"
+  ],
+  "started_at": "2026-10-07T18:38:26.105Z",
+  "updated_at": "2026-10-07T18:38:26.263Z",
+  "redmine_ticket": {
+    "id": 92201,
+    "subject": "Ticket harness 92201",
+    "base_branch": "development"
+  },
+  "node": "verify",
+  "status": "in_progress",
+  "node_started_at": "2026-10-07T18:38:26.443Z",
+  "node_timeout_ms": 3600000,
+  "execution_id": "e54fdcc4-c58c-4943-897f-b74126f1cafe",
+  "processed_operations": [],
+  "state_version": 4,
+  "critical_fingerprint": "df518403b47c14d2",
+  "events": [
+    {
+      "type": "node_error",
+      "node": "verify",
+      "at": "2026-10-07T18:38:26.263Z",
+      "detail": "Nó órfão detectado pelo watcher (agente (pid 92868) saiu sem liberar o nó) — redespachando"
+    },
+    {
+      "ts": "2026-10-07T18:38:26.443Z",
+      "type": "node_start",
+      "node": "verify",
+      "agent": "claude",
+      "detail": "Despachando verify para Claude (redespacho após nó órfão)",
+      "at": "2026-10-07T18:38:26.443Z"
+    },
+    {
+      "ts": "2026-10-07T18:38:27.219Z",
+      "type": "node_end",
+      "node": "verify",
+      "agent": "claude",
+      "detail": "Nó verify concluído — node: verify",
+      "exit_code": 0,
+      "at": "2026-10-07T18:38:27.219Z"
+    }
+  ],
+  "ticket_status": "Em Desenvolvimento",
+  "affectedServices": [],
+  "schema_changes_detected": false,
+  "schema_risk_level": null
+}

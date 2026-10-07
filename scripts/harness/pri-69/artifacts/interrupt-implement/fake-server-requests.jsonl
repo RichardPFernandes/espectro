@@ -1,0 +1,3 @@
+{"at":"2026-10-07T18:38:35.601Z","method":"GET","path":"/redmine/issues.json","query":"?assigned_to_id=me&status_id=11|13&sort=created_on:desc","body":null}
+{"at":"2026-10-07T18:38:35.605Z","method":"GET","path":"/redmine/issues/92240.json","query":"","body":null}
+{"at":"2026-10-07T18:38:36.499Z","method":"PUT","path":"/redmine/issues/92240.json","query":"","body":{"issue":{"notes":"⚠️ Watcher interrompido via SIGTERM durante nó implement. Ciclo deve ser retomado manualmente."}}}

@@ -1,0 +1,72 @@
+{
+  "task_id": "92220-custo",
+  "history": [
+    "fetch_ticket",
+    "plan",
+    "implement",
+    "review",
+    "test",
+    "verify"
+  ],
+  "started_at": "2026-10-07T18:38:31.073Z",
+  "updated_at": "2026-10-07T18:38:31.116Z",
+  "redmine_ticket": {
+    "id": 92220,
+    "subject": "Ticket harness 92220",
+    "base_branch": "development"
+  },
+  "node": "commit",
+  "status": "committed",
+  "execution_id": "81f74594-6011-49aa-a5a4-ba69822fced9",
+  "processed_operations": [],
+  "state_version": 2,
+  "critical_fingerprint": "e8b8108f34f88724",
+  "cost_tracking": {
+    "nodes": {
+      "commit": {
+        "agent": "claude",
+        "input_tokens": 100,
+        "output_tokens": 80,
+        "duration_ms": 1500,
+        "runs": 1,
+        "retries": 0,
+        "runs_without_tokens": 0,
+        "cache_read_input_tokens": 60,
+        "cache_creation_input_tokens": 0,
+        "cost_usd": 0.000892,
+        "models": [
+          "claude-sonnet-5"
+        ]
+      }
+    },
+    "totals": {
+      "input_tokens": 100,
+      "output_tokens": 80,
+      "cost_usd": 0.000892,
+      "duration_ms": 1500,
+      "loop_count": 0
+    },
+    "pricing_source": "Preço de API Anthropic (skill claude-api, tabela de 2026-06-24)"
+  },
+  "transcripts": [
+    {
+      "nodeId": "commit",
+      "attempt": 1,
+      "path": "transcripts/commit-1.json",
+      "sizeBytes": 776,
+      "compressed": false,
+      "status": "failed",
+      "tokenUsage": {
+        "input_tokens": 100,
+        "output_tokens": 80,
+        "cache_read_input_tokens": 60,
+        "cache_creation_input_tokens": 0,
+        "cost_usd": 0.000892
+      },
+      "messages": 1,
+      "finishedAt": "2026-10-07T18:38:22.629Z"
+    }
+  ],
+  "transcripts_total": 1,
+  "transcripts_size_bytes": 776
+}

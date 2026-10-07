@@ -1,0 +1,8 @@
+{
+  "scenario": "d-custo-commit-arquivado",
+  "target_root": "/Users/richardfernandes/Workspace/prisma-wt/pri-69",
+  "result": "PASS",
+  "error": null,
+  "leftovers": [],
+  "sandbox_kept": null
+}
