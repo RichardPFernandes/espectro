@@ -54,7 +54,7 @@ const NODE_STATE_FIELDS = {
 };
 
 // Campos de execução do ciclo original (lease, órfão, erro, custo) — nunca vão pro replay.
-const RUNTIME_FIELDS = ['node_started_at', 'node_timeout_ms', 'agent_pid', 'recovered_from_orphan',
+const RUNTIME_FIELDS = ['node_started_at', 'node_timeout_ms', 'agent_pid', 'agent_started_at', 'recovered_from_orphan',
     'state_error', 'cost_tracking', 'spec_pending_approval', 'pending_invalidation'];
 
 // Arquivos que um nó deixa no diretório do run. Convenção dos comandos: <nó>.md,
