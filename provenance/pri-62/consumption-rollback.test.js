@@ -25,7 +25,7 @@ const SOURCE_SNAPSHOT_SHA256 = 'ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a
 const FULL_HISTORY = ['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify', 'commit'];
 // Config de consumo admitida (decisão do Richard na PRI-61/PRI-62), relativa à raiz do consumidor.
 const ADMITTED_CONFIG = {
-    'prisma-consumer.env': '44a91f61ab5add073bcdbad64ca4a4bdf4333bf853de213865671762c0a32f48',
+    'prisma-consumer.env': '767066520961af1bf36476ba52e217826d884220b4f82b61e95a575f0f69fa29',
     'config/consolidator-module-keywords.json': '423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c',
 };
 const SECRET_KEY = /(TOKEN|API_KEY|SECRET|PASSWORD|WEBHOOK_URL)$/;

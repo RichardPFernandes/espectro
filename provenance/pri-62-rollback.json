@@ -51,10 +51,10 @@
   "consumer_config": {
     "location": "app-back, fora do Git; nenhum arquivo contém chave de segredo",
     "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/consumption-return-2026-10-07/consumer-config-snapshot/",
-    "unchanged_since_previous_round": true,
+    "unchanged_since_previous_round": false,
     "decision": "Linear PRI-61/PRI-62, comentário 3928a7eb-e679-4742-8c79-9be5b0dc9041 (Richard): config de consumo admitida = prisma-consumer.env + config/consolidator-module-keywords.json; scripts/prisma-consumer.env.example e .claude/prisma-*.json são só exemplo",
     "admitted": [
-      { "path": "prisma-consumer.env", "git": "untracked", "bytes": 847, "sha256": "44a91f61ab5add073bcdbad64ca4a4bdf4333bf853de213865671762c0a32f48" },
+      { "path": "prisma-consumer.env", "git": "untracked", "bytes": 1020, "sha256": "767066520961af1bf36476ba52e217826d884220b4f82b61e95a575f0f69fa29" },
       { "path": "config/consolidator-module-keywords.json", "git": "untracked", "bytes": 1061, "sha256": "423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c" }
     ],
     "examples": {
@@ -74,27 +74,43 @@
       "credenciais",
       "memory/runs reais",
       "dados TMS"
+    ],
+    "revisions": [
+      {
+        "issue": "PRI-65",
+        "at": "2026-10-07",
+        "path": "prisma-consumer.env",
+        "old_sha256": "44a91f61ab5add073bcdbad64ca4a4bdf4333bf853de213865671762c0a32f48",
+        "old_bytes": 847,
+        "new_sha256": "767066520961af1bf36476ba52e217826d884220b4f82b61e95a575f0f69fa29",
+        "new_bytes": 1020,
+        "reason": "source no zsh/bash não exportava PRE_BUILD_COMMAND/TEST_COMMAND/TEST_SCOPED_COMMAND (valor com espaço sem aspas); valores entre aspas simples e set -a/set +a no próprio arquivo",
+        "same_keys_and_values": true,
+        "evidence": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/ (env-load-check.log, prisma-consumer.env.diff)"
+      }
     ]
   },
   "exercise": {
-    "folder": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07/",
+    "folder": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/",
     "preflight": "candidate-source-preflight.json (cópia byte a byte da rodada candidate-fbb597c-2026-10-07)",
     "preflight_sha256": "d7901edf82676d72ce82cb531254b9809da07d189c02396fe2be658132f05ca4",
     "preflight_builder_sha256": "777a1128a82442e50d60a1ac9928460a3ad1097b530167371da750494725a3e4",
+    "preflight_workspace_restored": "workspace tmp do preflight recriado no mesmo caminho a partir do snapshot da fonte e do git archive de fbb597c (os 2 passos do builder, sem reescrever snapshot/preflight); 478 de 478 hashes conferem",
     "harness": "provenance/pri-62/consumption-rollback.test.js",
-    "harness_sha256": "49419ec1195579a8b46144bf7ca463a097d0fb25bb887ba33471f075adf40b54",
+    "harness_sha256": "a7c33c4ffc8a8ef9c2d4242bd8ea2274ef6f11738c087b50f844734e9e9dfcd8",
     "result": "consumption-rollback.tap",
-    "result_sha256": "0878ccb46020b15eb92028ab31870d4fa3378e1867e7570f52593d429dc47f63",
+    "result_sha256": "eaba55e06bfe2168635c89bb34b0285edd316e1f171ba5cbeab063b80099bd33",
     "tests": 6,
     "pass": 6,
     "fail": 0,
     "skipped": 0,
-    "negative_control": "negative-control.tap (sha256 0300fa09cb4068fd577e2c28196c014d70c9f0740f3a280df9edb08c2873abbb): sem as variáveis de entrada, 1 fail, 0 skip",
+    "negative_control": "negative-control.tap (sha256 5fca51622f99a6e8cb6bc677eda854c1f1c036b8f111d5aca52ac59efa654883): sem as variáveis de entrada, 1 fail, 0 skip",
+    "c1_negative_control": "c1-negative-old-config.tap (sha256 428c3d9e1b64bfc6b2fb48432f76f09ea677e81a3e38be4ba19c26e303592d15): só C1, consumidor tmp com o prisma-consumer.env anterior (44a91f61…), 1 fail 'difere da config admitida'",
     "code_reference_return": {
       "harness": "candidate-reversal.test.js",
       "harness_sha256": "1ca86532c70f81686da7db128c6cce216ce1fd1e05970e4c23bdd74737009b4f",
       "result": "candidate-reversal.tap",
-      "result_sha256": "ab129a6265bb51d8ec446fad85f9ecc34757e45d52cf2930dbf1340417eb4c7a",
+      "result_sha256": "c3ab3749d33f22a293fdeb408dc21007c73226a1a88fce060ef6990ad94f6ed6",
       "tests": 7,
       "pass": 7,
       "fail": 0,
@@ -103,6 +119,7 @@
     "environment": "diretórios temporários, DRY_RUN=true, fixtures sintéticas, env mínimo sem credenciais; app-back git status idêntico antes/depois",
     "c1_identity": "conjunto admitido fixado na harness (ADMITTED_CONFIG, 2 arquivos com sha256 esperado); exemplos via PRI62_CONFIG_EXAMPLES, só diagnóstico",
     "previous_rounds": [
+      "config-admitted-2026-10-07/ (C1 com prisma-consumer.env 44a91f61…, antes da PRI-65; 6/6 + 7/7)",
       "candidate-fbb597c-2026-10-07/ (C1 com os 6 arquivos, inclusive exemplos)",
       "consumption-return-2026-10-07/ (candidata 04c130b)",
       "revalidation-2026-10-07/ (candidata 04c130b)"
