@@ -56,17 +56,24 @@ põe aspas nesses valores e faz o `set -a`/`set +a` no próprio arquivo. Carrega
    Config admitida: os 2 arquivos acima, com hash em `provenance/pri-62-rollback.json`.
 2. **Parar o writer da candidata com SIGTERM** (botão Parar do dashboard da candidata ou
    `kill -TERM <pid>`), nunca SIGKILL. O graceful shutdown marca o nó em voo como
-   `interrupted` e registra a nota no Redmine. Conferir que não sobrou processo:
-   `pgrep -fl "$PRISMA_ROOT/(scripts/readmine-watcher|dashboard/server)"` sem saída.
+   `interrupted` e registra a nota no Redmine. A garantia de que não sobrou writer é a
+   trava, não o `pgrep`:
+   `node "$PRISMA_ROOT/scripts/lib/watcher-lock.js" status --repo="$REPO_PATH"`
+   (exit 0 = nenhum watcher e nenhum agente destacado vivo; exit 1 = algum dos dois). `pgrep -fl readmine-watcher` é só checagem visual.
 3. **Esperar os agentes destacados da candidata.** Para cada `memory/runs/*/state.json`
-   com `status: "running"`, ver `ps -p <agent_pid> -o command=`. Não matar. Enquanto
-   houver agente vivo, não remover nem mover o `$PRISMA_ROOT`: o wrapper libera o lease
-   chamando `$PRISMA_ROOT/scripts/lib/node-lease.js`. Agente que sair sem liberar é
-   recuperado pela fonte como órfão no mesmo nó (C4); commit órfão vira
-   `needs_human_review`.
-4. **Nunca rodar os dois watchers no mesmo consumidor.** Não existe trava de instância:
-   `acquireNode` não recusa task `running`, e `agentAlive` só reconhece pid cujo comando
-   contém `claude`. A exclusividade depende dos passos 2 e 3.
+   com `status: "running"`, compare `agent_pid` + `agent_started_at` com
+   `ps -p <agent_pid> -o pid,lstart,command`. O texto do comando (claude, codex, wrapper
+   `sh`) não decide: pid reciclado tem outro `lstart` e conta como morto. Lease antigo,
+   sem `agent_started_at`, só conta se o processo nasceu na janela de 15 min depois de
+   `node_started_at` (`scripts/lib/node-lease.js`). Não matar. Enquanto houver agente
+   vivo, não remover nem mover o `$PRISMA_ROOT`: o wrapper libera o lease chamando
+   `$PRISMA_ROOT/scripts/lib/node-lease.js`. Agente que sair sem liberar é recuperado
+   pela fonte como órfão no mesmo nó (C4); commit órfão vira `needs_human_review`.
+4. **Um writer por REPO_PATH.** A trava (PRI-70) fica num caminho derivado do `REPO_PATH`
+   (`<REPO_PATH>/.git/prisma-watcher.lock`, ou `/tmp/prisma-watcher-<hash>.lock`), nunca
+   em `memory/`. Fonte e candidata enxergam a mesma trava quando as duas rodam este código.
+   O segundo watcher não grava nada e sai com exit 75 enquanto o primeiro está vivo; trava
+   de processo morto é retomada sem intervenção. `pgrep` antes do tick é checagem, não a garantia.
 5. **Conferir drift.** Os 230 arquivos selecionados do app-back devem bater com o
    snapshot (`provenance/pri-62/consumption-rollback.test.js`, caso C0, faz essa leitura).
    Divergência: parar e decidir arquivo a arquivo. Sem `reset --hard`, `clean`, `stash`
@@ -98,7 +105,7 @@ temporários, `DRY_RUN=true`, fixtures sintéticas. Resultado registrado no mani
 | C1 | config admitida (2 arquivos) confere com o hash fixado, sem chave de segredo, fora do Prisma; exemplos só listados | não valida semântica da config |
 | C2 | nó em voo na candidata → SIGTERM → fonte não retoma sem decisão → retoma do mesmo nó, mesmo `execution_id`, 1 PR | dry-run; efeitos simulados |
 | C3 | gate humano aberto na candidata segue pendente na fonte, sem repostar; avança só com `aprovado` | journal do Redmine reproduzido no fixture |
-| C4 | agente destacado vivo bloqueia a fonte; morto, a fonte recupera o mesmo nó | pid simulado com marcador `claude` |
+| C4 | agente destacado vivo bloqueia a fonte; morto, a fonte recupera o mesmo nó | o ensaio da PRI-62 usou marcador `claude`; a regra atual (PRI-70) é pid + início do processo |
 | C5 | nenhuma escrita no `PRISMA_ROOT` | — |
 
 O retorno de código/refs (local-checkout, CAS) já foi provado em 7 testes na mesma
@@ -106,5 +113,4 @@ candidata (run local da PRI-62, `candidate-reversal.tap`).
 
 Não provado por este ensaio (o exercício real pedido pelo Richard é registrado à parte):
 Redmine/Bitbucket/agentes reais, revogação real de credencial, Decision
-formal além do "aprovado"/`state-writer set` do contrato atual, exclusividade global
-entre hosts, e qualquer revisão diferente de `fbb597c`.
+formal além do "aprovado"/`state-writer set` do contrato atual, exclusividade entre hosts (a trava é local; `pgrep` não a substitui), e qualquer revisão diferente de `fbb597c`.

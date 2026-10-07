@@ -22,6 +22,7 @@ const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 const { EventEmitter } = require('events');
 const sanitizeLog = require('./sanitize-log');
+const watcherLock = require('./lib/watcher-lock');
 
 const PRISMA_ROOT = path.resolve(__dirname, '..');
 const LOG_LINES = 200;
@@ -119,7 +120,11 @@ function createWatcherManager(options = {}) {
     let restartTimes = [];
     let ticks = 0;
     let stopPromise = null;
+    // Trava de instância (scripts/lib/watcher-lock.js) segurada pelo laço do start ao
+    // stop: entre ticks não há processo do watcher, e sem isto outro laço/cron entraria.
+    let loopLock = null;
     let orphanPid = detectOrphan();
+    function releaseLoopLock() { if (loopLock) { try { loopLock.release(); } catch {} loopLock = null; } }
 
     // --------------------------------------------------------------- log
     function push(level, text, source = 'watcher') {
@@ -196,6 +201,8 @@ function createWatcherManager(options = {}) {
             // WATCHER_LOOP_STARTED_AT/WATCHER_TICK_INTERVAL_MS: o watcher grava uptime e
             // próxima poll no watcher-runtime.json (lido pelo --health-check).
             const env = { ...process.env, ...options.env, REPO_PATH: repoRoot, PRISMA_ROOT, WATCHER_LOOP_STARTED_AT: new Date(startedAt || Date.now()).toISOString(), WATCHER_TICK_INTERVAL_MS: String(intervalMs) };
+            if (loopLock) env[watcherLock.TOKEN_ENV] = loopLock.holder.token;
+            else delete env[watcherLock.TOKEN_ENV];
             proc = spawn(process.execPath, [script, ...args], { cwd, env, detached: false, stdio: ['ignore', 'pipe', 'pipe'] });
         } catch (e) {
             note(`falha iniciando o watcher: ${e.message}`, 'ERROR');
@@ -234,6 +241,7 @@ function createWatcherManager(options = {}) {
             state = 'stopped';
             error = 'restart_limit_reached';
             startedAt = null;
+            releaseLoopLock();
             note(`watcher morreu (${how}) — limite de ${MAX_AUTO_RESTARTS} reinícios automáticos por hora atingido; não reinicio mais. Verifique o log e use Start.`, 'ERROR');
             record('restart_limit');
             return;
@@ -272,6 +280,16 @@ function createWatcherManager(options = {}) {
         if (stopPromise) await stopPromise;
         if (state !== 'stopped') return status();
         if (orphanPid) { const pid = orphanPid; orphanPid = null; if (isAlive(pid)) await killOrphan(pid); }
+        if (options.lock !== false) {
+            const res = watcherLock.acquire({ repoPath: repoRoot, role: 'loop', env: {} });
+            if (!res.acquired) {
+                error = 'lock_held';
+                note(`watcher não iniciado: ${res.message}. Pare a outra instância (confira com \`node scripts/lib/watcher-lock.js status --repo=${repoRoot}\`).`, 'ERROR');
+                return status();
+            }
+            if (res.takeover) note(`trava velha retomada (${watcherLock.describeHolder(res.previous)} não está mais vivo)`, 'WARN');
+            loopLock = res;
+        }
         redact.reset(); // relê os secrets: o .env pode ter mudado desde o último start
         error = null;
         restarts = 0;
@@ -299,6 +317,7 @@ function createWatcherManager(options = {}) {
             child = null;
             tickStartedAt = null;
             clearPid();
+            releaseLoopLock();
             state = 'stopped';
             startedAt = null;
             stopPromise = null;
@@ -343,6 +362,7 @@ function createWatcherManager(options = {}) {
     function killSync() {
         if (timer) clearTimeout(timer);
         if (child) { try { child.kill('SIGTERM'); } catch {} clearPid(); }
+        releaseLoopLock();
     }
 
     if (orphanPid) note(`watcher órfão detectado (PID ${orphanPid}, de uma execução anterior do dashboard) — será encerrado no próximo Start`, 'WARN');

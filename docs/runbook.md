@@ -31,7 +31,7 @@
 | **Dashboard** | Servidor Express local que controla o watcher e mostra os runs | `dashboard/server.js` → `http://localhost:3333` (porta = env `PORT`) |
 | **Laço do watcher** | Dispara um *tick* a cada `WATCHER_TICK_INTERVAL_MS` (padrão 60 s). Se o tick sai com erro, reinicia em 3 s, **no máximo 3× por hora** — depois para com `error: "restart_limit_reached"` | `scripts/watcher-manager.js` (roda dentro do dashboard) |
 | **Tick** | Um processo `node "$PRISMA_ROOT/scripts/readmine-watcher.js"` que roda **uma vez e sai**. Não é um daemon. | `scripts/readmine-watcher.js` |
-| **Agente** | `claude -p` disparado pelo tick, **destacado** (sobrevive ao tick e ao dashboard). Um despacho = um nó do grafo. | processo `claude` |
+| **Agente** | Processo destacado pelo tick (sobrevive ao tick e ao dashboard). Um despacho = um nó do grafo. Quem decide se está vivo é o lease (`agent_pid` + `agent_started_at`), não o texto `claude` no comando. | `state.json` |
 | **Estado da task** | `state.json` — única fonte de verdade de em que pé a task está | `.claude/worktrees/<ticket>/memory/runs/<task-id>/state.json` (tasks de ticket) ou `memory/runs/<task-id>/state.json` (tasks ad-hoc) |
 | **Arquivo morto** | Tasks finalizadas | `memory/runs/_archive/<task-id>/` |
 
@@ -155,8 +155,13 @@ que roda quando o agente sai; se ninguém sobreviveu para rodá-lo, sobra `runni
 **Comportamento real (importante antes de agir):** o sistema já trata isso sozinho, **no
 início de cada tick** (`recoverOrphans`):
 
-- `agent_pid` gravado e o processo morreu (ou o pid foi reciclado por outro programa que
-  não é `claude`) → órfão **na hora**, no próximo tick.
+- `agent_pid` gravado e o processo morreu, ou o pid foi reciclado (o processo que está
+  nesse pid **não** começou em `agent_started_at` — vale mesmo que o comando contenha
+  `claude`) → órfão **na hora**, no próximo tick.
+- Lease antigo, sem `agent_started_at`: o processo conta como o agente só se nasceu entre
+  `node_started_at` e 15 min depois (`LEGACY_SPAWN_WINDOW_MS` em `scripts/lib/node-lease.js`).
+  Fora dessa janela é órfão. `ps`/`pgrep` conferem o que o operador está vendo; quem decide
+  é o lease.
 - sem `agent_pid` → órfão só depois de `node_timeout_ms` (padrão **60 min**, env
   `NODE_TIMEOUT_MS`; não é 30 min — 30 dava falso positivo em nó vivo, ver
   `memory/decisions/2026-09-22-recuperacao-no-orfao-watcher.md`).
@@ -172,16 +177,20 @@ Então, com 30–60 min e o watcher rodando, na maioria dos casos **esperar** re
 
 1. Veja o lease da task:
    ```bash
-   jq '{status, node, node_started_at, node_timeout_ms, agent_pid}' .claude/worktrees/<ticket>/memory/runs/<task-id>/state.json
+   jq '{status, node, node_started_at, node_timeout_ms, agent_pid, agent_started_at}' .claude/worktrees/<ticket>/memory/runs/<task-id>/state.json
    ```
-2. O agente está vivo?
+2. O agente está vivo? A checagem é o início do processo, não o nome do binário:
    ```bash
-   ps -p <agent_pid> -o pid,etime,command
+   ps -p <agent_pid> -o pid,lstart,etime,command
    ```
-   - **Vivo e com `claude` no comando** → não é órfão, está trabalhando (nós de review/test/commit
+   - **Mesmo pid e o `lstart` bate com `agent_started_at`** (tolerância de 2 s; codex, `sh` ou
+     outro binário contam igual) → não é órfão, está trabalhando (nós de review/test/commit
      costumam levar 45–60 min). Acompanhe `tail -f memory/runs/<ticket>.log`. Se tiver certeza de
      que está travado, veja "Como interromper o ciclo de uma task específica".
-   - **Morto / não existe** → siga.
+   - **Sem `agent_started_at`** (lease antigo): vivo só se o `lstart` cai na janela de 15 min
+     a partir de `node_started_at`.
+   - **Morto, pid inexistente, ou `lstart` diferente do gravado** (pid reciclado) → siga.
+     `pgrep` aqui é checagem, não a regra.
 3. O laço do watcher está rodando? (Diagnóstico rápido, passo 1.)
    - Sim → espere o próximo tick (`next_tick_at`). Confirme no log-stream a linha
      `[recovery] Task <task-id>: nó <nó> órfão desde ... — redespachando`.
@@ -767,8 +776,8 @@ faz a task virar `state_corrupted` no próximo tick. Os jeitos válidos de parar
    Isso **não** mata agentes já despachados (eles rodam destacados).
 2. **Se há agente rodando na task, encerre-o:**
    ```bash
-   jq '.agent_pid, .node' .claude/worktrees/<ticket>/memory/runs/<task-id>/state.json
-   ps -p <agent_pid> -o pid,command           # confirme que é o `claude`/wrapper desta task
+   jq '{agent_pid, agent_started_at, node}' .claude/worktrees/<ticket>/memory/runs/<task-id>/state.json
+   ps -p <agent_pid> -o pid,lstart,command    # o lstart tem de bater com agent_started_at; o texto do comando só confere
    kill <agent_pid>                            # SIGTERM; o wrapper tenta liberar o lease ao sair
    ```
    Espere alguns segundos e confira se `status` voltou para `in_progress`. *Comportamento a
@@ -805,6 +814,32 @@ faz a task virar `state_corrupted` no próximo tick. Os jeitos válidos de parar
 
 ---
 
+## Trava de instância (um writer por REPO_PATH)
+
+Dois watchers no mesmo consumidor (fonte e candidata, dois laços, um cron no meio de um laço)
+não podem gravar `memory/runs` ao mesmo tempo. A trava é adquirida no começo de `main()`,
+antes de custo pendente, syncs e recuperação de órfão.
+
+| | |
+|---|---|
+| Caminho | `<REPO_PATH>/.git/prisma-watcher.lock` quando `.git` é diretório. Se `.git` for arquivo (worktree git) ou não existir, `/tmp/prisma-watcher-<hash do REPO_PATH>.lock`. Nunca dentro de `memory/`. |
+| Dono | pid + início do processo (`ps -o lstart=`). Pid reciclado não segura a trava. |
+| Segundo writer | Não grava nada. Mensagem em stderr e exit **75**. Vale para tick único, `--ticket` e laço do dashboard. |
+| Trava velha | Processo morto (ou pid reciclado) é retomada no próximo start, sem apagar à mão. |
+| `--dry-run` | Não adquire trava e não cria arquivo. `DRY_RUN=true` (simulação) trava, mas o arquivo continua fora de `memory/`. |
+| Laço do dashboard | Segura a trava do Start ao Stop, inclusive entre ticks, e passa o token ao tick filho. |
+
+```bash
+node "$PRISMA_ROOT/scripts/lib/watcher-lock.js" status --repo="$REPO_PATH"
+# exit 0 = nenhum watcher e nenhum agente destacado vivo; exit 1 = algum dos dois
+```
+
+`pgrep` mostra processos; não substitui esse status. Agente destacado vivo aparece na mesma
+saída (pid + `agent_started_at`). Enquanto ele existir, não mova o checkout do Prisma: o
+wrapper libera o lease chamando `scripts/lib/node-lease.js` desse checkout.
+
+---
+
 ## Como reiniciar o watcher de forma segura
 
 **Como o Stop funciona:** o dashboard manda SIGTERM ao tick em curso. Se o tick está conduzindo
@@ -819,7 +854,8 @@ os mata.
 # 1. Estado atual e o que está rodando
 curl -s localhost:3333/api/watcher/status | jq '{state, phase, error, next_tick_at}'
 node "$PRISMA_ROOT/scripts/readmine-watcher.js" --health-check | jq '{status, activeCycle, healthy, issues}'
-ps -Ao pid,etime,command | grep -E 'readmine-watcher|claude -p' | grep -v grep
+ps -Ao pid,etime,command | grep -E 'readmine-watcher|claude -p' | grep -v grep   # checagem visual; a garantia é a trava
+node "$PRISMA_ROOT/scripts/lib/watcher-lock.js" status --repo="$REPO_PATH"
 
 # 2. Pré-requisitos do próximo tick
 test -f .env && echo ".env ok"
@@ -867,6 +903,7 @@ Para cada task `interrupted`: com o laço parado, grave `"status": "in_progress"
 **NÃO faça:**
 - Não use `kill -9` no tick: pula o shutdown graceful e deixa a task em `running` até a recuperação
   de órfão (imediata se houver `agent_pid` morto; até 60 min se não houver).
-- Não suba um segundo dashboard (ou um cron com `readmine-watcher.js`) com outro já no ar — dois
-  laços disputam os mesmos `state.json`.
+- Não suba um segundo dashboard (ou um cron com `readmine-watcher.js`) com outro já no ar.
+  A trava de instância recusa o segundo: ele não grava nada e sai com código 75. `pgrep` antes
+  do tick é checagem, não a garantia — a garantia é `node "$PRISMA_ROOT/scripts/lib/watcher-lock.js" status`.
 - Não reinicie em loop "para ver se destrava" — a partir de 3 crashes por hora o laço para sozinho.

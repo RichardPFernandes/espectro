@@ -72,6 +72,7 @@ function markInterrupted(state, { node, at }) {
         detail: 'Watcher recebeu SIGTERM durante o nó — ciclo não é redespachado sozinho; grave status="in_progress" pra retomar.',
     }];
     delete state.agent_pid;
+    delete state.agent_started_at;
     return state;
 }
 

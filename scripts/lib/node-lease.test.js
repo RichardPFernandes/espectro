@@ -107,10 +107,13 @@ test('describeRunning: mostra início, tempo decorrido, limite e se o pid está 
     assert.match(lease.describeRunning({ node_started_at: s.node_started_at }, { now }), /\(30 min, sem pid gravado\)/);
 });
 
-test('agentAlive: pid inexistente é morto; pid vivo que não é claude (reciclado) também', () => {
+test('agentAlive: pid inexistente é morto; pid vivo com outro início (reciclado) também — identidade, não o texto do comando', () => {
     assert.strictEqual(lease.agentAlive(undefined), false);
     assert.strictEqual(lease.agentAlive(2 ** 22 + 12345), false);
-    assert.strictEqual(lease.agentAlive(process.pid), false, 'este processo não é o claude');
+    assert.strictEqual(lease.agentAlive(2 ** 22 + 12345, { agent_started_at: new Date().toISOString() }), false);
+    const mine = require('./process-identity').processStartIso(process.pid);
+    assert.strictEqual(lease.agentAlive(process.pid, { agent_started_at: mine }), true, 'mesmo processo, mesmo início: vivo (não é claude e não importa)');
+    assert.strictEqual(lease.agentAlive(process.pid, { agent_started_at: '2020-01-01T00:00:00.000Z' }), false, 'pid reciclado');
 });
 
 test('clearFetchDispatch: remove só o marcador deste despacho e preserva o resto do gate', () => {

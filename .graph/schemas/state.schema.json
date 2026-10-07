@@ -1418,6 +1418,11 @@
       "type": "integer",
       "description": "Lease: pid do processo do agente em execução (removido no release)."
     },
+    "agent_started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Lease: início do processo agent_pid (ps lstart, gravado logo depois do spawn). Com agent_pid forma a identidade do agente vivo (scripts/lib/process-identity.js); ausente = lease legado (removido no release)."
+    },
     "recovered_from_orphan": {
       "type": "object",
       "description": "Marcador de redespacho após recuperação de nó órfão (consumido no próximo acquire).",

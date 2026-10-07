@@ -42,6 +42,7 @@ const cycleReplayer = require('./lib/cycle-replayer');
 const qaJournal = require('./lib/redmine-journal-fetcher');
 const qaCycles = require('./lib/qa-cycles');
 const { GracefulShutdown } = require('./lib/graceful-shutdown');
+const watcherLock = require('./lib/watcher-lock');
 const watcherHealth = require('./lib/watcher-health');
 const promptContext = require('./lib/prompt-context');
 const { redmineFetch: realRedmineFetch } = require('./lib/redmine-fetch');
@@ -4624,6 +4625,11 @@ function writeWatcherModeFile() {
 }
 
 async function main() {
+    // Um writer por REPO_PATH, antes de qualquer escrita do tick (custo, sync, recovery).
+    // --dry-run só lê: não trava e não cria arquivo. Recusa = exit 75, sem seguir o tick.
+    if (!DRY_RUN && !watcherLock.acquireForProcess({ repoPath: REPO_PATH, role: SIMULATE ? 'simulate' : 'watcher' })) {
+        process.exit(watcherLock.EXIT_LOCKED);
+    }
     if (SIMULATE) {
         console.log('[dry-run] Modo DRY-RUN ativo — nenhuma chamada externa real');
         console.log(`[dry-run] Fixture: ${DRY_RUN_FIXTURE_PATH} (${DRY_RUN_TICKETS.map(t => `#${t.id}`).join(', ')})`);

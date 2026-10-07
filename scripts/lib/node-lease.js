@@ -21,9 +21,9 @@
 // arquivo), que é como o wrapper do modo detached (sem --follow) libera o lease.
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
 const stateWriter = require('../state-writer');
 const cas = require('../cas');
+const processIdentity = require('./process-identity');
 
 // 60 min, não os 30 sugeridos: medido nos agent_log reais (552 state.json, dedup por
 // task_id), o p90 do intervalo entre despachos é 45 min em review/test e 60 em
@@ -77,20 +77,25 @@ function acquireNode(dir, { node, timeoutMs, now = new Date(), extra = null }) {
         s.node_started_at = startedAt;
         s.node_timeout_ms = timeoutMs;
         delete s.agent_pid;
+        delete s.agent_started_at;
         delete s.recovered_from_orphan;
     }, { operation: 'lease_acquire', actor: 'watcher' });
     if (!state) return null;
     return { dir, node, startedAt, timeoutMs, executionId: state.execution_id };
 }
 
-// Grava o pid do processo que roda o agente (em modo detached, o wrapper sh que
-// também roda o release) — usado por agentAlive pra nunca declarar órfão um nó cujo
-// agente ainda está vivo, mesmo passado o timeout.
-function recordAgentPid(lease, pid) {
+// Grava a identidade do processo que roda o agente (em modo detached, o wrapper sh que
+// também roda o release): agent_pid + agent_started_at (início do processo, lido logo
+// depois do spawn) — usada por agentAlive pra nunca declarar órfão um nó cujo agente
+// ainda está vivo, mesmo passado o timeout, sem depender de qual binário roda.
+function recordAgentPid(lease, pid, { startOf = processIdentity.processStartIso } = {}) {
     if (!lease || !pid) return;
+    const startedAt = startOf(pid);
     stateWriter.update(lease.dir, s => {
         if (s.node_started_at !== lease.startedAt) return cas.SKIP;
         s.agent_pid = pid;
+        if (startedAt) s.agent_started_at = startedAt;
+        else delete s.agent_started_at;
     }, { operation: 'lease_pid', actor: 'watcher' });
 }
 
@@ -112,6 +117,7 @@ function releaseNode(lease) {
             if (s.node_started_at && s.node_started_at !== lease.startedAt) return cas.SKIP;
             s.status = RELEASED_STATUS;
             delete s.agent_pid;
+            delete s.agent_started_at;
         }, {
             operation: 'lease_release', actor: 'watcher',
             expect: lease.executionId ? { execution_id: lease.executionId } : null,
@@ -164,20 +170,27 @@ function clearFetchDispatch(gatePath, startedAt) {
     return true;
 }
 
-function agentAlive(pid) {
-    if (!pid) return false;
-    try {
-        process.kill(pid, 0);
-    } catch (e) {
-        if (e.code !== 'EPERM') return false;
-    }
-    // pid existe — confirma que é mesmo o agente (pid reciclado depois de um reboot
-    // não pode segurar a task em "running" pra sempre).
-    try {
-        return /claude/.test(execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }));
-    } catch {
-        return false;
-    }
+// Lease legado (agent_pid sem agent_started_at): o agente nasce logo depois de
+// node_started_at (entre o acquire e o spawn só rodam os carimbos de serviço/schema).
+const LEGACY_SPAWN_WINDOW_MS = 15 * 60 * 1000;
+
+// O agente do lease ainda está vivo? Identidade = (agent_pid, agent_started_at), nunca o
+// texto do comando: codex, wrapper sh renomeado ou qualquer binário funcionam, e pid
+// reciclado (outro processo, até outro claude) tem outro início e conta como morto.
+// Lease legado, sem agent_started_at: vivo se o processo do pid começou dentro de
+// [node_started_at, node_started_at + LEGACY_SPAWN_WINDOW_MS] — pid reciclado nasce
+// depois da morte do agente, então só passa se o agente morreu e o pid voltou nessa janela.
+// Sem state nenhum (chamada antiga só com pid): basta o processo existir.
+// pid existente com início ilegível (ps falhou) = vivo: ver processIdentity.sameProcess.
+function agentAlive(pid, state = null, { startOf = processIdentity.processStartMs, exists = processIdentity.pidExists } = {}) {
+    if (!pid || !exists(pid)) return false;
+    if (!state) return true;
+    if (state.agent_started_at) return processIdentity.sameProcess(pid, state.agent_started_at, { startOf, exists });
+    const started = startOf(pid);
+    if (started == null) return true;
+    const leaseAt = Date.parse(state.node_started_at);
+    if (!Number.isFinite(leaseAt)) return true;
+    return started >= leaseAt - processIdentity.START_TOLERANCE_MS && started <= leaseAt + LEGACY_SPAWN_WINDOW_MS;
 }
 
 // Por que o nó é órfão: "agent_dead" (agent_pid gravado e o processo já saiu — o
@@ -190,7 +203,7 @@ function orphanReason(state, { now = Date.now(), defaultTimeoutMs = DEFAULT_NODE
     if (!state || state.status !== 'running' || !state.node_started_at) return null;
     const started = Date.parse(state.node_started_at);
     if (!Number.isFinite(started)) return null;
-    if (state.agent_pid) return isAlive(state.agent_pid) ? null : 'agent_dead';
+    if (state.agent_pid) return isAlive(state.agent_pid, state) ? null : 'agent_dead';
     const timeoutMs = Number(state.node_timeout_ms) > 0 ? Number(state.node_timeout_ms) : defaultTimeoutMs;
     return now - started > timeoutMs ? 'timeout' : null;
 }
@@ -206,7 +219,7 @@ function describeRunning(state, { now = Date.now(), isAlive = agentAlive } = {})
     const timeoutMs = Number(state?.node_timeout_ms);
     const limit = timeoutMs > 0 ? ` de ${Math.round(timeoutMs / 60000)} min` : '';
     const pid = state?.agent_pid
-        ? `pid ${state.agent_pid} ${isAlive(state.agent_pid) ? 'vivo' : 'MORTO'}`
+        ? `pid ${state.agent_pid} ${isAlive(state.agent_pid, state) ? 'vivo' : 'MORTO'}`
         : 'sem pid gravado';
     return `desde ${state?.node_started_at || '?'} (${elapsed}${limit}, ${pid})`;
 }
@@ -268,6 +281,7 @@ function recoverOrphans(runsDirs, { now = new Date(), defaultTimeoutMs, isAlive,
             state.recovered_from_orphan = { node, orphan_since: since, detected_at: at };
         }
         delete state.agent_pid;
+        delete state.agent_started_at;
         state.updated_at = at;
         try {
             writeState(dir, state, 'orphan_recovery');
@@ -292,7 +306,7 @@ function recoveryNote(state) {
 }
 
 module.exports = {
-    DEFAULT_NODE_TIMEOUT_MS, resolveNodeTimeoutMs,
+    DEFAULT_NODE_TIMEOUT_MS, LEGACY_SPAWN_WINDOW_MS, resolveNodeTimeoutMs,
     acquireNode, recordAgentPid, releaseNode, stampNewTask, clearFetchDispatch,
     agentAlive, orphanReason, isOrphan, describeRunning, recoverOrphans, recoveryNote,
 };
