@@ -17,11 +17,35 @@ const MAX_FOLLOW_SEGMENTS = 30;
 
 let watcher = null;
 let watcherRepoPath = null;
+let watcherContext = null;
+const CONTEXT_KEYS = [
+    'REPO_PATH', 'REDMINE_URL', 'REDMINE_USER_ID', 'BITBUCKET_WORKSPACE',
+    'BITBUCKET_REPO_SLUG', 'BITBUCKET_EMAIL', 'BITBUCKET_ACCOUNT_ID', 'BITBUCKET_PR_REPOS',
+    'WATCHER_MAIN_REPO_NAME', 'WATCHER_SIBLING_REPOS', 'WATCHER_JAVA_HOME',
+    'PRE_BUILD_COMMAND', 'TEST_COMMAND', 'TEST_SCOPED_COMMAND', 'SPEC_TEMPLATE_URL',
+    'CONSOLIDATOR_MODULE_KEYWORDS_FILE', 'OPENAPI_RESPONSE_FACTORY_FILE', 'SPEC_RULE_PACKAGE_PREFIX',
+];
+const secretKey = key => /(_TOKEN|_API_KEY|_SECRET|_PASSWORD)$/.test(key) || key === 'NOTIFY_WEBHOOK_URL';
+function contextOf(env) {
+    const keys = new Set([...CONTEXT_KEYS, ...Object.keys(env).filter(secretKey)]);
+    return Object.fromEntries([...keys].map(key => [key, String(env[key] ?? '')]));
+}
+function sameContext(actual, expected) {
+    return [...new Set([...Object.keys(actual), ...Object.keys(expected)])]
+        .every(key => String(actual[key] ?? '') === String(expected[key] ?? ''));
+}
 
 // O watcher exige REPO_PATH (deriva WORKSPACE dele no require). Mesma precedência do
 // loadDotEnv do watcher: env já setada > .env do consumidor > cwd do consumidor.
 function ensureRepoPath({ repoPath, env } = {}) {
-    if (env) Object.assign(process.env, env);
+    if (env) {
+        for (const [key, value] of Object.entries(env)) {
+            if (key === 'REPO_PATH' || key === 'PRISMA_ROOT') continue;
+            if (String(value ?? '') !== String(process.env[key] ?? '')) {
+                throw new Error('ambiente do dispatcher difere do processo configurado; use um processo próprio admitido');
+            }
+        }
+    }
     if (repoPath) process.env.REPO_PATH = path.resolve(repoPath);
     if (process.env.REPO_PATH) return;
     try {
@@ -37,11 +61,18 @@ function ensureRepoPath({ repoPath, env } = {}) {
 
 function loadWatcher(options = {}) {
     const requested = path.resolve(options.repoPath || options.env?.REPO_PATH || process.env.REPO_PATH || process.cwd());
+    if (process.env.REPO_PATH && path.resolve(process.env.REPO_PATH) !== requested) throw new Error('contexto do dispatcher difere do consumidor do processo; use um processo próprio admitido');
     if (watcher && watcherRepoPath !== requested) throw new Error('watcher já carregado para outro consumidor; use um processo separado');
+    if (watcherContext && (!sameContext(contextOf(process.env), watcherContext) ||
+        !sameContext(contextOf({ ...process.env, ...options.env }), watcherContext))) {
+        throw new Error('contexto do runtime já carregado mudou; use um processo próprio admitido');
+    }
+    ensureRepoPath({ ...options, repoPath: requested });
+    if (path.resolve(process.env.REPO_PATH) !== requested) throw new Error('contexto do consumidor não corresponde ao root solicitado');
     if (!watcher) {
-        ensureRepoPath(options);
         watcherRepoPath = path.resolve(process.env.REPO_PATH);
         watcher = require('../readmine-watcher');
+        watcherContext = Object.freeze(contextOf(process.env));
     }
     return watcher;
 }

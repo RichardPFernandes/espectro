@@ -219,7 +219,7 @@ const SPEC_GATE_FILE_RE = /^(\d+)-spec-gate\.json$/;
 const PRETASK_SUFFIX = '-spec-gate';
 
 function createDashboard(options = {}) {
-    const env = options.env || process.env;
+    const env = { ...(options.env || process.env) };
     const prismaRoot = path.resolve(__dirname, '..');
     // repoRoot explícito vence. Quem só passa memoryDir continua derivando o projeto
     // desse diretório, mesmo que REPO_PATH esteja no ambiente. Sem os dois, vale o consumidor.
@@ -253,20 +253,21 @@ function createDashboard(options = {}) {
     }));
     const validateBuild = options.validateBuild || buildValidator.validateBuild;
     // Injetáveis nos testes (evita bater no Redmine de verdade ou spawnar `claude`).
-    const fetchAssignedTickets = options.fetchAssignedTickets || redmineTicketList.fetchAssignedTickets;
-    const getTicketDetail = options.getTicketDetail || redmineTicketList.getTicketDetail;
-    const updateTicketStatus = options.updateTicketStatus || redmineTicketList.updateTicketStatus;
-    const addJournalNote = options.addJournalNote || redmineTicketList.addJournalNote;
-    const listIssueStatuses = options.listIssueStatuses || redmineTicketList.listIssueStatuses;
+    const redmineOptions = () => ({ redmineUrl: consumerEnv.REDMINE_URL || '', apiKey: consumerEnv.REDMINE_API_KEY || '' });
+    const fetchAssignedTickets = options.fetchAssignedTickets || (() => redmineTicketList.fetchAssignedTickets(redmineOptions()));
+    const getTicketDetail = options.getTicketDetail || (id => redmineTicketList.getTicketDetail(id, redmineOptions()));
+    const updateTicketStatus = options.updateTicketStatus || ((id, status, note) => redmineTicketList.updateTicketStatus(id, status, note, redmineOptions()));
+    const addJournalNote = options.addJournalNote || ((id, note) => redmineTicketList.addJournalNote(id, note, redmineOptions()));
+    const listIssueStatuses = options.listIssueStatuses || (() => redmineTicketList.listIssueStatuses(redmineOptions()));
     const dispatchTicketNode = args => (options.dispatchNode || dispatchNode)({ ...args, repoPath: repoRoot, env: consumerEnv });
-    const worktreesDir = path.resolve(repoRoot, options.worktreesDir || process.env.WORKTREES_DIR || path.join(repoRoot, '.claude', 'worktrees'));
+    const worktreesDir = path.resolve(repoRoot, options.worktreesDir || consumerEnv.WORKTREES_DIR || path.join(repoRoot, '.claude', 'worktrees'));
     // Rotação de runs antigos (scripts/cleanup-runs.js): memory/archive/<YYYY-MM>/<task-id>[__<checkout>]/.
-    const rotatedArchiveDir = path.resolve(repoRoot, options.archiveDir || process.env.RUNS_ARCHIVE_DIR || path.join(repoRoot, 'memory', 'archive'));
-    const graphPath = path.resolve(repoRoot, options.graphPath || process.env.KNOWLEDGE_GRAPH_PATH || path.join(repoRoot, 'memory', 'knowledge-graph.json'));
+    const rotatedArchiveDir = path.resolve(repoRoot, options.archiveDir || consumerEnv.RUNS_ARCHIVE_DIR || path.join(repoRoot, 'memory', 'archive'));
+    const graphPath = path.resolve(repoRoot, options.graphPath || consumerEnv.KNOWLEDGE_GRAPH_PATH || path.join(repoRoot, 'memory', 'knowledge-graph.json'));
     // memory/patterns.md (gerado por scripts/memory-consolidator.js) + o contador que
     // acompanha, só pra metadata (quando a última consolidação rodou).
-    const patternsPath = path.resolve(repoRoot, options.patternsPath || process.env.CONSOLIDATOR_PATTERNS_PATH || path.join(repoRoot, 'memory', 'patterns.md'));
-    const consolidatorStatePath = path.resolve(repoRoot, options.consolidatorStatePath || process.env.CONSOLIDATOR_STATE_PATH || path.join(repoRoot, 'memory', 'consolidator-state.json'));
+    const patternsPath = path.resolve(repoRoot, options.patternsPath || consumerEnv.CONSOLIDATOR_PATTERNS_PATH || path.join(repoRoot, 'memory', 'patterns.md'));
+    const consolidatorStatePath = path.resolve(repoRoot, options.consolidatorStatePath || consumerEnv.CONSOLIDATOR_STATE_PATH || path.join(repoRoot, 'memory', 'consolidator-state.json'));
     // GET /api/runs/:taskId/agent-log/stream: intervalos injetáveis nos testes (senão o
     // padrão de produção — polling de 1s no arquivo, 5s no status, timeout de 30min).
     const agentLogPollMs = options.agentLogPollMs || 1000;
@@ -276,8 +277,8 @@ function createDashboard(options = {}) {
     // ---------------------------------------------------------------------------
     // Segurança: nada que pareça credencial sai pela API.
     const SECRET_KEY_RE = /(API_KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS)$/i;
-    const secretValues = Object.entries(process.env)
-        .filter(([k, v]) => SECRET_KEY_RE.test(k) && typeof v === 'string' && v.length >= 6)
+    const secretValues = [...Object.entries(process.env), ...Object.entries(consumerEnv)]
+        .filter(([k, v]) => (SECRET_KEY_RE.test(k) || k === 'NOTIFY_WEBHOOK_URL') && typeof v === 'string' && v.length >= 6)
         .map(([, v]) => v);
     const INLINE_SECRET_RE = /\b((?:[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD))\s*[=:]\s*)(["']?)[^\s"']+\2/gi;
     const HEADER_SECRET_RE = /((?:X-Redmine-API-Key|Authorization)\s*[:=]\s*(?:Bearer\s+|Basic\s+)?)(["']?)[^\s"',}]+\2/gi;
@@ -565,8 +566,8 @@ function createDashboard(options = {}) {
     async function issueStatus(ticketId) {
         const hit = issueCache.get(ticketId);
         if (hit && Date.now() - hit.at < (hit.closed ? ISSUE_TTL_CLOSED_MS : ISSUE_TTL_OPEN_MS)) return hit;
-        const redmineUrl = (process.env.REDMINE_URL || '').replace(/\/+$/, '');
-        const apiKey = process.env.REDMINE_API_KEY;
+        const redmineUrl = (consumerEnv.REDMINE_URL || '').replace(/\/+$/, '');
+        const apiKey = consumerEnv.REDMINE_API_KEY;
         if (!redmineUrl || !apiKey) return null;
         try {
             const { issue } = await fetchJson(`${redmineUrl}/issues/${ticketId}.json`, { 'X-Redmine-API-Key': apiKey, Accept: 'application/json' });
@@ -817,7 +818,7 @@ function createDashboard(options = {}) {
     const FX_TTL_MS = 6 * 60 * 60 * 1000;
     let fxCache = null;
     async function usdBrl() {
-        const fixed = Number(String(process.env.USD_BRL || '').replace(',', '.'));
+        const fixed = Number(String(consumerEnv.USD_BRL || '').replace(',', '.'));
         if (fixed > 0) return { rate: fixed, source: 'USD_BRL (.env)', date: null };
         if (fxCache && Date.now() - fxCache.fetchedAt < FX_TTL_MS) return fxCache.value;
         const mdY = d => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`;
@@ -854,8 +855,8 @@ function createDashboard(options = {}) {
         }
         const value = await fetchAssignedTickets();
         ticketsMineCache = { value, fetchedAt: Date.now() };
-        if (process.env.REDMINE_USER_ID) {
-            console.log(`[dashboard] /api/tickets/mine consultado (REDMINE_USER_ID=${process.env.REDMINE_USER_ID}, ${value.length} ticket(s))`);
+        if (consumerEnv.REDMINE_USER_ID) {
+            console.log(`[dashboard] /api/tickets/mine consultado (REDMINE_USER_ID=${consumerEnv.REDMINE_USER_ID}, ${value.length} ticket(s))`);
         }
         return value;
     }
@@ -881,7 +882,7 @@ function createDashboard(options = {}) {
         };
     }
     const redmineIssueUrl = id => {
-        const base = (process.env.REDMINE_URL || '').replace(/\/+$/, '');
+        const base = (consumerEnv.REDMINE_URL || '').replace(/\/+$/, '');
         return base ? `${base}/issues/${id}` : null;
     };
     function ticketsError(res, e) {
@@ -1262,7 +1263,7 @@ function createDashboard(options = {}) {
         (async () => {
             let result;
             try {
-                result = await validateBuild(worktree, { siblingRepos });
+                result = await validateBuild(worktree, { siblingRepos, env: consumerEnv });
             } catch (e) {
                 result = { success: false, duration: 0, errors: [`Falha rodando o validador: ${e.message}`] };
             }
@@ -1390,7 +1391,7 @@ function createDashboard(options = {}) {
         }, { operation: 'pre_build_ai_fix', actor: 'dashboard' });
 
         try { fs.writeFileSync(logPath, ''); } catch { /* idem */ }
-        const javaHome = buildValidator.resolveJavaHome(worktree).javaHome || null;
+        const javaHome = buildValidator.resolveJavaHome(worktree, consumerEnv).javaHome || null;
         const addDirs = siblingRepos.map(dir => path.join(dir, '.claude', 'worktrees', ticket)).filter(p => fs.existsSync(p));
         let handle;
         try {
@@ -1434,7 +1435,7 @@ function createDashboard(options = {}) {
             emit({ kind: 'phase', text: `Validando com ${buildValidator.MVN_COMMAND}…` });
             let result;
             try {
-                result = await validateBuild(worktree, { siblingRepos });
+                result = await validateBuild(worktree, { siblingRepos, env: consumerEnv });
             } catch (e) {
                 result = { success: false, duration: 0, errors: [`Falha rodando o validador: ${e.message}`] };
             }
@@ -1490,7 +1491,11 @@ function createDashboard(options = {}) {
     // consumeQaRetrySignals em scripts/readmine-watcher.js). Nota ausente ou journals
     // fora do ar não impedem o retry; Redmine sem aceitar a troca de status impede (502,
     // nada local é escrito — clicar de novo é seguro).
-    const qaRedmine = options.qaRedmine || qaJournal;
+    const qaRedmine = options.qaRedmine || {
+        fetchLastRejectionNote: id => qaJournal.fetchLastRejectionNote(id, redmineOptions()),
+        setIssueStatus: (id, status) => qaJournal.setIssueStatus(id, status, redmineOptions()),
+    };
+    const qaDevelopmentStatus = Number(consumerEnv.REDMINE_STATUS_EM_DESENVOLVIMENTO_ID) || 2;
     const qaRetrying = new Set();
     app.post('/api/runs/:taskId/retry-qa-rejection', async (req, res) => {
         const run = withRun(req, res);
@@ -1523,7 +1528,7 @@ function createDashboard(options = {}) {
         qaRetrying.add(run.taskId);
         try {
             const found = await qaRedmine.fetchLastRejectionNote(issueId);
-            const moved = await qaRedmine.setIssueStatus(issueId, qaJournal.EM_DESENVOLVIMENTO_STATUS_ID);
+            const moved = await qaRedmine.setIssueStatus(issueId, qaDevelopmentStatus);
             if (!moved.ok) return res.status(502).json({ error: redact(`Redmine: ${moved.error}`) });
 
             const at = new Date().toISOString();
@@ -1944,14 +1949,14 @@ function createDashboard(options = {}) {
     // mais de um repo, e a aba lista todos.
     const DEFAULT_SIBLING_REPOS = siblingNames;
     function bitbucketConfig() {
-        const workspace = process.env.BITBUCKET_WORKSPACE;
-        const repo = process.env.BITBUCKET_REPO_SLUG;
-        const token = process.env.BITBUCKET_API_TOKEN;
+        const workspace = consumerEnv.BITBUCKET_WORKSPACE;
+        const repo = consumerEnv.BITBUCKET_REPO_SLUG;
+        const token = consumerEnv.BITBUCKET_API_TOKEN;
         if (!token) return { error: 'Bitbucket não configurado (BITBUCKET_API_TOKEN)' };
         if (!SLUG_RE.test(workspace || '') || !SLUG_RE.test(repo || '')) {
             return { error: 'Bitbucket não configurado (BITBUCKET_WORKSPACE/BITBUCKET_REPO_SLUG)' };
         }
-        const configured = (process.env.BITBUCKET_PR_REPOS || '').split(',').map(r => r.trim()).filter(Boolean);
+        const configured = (consumerEnv.BITBUCKET_PR_REPOS || '').split(',').map(r => r.trim()).filter(Boolean);
         const repos = [...new Set([repo, ...(configured.length ? configured : DEFAULT_SIBLING_REPOS)])].filter(r => SLUG_RE.test(r));
         return { workspace, repo, repos, token };
     }
@@ -1975,11 +1980,11 @@ function createDashboard(options = {}) {
                 const ticketId = ticketIdOf(taskId, state);
                 // URL montada aqui (server-side) porque REDMINE_URL não é exposta ao
                 // cliente — o front só recebe o link já pronto, nunca a variável.
-                const redmineUrl = (process.env.REDMINE_URL || '').replace(/\/+$/, '');
+                const redmineUrl = (consumerEnv.REDMINE_URL || '').replace(/\/+$/, '');
                 const ticketUrl = ticketId && redmineUrl ? `${redmineUrl}/issues/${ticketId}` : null;
                 for (const p of projectPrs(state.pull_request)) {
                     if (!p.id) continue;
-                    const key = `${p.repo || repo}#${p.id}`;
+                    const key = `${p.repo || primaryRepo}#${p.id}`;
                     if (!index.has(key)) index.set(key, { taskId, ticketId, ticketUrl });
                 }
             }
@@ -2010,7 +2015,7 @@ function createDashboard(options = {}) {
     // o dono dele). Sem nenhum dos três, null.
     let tokenOwnerFromRuns = null;
     async function resolveMe(cfg, prIndex) {
-        const envId = (process.env.BITBUCKET_ACCOUNT_ID || '').trim();
+        const envId = (consumerEnv.BITBUCKET_ACCOUNT_ID || '').trim();
         if (envId) return { accountId: envId, displayName: null };
         const user = await cachedCurrentUser(cfg);
         if (user?.accountId) return user;
@@ -2144,8 +2149,8 @@ function createDashboard(options = {}) {
         const ticketId = ticketIdOf(run.taskId, safeReadState(run));
         if (!ticketId) return res.status(404).json({ error: 'no ticket_id in state' });
 
-        const redmineUrl = (process.env.REDMINE_URL || '').replace(/\/+$/, '');
-        const apiKey = process.env.REDMINE_API_KEY;
+        const redmineUrl = (consumerEnv.REDMINE_URL || '').replace(/\/+$/, '');
+        const apiKey = consumerEnv.REDMINE_API_KEY;
         if (!redmineUrl || !apiKey) return res.status(503).json({ error: 'Redmine not configured' });
 
         try {
@@ -2301,7 +2306,7 @@ function createDashboard(options = {}) {
             comment_id: pending.comment_id ?? null,
             reminder_sent: pending.reminder_sent === true,
             missing_sections: Array.isArray(pending.missing_sections) ? pending.missing_sections : [],
-            keyword: pending.keyword || process.env.SPEC_APPROVAL_KEYWORD || 'aprovado',
+            keyword: pending.keyword || consumerEnv.SPEC_APPROVAL_KEYWORD || 'aprovado',
         });
     });
 
@@ -2328,8 +2333,8 @@ function createDashboard(options = {}) {
         const ticketId = ticketIdOf(run.taskId, state);
         if (!ticketId) return res.status(404).json({ error: 'no ticket_id in state' });
 
-        const redmineUrl = (process.env.REDMINE_URL || '').replace(/\/+$/, '');
-        const apiKey = process.env.REDMINE_API_KEY;
+        const redmineUrl = (consumerEnv.REDMINE_URL || '').replace(/\/+$/, '');
+        const apiKey = consumerEnv.REDMINE_API_KEY;
         if (!redmineUrl || !apiKey) return res.status(503).json({ error: 'Redmine not configured' });
 
         // Aprovação humana (scripts/cas.js): a tela tem que estar atual (state_version +
@@ -2372,8 +2377,8 @@ function createDashboard(options = {}) {
         }
 
         const keyword = action === 'reject'
-            ? (process.env.SPEC_REJECTION_KEYWORD || 'rejeitado')
-            : (process.env.SPEC_APPROVAL_KEYWORD || 'aprovado');
+            ? (consumerEnv.SPEC_REJECTION_KEYWORD || 'rejeitado')
+            : (consumerEnv.SPEC_APPROVAL_KEYWORD || 'aprovado');
         const scId = state.spec_change_pending?.id || 'SPEC_CHANGE';
         const notes = isSpecChange
             ? `${keyword}\n\n(${action === 'reject' ? 'rejeitado' : 'aprovado'} pelo dashboard local — decisão humana sobre a ${scId} proposta pelo /implement)`
@@ -2441,14 +2446,14 @@ function createDashboard(options = {}) {
             }
         }
 
-        const token = process.env.BITBUCKET_API_TOKEN;
+        const token = consumerEnv.BITBUCKET_API_TOKEN;
         if (!token) return res.status(503).json({ error: 'Bitbucket not configured' });
         if (!prs.some(p => p.id)) return res.status(422).json({ error: 'cannot determine PR id from state' });
 
         const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
         const results = await Promise.all(prs.map(async p => {
-            const workspace = p.workspace || process.env.BITBUCKET_WORKSPACE;
-            const repo = p.repo || process.env.BITBUCKET_REPO_SLUG;
+            const workspace = p.workspace || consumerEnv.BITBUCKET_WORKSPACE;
+            const repo = p.repo || consumerEnv.BITBUCKET_REPO_SLUG;
             const base = { repo, id: p.id, url: p.url, local_state: p.state, status: p.state, last_checked_at: p.last_checked_at };
             if (!p.id) return { ...base, error: p.url ? 'cannot determine PR id from state' : 'sem URL/ID de PR no state.json' };
             if (!SLUG_RE.test(workspace || '') || !SLUG_RE.test(repo || '')) {
@@ -2513,7 +2518,7 @@ function createDashboard(options = {}) {
         if (state?.pr_status === 'merged') return res.status(409).json({ error: 'PR já mergeado' });
         const prs = projectPrs(state?.pull_request).filter(p => p.id);
         if (!prs.length) return res.status(422).json({ error: 'sem pr_url/pr_id no state.json' });
-        const token = process.env.BITBUCKET_API_TOKEN;
+        const token = consumerEnv.BITBUCKET_API_TOKEN;
         if (!token) return res.status(503).json({ error: 'Bitbucket não configurado (BITBUCKET_API_TOKEN)' });
         if (prReadyInFlight.has(run.taskId)) return res.status(409).json({ error: 'já marcando como pronto' });
 
@@ -2522,8 +2527,8 @@ function createDashboard(options = {}) {
             const failures = [];
             const readyRepos = new Set();
             for (const p of prs) {
-                const workspace = p.workspace || process.env.BITBUCKET_WORKSPACE;
-                const repo = p.repo || process.env.BITBUCKET_REPO_SLUG;
+                const workspace = p.workspace || consumerEnv.BITBUCKET_WORKSPACE;
+                const repo = p.repo || consumerEnv.BITBUCKET_REPO_SLUG;
                 if (!SLUG_RE.test(workspace || '') || !SLUG_RE.test(repo || '')) {
                     failures.push(`${repo || '?'}#${p.id}: workspace/repositório desconhecido`);
                     continue;
@@ -2575,7 +2580,7 @@ function createDashboard(options = {}) {
     // conta: os watchers que ele sobe herdam o env e vão rodar em dry-run.
     app.get('/api/watcher/mode', (req, res) => {
         const file = readJson(path.join(memoryDir, '.watcher-mode'));
-        const fromEnv = (options.env || process.env).DRY_RUN === 'true';
+        const fromEnv = consumerEnv.DRY_RUN === 'true';
         const dryRun = fromEnv || file?.mode === 'dry-run';
         res.json({
             mode: dryRun ? 'dry-run' : (file?.mode === 'live' ? 'live' : 'unknown'),
@@ -2643,17 +2648,17 @@ function createDashboard(options = {}) {
     // Notificação via webhook (scripts/notify.js): o painel mostra se está configurada e
     // dispara um payload dummy pra conferir o webhook sem rodar ciclo. Nunca devolve a
     // URL (o token do Slack/Discord mora no caminho) — só o host.
-    const sendNotification = options.sendNotification || notify.sendNotification;
+    const sendNotification = options.sendNotification || (payload => notify.sendNotification(payload, { webhookUrl: notify.webhookUrlFromEnv(consumerEnv) }));
     const notifyHost = () => {
-        const u = notify.webhookUrlFromEnv();
+        const u = notify.webhookUrlFromEnv(consumerEnv);
         if (!u) return null;
         try { return new URL(u).host || null; } catch { return null; }
     };
     app.get('/api/notify/status', (req, res) => {
-        res.json({ configured: !!notify.webhookUrlFromEnv(), host: notifyHost() });
+        res.json({ configured: !!notify.webhookUrlFromEnv(consumerEnv), host: notifyHost() });
     });
     app.post('/api/notify/test', async (req, res) => {
-        if (!notify.webhookUrlFromEnv()) {
+        if (!notify.webhookUrlFromEnv(consumerEnv)) {
             return res.json({ configured: false, sent: false, status: null, error: 'NOTIFY_WEBHOOK_URL não configurada no .env' });
         }
         const r = await sendNotification(notify.slackPayload({
@@ -2689,7 +2694,7 @@ function createDashboard(options = {}) {
     const probeUsage = options.probeClaudeUsage || claudeUsage.probeUsage;
     function currentAccount() {
         const accounts = listAccounts();
-        const { dir, source } = claudeAccount.resolveClaudeAccount(process.env, { prefsFile });
+        const { dir, source } = claudeAccount.resolveClaudeAccount(consumerEnv, { prefsFile });
         const acc = dir ? accounts.find(a => a.dir === dir || claudeAccount.expandHome(a.id) === dir) : accounts.find(a => a.id === claudeAccount.DEFAULT_ACCOUNT);
         return { accounts, dir, source, id: acc?.id || null, label: acc?.label || (dir ? path.basename(dir) : 'padrão') };
     }

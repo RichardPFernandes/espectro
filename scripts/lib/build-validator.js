@@ -186,7 +186,7 @@ function validateBuild(worktreePath, options = {}) {
     const command = options.command || (options.env || process.env).PRE_BUILD_COMMAND;
     if (!command) {
         return Promise.resolve({
-            success: false, infraError: 'pre_build_unconfigured', duration: 0, javaHome: null,
+            success: false, configurationError: 'pre_build_unconfigured', duration: 0, javaHome: null,
             errors: ['PRE_BUILD_COMMAND não configurado pelo consumidor'],
         });
     }

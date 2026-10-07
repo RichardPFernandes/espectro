@@ -102,7 +102,14 @@ test('validateBuild: sem PRE_BUILD_COMMAND não executa e não trata como falha 
     const calls = [];
     const r = await bv.validateBuild('/w/app', { exec: fakeExec(null, '', '', calls), env: {} });
     assert.strictEqual(r.success, false);
-    assert.strictEqual(r.infraError, 'pre_build_unconfigured');
+    assert.strictEqual(r.configurationError, 'pre_build_unconfigured');
+    assert.strictEqual(r.infraError, undefined);
+    const state = { status: 'in_progress', preBuildAccepted: { by: 'old' }, preBuildStatus: 'passed' };
+    assert.strictEqual(bv.applyResult(state, r), 'failed');
+    assert.strictEqual(state.status, 'pre-build-failed');
+    assert.strictEqual(state.preBuildStatus, 'failed');
+    assert.strictEqual(state.preBuildAccepted, undefined);
+    assert.deepStrictEqual(state.preBuildErrors, ['PRE_BUILD_COMMAND não configurado pelo consumidor']);
     assert.strictEqual(calls.length, 0);
 });
 
@@ -435,4 +442,20 @@ test.after(async () => {
     // Deixa os `claude` falsos (spawn assíncrono) terminarem antes de apagar o tmp.
     await new Promise(r => setTimeout(r, 300));
     fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+// Consumer command, cwd, env and JDK must travel together even with an ambient command.
+test('validateBuild: explicit command and isolated env win over ambient defaults', async () => {
+    const calls = [];
+    const r = await bv.validateBuild('/consumer/worktree', {
+        command: 'consumer-build --check', env: { PRE_BUILD_COMMAND: 'env-build', PATH: '/consumer/bin', CONSUMER: 'B' },
+        java: { javaHome: '/consumer/jdk', source: 'explicit' }, exec: fakeExec(null, '', '', calls),
+    });
+    assert.strictEqual(r.success, true);
+    assert.strictEqual(calls[0].cmd, 'consumer-build --check');
+    assert.strictEqual(calls[0].opts.cwd, '/consumer/worktree');
+    assert.deepStrictEqual(calls[0].opts.env, {
+        PRE_BUILD_COMMAND: 'env-build', PATH: '/consumer/jdk/bin' + path.delimiter + '/consumer/bin',
+        CONSUMER: 'B', JAVA_HOME: '/consumer/jdk',
+    });
 });

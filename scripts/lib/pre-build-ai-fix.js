@@ -28,13 +28,13 @@ function siblingWorktrees(workspace, ticketId) {
     return SIBLING_REPOS.map(r => path.join(workspace, r, '.claude', 'worktrees', String(ticketId))).filter(p => fs.existsSync(p));
 }
 
-function buildPrompt({ ticketId, errors, extra = '', siblingDirs = [], command = process.env.PRE_BUILD_COMMAND, env = process.env }) {
+function buildPrompt({ ticketId, errors, extra = '', siblingDirs = [], command, env = process.env }) {
     command = command || env.PRE_BUILD_COMMAND;
     if (!command) throw new Error('PRE_BUILD_COMMAND não configurado pelo consumidor');
     const install = siblingDirs.length
         ? `- Dependências locais: verifique apenas os worktrees DESTE ticket:\n` +
           `${siblingDirs.map(d => `  ${d}`).join('\n')}\n` +
-          `  Use somente o procedimento e a ordem de dependências configurados pelo consumidor. ` +
+          `  Leia memory/project.yaml e seus documentos de referência para o procedimento e a ordem de dependências do consumidor. ` +
           `Nunca opere no checkout principal de um repo irmão nem em worktree de outro ticket.\n`
         : '';
     return (

@@ -59,7 +59,14 @@ function createRedactor(envFile, extra = () => ({}), env = process.env) {
     let sanitize = null;
     function redact(text) {
         if (!sanitize) {
-            const envForSecrets = { ...(envFile ? parseEnvFile(envFile) : {}), ...extra(), ...env };
+            const entries = [
+                ...Object.entries(envFile ? parseEnvFile(envFile) : {}),
+                ...Object.entries(extra()),
+                ...Object.entries(env),
+            ];
+            // Preserve every known value, including same-name values from different
+            // sources. Synthetic keys keep the secret suffix recognized by sanitizer.
+            const envForSecrets = Object.fromEntries(entries.map(([key, value], index) => [`REDACTOR_${index}_${key}${key === 'NOTIFY_WEBHOOK_URL' ? '_SECRET' : ''}`, value]));
             sanitize = sanitizeLog.buildSanitizer(envForSecrets, { onWarning: () => {} });
         }
         return sanitize(text).replace(INLINE_SECRET_RE, `$1${sanitizeLog.REDACTED}`).replace(HEADER_SECRET_RE, `$1${sanitizeLog.REDACTED}`);
@@ -79,7 +86,7 @@ function isAlive(pid) {
 }
 
 function createWatcherManager(options = {}) {
-    const repoRoot = path.resolve(options.repoRoot || options.cwd || process.env.REPO_PATH || process.cwd());
+    const repoRoot = path.resolve(options.repoRoot || options.cwd || options.env?.REPO_PATH || process.env.REPO_PATH || process.cwd());
     const script = options.script || path.join(PRISMA_ROOT, 'scripts', 'readmine-watcher.js');
     const args = options.args || [];
     const cwd = options.cwd || repoRoot;
@@ -99,7 +106,7 @@ function createWatcherManager(options = {}) {
     let seq = 0;
     // Construído no primeiro uso (não no require): o server.js carrega o .env
     // depois de require()-ar este módulo.
-    const redact = createRedactor(envFile);
+    const redact = createRedactor(envFile, () => options.env || {});
 
     let child = null;
     let state = 'stopped'; // stopped | running | restarting | stopping

@@ -25,7 +25,7 @@ configuração, os dados e o estado dele permanecem no projeto consumidor.
 - `docs/`: documentação técnica do bootstrap e da entrada de extração.
 - `provenance/`: referência da baseline aceita e seus limites.
 
-Os diretórios reservados não contêm implementação nesta entrega. A organização
+A nota de bootstrap dos diretórios reservados foi superada pela candidata PRI-60, que contém os artefatos selecionados. A organização
 preserva os caminhos dos pacotes AS-IS e não escolhe distribuição, engine ou
 modelo de persistência novo.
 
@@ -39,3 +39,13 @@ Código e documentação técnica serão versionados no destino efetivamente aut
 O bootstrap não oferece comandos de execução da plataforma: a extração, a
 compatibilidade dos pacotes, a integração e suas provas pertencem às entregas
 seguintes do Project Repository Extraction & Bootstrap.
+
+## Candidata de extração PRI-60
+
+A branch `feat/pri-60-platform-extraction` incorpora a lista aceita PRI-58 e seus
+seams mínimos. Consulte [consumo](docs/consumption.md), [paths](docs/extraction-paths.md)
+e provenance/extraction-manifest.json. O texto anterior registra o bootstrap
+PRI-59 e continua como histórico atribuído; os placeholders já receberam código
+selecionado nesta candidata. Testes/readback e limites estão no handoff FINAL da
+PRI-60, sem ativação do consumidor ou cutover. Padrão Git informado por Richard:
+`feat/` para feature e `fix/` para bug.

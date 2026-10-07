@@ -21,7 +21,7 @@ fs.writeFileSync(path.join(wt, '7777/target/quarkus-app/quarkus-run.jar'), '');
 const node = code => ({ cmd: process.execPath, args: ['-e', code] });
 const stay = 'setInterval(() => {}, 1000); process.on("SIGTERM", () => process.exit(0));';
 const previewManager = createPreviewManager({
-    worktreesDir: wt, envFile: null, checkPorts: false, stopGraceMs: 500, startupTimeoutMs: 5000, frontReadyMs: 5000,
+    repoRoot: tmp, adapter: 'maven-quarkus-grunt', profile: 'fixture', javaHome: '', worktreesDir: wt, envFile: null, checkPorts: false, stopGraceMs: 500, startupTimeoutMs: 5000, frontReadyMs: 5000,
     libRepos: {}, // nunca os ../mo-entity e ../app-core reais
     ports: { back: 8081, front: 9000 },
     commands: {

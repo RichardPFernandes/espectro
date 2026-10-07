@@ -47,15 +47,18 @@ test('parseStreamLine: init, texto, ferramenta, erro de ferramenta, result', () 
 });
 
 test('buildPrompt / claudeArgs: erros no prompt, stream-json, sem subagente, add-dir dos irmãos', () => {
-    const prompt = fix.buildPrompt({ ticketId: 123, errors: ['A.java:3 — x'], extra: 'olhe o app-core' });
+    const prompt = fix.buildPrompt({ ticketId: 123, errors: ['A.java:3 — x'], extra: 'olhe o app-core', env: { PRE_BUILD_COMMAND: 'consumer-build --check' } });
     assert.match(prompt, /#123/);
     assert.match(prompt, /A\.java:3 — x/);
     assert.match(prompt, /Não faça commit/);
     assert.match(prompt, /olhe o app-core/);
     assert.match(prompt, /explique o que rodar/, 'sem worktree irmão: só explica');
-    const withSib = fix.buildPrompt({ ticketId: 123, errors: ['x'], siblingDirs: ['/ws/mo-entity/.claude/worktrees/123'] });
-    assert.match(withSib, /mvn install -DskipTests[\s\S]*\/ws\/mo-entity\/\.claude\/worktrees\/123/);
-    assert.match(withSib, /Nunca rode install no checkout principal/);
+    const withSib = fix.buildPrompt({ ticketId: 123, errors: ['x'], siblingDirs: ['/ws/mo-entity/.claude/worktrees/123'], env: { PRE_BUILD_COMMAND: 'consumer-build --check' } });
+    assert.match(withSib, /\/ws\/mo-entity\/\.claude\/worktrees\/123/);
+    assert.match(withSib, /Leia memory\/project\.yaml[\s\S]*procedimento e a ordem/);
+    assert.match(withSib, /consumer-build --check/);
+    assert.ok(!withSib.includes('mvn install'), 'procedure comes from consumer documents');
+    assert.match(withSib, /Nunca opere no checkout principal[\s\S]*worktree de outro ticket/);
     const args = fix.claudeArgs(prompt, { addDirs: ['/ws/app-core/.claude/worktrees/123'] });
     assert.deepStrictEqual(args.slice(0, 2), ['-p', prompt]);
     assert.ok(args.includes('stream-json') && args.includes('--verbose'));
@@ -98,4 +101,16 @@ test('startFix: cancel e timeout encerram o agente', async () => {
     const b = fakeSpawn([], { hang: true });
     const t = await fix.startFix({ worktree: '/wt', args: [], env: {}, spawn: b.spawn, timeoutMs: 20 }).done;
     assert.strictEqual(t.timedOut, true);
+});
+
+test('buildPrompt: isolated consumer env wins; missing configuration blocks repair', () => {
+    const old = process.env.PRE_BUILD_COMMAND;
+    process.env.PRE_BUILD_COMMAND = 'ambient-build';
+    try {
+        const prompt = fix.buildPrompt({ ticketId: 1, errors: [], env: { PRE_BUILD_COMMAND: 'consumer-build' } });
+        assert.ok(prompt.includes('consumer-build'));
+        assert.ok(!prompt.includes('ambient-build'));
+        assert.throws(() => fix.buildPrompt({ ticketId: 1, errors: [], env: {} }), /PRE_BUILD_COMMAND/);
+        assert.ok(fix.buildPrompt({ ticketId: 1, errors: [], command: 'explicit-build', env: {} }).includes('explicit-build'));
+    } finally { if (old === undefined) delete process.env.PRE_BUILD_COMMAND; else process.env.PRE_BUILD_COMMAND = old; }
 });

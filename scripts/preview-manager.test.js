@@ -70,12 +70,12 @@ function worktrees(parts = ['', '-mo-entity', '-app-core', '-app-front']) {
 function manager(root, env = {}, extra = {}) {
     const calls = path.join(root, 'calls.log');
     const m = createPreviewManager({
-        adapter: 'maven-quarkus-grunt', profile: 'local-dev', dbOptions: 'stage=local-dev,local-cacaushow=local-cacau',
+        repoRoot: root, adapter: 'maven-quarkus-grunt',
         worktreesDir: root, envFile: null, javaHome: jdk, checkPorts: false, stopGraceMs: 500,
         startupTimeoutMs: 3000, frontReadyMs: 3000,
         libRepos: {}, // nunca os ../mo-entity e ../app-core reais
         ports: { back: 8081, front: 9000 }, // o java falso anuncia 8081
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CALLS: calls, GRANDCHILD: path.join(root, 'grandchild.pid'), ...env },
+        env: { ...process.env, PREVIEW_PROFILE: 'local-dev', PREVIEW_DB_OPTIONS: 'stage=local-dev,local-cacaushow=local-cacau', PREVIEW_LIB_REFS: 'origin/master,origin/development', PATH: `${bin}:${process.env.PATH}`, CALLS: calls, GRANDCHILD: path.join(root, 'grandchild.pid'), ...env },
         ...extra,
     });
     managers.push(m);
@@ -329,20 +329,32 @@ test('clean sem worktree do mo-entity/app-core não toca no ~/.m2', () => {
     assert.ok(fs.existsSync(m2));
 });
 
-test('sem PREVIEW_JAVA_HOME: JAVA_HOME herdado abaixo do release do pom é trocado pelo java_home -v <release>', async t => {
-    const { execFileSync } = require('child_process');
-    let jdk25 = null;
-    try { jdk25 = execFileSync('/usr/libexec/java_home', ['-v', '25'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
-    if (!jdk25) return t.skip('sem JDK 25 nesta máquina');
-    const jdk17 = path.join(tmp, 'jdk17');
-    fs.mkdirSync(jdk17, { recursive: true });
-    fs.writeFileSync(path.join(jdk17, 'release'), 'JAVA_VERSION="17.0.18"\n');
+test('sem PREVIEW_JAVA_HOME: preview resolves JDK from the synthetic consumer root only at start', async () => {
+    const vm = require('vm');
+    const { createRequire } = require('module');
+    const file = require.resolve('./preview-manager');
+    const realRequire = createRequire(file);
+    const resolved = [];
+    const mod = { exports: {} };
+    vm.runInNewContext('(function(require,module,exports,__dirname){' + fs.readFileSync(file, 'utf8') + '\n})',
+        { process, console, Buffer, setTimeout, clearTimeout, setInterval, clearInterval })(
+        id => id === './lib/build-validator' ? { resolveJavaHome: (root, env) => {
+            assert.ok(fs.readFileSync(path.join(root, 'pom.xml'), 'utf8').includes('<maven.compiler.release>25'));
+            resolved.push({ root, env }); return { javaHome: jdk };
+        } } : realRequire(id), mod, mod.exports, path.dirname(file));
     const root = worktrees(['']);
-    const { m, calls } = manager(root, { JAVA_HOME: jdk17, PREVIEW_JAVA_HOME: '' }, { javaHome: undefined });
+    fs.writeFileSync(path.join(root, 'pom.xml'), '<project><properties><maven.compiler.release>25</maven.compiler.release></properties></project>');
+    const m = mod.exports.createPreviewManager({ repoRoot: root, worktreesDir: root, envFile: null, checkPorts: false,
+        adapter: 'maven-quarkus-grunt', profile: 'local-dev', javaHome: undefined, libRepos: {},
+        env: { PATH: bin + path.delimiter + process.env.PATH, PREVIEW_JAVA_HOME: '', PRE_BUILD_JAVA_HOME: '/wrong-build-jdk' },
+        commands: { back: () => ({ cmd: path.join(jdk, 'bin', 'java'), args: [] }) } });
+    managers.push(m);
+    assert.strictEqual(resolved.length, 0, 'no discovery at construction');
     m.start('4242');
-    await until(() => calls().includes('@ 4242'));
+    assert.strictEqual(resolved.length, 1);
+    assert.strictEqual(resolved[0].root, root);
+    assert.strictEqual(resolved[0].env.PRE_BUILD_JAVA_HOME, '');
     await m.stop('4242');
-    assert.match(calls(), new RegExp(`JAVA_HOME=${jdk25}`));
 });
 
 test('lib sem worktree: builda do repo irmão na branch com a versão do back (origin/<ticket> antes do master), pula se o commit não mudou', async () => {

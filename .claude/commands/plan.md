@@ -92,14 +92,14 @@ profundidade do diagnóstico (arquivos a tocar, dependências, riscos) não muda
    escopo do zero (e não um segundo contrato). Acrescente `"plan"`
    ao `history` existente em vez de recriar o state.json.
 4. Diagnostique a tarefa e inclua os repos relacionados explicitamente configurados
-+   em `memory/project.yaml`/`WATCHER_SIBLING_REPOS` quando a correção exigir. Não
-+   trate nenhum repo irmão como implícito. Use os worktrees do escopo aprovado;
-+   preserve mudanças alheias e registre restrições funcionais realmente pendentes.
-+5. Se a tarefa referenciar uma tela/programa específico, consulte o índice indicado
-+   em `memory/project.yaml > documentos_de_referencia` por busca dirigida, sem ler
-+   inteiro. Sem índice configurado ou arquivo ausente, registre a limitação e siga
-+   o diagnóstico; não invente caminhos de outro consumidor.
-+6. Usando `memory/spec/index.yaml` (via `grep`, ver passo 1), selecione só os
+   em `memory/project.yaml`/`WATCHER_SIBLING_REPOS` quando a correção exigir. Não
+   trate nenhum repo irmão como implícito. Use os worktrees do escopo aprovado;
+   preserve mudanças alheias e registre restrições funcionais realmente pendentes.
+5. Se a tarefa referenciar uma tela/programa específico, consulte o índice indicado
+   em `memory/project.yaml > documentos_de_referencia` por busca dirigida, sem ler
+   inteiro. Sem índice configurado ou arquivo ausente, registre a limitação e siga
+   o diagnóstico; não invente caminhos de outro consumidor.
+6. Usando `memory/spec/index.yaml` (via `grep`, ver passo 1), selecione só os
    arquivos de `memory/spec/` realmente relevantes a esta tarefa — nunca leia a spec
    inteira de uma vez.
 7. Se $ARGUMENTS não for um task-id existente, gere um novo (slug curto + data, ex:

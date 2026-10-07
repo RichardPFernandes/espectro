@@ -115,11 +115,11 @@ vence**, salvo SPEC_CHANGE explicitamente aprovado (`spec_change_approved: true`
    irmãos de app-core/mo-entity/app-front). Classifique como `high-risk` se
    qualquer critério abaixo for verdadeiro:
    - Regra/dominio legado crítico identificado nas regras invioláveis do consumidor.
-+   - Mudança de schema/dados ou isolamento, conforme stack e contratos do consumidor.
-+   - Autenticação/autorização/segurança, conforme agentes_por_dominio do consumidor.
-+   - Mudança ampla cujo risco está definido no contexto do consumidor.
-+
-+   Caso contrário, `low-risk`. Grave em `state.json`:
+   - Mudança de schema/dados ou isolamento, conforme stack e contratos do consumidor.
+   - Autenticação/autorização/segurança, conforme agentes_por_dominio do consumidor.
+   - Mudança ampla cujo risco está definido no contexto do consumidor.
+
+   Caso contrário, `low-risk`. Grave em `state.json`:
    - `risk_level`: `"high"` ou `"low"`
    - `risk_reason`: frase curta com o(s) critério(s) atingido(s) e o arquivo que
      disparou (ex: `"Motor de frete legado: track/calculofrete/GrupoDTO.java"`),

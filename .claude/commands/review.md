@@ -210,10 +210,10 @@ alteradas (item 4).
      cada dimensão.
    - **3**: use o resultado do bloco (não rode de novo).
    - **4**: localize testes existentes dos arquivos alterados e rode apenas o
-+     recorte pertinente à toolchain declarada pelo consumidor (TEST_COMMAND /
-+     TEST_SCOPED_COMMAND). Sem teste relacionado = N/A; testes novos são do Test.
-+     Falha de ambiente é inconclusiva com motivo, sem inventar resultado.
-+   - **5**: só se o diff cria/altera endpoint (`@Path`, `@GET/@POST/...`, rota
+     recorte pertinente à toolchain declarada pelo consumidor (TEST_COMMAND /
+     TEST_SCOPED_COMMAND). Sem teste relacionado = N/A; testes novos são do Test.
+     Falha de ambiente é inconclusiva com motivo, sem inventar resultado.
+   - **5**: só se o diff cria/altera endpoint (`@Path`, `@GET/@POST/...`, rota
      nova); senão **N/A**.
    - **6**: olhe `LOG`/`logger`/`printStackTrace`/`console.*` nas linhas
      adicionadas — token, senha, CPF/CNPJ completo, payload inteiro de request.

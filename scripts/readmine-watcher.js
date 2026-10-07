@@ -155,6 +155,9 @@ const NODE_LEASE_SCRIPT = path.join(__dirname, 'lib', 'node-lease.js');
 // ver memory/project.yaml: app-front consome a API deste backend, app-core e
 // mo-entity concentram lógica compartilhada (ex: núcleo de alterarEtapa, entidades).
 const SIBLING_REPOS = (process.env.WATCHER_SIBLING_REPOS || '').split(',').map(s => s.trim()).filter(Boolean);
+for (const name of SIBLING_REPOS) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) || name.includes('..')) throw new Error('nome de repositório irmão inválido');
+}
 
 // Mesma decisão de branch base do nó Fetch Ticket (.claude/commands/fetch-ticket.md
 // passo 3) — tem que ficar em sincronia com aquele arquivo se a convenção mudar lá.
@@ -2719,6 +2722,8 @@ function cleanAgentEnv() {
     }
     withClaudeAccount(env);
     env.PRISMA_ROOT = PRISMA_ROOT;
+    env.REPO_PATH = REPO_PATH;
+    env.WATCHER_MAIN_REPO_NAME = process.env.WATCHER_MAIN_REPO_NAME || path.basename(REPO_PATH);
     if (JDK25_HOME && fs.existsSync(JDK25_HOME)) {
         env.JAVA_HOME = JDK25_HOME;
         env.PATH = `${JDK25_HOME}/bin:${env.PATH}`;

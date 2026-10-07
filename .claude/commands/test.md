@@ -48,14 +48,14 @@ não é refeito aqui.
    `regression-test` = teste existente que protege comportamento mantido,
    `integration-test` = com banco/serviço real), ou por que o AC não é automatizável.
 3. **Rode os testes da toolchain configurada no consumidor** (TEST_COMMAND e,
-+   quando pertinente, TEST_SCOPED_COMMAND), com as flags reais que habilitam seus
-+   testes. Guarde a saída e relatórios no run em evidence/. Não assuma Maven,
-+   Node ou um caminho de relatório pelo layout da plataforma. Em Java/Maven,
-+   `acceptance-evidence.js scan <diretorio-surefire>` é o adapter existente;
-+   outros formatos usam o artefato real admissível (log/testcase), sem fabricar
-+   resultados ou declarar teste pela memória. Repos relacionados usam apenas o
-+   escopo explicitamente configurado e autorizado.
-+4. **Matriz de cobertura** — escreva `memory/runs/$ARGUMENTS/acceptance-evidence.json`
+   quando pertinente, TEST_SCOPED_COMMAND), com as flags reais que habilitam seus
+   testes. Guarde a saída e relatórios no run em evidence/. Não assuma Maven,
+   Node ou um caminho de relatório pelo layout da plataforma. Em Java/Maven,
+   `acceptance-evidence.js scan <diretorio-surefire>` é o adapter existente;
+   outros formatos usam o artefato real admissível (log/testcase), sem fabricar
+   resultados ou declarar teste pela memória. Repos relacionados usam apenas o
+   escopo explicitamente configurado e autorizado.
+4. **Matriz de cobertura** — escreva `memory/runs/$ARGUMENTS/acceptance-evidence.json`
    (sobrescreva a cada rodada; schema em `.graph/schemas/acceptance-evidence.schema.json`).
    Se `state.json.stale_artifacts` listar `acceptance-evidence.json` (SPEC_CHANGE
    aprovada — `scripts/lib/spec-change.js`), a matriz antiga é de outra versão da

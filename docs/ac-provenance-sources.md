@@ -1,9 +1,9 @@
 > Candidata extraída PRI-60. Os exemplos/histórico de app-back neste documento
-+> identificam a origem, não configuram o consumidor atual. Consulte docs/consumption.md
-+> e docs/extraction-paths.md: comandos de plataforma em PRISMA_ROOT, cwd/REPO_PATH
-+> e configuração/estado no consumidor. Nenhum procedimento de recovery/cutover
-+> é autorizado por esta cópia. A fonte histórica continua atribuída no manifesto.
-+
+> identificam a origem, não configuram o consumidor atual. Consulte docs/consumption.md
+> e docs/extraction-paths.md: comandos de plataforma em PRISMA_ROOT, cwd/REPO_PATH
+> e configuração/estado no consumidor. Nenhum procedimento de recovery/cutover
+> é autorizado por esta cópia. A fonte histórica continua atribuída no manifesto.
+
 # Provenance de ACs — levantamento das fontes reais (AC-01)
 
 Levantamento feito em 2026-10-01, **antes de qualquer código**, sobre o checkout

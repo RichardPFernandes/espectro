@@ -86,10 +86,10 @@ permanente em `memory/`.
    `git add -f memory/...` nem `git add -A` que a arraste. Antes de commitar, confira
    `git diff --cached --name-only | grep '^memory/'` — tem que sair vazio.
 6.5. **Commit dos repos relacionados tocados**: use somente os worktrees/repos
-+   explícitos no Plan e na configuração do consumidor. Não inferir siblings pela
-+   presença de diretórios. Preserve mudanças alheias; cada commit leva só o delta
-+   da task. Registros do ciclo continuam no consumidor que detém o subject.
-+7. **Push + abertura de PR** (habilitado desde 2026-09-02, ver
+   explícitos no Plan e na configuração do consumidor. Não inferir siblings pela
+   presença de diretórios. Preserve mudanças alheias; cada commit leva só o delta
+   da task. Registros do ciclo continuam no consumidor que detém o subject.
+7. **Push + abertura de PR** (habilitado desde 2026-09-02, ver
    `memory/decisions/2026-09-02-push-pr-automatico.md` e `2026-09-02-push-pr-
    siblings.md`). Repita para o consumidor **e cada repo relacionado commitado no passo6.5**,
    usando os nomes/remotes/branches explícitos de cada repo:
