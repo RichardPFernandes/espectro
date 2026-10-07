@@ -30,6 +30,12 @@ e `config/consolidator-module-keywords.json`, na raiz do app-back. Os arquivos
 `scripts/prisma-consumer.env.example` e `.claude/prisma-*.json` são só exemplos: não
 fazem parte da identidade da config nem do retorno.
 
+Hash atual de `prisma-consumer.env`: `767066520961af1bf36476ba52e217826d884220b4f82b61e95a575f0f69fa29`
+(PRI-65, 2026-10-07). O anterior (`44a91f61…`) não exportava `PRE_BUILD_COMMAND`,
+`TEST_COMMAND` e `TEST_SCOPED_COMMAND` no `source` (valor com espaço sem aspas); o novo
+põe aspas nesses valores e faz o `set -a`/`set +a` no próprio arquivo. Carregar com
+`source ./prisma-consumer.env` (zsh ou bash); o loader dotenv lê os mesmos valores.
+
 ## Quem e quando
 
 - Executor: quem opera o watcher do app-back neste host.
