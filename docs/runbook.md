@@ -250,7 +250,8 @@ curl -sN localhost:3333/api/watcher/log-stream        # Ctrl+C pra sair
 # D, F — o que o último tick decidiu
 jq '.last_tick_at, (.tickets | map_values({status, action, reason}))' memory/runs/watcher-state.json
 
-# Simular um tick para um ticket sem despachar nada (lê Redmine, não grava):
+# Simular um tick para um ticket sem despachar nada (só GET no Redmine; não grava nada em
+# memory/ nem nos worktrees — o que gravaria sai como "[dry-run] ... gravaria state.json: ..."):
 node "$PRISMA_ROOT/scripts/readmine-watcher.js" --dry-run --ticket=<ticket>
 ```
 
@@ -712,6 +713,10 @@ jq '.last_tick_at, .tickets' memory/runs/watcher-state.json  # decisão do últi
 cat dashboard/watcher.pid 2>/dev/null                        # pid do tick em curso (só existe durante o tick)
 
 # --- Simular sem efeitos ---
+# --dry-run (argv): tick real só de leitura (Redmine/Bitbucket só GET). Nada muda em memory/ (runs,
+# archive, spec, knowledge graph, registro de ACs, patterns, consolidator-state, watcher-state/runtime,
+# .watcher-mode) nem nos worktrees; o que despacharia/gravaria sai como "[dry-run] ...". Não confundir
+# com DRY_RUN=true (env), que simula um ciclo inteiro com ticket fictício e grava o run de teste.
 node "$PRISMA_ROOT/scripts/readmine-watcher.js" --dry-run
 node "$PRISMA_ROOT/scripts/readmine-watcher.js" --dry-run --ticket=<ticket>
 

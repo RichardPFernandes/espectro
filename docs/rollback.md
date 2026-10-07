@@ -71,9 +71,9 @@ põe aspas nesses valores e faz o `set -a`/`set +a` no próprio arquivo. Carrega
    pela fonte como órfão no mesmo nó (C4); commit órfão vira `needs_human_review`.
 4. **Um writer por REPO_PATH.** A trava (PRI-70) fica num caminho derivado do `REPO_PATH`
    (`<REPO_PATH>/.git/prisma-watcher.lock`, ou `/tmp/prisma-watcher-<hash>.lock`), nunca
-   em `memory/`. Fonte e candidata enxergam a mesma trava. O segundo watcher não grava
-   nada e sai com exit 75 enquanto o primeiro está vivo; trava de processo morto é
-   retomada sem intervenção. `pgrep` antes do tick é checagem, não a garantia.
+   em `memory/`. Fonte e candidata enxergam a mesma trava quando as duas rodam este código.
+   O segundo watcher não grava nada e sai com exit 75 enquanto o primeiro está vivo; trava
+   de processo morto é retomada sem intervenção. `pgrep` antes do tick é checagem, não a garantia.
 5. **Conferir drift.** Os 230 arquivos selecionados do app-back devem bater com o
    snapshot (`provenance/pri-62/consumption-rollback.test.js`, caso C0, faz essa leitura).
    Divergência: parar e decidir arquivo a arquivo. Sem `reset --hard`, `clean`, `stash`

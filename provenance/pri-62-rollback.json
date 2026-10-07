@@ -1,0 +1,153 @@
+{
+  "artifact_kind": "pri62_rollback_manifest",
+  "issue": "PRI-62",
+  "status": "CONSUMPTION_RETURN_EXERCISED_ISOLATED",
+  "observed_at": "2026-10-07T11:35:00-03:00",
+  "active_execution": "app-back scripts (fonte); nenhum cutover, stop ou revert executado",
+  "candidate": {
+    "revision": "fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c",
+    "tree": "4633d9fd5f5bdf30c6be9f990d84cb847a9cb3cc",
+    "files": 248,
+    "readback": "git archive da revisão, hash por arquivo contra candidate-source-preflight.json",
+    "supersedes": {
+      "revision": "04c130b00b7cce38ee17b1edc1d26ba67cd8c59a",
+      "tree": "6a6b3f559e9270399e96e26bb56ab02c7642285b",
+      "changed_files": [
+        "dashboard/compare-api.test.js",
+        "dashboard/public/compare.js",
+        "scripts/compare-runs.js",
+        "scripts/compare-runs.test.js",
+        "scripts/lib/run-comparator.js",
+        "scripts/lib/run-comparator.test.js"
+      ],
+      "reason": "PRI-61: veredito inconclusive, PARTIAL nunca passed, custo com complete/missing",
+      "previous_result": "6/6 consumo + 7/7 código/refs em 04c130b (consumption-return-2026-10-07/, revalidation-2026-10-07/)"
+    }
+  },
+  "previous_source": {
+    "head": "a1ac43307cc5f275caf5a70ad3068c9af099b127",
+    "selected_files": 230,
+    "accepted_list_sha256": "e3ba5c9ffa43c6fb2cb1e955ec1a2715af1337df5f11835941a42ae9b104ca84",
+    "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/source-selected-current.tar.gz",
+    "snapshot_sha256": "ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03",
+    "readback": "tar -xzf em tmp; hash, tamanho e bit de execução dos 230 contra o preflight",
+    "live_checkout_matches_snapshot": true,
+    "delta_vs_previous_snapshot": {
+      "previous_snapshot": "app-back/memory/runs/_archive/pri-60-platform-extraction/source-selected.tar.gz",
+      "previous_snapshot_sha256": "ad61809914fbca65f3657b98053a8ae9771f9e50f4bae3abcc0fdeb783163da0",
+      "changed_files": 6,
+      "files": [
+        { "path": "dashboard/compare-api.test.js", "old_sha256": "ee5b98acfc586ee4f66a7883f963edbb5d7f0d7e30c78171d55b04e9bda1600e", "new_sha256": "3eaddbf0dea6fc5a54d0d172a09c21a7d2412b5fbcea481a89453b70cfb56d1c", "source_equals_candidate": true },
+        { "path": "dashboard/public/compare.js", "old_sha256": "a33201958da73a297498ea90852d08b59dec622e8172708a5416559a8b076ef2", "new_sha256": "8a4634319b3beeab1250c25a157d7fc82799ccde3904069a51cb5959853929de", "source_equals_candidate": true },
+        { "path": "scripts/compare-runs.js", "old_sha256": "fad037101096e5fb3d4a87594c8983f4ae67eba23bd82a063d226510dcfc015e", "new_sha256": "08e1efd5381cf09894f78f732198a9ffd8c07ad44f64289bd126b2b38e6a5add", "source_equals_candidate": true },
+        { "path": "scripts/compare-runs.test.js", "old_sha256": "13eb4468b7a541bd79a10b1909b17de524d5b71fa24629e01a1bd9d34854bcec", "new_sha256": "1f49335528a9d0eb1dfd8e4fa6d61936b4d879acd9da54d113e556e464336125", "source_equals_candidate": true },
+        { "path": "scripts/lib/run-comparator.js", "old_sha256": "dd4bcafa8bb23f5b3e6d97f3826db23984fbd17eac2189f48e860b091d24f0e8", "new_sha256": "9a55d40a1ca38a1f11b66bd927b7b8e3307b541423b5132dd7b583c720dcc0fb", "source_equals_candidate": false },
+        { "path": "scripts/lib/run-comparator.test.js", "old_sha256": "1ddb15a1f2d156cbf27d8b4b8ca2f26fe26d8c2351b7b72221a5106064e911eb", "new_sha256": "07ad0667a074465d69a480bd00a154f45caf92f673584f71fa5dbb7afc2cf4ee", "source_equals_candidate": true }
+      ],
+      "pre_fix_originals": "app-back/memory/runs/pri-61-integration-validation/rerun-2026-10-07-fix/app-back-pre-fix/ (os 6 batem com o snapshot anterior)",
+      "note": "run-comparator.js já diferia entre fonte e candidata na PRI-60 (seam adaptado); continua diferindo."
+    }
+  },
+  "consumer_config": {
+    "location": "app-back, fora do Git; nenhum arquivo contém chave de segredo",
+    "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/consumption-return-2026-10-07/consumer-config-snapshot/",
+    "unchanged_since_previous_round": false,
+    "decision": "Linear PRI-61/PRI-62, comentário 3928a7eb-e679-4742-8c79-9be5b0dc9041 (Richard): config de consumo admitida = prisma-consumer.env + config/consolidator-module-keywords.json; scripts/prisma-consumer.env.example e .claude/prisma-*.json são só exemplo",
+    "admitted": [
+      { "path": "prisma-consumer.env", "git": "untracked", "bytes": 1020, "sha256": "767066520961af1bf36476ba52e217826d884220b4f82b61e95a575f0f69fa29" },
+      { "path": "config/consolidator-module-keywords.json", "git": "untracked", "bytes": 1061, "sha256": "423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c" }
+    ],
+    "examples": {
+      "contractual": false,
+      "note": "listados no C1 só como diagnóstico; fora da identidade da config e do PASS",
+      "files": [
+        { "path": "scripts/prisma-consumer.env.example", "git": "ignored", "bytes": 1731, "sha256": "055a6f78800a075043a56cf102f6423475bc798e8efecc869b6601ba07f62ac9" },
+        { "path": ".claude/prisma-module-keywords.json", "git": "ignored", "bytes": 1269, "sha256": "c639d2e2f3c55b64137a86a8746552f9042c3ec2be96f34599d615d69e529885" },
+        { "path": ".claude/prisma-response-factory.json", "git": "ignored", "bytes": 302, "sha256": "18cc52e3fd8f32e4f24cd35daa6d119ed88b4012d30c3290646685caf7fb78c0" }
+      ]
+    },
+    "other_copied": [
+      { "path": "docs/prisma-candidate.md", "git": "untracked", "bytes": 3261, "sha256": "917ceb80daff51d8b75bc8b13f2848590aec3d5e96738802979bc9c0e5c7433b" }
+    ],
+    "not_copied": [
+      ".env",
+      "credenciais",
+      "memory/runs reais",
+      "dados TMS"
+    ],
+    "revisions": [
+      {
+        "issue": "PRI-65",
+        "at": "2026-10-07",
+        "path": "prisma-consumer.env",
+        "old_sha256": "44a91f61ab5add073bcdbad64ca4a4bdf4333bf853de213865671762c0a32f48",
+        "old_bytes": 847,
+        "new_sha256": "767066520961af1bf36476ba52e217826d884220b4f82b61e95a575f0f69fa29",
+        "new_bytes": 1020,
+        "reason": "source no zsh/bash não exportava PRE_BUILD_COMMAND/TEST_COMMAND/TEST_SCOPED_COMMAND (valor com espaço sem aspas); valores entre aspas simples e set -a/set +a no próprio arquivo",
+        "same_keys_and_values": true,
+        "evidence": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/ (env-load-check.log, prisma-consumer.env.diff)"
+      }
+    ]
+  },
+  "exercise": {
+    "folder": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/",
+    "preflight": "candidate-source-preflight.json (cópia byte a byte da rodada candidate-fbb597c-2026-10-07)",
+    "preflight_sha256": "d7901edf82676d72ce82cb531254b9809da07d189c02396fe2be658132f05ca4",
+    "preflight_builder_sha256": "777a1128a82442e50d60a1ac9928460a3ad1097b530167371da750494725a3e4",
+    "preflight_workspace_restored": "workspace tmp do preflight recriado no mesmo caminho a partir do snapshot da fonte e do git archive de fbb597c (os 2 passos do builder, sem reescrever snapshot/preflight); 478 de 478 hashes conferem",
+    "harness": "provenance/pri-62/consumption-rollback.test.js",
+    "harness_sha256": "a7c33c4ffc8a8ef9c2d4242bd8ea2274ef6f11738c087b50f844734e9e9dfcd8",
+    "result": "consumption-rollback.tap",
+    "result_sha256": "eaba55e06bfe2168635c89bb34b0285edd316e1f171ba5cbeab063b80099bd33",
+    "tests": 6,
+    "pass": 6,
+    "fail": 0,
+    "skipped": 0,
+    "negative_control": "negative-control.tap (sha256 5fca51622f99a6e8cb6bc677eda854c1f1c036b8f111d5aca52ac59efa654883): sem as variáveis de entrada, 1 fail, 0 skip",
+    "c1_negative_control": "c1-negative-old-config.tap (sha256 428c3d9e1b64bfc6b2fb48432f76f09ea677e81a3e38be4ba19c26e303592d15): só C1, consumidor tmp com o prisma-consumer.env anterior (44a91f61…), 1 fail 'difere da config admitida'",
+    "code_reference_return": {
+      "harness": "candidate-reversal.test.js",
+      "harness_sha256": "1ca86532c70f81686da7db128c6cce216ce1fd1e05970e4c23bdd74737009b4f",
+      "result": "candidate-reversal.tap",
+      "result_sha256": "c3ab3749d33f22a293fdeb408dc21007c73226a1a88fce060ef6990ad94f6ed6",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "skipped": 0
+    },
+    "environment": "diretórios temporários, DRY_RUN=true, fixtures sintéticas, env mínimo sem credenciais; app-back git status idêntico antes/depois",
+    "c1_identity": "conjunto admitido fixado na harness (ADMITTED_CONFIG, 2 arquivos com sha256 esperado); exemplos via PRI62_CONFIG_EXAMPLES, só diagnóstico",
+    "previous_rounds": [
+      "config-admitted-2026-10-07/ (C1 com prisma-consumer.env 44a91f61…, antes da PRI-65; 6/6 + 7/7)",
+      "candidate-fbb597c-2026-10-07/ (C1 com os 6 arquivos, inclusive exemplos)",
+      "consumption-return-2026-10-07/ (candidata 04c130b)",
+      "revalidation-2026-10-07/ (candidata 04c130b)"
+    ]
+  },
+  "findings": [
+    "Não há trava de instância do watcher: acquireNode não recusa task running; exclusividade entre fonte e candidata depende de parar a candidata e esperar seus agentes.",
+    "node-lease.agentAlive só reconhece pid cujo comando contém 'claude' (igual na fonte e na candidata).",
+    "O wrapper do agente destacado libera o lease por $PRISMA_ROOT/scripts/lib/node-lease.js: o checkout do Prisma precisa continuar no lugar até esses agentes saírem.",
+    "Fonte e candidata leem o mesmo .env do consumidor; o retorno não restaura nem copia credenciais.",
+    "Pré-build: a fonte usa mvn fixo; PRE_BUILD_COMMAND/TEST_COMMAND da config do consumidor só valem na candidata."
+  ],
+  "delta_from_candidate": {
+    "base": "fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c",
+    "added": [
+      "docs/rollback.md",
+      "provenance/pri-62-rollback.json",
+      "provenance/pri-62/consumption-rollback.test.js"
+    ],
+    "runtime_files_changed": 0,
+    "note": "O ensaio executa os bytes de fbb597c extraídos por git archive, não este commit."
+  },
+  "unproven": [
+    "Redmine, Bitbucket, agentes e Maven reais",
+    "revogação real de credencial e SecretResolver",
+    "Decision formal além do 'aprovado' no Redmine e do state-writer set do contrato atual",
+    "exclusividade global entre hosts/processos",
+    "revisão de cutover diferente de fbb597c",
+    "Exercício real (Redmine/agentes reais) é executado por outra frente em app-back/memory/runs/pri-61-62-real-exercise-2026-10-07/; não faz parte deste ensaio"
+  ]
+}
