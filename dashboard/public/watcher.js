@@ -1,0 +1,419 @@
+// Painel de controle do watcher (scripts/watcher-manager.js via /api/watcher/*):
+// indicador no topo, Start/Stop/Restart, log em tempo real (SSE) com filtro por nível,
+// task em andamento e auto-start. Script clássico carregado por último; usa os globais
+// do script principal (runs, NODE_LABEL, titleOf, esc, api, toast, select, prefs,
+// persist, nearBottom, Views, $).
+(() => {
+  const POLL_MS = 5000;
+  const MAX_LINES = 1000;
+  const LEVELS = ['INFO', 'WARN', 'ERROR'];
+  prefs.watcherLevels ||= { INFO: true, WARN: true, ERROR: true };
+
+  let st = null;          // último /api/watcher/status
+  let reachable = true;
+  let busy = null;        // 'start' | 'stop' | 'restart' enquanto a chamada não volta
+  let autoStart = null;
+  const lines = [];
+  let lastSeq = 0;
+  let clearedSeq = 0;     // "Limpar" só esconde localmente o que veio até aqui
+  let instance = null;
+
+  // ------------------------------------------------------------------ formatação
+  function dur(ms) {
+    if (ms == null) return '';
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+    if (d) return `${d}d ${h % 24}h`;
+    return h ? `${h}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`;
+  }
+  const hhmm = iso => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const hhmmss = iso => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  function tone() {
+    if (!reachable || !st) return 'idle';
+    if (busy || st.state === 'restarting' || st.state === 'stopping') return 'warn';
+    if (st.running) return 'on';
+    return 'off';
+  }
+  function label() {
+    if (!reachable) return 'Watcher: sem conexão com o dashboard';
+    if (!st) return 'Watcher: verificando…';
+    if (busy === 'start' || busy === 'restart') return 'Watcher: iniciando…';
+    if (busy === 'stop' || st.state === 'stopping') return 'Watcher: parando…';
+    if (st.state === 'restarting') return `Watcher: reiniciando (tentativa ${st.restarts_last_hour}/${st.max_restarts_per_hour})`;
+    if (st.running) return `Watcher: ativo há ${dur(st.uptime_ms)}`;
+    if (st.error === 'restart_limit_reached') return 'Watcher: parado (limite de restarts atingido — verificar logs)';
+    return 'Watcher: parado';
+  }
+
+  // Run que o watcher está tocando agora: status running (in_progress/running no
+  // state.json); com mais de um, o mais recente.
+  function currentRun() {
+    let best = null;
+    for (const r of runs.values()) {
+      if (r.status !== 'running' || r.archived) continue;
+      if (!best || (Date.parse(r.updatedAt) || 0) > (Date.parse(best.updatedAt) || 0)) best = r;
+    }
+    return best;
+  }
+
+  // ------------------------------------------------------------------ UI
+  $('live').insertAdjacentHTML('beforebegin', `
+    <div class="wctl" id="wctl">
+      <button type="button" class="wctl-chip" id="wctlChip" aria-expanded="false" aria-controls="wctlPanel">
+        <i aria-hidden="true"></i><span id="wctlText">Watcher: verificando…</span><span class="wctl-short" id="wctlShort" aria-hidden="true">Watcher</span>
+      </button>
+      <section class="wctl-panel" id="wctlPanel" hidden aria-label="Controle do Watcher">
+        <div class="wctl-head">
+          <span class="wctl-title"><i aria-hidden="true"></i>Watcher</span>
+          <div class="wctl-actions">
+            <button type="button" class="ghost-btn" data-wact="start">Start</button>
+            <button type="button" class="ghost-btn" data-wact="stop">Stop</button>
+            <button type="button" class="ghost-btn" data-wact="restart">Restart</button>
+          </div>
+          <span class="wctl-pid" id="wctlPid"></span>
+        </div>
+        <div class="wctl-alert" id="wctlAlert" hidden></div>
+        <p class="wctl-state" id="wctlState"></p>
+        <p class="wctl-meta" id="wctlMeta"></p>
+        <div class="wctl-task" id="wctlTask" hidden></div>
+        <p class="wctl-meta wctl-last" id="wctlLast" hidden></p>
+        <div class="wctl-settings" aria-labelledby="wctlSettingsTitle">
+          <span class="wctl-settings-title" id="wctlSettingsTitle">Configurações</span>
+          <label class="wctl-auto"><input type="checkbox" id="wctlAuto"> Iniciar automaticamente quando o dashboard subir</label>
+          <div class="wctl-notify">
+            <label class="wctl-notify-label" for="wctlAccount">Conta do Claude</label>
+            <select id="wctlAccount" disabled><option>carregando…</option></select>
+            <span class="wctl-notify-state" id="wctlAccountSrc"></span>
+          </div>
+          <div class="wctl-usage" aria-labelledby="wctlUsageTitle">
+            <div class="wctl-notify">
+              <span class="wctl-notify-label" id="wctlUsageTitle">Uso da conta</span>
+              <span class="wctl-notify-state" id="wctlUsageState"></span>
+              <button type="button" class="ghost-btn" id="wctlUsageRefresh">Atualizar</button>
+            </div>
+            <div id="wctlUsageBars" class="wctl-usage-bars"></div>
+          </div>
+          <div class="wctl-notify">
+            <span class="wctl-notify-label">Notificações</span>
+            <span class="wctl-notify-state" id="wctlNotifyState">verificando…</span>
+            <button type="button" class="ghost-btn" id="wctlNotifyTest" disabled>Testar Notificação</button>
+            <span class="wctl-notify-result" id="wctlNotifyResult" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="wctl-loghead">
+          <span>Log em tempo real</span>
+          <span class="wctl-levels">${LEVELS.map(l => `<label><input type="checkbox" data-wlevel="${l}"${prefs.watcherLevels[l] !== false ? ' checked' : ''}> ${l}</label>`).join('')}</span>
+          <button type="button" class="ghost-btn" id="wctlClear">Limpar</button>
+        </div>
+        <pre class="wctl-log" id="wctlLog" tabindex="0" aria-label="Log do watcher" aria-live="off"></pre>
+      </section>
+    </div>`);
+
+  const chip = $('wctlChip'), panel = $('wctlPanel'), logEl = $('wctlLog');
+
+  function paint() {
+    const t = tone(), text = label();
+    $('wctl').dataset.tone = t;
+    $('wctl').classList.toggle('limit', st?.error === 'restart_limit_reached' && !st.running);
+    $('wctlState').textContent = text;
+    $('wctlText').textContent = (st?.error === 'restart_limit_reached' && !st.running ? '⚠ ' : '') + text;
+    chip.title = text;
+    const limit = st?.error === 'restart_limit_reached' && !st.running;
+    $('wctlShort').textContent = !reachable || !st || busy || st.state !== 'running' && st.state !== 'stopped' ? text.replace(/^Watcher: /, 'Watcher ')
+      : st.running ? `Watcher · ${dur(st.uptime_ms)}` : `${limit ? '⚠ ' : ''}Watcher parado`;
+    const running = !!st?.running;
+    for (const b of panel.querySelectorAll('[data-wact]')) {
+      const a = b.dataset.wact;
+      b.disabled = !reachable || !!busy || (a === 'start' ? running || st?.state === 'stopping' : !running && st?.state !== 'stopping');
+    }
+    $('wctlPid').textContent = st?.pid ? `PID: ${st.pid}` : '';
+    const alert = $('wctlAlert');
+    if (st?.error === 'restart_limit_reached' && !st.running) {
+      alert.hidden = false;
+      alert.textContent = `⚠ O watcher morreu ${st.max_restarts_per_hour + 1} vezes em menos de 1 hora e não será mais reiniciado sozinho. Verifique o log abaixo e use Start para tentar de novo.`;
+    } else if (st?.orphan_pid) {
+      alert.hidden = false;
+      alert.textContent = `Há um watcher órfão (PID ${st.orphan_pid}) de uma execução anterior do dashboard. Ele será encerrado ao clicar Start.`;
+    } else alert.hidden = true;
+
+    const meta = [];
+    if (st && running) {
+      meta.push(`Uptime: ${dur(st.uptime_ms)}`);
+      meta.push(`Restarts automáticos: ${st.restarts}`);
+      if (st.phase === 'tick') meta.push('tick em andamento');
+      else if (st.next_tick_at) meta.push(`${st.state === 'restarting' ? 'reinício' : 'próximo tick'} às ${hhmmss(st.next_tick_at)}`);
+    } else if (st?.restarts) {
+      meta.push(`Restarts automáticos: ${st.restarts}`);
+    }
+    $('wctlMeta').textContent = meta.join(' · ');
+
+    const last = st?.last_run;
+    $('wctlLast').hidden = !last;
+    if (last) $('wctlLast').textContent = `Última execução: ${dur(last.uptime_ms)} de uptime · parou às ${hhmm(last.ended_at)}${last.reason === 'restart_limit' ? ' (limite de restarts)' : ''}`;
+
+    const cur = currentRun();
+    const task = $('wctlTask');
+    task.hidden = !cur;
+    if (cur) {
+      const num = titleOf(cur).num || cur.taskId;
+      const node = cur.node || cur.state?.node;
+      task.innerHTML = `<span>Processando: <b>${esc(num)}</b>${node ? ` · nó: ${esc(NODE_LABEL[node] || node)}` : ''}</span>
+        <button type="button" class="ghost-btn" data-wopen="${esc(cur.taskId)}">Ver run atual</button>`;
+    }
+    if (autoStart !== null) $('wctlAuto').checked = autoStart;
+  }
+
+  function lineHtml(e) {
+    const cls = `wl-${e.level.toLowerCase()}${e.source === 'manager' ? ' wl-mgr' : ''}`;
+    return `<span class="${cls}" data-level="${e.level}">${hhmmss(e.ts)} [${e.level}] ${esc(e.text)}\n</span>`;
+  }
+  function renderLog() {
+    const shown = lines.filter(e => e.seq > clearedSeq && prefs.watcherLevels[e.level] !== false);
+    logEl.innerHTML = shown.length ? shown.map(lineHtml).join('') : '<span class="wl-empty">Sem linhas de log ainda.</span>';
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function appendLine(e) {
+    if (e.seq <= lastSeq) return;
+    lastSeq = e.seq;
+    lines.push(e);
+    if (lines.length > MAX_LINES) lines.splice(0, lines.length - MAX_LINES);
+    if (panel.hidden || prefs.watcherLevels[e.level] === false) return;
+    const stick = nearBottom(logEl);
+    logEl.querySelector('.wl-empty')?.remove();
+    logEl.insertAdjacentHTML('beforeend', lineHtml(e));
+    while (logEl.childElementCount > MAX_LINES) logEl.firstElementChild.remove();
+    if (stick) logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // ------------------------------------------------------------------ dados
+  async function poll() {
+    try { st = await api('/api/watcher/status'); reachable = true; } catch { reachable = false; }
+    paint();
+  }
+  async function act(action) {
+    busy = action; paint();
+    try {
+      st = await api(`/api/watcher/${action}`, { method: 'POST' });
+      if (action === 'stop') toast('Watcher parado.');
+    } catch (e) {
+      toast(`Falha ao executar ${action}: ${e.message}`);
+    } finally {
+      busy = null;
+      poll();
+    }
+  }
+  // Webhook (NOTIFY_WEBHOOK_URL no .env do repo, scripts/notify.js): o servidor só
+  // devolve o host, nunca a URL.
+  let notifyCfg = null, notifyBusy = false;
+  function paintNotify(result) {
+    const stEl = $('wctlNotifyState'), btn = $('wctlNotifyTest');
+    stEl.textContent = !notifyCfg ? 'verificando…'
+      : notifyCfg.configured ? `webhook: ${notifyCfg.host || 'configurado'}` : 'desligadas (NOTIFY_WEBHOOK_URL vazia no .env)';
+    btn.disabled = notifyBusy || !notifyCfg?.configured;
+    btn.textContent = notifyBusy ? 'Enviando…' : 'Testar Notificação';
+    if (result === undefined) return;
+    const out = $('wctlNotifyResult');
+    out.dataset.tone = result?.sent ? 'ok' : 'err';
+    out.textContent = !result ? ''
+      : result.status != null ? `HTTP ${result.status}${result.sent ? ' — enviada' : ' — recusada pelo destino'}`
+      : `falhou: ${result.error === 'timeout' ? 'timeout (5 s)' : result.error || 'erro desconhecido'}`;
+  }
+  async function loadNotify() {
+    try { notifyCfg = await api('/api/notify/status'); } catch { notifyCfg = null; }
+    paintNotify();
+  }
+  async function testNotify() {
+    notifyBusy = true; paintNotify(null);
+    let r;
+    try { r = await api('/api/notify/test', { method: 'POST' }); } catch (e) { r = { sent: false, status: null, error: e.message }; }
+    notifyBusy = false; paintNotify(r);
+  }
+
+  // Conta do Claude dos agentes (scripts/lib/claude-account.js) e uso/limite dela
+  // (scripts/lib/claude-usage.js). "Atualizar" faz uma chamada mínima ao Claude, que
+  // gasta um pouco da cota — por isso abrir o painel só lê o cache do servidor.
+  const WINDOW_LABEL = { five_hour: 'Sessão (5h)', seven_day: 'Semana (7 dias)', seven_day_opus: 'Semana · Opus', seven_day_sonnet: 'Semana · Sonnet' };
+  const SOURCE_LABEL = { dashboard: 'escolhida aqui', env: 'WATCHER_CLAUDE_CONFIG_DIR no .env', default: 'padrão do CLI' };
+  let accounts = null, usage = null, usageBusy = false;
+  function resetLabel(iso) {
+    if (!iso) return '';
+    const d = new Date(iso), now = new Date();
+    const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return `reseta às ${time}`;
+    return `reseta ${d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} ${time}`;
+  }
+  function paintAccounts() {
+    const sel = $('wctlAccount');
+    if (!accounts) { sel.disabled = true; return; }
+    sel.innerHTML = accounts.accounts.map(a => `<option value="${esc(a.id)}"${a.id === accounts.selected ? ' selected' : ''}>${esc(a.label)}${a.id === 'default' ? '' : ` (${esc(a.id)})`}</option>`).join('');
+    sel.disabled = usageBusy;
+    $('wctlAccountSrc').textContent = SOURCE_LABEL[accounts.source] || '';
+  }
+  function paintUsage() {
+    const btn = $('wctlUsageRefresh');
+    btn.disabled = usageBusy;
+    btn.textContent = usageBusy ? 'Consultando…' : 'Atualizar';
+    const stEl = $('wctlUsageState'), bars = $('wctlUsageBars');
+    if (!usage) { stEl.textContent = usageBusy ? 'consultando o Claude…' : ''; bars.innerHTML = ''; return; }
+    if (!usage.ok) { stEl.textContent = `falhou: ${usage.error || 'erro desconhecido'}`; stEl.dataset.tone = 'err'; bars.innerHTML = ''; return; }
+    delete stEl.dataset.tone;
+    const status = usage.status === 'rejected' ? '⛔ limite atingido' : usage.status === 'allowed_warning' ? '⚠ perto do limite' : 'ok';
+    stEl.textContent = `${status}${usage.is_using_overage ? ' · usando overage' : ''} · consultado às ${hhmm(usage.checked_at)}`;
+    bars.innerHTML = Object.entries(usage.windows || {}).map(([name, w]) => {
+      const pct = w.utilization == null ? null : Math.round(w.utilization * 100);
+      const tone = pct == null ? '' : pct >= 90 ? 'stop' : pct >= 70 ? 'warn' : 'ok';
+      return `<div class="wctl-ubar" data-tone="${tone}">
+        <span class="wctl-ubar-label">${esc(WINDOW_LABEL[name] || name)}</span>
+        <span class="wctl-ubar-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct ?? 0}" aria-label="${esc(WINDOW_LABEL[name] || name)}"><i style="width:${Math.min(pct ?? 0, 100)}%"></i></span>
+        <span class="wctl-ubar-pct">${pct == null ? '—' : `${pct}%`}</span>
+        <span class="wctl-ubar-reset">${esc(resetLabel(w.resets_at))}</span>
+      </div>`;
+    }).join('');
+  }
+  async function loadAccounts() {
+    try { accounts = await api('/api/claude/accounts'); } catch { accounts = null; }
+    paintAccounts();
+  }
+  async function loadUsage(refresh) {
+    usageBusy = true; paintUsage(); paintAccounts();
+    try { usage = await api(`/api/claude/usage${refresh ? '?refresh=1' : ''}`); }
+    catch (e) { usage = { ok: false, error: e.message }; }
+    usageBusy = false; paintUsage(); paintAccounts();
+  }
+  async function chooseAccount(id) {
+    try {
+      await api('/api/watcher/prefs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claude_config_dir: id }) });
+      toast('Conta do Claude trocada — vale a partir do próximo nó despachado.');
+    } catch (err) { toast(`Não foi possível trocar a conta: ${err.message}`); }
+    await loadAccounts();
+    loadUsage(false);
+  }
+
+  async function loadPrefs() {
+    try { autoStart = (await api('/api/watcher/prefs')).auto_start; paint(); } catch {}
+  }
+
+  // EventSource reconecta sozinho; o servidor manda o buffer inteiro de novo a cada
+  // conexão, então seq descarta o repetido. Instância nova (dashboard reiniciado)
+  // zera a contagem.
+  function connectLog() {
+    const es = new EventSource('/api/watcher/log-stream');
+    es.addEventListener('hello', ev => {
+      let h; try { h = JSON.parse(ev.data); } catch { return; }
+      if (instance && h.instance !== instance) { lines.length = 0; lastSeq = 0; clearedSeq = 0; if (!panel.hidden) renderLog(); }
+      instance = h.instance;
+    });
+    es.onmessage = ev => { try { appendLine(JSON.parse(ev.data)); } catch {} };
+  }
+
+  // ------------------------------------------------------------------ eventos
+  function setOpen(open) {
+    panel.hidden = !open;
+    chip.setAttribute('aria-expanded', open);
+    if (open) { renderLog(); poll(); loadNotify(); loadAccounts(); if (!usage && !usageBusy) loadUsage(false); }
+  }
+  chip.addEventListener('click', () => setOpen(panel.hidden));
+  document.addEventListener('click', e => { if (!panel.hidden && !$('wctl').contains(e.target)) setOpen(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !panel.hidden) { setOpen(false); chip.focus(); } });
+  panel.addEventListener('click', e => {
+    const a = e.target.closest('[data-wact]');
+    if (a && !a.disabled) return act(a.dataset.wact);
+    const o = e.target.closest('[data-wopen]');
+    if (o) { setOpen(false); window.Views?.openRun ? Views.openRun(o.dataset.wopen) : select(o.dataset.wopen); }
+  });
+  $('wctlClear').addEventListener('click', () => { clearedSeq = lastSeq; renderLog(); });
+  $('wctlNotifyTest').addEventListener('click', testNotify);
+  $('wctlUsageRefresh').addEventListener('click', () => loadUsage(true));
+  panel.addEventListener('change', async e => {
+    if (e.target.dataset.wlevel) {
+      prefs.watcherLevels[e.target.dataset.wlevel] = e.target.checked; persist(); renderLog();
+    } else if (e.target.id === 'wctlAccount') {
+      chooseAccount(e.target.value);
+    } else if (e.target.id === 'wctlAuto') {
+      const want = e.target.checked;
+      try { autoStart = (await api('/api/watcher/prefs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_start: want }) })).auto_start; }
+      catch (err) { toast(`Não foi possível salvar: ${err.message}`); }
+      paint();
+    }
+  });
+
+  const style = document.createElement('style');
+  style.textContent = `
+    /* Sem isto a linha do grid do body cresce até o min-content do topo e a página
+       ganha rolagem lateral; com ele, as abas encolhem/rolam como já previsto. */
+    .topbar { min-width: 0; }
+    .wctl { position: relative; }
+    .wctl-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 420px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 5px 10px; font-size: 13.5px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+    .wctl-chip:hover { color: var(--ink); border-color: var(--faint); }
+    .wctl-chip span { overflow: hidden; text-overflow: ellipsis; }
+    .wctl-short { display: none; }
+    .wctl-state { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+    .wctl.limit .wctl-state { color: var(--stop); }
+    .wctl i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--idle); }
+    .wctl[data-tone="on"] i { background: var(--clear); box-shadow: 0 0 0 3px var(--clear-bg); }
+    .wctl[data-tone="off"] i { background: var(--stop); box-shadow: 0 0 0 3px var(--stop-bg); }
+    .wctl[data-tone="warn"] i { background: var(--attention); box-shadow: 0 0 0 3px var(--attention-bg); }
+    .wctl.limit .wctl-chip { color: var(--stop); border-color: var(--stop); }
+    .wctl-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 45; width: min(680px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.18); padding: 14px 16px 16px; display: grid; gap: 8px; }
+    .wctl-panel[hidden] { display: none; }
+    .wctl-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .wctl-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+    .wctl-actions { display: flex; gap: 6px; }
+    .wctl-actions .ghost-btn:disabled { opacity: .45; cursor: default; }
+    .wctl-pid { margin-left: auto; font: 12.5px var(--mono); color: var(--muted); }
+    .wctl-meta { margin: 0; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .wctl-alert { background: var(--stop-bg); color: var(--stop); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: 500; }
+    .wctl-alert[hidden], .wctl-task[hidden], .wctl-last[hidden] { display: none; }
+    .wctl-task { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--signal-soft); border-radius: 8px; padding: 6px 6px 6px 10px; font-size: 13.5px; }
+    .wctl-task .ghost-btn { margin-left: auto; }
+    .wctl-settings { display: grid; gap: 8px; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+    .wctl-settings-title { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+    .wctl-notify { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); }
+    .wctl-notify-label { font-weight: 500; }
+    .wctl-notify-state { color: var(--muted); font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+    .wctl-notify .ghost-btn:disabled { opacity: .45; cursor: default; }
+    .wctl-notify-result { font: 12.5px var(--mono); font-variant-numeric: tabular-nums; }
+    .wctl-notify-result[data-tone="ok"] { color: var(--clear); }
+    .wctl-notify-result[data-tone="err"] { color: var(--stop); }
+    .wctl-notify select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; max-width: 100%; }
+    .wctl-notify-state[data-tone="err"] { color: var(--stop); }
+    .wctl-usage { display: grid; gap: 6px; }
+    .wctl-usage-bars { display: grid; gap: 6px; }
+    .wctl-usage-bars:empty { display: none; }
+    .wctl-ubar { display: grid; grid-template-columns: 130px minmax(80px, 1fr) 44px auto; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+    .wctl-ubar-track { height: 8px; border-radius: 4px; background: var(--sunken); border: 1px solid var(--line-soft); overflow: hidden; }
+    .wctl-ubar-track i { display: block; height: 100%; border-radius: 4px; background: var(--clear); }
+    .wctl-ubar[data-tone="warn"] .wctl-ubar-track i { background: var(--attention); }
+    .wctl-ubar[data-tone="stop"] .wctl-ubar-track i { background: var(--stop); }
+    .wctl-ubar-pct { font: 600 12.5px var(--mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); }
+    .wctl-ubar-reset { font: 12px var(--mono); color: var(--muted); }
+    @media (max-width: 560px) { .wctl-ubar { grid-template-columns: 1fr 44px; } .wctl-ubar-track { grid-column: 1 / -1; grid-row: 2; } .wctl-ubar-reset { grid-column: 1 / -1; } }
+    .wctl-auto { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+    .wctl-loghead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 13px; font-weight: 600; color: var(--ink-2); }
+    .wctl-levels { display: flex; gap: 10px; margin-left: auto; font-weight: 500; color: var(--muted); }
+    .wctl-levels label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font: 12px var(--mono); }
+    .wctl-log { margin: 0; height: 280px; overflow: auto; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 10px; font: 12px/1.55 var(--mono); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .wctl-log .wl-warn { color: var(--attention); }
+    .wctl-log .wl-error { color: var(--stop); }
+    .wctl-log .wl-mgr { font-weight: 600; }
+    .wctl-log .wl-info.wl-mgr { color: var(--signal); }
+    .wctl-log .wl-empty { color: var(--faint); }
+    @media (max-width: 1800px) { #wctlText { display: none; } .wctl-short { display: inline; } }
+    @media (max-width: 820px) {
+      .topbar-right { flex-wrap: wrap; justify-content: flex-end; min-width: 0; row-gap: 8px; }
+      .wctl-panel { position: fixed; left: 16px; right: 16px; top: 64px; width: auto; max-height: calc(100vh - 80px); overflow: auto; }
+      .wctl-levels { margin-left: 0; }
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Tempo relativo e "task em andamento" acompanham os runs, que já chegam por WebSocket.
+  setInterval(() => { if (!document.hidden) poll(); }, POLL_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+  poll();
+  loadPrefs();
+  connectLog();
+  window.WatcherPanel = { poll, open: () => setOpen(true) };
+})();

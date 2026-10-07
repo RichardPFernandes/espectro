@@ -1,0 +1,100 @@
+version: 1
+description: >
+  Grafo de execução padrão. Cada nó corresponde a um comando em .claude/commands/.
+  O estado de uma execução vive em memory/runs/<task-id>/state.json, no formato
+  descrito por .graph/schemas/state.schema.json.
+
+entry_point: plan
+# fetch_ticket é um entry point alternativo: só entra no grafo quando a tarefa
+# nasce de um ticket Redmine (rode /fetch-ticket <numero> antes de /plan <task-id>).
+# Tarefas ad-hoc continuam entrando direto por plan, o entry_point default.
+# Replay (scripts/replay-cycle.js --task <id> --from <nó>) reentra o grafo em
+# qualquer nó de plan a commit num run NOVO (state.replayOf), reaproveitando os nós
+# anteriores de um ciclo parado — ver scripts/lib/cycle-replayer.js.
+
+nodes:
+  - id: fetch_ticket
+    command: /fetch-ticket
+    description: >
+      Entry point alternativo, opcional. Busca o ticket no Redmine via MCP, cria/
+      entra na branch do ticket (nomeada pelo número; base escolhida pelo campo
+      "Branch Liberação" do ticket — "Dev - Local" => development, "Master -
+      Stage" => master) e grava a spec inicial em memory/spec/ + uma decision de
+      intake. Gera o task-id e o state.json, mas não diagnostica nem escolhe
+      contexto — isso é papel do Plan.
+    on_success: plan
+
+  - id: plan
+    command: /plan
+    description: >
+      Diagnóstico e escopo. Consulta memory/spec/index.yaml e seleciona só os
+      arquivos de spec relevantes pra esta tarefa (nunca a memória inteira).
+    on_success: implement
+
+  - id: implement
+    command: /implement
+    description: >
+      Executa a mudança usando só o contexto selecionado pelo Plan. Única escrita
+      permitida em memory/spec fora do commit: APPEND na seção "## Decisões de
+      Implementação" da spec da task (templates/spec-decisions-section.md), só
+      quando a rodada divergiu da spec ou resolveu ambiguidade dela. Toda decisão
+      é classificada (scripts/lib/spec-change.js record): TECHNICAL_DECISION e
+      SPEC_CLARIFICATION seguem; SPEC_CHANGE pausa em
+      status=spec-change-pending-approval até decisão humana no Redmine.
+    on_success: review
+    # SPEC_CHANGE aprovada NÃO é aresta deste grafo (seria de retorno): a aprovação
+    # grava node=plan + stale_artifacts (runSpecChangeGate no watcher /
+    # spec-change.js approve) e o ciclo recomeça no Plan — nunca direto no Review,
+    # porque o HOW pode precisar mudar. Ver
+    # memory/decisions/2026-09-30-governanca-spec-change.md. O que fica STALE (e o caso
+    # de nó em execução, que não é interrompido) decide scripts/invalidate.js — ver
+    # docs/dependency-invalidation.md. Nenhuma aresta nova: só state.node volta a "plan".
+
+  - id: review
+    command: /review
+    description: >
+      Revisão estática do diff real por uma sessão independente da que implementou
+      (o watcher abre uma sessão nova por nó), em duas dimensões independentes:
+      Spec Compliance (cada AC ativo da spec na versão do spec_hash, restrições,
+      escopo, decisões, divergências classificadas) e Engineering Review (checklist
+      técnico fixo de 8 itens; subagente de domínio só quando o diff toca o domínio
+      dele). Resultado em state.json.review_results (scripts/lib/review-result.js),
+      com failure_origin. Aresta condicional: PASS nas duas segue, senão volta pro
+      Implement com achados estruturados no handoff.
+    on_pass: test
+    on_fail: implement
+    max_retries: 3
+
+  - id: test
+    command: /test
+    description: >
+      Escreve/roda testes e grava a matriz de cobertura por AC
+      (memory/runs/<task-id>/acceptance-evidence.json, schema em
+      .graph/schemas/acceptance-evidence.schema.json) com o artefato real de cada evidência.
+    on_pass: verify
+    on_fail: implement
+    max_retries: 3
+
+  - id: verify
+    command: /verify
+    description: >
+      Checklist de aceite final: confere a matriz de cobertura contra a spec e contra os
+      artefatos (relatório surefire/log), roda os testes de verdade.
+    # verify → commit: o Verify também grava state.json.risk_level/risk_reason
+    # (critérios em verify.md passo 4, derivados de project.yaml >
+    # regras_invioláveis). Não muda a aresta — commit segue automático em ambos os
+    # casos —, só como o /commit abre o PR: "high" => Draft + título "[HIGH-RISK] ..."
+    # + aviso no topo da descrição; "low"/ausente => PR normal. Ver
+    # memory/decisions/2026-09-22-pr-draft-high-risk.md.
+    on_pass: commit
+    on_fail: test
+    max_retries: 2
+
+  - id: commit
+    command: /commit
+    description: >
+      Único nó com permissão de escrita permanente em memory/. Atualiza spec, status
+      e decisions; faz o commit git; arquiva memory/runs/<task-id>/.
+    terminal: true
+
+on_max_retries_exceeded: escalate_to_human

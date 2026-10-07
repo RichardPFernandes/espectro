@@ -1,0 +1,414 @@
+{
+  "contractVersion": "1.1.0",
+  "description": "Contrato da configuração do fluxo agêntico (.claude/, .graph/, .env.example). Validado por scripts/validate-config.js (regras em scripts/lib/config-validator.js). Caminhos relativos à raiz do consumidor. Mudou o contrato de forma incompatível (regra nova que reprova config antes válida, campo obrigatório novo)? Suba o major de contractVersion.",
+  "rules": {
+    "config-files-schema": {
+      "severity": "error",
+      "description": "Cada arquivo de configuração tem os campos obrigatórios e os tipos certos (files.*.schema)."
+    },
+    "nodes-have-templates": {
+      "severity": "error",
+      "description": "Cada nó do grafo tem prompt template em .claude/commands/ com a estrutura de templates.*."
+    },
+    "graph-acyclic": {
+      "severity": "error",
+      "description": "Arestas de avanço (on_success/on_pass) não formam ciclo; arestas de retry (on_fail) só saem de nó com max_retries; toda aresta aponta pra nó existente."
+    },
+    "state-schema-compat": {
+      "severity": "error",
+      "description": "Runs existentes validam contra o state.schema.json atual e o enum de nós do schema cobre os nós do grafo. Run arquivado inválido rebaixa pra warning."
+    },
+    "env-documented": {
+      "severity": "warning",
+      "description": "Toda variável lida no código tem entrada no .env.example; as obrigatórias do contrato são erro se faltarem."
+    },
+    "worktrees-clean": {
+      "severity": "warning",
+      "description": "Não existem worktrees de ciclos encerrados nem worktrees órfãos (diretório sem registro git ou registro sem diretório). Corrigível com --fix."
+    }
+  },
+  "graph": {
+    "file": ".graph/graph.yaml",
+    "validNodes": [
+      "fetch_ticket",
+      "plan",
+      "implement",
+      "review",
+      "test",
+      "verify",
+      "commit"
+    ],
+    "entryPoint": "plan",
+    "alternateEntryPoints": [
+      "fetch_ticket"
+    ],
+    "forwardEdges": [
+      "on_success",
+      "on_pass"
+    ],
+    "retryEdges": [
+      "on_fail"
+    ],
+    "terminalNodes": [
+      "commit"
+    ]
+  },
+  "templates": {
+    "dir": ".claude/commands",
+    "fileFromCommand": "{command}.md",
+    "requiredFrontmatter": [
+      "description"
+    ],
+    "optionalFrontmatter": [
+      "argument-hint",
+      "allowed-tools",
+      "model"
+    ],
+    "minBodyChars": 200
+  },
+  "env": {
+    "exampleFile": ".env.example",
+    "required": [
+      "REDMINE_URL",
+      "REDMINE_API_KEY",
+      "REPO_PATH",
+      "BITBUCKET_WORKSPACE",
+      "BITBUCKET_REPO_SLUG",
+      "BITBUCKET_API_TOKEN",
+      "BITBUCKET_EMAIL"
+    ],
+    "scan": {
+      "dirs": [
+        "scripts",
+        "scripts/lib",
+        "dashboard"
+      ],
+      "extensions": [
+        ".js"
+      ],
+      "excludeSuffixes": [
+        ".test.js"
+      ]
+    },
+    "ignore": {
+      "PATH": "variável do sistema",
+      "HOME": "variável do sistema",
+      "JAVA_HOME": "variável do sistema (JDK herdado da shell)",
+      "NO_COLOR": "convenção de terminal (no-color.org)",
+      "FORCE_COLOR": "convenção de terminal",
+      "HOST": "bind do dashboard, padrão de ambiente Node",
+      "PORT": "porta do dashboard, padrão de ambiente Node (documentada em dashboard/README.md)",
+      "CLAUDE_CONFIG_DIR": "definida pelo próprio watcher no agente a partir de WATCHER_CLAUDE_CONFIG_DIR",
+      "WATCHER_LOOP_STARTED_AT": "interna: repassada pelo watcher-manager ao processo filho",
+      "DRY_RUN": "documentada no CLAUDE.md; ignorada de propósito no .env (só vale no ambiente do processo)",
+      "DRY_RUN_FIXTURE": "documentada no CLAUDE.md (modo dry-run)",
+      "DRY_RUN_DELAY_FACTOR": "documentada no CLAUDE.md (modo dry-run)",
+      "DRY_RUN_RISK_LEVEL": "documentada no CLAUDE.md (modo dry-run)",
+      "MEMORY_DIR": "override de caminho usado por testes",
+      "STATE_CONFLICTS_LOG": "override de caminho do logs/state-conflicts.jsonl usado por testes (scripts/cas.js)",
+      "STATE_EXECUTION_ID": "interna: o watcher passa ao agente o execution_id do lease (scripts/state-writer.js CLI)",
+      "WORKTREES_DIR": "override de caminho usado por testes",
+      "RUNS_ARCHIVE_DIR": "override de caminho usado por testes",
+      "DASHBOARD_PREFS_FILE": "override de caminho usado por testes",
+      "KNOWLEDGE_GRAPH_PATH": "override de caminho usado por testes",
+      "AC_PROVENANCE_ROOT": "override de caminho usado por testes (raiz do log de provenance de AC; padrão = checkout principal via git)",
+      "CONSOLIDATOR_PATTERNS_PATH": "override de caminho usado por testes",
+      "CONSOLIDATOR_STATE_PATH": "override de caminho usado por testes"
+    }
+  },
+  "worktrees": {
+    "dir": ".claude/worktrees",
+    "ticketPattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+    "closedStatuses": [
+      "fully_merged",
+      "completed",
+      "cancelled"
+    ],
+    "prOpenStatuses": [
+      "committed"
+    ],
+    "siblingRepos": []
+  },
+  "stateSchema": {
+    "schema": ".graph/schemas/state.schema.json",
+    "activeRunsDirs": [
+      "memory/runs"
+    ],
+    "archivedRunsDirs": [
+      "memory/runs/_archive",
+      "memory/archive/*"
+    ],
+    "includeTicketWorktrees": true
+  },
+  "files": {
+    ".graph/graph.yaml": {
+      "format": "yaml",
+      "schema": {
+        "type": "object",
+        "required": [
+          "version",
+          "entry_point",
+          "nodes"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "entry_point": {
+            "type": "string"
+          },
+          "on_max_retries_exceeded": {
+            "type": "string"
+          },
+          "nodes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "command"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "command": {
+                  "type": "string",
+                  "pattern": "^/[a-z][a-z0-9-]*$"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "on_success": {
+                  "type": "string"
+                },
+                "on_pass": {
+                  "type": "string"
+                },
+                "on_fail": {
+                  "type": "string"
+                },
+                "max_retries": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "terminal": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      }
+    },
+    ".claude/settings.json": {
+      "format": "json",
+      "optional": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "object"
+          },
+          "hooks": {
+            "type": "object"
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "worktree": {
+            "type": "object",
+            "properties": {
+              "bgIsolation": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "worktree"
+                ]
+              }
+            }
+          },
+          "model": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    ".claude/settings.local.json": {
+      "format": "json",
+      "optional": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "object",
+            "properties": {
+              "allow": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "deny": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ask": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "hooks": {
+            "type": "object"
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    ".graph/schemas/state.schema.json": {
+      "format": "json",
+      "schema": {
+        "type": "object",
+        "required": [
+          "$schema",
+          "type",
+          "required",
+          "properties"
+        ],
+        "properties": {
+          "required": {
+            "type": "array",
+            "contains": {
+              "const": "status"
+            }
+          },
+          "properties": {
+            "type": "object",
+            "required": [
+              "task_id",
+              "node",
+              "status"
+            ],
+            "properties": {
+              "node": {
+                "type": "object",
+                "required": [
+                  "enum"
+                ]
+              },
+              "status": {
+                "type": "object",
+                "required": [
+                  "enum"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    ".claude/spec-hash-config.json": {
+      "format": "json",
+      "description": "HASH_SCOPE do spec_hash contratual (scripts/lib/spec-hash.js, docs/spec-versioning.md). Escopo usado por um run nunca é editado nem removido: crie um id novo e aponte current.",
+      "schema": {
+        "type": "object",
+        "required": [
+          "config_version",
+          "algorithm",
+          "current",
+          "scopes"
+        ],
+        "properties": {
+          "config_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "algorithm": {
+            "const": "sha256"
+          },
+          "current": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scopes": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "include_sections"
+              ],
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "include_sections": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "headings"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "headings": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "exclude_sections": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "excluded_by_omission": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "normalization": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

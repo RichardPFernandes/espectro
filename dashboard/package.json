@@ -1,0 +1,17 @@
+{
+  "name": "graph-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard local de observabilidade do watcher (scripts/readmine-watcher.js) com canal humano→agente",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test server.test.js schema-checklist.test.js archived-open.test.js watcher-api.test.js watcher-health-api.test.js watcher-mode-api.test.js preview-api.test.js pr-ready-api.test.js prs-api.test.js graph-api.test.js replay-api.test.js qa-retry-api.test.js export-api.test.js tickets-api.test.js patterns-api.test.js openapi-contract-api.test.js notify-api.test.js claude-account-api.test.js transcripts-api.test.js validate-config-api.test.js compare-api.test.js provenance-api.test.js validity-api.test.js state-version-api.test.js approval-idempotency-api.test.js ../scripts/watcher-manager.test.js ../scripts/preview-manager.test.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.16.0",
+    "chokidar": "^3.5.3"
+  }
+}

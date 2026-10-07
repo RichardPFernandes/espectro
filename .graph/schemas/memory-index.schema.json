@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "memory/spec/index.yaml",
+  "type": "object",
+  "properties": {
+    "modules": {
+      "type": "object",
+      "description": "Uma entrada por domínio/módulo do projeto.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["files", "status"],
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Caminhos relativos dentro de memory/spec/ e memory/flows/."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["planejado", "em_construcao", "pronto", "descontinuado"]
+          },
+          "agents": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Nomes de subagentes de .claude/agents/ relevantes a este módulo."
+          },
+          "owner_notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

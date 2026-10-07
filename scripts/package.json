@@ -1,0 +1,17 @@
+{
+  "name": "graph-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Utilitários de operação do orquestrador (readmine-watcher.js e scripts/lib) — não é código de produto",
+  "scripts": {
+    "test": "node --test lib/*.test.js validate-state.test.js invalidate.test.js invalidate-concurrency.test.js state-concurrency.test.js sanitize-log.test.js retry.test.js notify.test.js memory-consolidator.test.js cleanup-runs.test.js cleanup-transcripts.test.js compare-runs.test.js"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  },
+  "dependencies": {
+    "mammoth": "1.12.3",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

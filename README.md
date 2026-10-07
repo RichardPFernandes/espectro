@@ -1,18 +1,19 @@
 # Prisma
 
-Prisma é uma plataforma de engenharia de software com agentes. Este bootstrap
-prepara o repositório próprio; a implementação existente será extraída e adaptada
-na PRI-60, a partir da fonte e da fronteira aceitas na PRI-58.
+Prisma é uma plataforma de engenharia de software com agentes. O bootstrap da
+PRI-59 preparou este repositório. A PRI-60 traz a versão candidata da plataforma,
+extraída da fronteira aceita na PRI-58, sem trocar a execução ativa do app-back.
 
 ## Estado desta entrega
 
-O conteúdo inicial reúne documentação nova, referências de proveniência e
-diretórios reservados. O destino confirmado na PRI-59 é o repo privado
-[RichardPFernandes/prisma](https://github.com/RichardPFernandes/prisma),
-com branch inicial `main`. A implementação será incorporada pela PRI-60.
+A candidata está neste checkout, na branch de extração. O destino confirmado na
+PRI-59 continua o repo privado
+[RichardPFernandes/prisma](https://github.com/RichardPFernandes/prisma).
+Consumo, retorno e o que ainda não foi trocado estão em
+[docs/pri-60-candidate.md](docs/pri-60-candidate.md).
 
-`app-back` será o primeiro projeto consumidor. Sua configuração, dados e estado
-continuam no projeto consumidor, conforme os contratos e condições aplicáveis.
+`app-back` segue o primeiro projeto consumidor e a origem em execução. A
+configuração, os dados e o estado dele permanecem no projeto consumidor.
 
 ## Organização mínima proposta
 
@@ -24,7 +25,7 @@ continuam no projeto consumidor, conforme os contratos e condições aplicáveis
 - `docs/`: documentação técnica do bootstrap e da entrada de extração.
 - `provenance/`: referência da baseline aceita e seus limites.
 
-Os diretórios reservados não contêm implementação nesta entrega. A organização
+A nota de bootstrap dos diretórios reservados foi superada pela candidata PRI-60, que contém os artefatos selecionados. A organização
 preserva os caminhos dos pacotes AS-IS e não escolhe distribuição, engine ou
 modelo de persistência novo.
 
@@ -38,3 +39,13 @@ Código e documentação técnica serão versionados no destino efetivamente aut
 O bootstrap não oferece comandos de execução da plataforma: a extração, a
 compatibilidade dos pacotes, a integração e suas provas pertencem às entregas
 seguintes do Project Repository Extraction & Bootstrap.
+
+## Candidata de extração PRI-60
+
+A branch `feat/pri-60-platform-extraction` incorpora a lista aceita PRI-58 e seus
+seams mínimos. Consulte [consumo](docs/consumption.md), [paths](docs/extraction-paths.md)
+e provenance/extraction-manifest.json. O texto anterior registra o bootstrap
+PRI-59 e continua como histórico atribuído; os placeholders já receberam código
+selecionado nesta candidata. Testes/readback e limites estão no handoff FINAL da
+PRI-60, sem ativação do consumidor ou cutover. Padrão Git informado por Richard:
+`feat/` para feature e `fix/` para bug.
