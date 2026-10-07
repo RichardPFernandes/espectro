@@ -2240,9 +2240,17 @@ function formatSpecDriftComment(ticket, taskId, node, result) {
 async function runSpecDriftGate(ticket, active, node) {
     const { taskId, state, dir } = active;
     const root = path.resolve(dir, '..', '..', '..');
-    const outcome = specAuthority.enforceSpecIntegrity(state, { root, taskId, node });
+    // --dry-run não escreve nada: baseline tardio e aprovação manual gravam o changelog da
+    // spec dentro do enforceSpecIntegrity, então ficam só no checkDrift; o resto roda numa cópia.
+    const probe = DRY_RUN && node !== 'plan' ? specAuthority.checkDrift(state, { root, taskId }) : null;
+    if (probe && (probe.status === 'no_baseline' || probe.status === 'approved')) {
+        console.log(`[dry-run] Task ${taskId}: gravaria state.json (e o changelog da spec, se versionada): spec integrity — ${probe.reason}.`);
+        return { proceed: true, result: probe };
+    }
+    const outcome = specAuthority.enforceSpecIntegrity(DRY_RUN ? structuredClone(state) : state, { root, taskId, node });
     if (outcome.changed) {
-        writeTaskState(dir, state);
+        if (DRY_RUN) console.log(`[dry-run] Task ${taskId}: gravaria state.json: spec integrity — ${outcome.message}.`);
+        else writeTaskState(dir, state);
         if (outcome.proceed) console.log(`Task ${taskId}: ${outcome.message}`);
     }
     if (outcome.proceed) return { proceed: true, result: outcome.result };
@@ -3145,12 +3153,15 @@ function captureTranscript(ticketId, run, target, node, metrics, outcome = {}) {
 // Sem --follow: fecha os runs cujo processo já saiu. Roda no começo de cada tick, pra
 // todos os tickets com run pendente — inclusive os que não serão mais despachados
 // (ex: acabou de rodar /commit, sai da lista do Redmine e da task ativa local).
+// Com --ticket, só o ticket do filtro: fechar o custo grava state.json, *-cost.json e
+// transcripts/ da task, e o tick controlado não pode tocar em tasks de outro ticket.
 function finalizePendingCostRuns() {
     if (DRY_RUN || SIMULATE || !fs.existsSync(RUNS_DIR)) return;
     for (const f of fs.readdirSync(RUNS_DIR)) {
         const m = f.match(/^(\d+)-cost\.json$/);
         if (!m) continue;
         const ticketId = Number(m[1]);
+        if (ONLY_TICKET && ticketId !== ONLY_TICKET) continue;
         try {
             for (const run of readCostLedger(ticketId).pending) {
                 const tooOld = Date.now() - run.started_at_ms > MAX_COST_RUN_MS;
@@ -3775,7 +3786,10 @@ async function dispatchTicket(ticket) {
     if (Array.isArray(state.stale_artifacts) && state.stale_artifacts.length) {
         const refreshed = specChange.refreshStale(state, dir);
         const stale = specChange.staleGate(state, node);
-        if (refreshed || stale.rerouted) writeTaskState(dir, state);
+        if (refreshed || stale.rerouted) {
+            if (DRY_RUN) console.log(`[dry-run] Task ${taskId}: gravaria state.json: stale_artifacts (${stale.stale.join(', ') || 'regerados'}).`);
+            else writeTaskState(dir, state);
+        }
         if (stale.rerouted) {
             console.warn(`Task ${taskId}: ${stale.stale.join(', ')} stale depois da SPEC_CHANGE aprovada — ${node} não roda sobre o plano antigo, task volta pro /plan.`);
             node = state.node;
@@ -4276,8 +4290,10 @@ function runMemoryConsolidator() {
     });
 }
 
+// Com --ticket não roda: patterns.md e o contador agregam os runs de todos os tickets,
+// e consolidar só os do filtro reescreveria a memória global com uma amostra parcial.
 function runMemoryConsolidatorSafe() {
-    if (SIMULATE) return null; // ver syncAcRegistrySafe
+    if (SIMULATE || ONLY_TICKET) return null; // ver syncAcRegistrySafe
     try {
         const r = runMemoryConsolidator();
         if (r.ran) console.log(`[memory-consolidator] consolidado (${r.completedRuns} runs completados) → ${CONSOLIDATOR_PATTERNS_PATH}`);
