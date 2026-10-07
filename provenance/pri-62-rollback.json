@@ -52,36 +52,61 @@
     "location": "app-back, fora do Git; nenhum arquivo contém chave de segredo",
     "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/consumption-return-2026-10-07/consumer-config-snapshot/",
     "unchanged_since_previous_round": true,
-    "files": [
+    "decision": "Linear PRI-61/PRI-62, comentário 3928a7eb-e679-4742-8c79-9be5b0dc9041 (Richard): config de consumo admitida = prisma-consumer.env + config/consolidator-module-keywords.json; scripts/prisma-consumer.env.example e .claude/prisma-*.json são só exemplo",
+    "admitted": [
       { "path": "prisma-consumer.env", "git": "untracked", "bytes": 847, "sha256": "44a91f61ab5add073bcdbad64ca4a4bdf4333bf853de213865671762c0a32f48" },
-      { "path": "config/consolidator-module-keywords.json", "git": "untracked", "bytes": 1061, "sha256": "423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c" },
-      { "path": "scripts/prisma-consumer.env.example", "git": "ignored", "bytes": 1731, "sha256": "055a6f78800a075043a56cf102f6423475bc798e8efecc869b6601ba07f62ac9" },
-      { "path": ".claude/prisma-module-keywords.json", "git": "ignored", "bytes": 1269, "sha256": "c639d2e2f3c55b64137a86a8746552f9042c3ec2be96f34599d615d69e529885" },
-      { "path": ".claude/prisma-response-factory.json", "git": "ignored", "bytes": 302, "sha256": "18cc52e3fd8f32e4f24cd35daa6d119ed88b4012d30c3290646685caf7fb78c0" },
+      { "path": "config/consolidator-module-keywords.json", "git": "untracked", "bytes": 1061, "sha256": "423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c" }
+    ],
+    "examples": {
+      "contractual": false,
+      "note": "listados no C1 só como diagnóstico; fora da identidade da config e do PASS",
+      "files": [
+        { "path": "scripts/prisma-consumer.env.example", "git": "ignored", "bytes": 1731, "sha256": "055a6f78800a075043a56cf102f6423475bc798e8efecc869b6601ba07f62ac9" },
+        { "path": ".claude/prisma-module-keywords.json", "git": "ignored", "bytes": 1269, "sha256": "c639d2e2f3c55b64137a86a8746552f9042c3ec2be96f34599d615d69e529885" },
+        { "path": ".claude/prisma-response-factory.json", "git": "ignored", "bytes": 302, "sha256": "18cc52e3fd8f32e4f24cd35daa6d119ed88b4012d30c3290646685caf7fb78c0" }
+      ]
+    },
+    "other_copied": [
       { "path": "docs/prisma-candidate.md", "git": "untracked", "bytes": 3261, "sha256": "917ceb80daff51d8b75bc8b13f2848590aec3d5e96738802979bc9c0e5c7433b" }
     ],
-    "open_question": "Dois conjuntos de config de consumo coexistem (prisma-consumer.env + config/ e scripts/prisma-consumer.env.example + .claude/prisma-*.json). Qual é o admitido para o cutover é decisão da PRI-61/PRI-63; os dois estão preservados.",
-    "not_copied": [".env", "credenciais", "memory/runs reais", "dados TMS"]
+    "not_copied": [
+      ".env",
+      "credenciais",
+      "memory/runs reais",
+      "dados TMS"
+    ]
   },
   "exercise": {
-    "folder": "app-back/memory/runs/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/",
-    "preflight": "candidate-source-preflight.json",
+    "folder": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07/",
+    "preflight": "candidate-source-preflight.json (cópia byte a byte da rodada candidate-fbb597c-2026-10-07)",
     "preflight_sha256": "d7901edf82676d72ce82cb531254b9809da07d189c02396fe2be658132f05ca4",
     "preflight_builder_sha256": "777a1128a82442e50d60a1ac9928460a3ad1097b530167371da750494725a3e4",
     "harness": "provenance/pri-62/consumption-rollback.test.js",
-    "harness_sha256": "083eac0ad06a673161d8944df14bc1aa440ce691773c38fd370af3dfa79c4f44",
+    "harness_sha256": "49419ec1195579a8b46144bf7ca463a097d0fb25bb887ba33471f075adf40b54",
     "result": "consumption-rollback.tap",
-    "result_sha256": "c686e33312bbf9f3225db026150a84aedef432c4c81cab1b8f73c79886031301",
-    "tests": 6, "pass": 6, "fail": 0, "skipped": 0,
-    "negative_control": "negative-control.tap (sha256 d03094fb0a4cb510e4259f1cbe2fdfda83bbd46bd14dc1f5d89273fd3c48cc76): sem as variáveis de entrada, 1 fail, 0 skip",
+    "result_sha256": "0878ccb46020b15eb92028ab31870d4fa3378e1867e7570f52593d429dc47f63",
+    "tests": 6,
+    "pass": 6,
+    "fail": 0,
+    "skipped": 0,
+    "negative_control": "negative-control.tap (sha256 0300fa09cb4068fd577e2c28196c014d70c9f0740f3a280df9edb08c2873abbb): sem as variáveis de entrada, 1 fail, 0 skip",
     "code_reference_return": {
       "harness": "candidate-reversal.test.js",
       "harness_sha256": "1ca86532c70f81686da7db128c6cce216ce1fd1e05970e4c23bdd74737009b4f",
       "result": "candidate-reversal.tap",
-      "result_sha256": "03749dfe240769d607eecfbf1e0c1fab27a2c6659b8057961e7c2e308ff6d61a",
-      "tests": 7, "pass": 7, "fail": 0, "skipped": 0
+      "result_sha256": "ab129a6265bb51d8ec446fad85f9ecc34757e45d52cf2930dbf1340417eb4c7a",
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "skipped": 0
     },
-    "environment": "diretórios temporários, DRY_RUN=true, fixtures sintéticas, env mínimo sem credenciais; app-back git status idêntico antes/depois"
+    "environment": "diretórios temporários, DRY_RUN=true, fixtures sintéticas, env mínimo sem credenciais; app-back git status idêntico antes/depois",
+    "c1_identity": "conjunto admitido fixado na harness (ADMITTED_CONFIG, 2 arquivos com sha256 esperado); exemplos via PRI62_CONFIG_EXAMPLES, só diagnóstico",
+    "previous_rounds": [
+      "candidate-fbb597c-2026-10-07/ (C1 com os 6 arquivos, inclusive exemplos)",
+      "consumption-return-2026-10-07/ (candidata 04c130b)",
+      "revalidation-2026-10-07/ (candidata 04c130b)"
+    ]
   },
   "findings": [
     "Não há trava de instância do watcher: acquireNode não recusa task running; exclusividade entre fonte e candidata depende de parar a candidata e esperar seus agentes.",
@@ -92,7 +117,11 @@
   ],
   "delta_from_candidate": {
     "base": "fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c",
-    "added": ["docs/rollback.md", "provenance/pri-62-rollback.json", "provenance/pri-62/consumption-rollback.test.js"],
+    "added": [
+      "docs/rollback.md",
+      "provenance/pri-62-rollback.json",
+      "provenance/pri-62/consumption-rollback.test.js"
+    ],
     "runtime_files_changed": 0,
     "note": "O ensaio executa os bytes de fbb597c extraídos por git archive, não este commit."
   },
@@ -101,6 +130,7 @@
     "revogação real de credencial e SecretResolver",
     "Decision formal além do 'aprovado' no Redmine e do state-writer set do contrato atual",
     "exclusividade global entre hosts/processos",
-    "revisão de cutover diferente de fbb597c"
+    "revisão de cutover diferente de fbb597c",
+    "Exercício real (Redmine/agentes reais) é executado por outra frente em app-back/memory/runs/pri-61-62-real-exercise-2026-10-07/; não faz parte deste ensaio"
   ]
 }

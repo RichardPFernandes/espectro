@@ -10,7 +10,7 @@
 //   PRI62_SOURCE_SNAPSHOT        snapshot dos 230 selecionados da fonte atual, restaurado aqui em tmp
 //   PRI62_SCRIPTS_NODE_MODULES   node_modules de scripts/ (lock idêntico nos dois lados)
 //   PRI62_LIVE_CONSUMER_ROOT     checkout ativo do consumidor, lido só para hash
-//   PRI62_CONSUMER_CONFIG        arquivos de config do consumidor (separados por ':'), só leitura
+//   PRI62_CONFIG_EXAMPLES        opcional: exemplos não contratuais (separados por ':'), só listados
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -23,10 +23,15 @@ const CANDIDATE_REVISION = 'fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c';
 const CANDIDATE_TREE = '4633d9fd5f5bdf30c6be9f990d84cb847a9cb3cc';
 const SOURCE_SNAPSHOT_SHA256 = 'ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03';
 const FULL_HISTORY = ['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify', 'commit'];
+// Config de consumo admitida (decisão do Richard na PRI-61/PRI-62), relativa à raiz do consumidor.
+const ADMITTED_CONFIG = {
+    'prisma-consumer.env': '44a91f61ab5add073bcdbad64ca4a4bdf4333bf853de213865671762c0a32f48',
+    'config/consolidator-module-keywords.json': '423d01e6f829466671b32dfc6d43a4df6787b51cde4fed6782954f196e90876c',
+};
 const SECRET_KEY = /(TOKEN|API_KEY|SECRET|PASSWORD|WEBHOOK_URL)$/;
 
 const env = process.env;
-const missing = ['PRI62_PREFLIGHT', 'PRI62_SOURCE_SNAPSHOT', 'PRI62_SCRIPTS_NODE_MODULES', 'PRI62_LIVE_CONSUMER_ROOT', 'PRI62_CONSUMER_CONFIG'].filter(k => !env[k]);
+const missing = ['PRI62_PREFLIGHT', 'PRI62_SOURCE_SNAPSHOT', 'PRI62_SCRIPTS_NODE_MODULES', 'PRI62_LIVE_CONSUMER_ROOT'].filter(k => !env[k]);
 if (missing.length) {
     test('pré-requisitos do ensaio PRI-62', () => assert.fail(`variáveis ausentes: ${missing.join(', ')}`));
     return;
@@ -36,7 +41,7 @@ const preflight = JSON.parse(fs.readFileSync(env.PRI62_PREFLIGHT, 'utf8'));
 const sourceSnapshot = fs.realpathSync(env.PRI62_SOURCE_SNAPSHOT);
 const nodeModules = fs.realpathSync(env.PRI62_SCRIPTS_NODE_MODULES);
 const liveConsumer = fs.realpathSync(env.PRI62_LIVE_CONSUMER_ROOT);
-const consumerConfig = env.PRI62_CONSUMER_CONFIG.split(path.delimiter).filter(Boolean);
+const configExamples = (env.PRI62_CONFIG_EXAMPLES || '').split(path.delimiter).filter(Boolean);
 const repoRoot = cp.execFileSync('git', ['-C', __dirname, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
 const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pri62-consumption-')));
 const candidateRoot = path.join(work, 'candidate');
@@ -204,10 +209,11 @@ test('C0 identidades: fonte 230, candidata 248 e execução ativa igual à fonte
     checkEntries(liveConsumer, preflight.source_entries);
 });
 
-test('C1 config do consumidor: identidade por hash, só chaves sem segredo, fora do PRISMA_ROOT', t => {
-    for (const file of consumerConfig) {
-        const abs = fs.realpathSync(file);
+test('C1 config admitida do consumidor: identidade por hash, só chaves sem segredo, fora do PRISMA_ROOT', t => {
+    for (const [file, expected] of Object.entries(ADMITTED_CONFIG)) {
+        const abs = fs.realpathSync(path.join(liveConsumer, file));
         assert.ok(!abs.startsWith(repoRoot + path.sep), `${file} não pode estar no repo Prisma`);
+        assert.equal(hashFile(abs), expected, `${file} difere da config admitida`);
         const text = fs.readFileSync(abs, 'utf8');
         if (abs.endsWith('.json')) JSON.parse(text);
         else {
@@ -215,7 +221,12 @@ test('C1 config do consumidor: identidade por hash, só chaves sem segredo, fora
             assert.ok(keys.length > 0, `${file} sem chaves`);
             assert.deepEqual(keys.filter(k => SECRET_KEY.test(k)), [], `${file} declara chave de segredo`);
         }
-        t.diagnostic(`${path.relative(liveConsumer, abs)} sha256=${hashFile(abs)}`);
+        t.diagnostic(`admitida ${file} sha256=${expected}`);
+    }
+    // Exemplos não contratuais: só listados, fora da identidade e do PASS.
+    for (const file of configExamples) {
+        const abs = path.resolve(liveConsumer, file);
+        t.diagnostic(`exemplo (não contratual) ${path.relative(liveConsumer, abs)} ${fs.existsSync(abs) ? `sha256=${hashFile(abs)}` : 'ausente'}`);
     }
 });
 

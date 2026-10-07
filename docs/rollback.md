@@ -17,13 +17,18 @@ retorno é não usar o comando de consumo da candidata.
 | Executável | `app-back/scripts/readmine-watcher.js`, `app-back/dashboard/server.js` | `$PRISMA_ROOT/scripts/readmine-watcher.js`, `$PRISMA_ROOT/dashboard/server.js` |
 | Raiz do consumidor | `REPO_PATH` (do `.env`) | `REPO_PATH` ou cwd |
 | `.env` lido | `app-back/.env` (`__dirname/..`) | `$REPO_PATH/.env`, o mesmo arquivo |
-| Config extra | nenhuma | `prisma-consumer.env` (ou `scripts/prisma-consumer.env.example`) + arquivos de taxonomia/ResponseFactory |
+| Config extra | nenhuma | `prisma-consumer.env` + `config/consolidator-module-keywords.json` (conjunto admitido) |
 | Templates de nó | `app-back/.claude/commands/` | `$PRISMA_ROOT/.claude/commands/` |
 | Estado | `app-back/memory/runs`, o mesmo nos dois modos | idem |
 
 A candidata não grava código nem config no consumidor; só `memory/` (ensaio C2–C4).
 O retorno, portanto, não restaura arquivo nenhum do app-back. Se o checkout do app-back
 tiver mudado, isso é drift (passo 5), não algo a reverter.
+
+Config de consumo admitida (decisão do Richard na PRI-61/PRI-62): `prisma-consumer.env`
+e `config/consolidator-module-keywords.json`, na raiz do app-back. Os arquivos
+`scripts/prisma-consumer.env.example` e `.claude/prisma-*.json` são só exemplos: não
+fazem parte da identidade da config nem do retorno.
 
 ## Quem e quando
 
@@ -42,7 +47,7 @@ tiver mudado, isso é drift (passo 5), não algo a reverter.
    `source-selected-current.tar.gz` (sha256 `ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03`),
    que já inclui a correção do comparador da PRI-61. O snapshot anterior (`ad618099…`)
    difere só nos 6 arquivos do comparador (ver manifesto).
-   Config do consumidor: hashes em `provenance/pri-62-rollback.json`.
+   Config admitida: os 2 arquivos acima, com hash em `provenance/pri-62-rollback.json`.
 2. **Parar o writer da candidata com SIGTERM** (botão Parar do dashboard da candidata ou
    `kill -TERM <pid>`), nunca SIGKILL. O graceful shutdown marca o nó em voo como
    `interrupted` e registra a nota no Redmine. Conferir que não sobrou processo:
@@ -84,7 +89,7 @@ temporários, `DRY_RUN=true`, fixtures sintéticas. Resultado registrado no mani
 | Caso | O que prova | Limite |
 |---|---|---|
 | C0 | fonte 230 (hash, tamanho, bit de execução) restaurada do snapshot; candidata 248 do `git archive`; checkout ativo = fonte | só código/assets selecionados |
-| C1 | config do consumidor identificada por hash, sem chave de segredo, fora do Prisma | não valida semântica da config |
+| C1 | config admitida (2 arquivos) confere com o hash fixado, sem chave de segredo, fora do Prisma; exemplos só listados | não valida semântica da config |
 | C2 | nó em voo na candidata → SIGTERM → fonte não retoma sem decisão → retoma do mesmo nó, mesmo `execution_id`, 1 PR | dry-run; efeitos simulados |
 | C3 | gate humano aberto na candidata segue pendente na fonte, sem repostar; avança só com `aprovado` | journal do Redmine reproduzido no fixture |
 | C4 | agente destacado vivo bloqueia a fonte; morto, a fonte recupera o mesmo nó | pid simulado com marcador `claude` |
@@ -93,6 +98,7 @@ temporários, `DRY_RUN=true`, fixtures sintéticas. Resultado registrado no mani
 O retorno de código/refs (local-checkout, CAS) já foi provado em 7 testes na mesma
 candidata (run local da PRI-62, `candidate-reversal.tap`).
 
-Não provado: Redmine/Bitbucket/agentes reais, revogação real de credencial, Decision
+Não provado por este ensaio (o exercício real pedido pelo Richard é registrado à parte):
+Redmine/Bitbucket/agentes reais, revogação real de credencial, Decision
 formal além do "aprovado"/`state-writer set` do contrato atual, exclusividade global
 entre hosts, e qualquer revisão diferente de `fbb597c`.
