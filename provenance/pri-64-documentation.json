@@ -1,0 +1,120 @@
+{
+  "issue": "PRI-64",
+  "kind": "documentation_promotion",
+  "base_revision": "38e9e922f85e65ab405056734dfa9bfbd11019c7",
+  "consumer_revision": "a50ff9fec1b44382eb6c97940b31a5bb42632a40",
+  "consumer_tree": "97fe983cdbb51c91e639c8266819398800d67a64",
+  "drafts": [
+    {
+      "source": "/Users/richardfernandes/.codex/.chatgpt-projects/g-p-6abebbb588f481918f1fb06043f43d5f/handoff/f31/git-proposal/docs/prisma/README.md",
+      "source_sha256": "5d224bfe80455b2eab39f985c59c5b65ddb29e649c99c8e193f2e7898b6be904",
+      "destination": "docs/prisma/README.md"
+    },
+    {
+      "source": "/Users/richardfernandes/.codex/.chatgpt-projects/g-p-6abebbb588f481918f1fb06043f43d5f/handoff/f31/git-proposal/docs/prisma/architecture-baseline.md",
+      "source_sha256": "5343e73349b14b5ab019765cfd874a853e13c1344595e26381561a0e7c232378",
+      "destination": "docs/prisma/architecture-baseline.md"
+    },
+    {
+      "source": "/Users/richardfernandes/.codex/.chatgpt-projects/g-p-6abebbb588f481918f1fb06043f43d5f/handoff/f31/git-proposal/docs/prisma/development-entry.md",
+      "source_sha256": "af335549848d75cb90a906786c1432ff070434499b431b4a54ae3c44cf09031b",
+      "destination": "docs/prisma/development-entry.md"
+    },
+    {
+      "source": "/Users/richardfernandes/.codex/.chatgpt-projects/g-p-6abebbb588f481918f1fb06043f43d5f/handoff/f31/git-proposal/docs/prisma/residual-gates.md",
+      "source_sha256": "603a1ecf09a1d988d809405e0f2bc09115704535dd8db5bc649409a5fcca00d8",
+      "destination": "docs/prisma/residual-gates.md"
+    },
+    {
+      "source": "/Users/richardfernandes/.codex/.chatgpt-projects/g-p-6abebbb588f481918f1fb06043f43d5f/handoff/f31/git-proposal/docs/prisma/validation-map.md",
+      "source_sha256": "44e634f2602a9792e0a48573274d8e9d8cf0c0afce07c1d6990ebdc96431b9f7",
+      "destination": "docs/prisma/validation-map.md"
+    }
+  ],
+  "limits": [
+    "Documentation only; no runtime cutover or state migration",
+    "RRC-F31-001/002 NOT APPLIED",
+    "Consumer pin is distinct from platform main",
+    "Linear remains canonical for operational decisions/status"
+  ],
+  "evidence_readback": [
+    {
+      "consumer_path": "memory/runs/_archive/pri-63-controlled-cutover/delivery.md",
+      "sha256": "86654e8ed66d0e9ba58e3ec8f7e67561de190c01ea2362209296bfafaf4aa7a7"
+    },
+    {
+      "consumer_path": "memory/runs/_archive/pri-63-controlled-cutover/live-cutover-result.json",
+      "sha256": "3a69391ae37bbd3283b23e66d8cbfc808492265970a6c16fac3b99152acb2328"
+    },
+    {
+      "consumer_path": "memory/runs/_archive/pri-63-controlled-cutover/startup-followup-result.json",
+      "sha256": "5ee9881b5649c5f58b3fe6a60776e9f91d05ae5fcc4151de2682bd047b8a3cb0"
+    },
+    {
+      "consumer_path": "memory/runs/_archive/pri-63-controlled-cutover/live-cutover-review.md",
+      "sha256": "c82a78ea3b8966fb03d12c9920dc6c022fce23f4876f2beaa67fec2884def380"
+    },
+    {
+      "consumer_path": "memory/runs/_archive/pri-63-controlled-cutover/startup-followup-review.md",
+      "sha256": "bdbc3f0225dc327c662b52746e1c53de9e90134f8b8ccb701dc863ea46470e75"
+    },
+    {
+      "consumer_path": "memory/runs/_archive/pri-63-controlled-cutover/test-summary.json",
+      "sha256": "92af4df9ee3523f9d49179f97e37689bd714b5d972a0d1b16e6bec1422243022"
+    }
+  ],
+  "documents": [
+    {
+      "file": "README.md",
+      "sha256": "caca80d9c1d85e0cd95753894eb1a29d4132bdc4af4241e939bade4f1fc48c88"
+    },
+    {
+      "file": "docs/consumer-operations.md",
+      "sha256": "4b7ea983a5fc98fc5d62ce25d9a8056a11f3ba6d66b6a66434a651ccb9e6dc24"
+    },
+    {
+      "file": "docs/extraction-handoff.md",
+      "sha256": "4d2234b9bf56090a65d6e229dae60041669f214b71f9b2650ae4fe55802190cc"
+    },
+    {
+      "file": "docs/bootstrap.md",
+      "sha256": "35fcba7bd3219ad8613dc4ab66c9c93395bb7e19cde86ae4dfeca79ad119c86e"
+    },
+    {
+      "file": "docs/consumption.md",
+      "sha256": "f2b3c8bcde094ccb3f7ff411f9b9a0e372d9867e559f0ae7a628e9f84ad7623f"
+    },
+    {
+      "file": "docs/extraction-entry.md",
+      "sha256": "3819375d49d767140bfaddd5c9b1736824a0c7d1648b00f31adfaed295e215b4"
+    },
+    {
+      "file": "docs/pri-60-candidate.md",
+      "sha256": "eb392f263823290d87777f34fd8ba5acf403f7b939ec7d57d4dc5ff5815d4b90"
+    },
+    {
+      "file": "docs/rollback.md",
+      "sha256": "a46bca6d665c4919e30881fc13f560e5d0b6057216a3fe678933fcb26dca2b5d"
+    },
+    {
+      "file": "docs/prisma/README.md",
+      "sha256": "bccea18852d861e7a8afca2ed4090b515e7597b2d9e5ce1f5a9482e3d2252a59"
+    },
+    {
+      "file": "docs/prisma/architecture-baseline.md",
+      "sha256": "ca92d429d30216c3e5f53e37a4a08673827a879880487575518f300ea286b7ff"
+    },
+    {
+      "file": "docs/prisma/development-entry.md",
+      "sha256": "6ef725131180e6929b84728014b3a88d0ddb13e2e2da94e83828284bfe0072c9"
+    },
+    {
+      "file": "docs/prisma/residual-gates.md",
+      "sha256": "670a5bf812cef17e4b4873d28dc061658942d8e0678e128670c1c0d3135f3907"
+    },
+    {
+      "file": "docs/prisma/validation-map.md",
+      "sha256": "de760044dda0bb6c4b3f006c2e0839a868dfc4ec1873e9435fa28add4d03cc7e"
+    }
+  ]
+}

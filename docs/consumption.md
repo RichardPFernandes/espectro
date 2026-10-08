@@ -1,5 +1,11 @@
 # Consumo da candidata PRI-60
 
+> Captura histórica da entrega indicada neste documento. Para o consumo entregue
+> na PRI-63 (a50ff9f), o entrypoint de 08/10 e o retorno, consulte
+> [consumer-operations.md](consumer-operations.md) e
+> [extraction-handoff.md](extraction-handoff.md). As provas abaixo permanecem
+> atribuídas à sua revisão original; não são instruções atuais de troca.
+
 Código/assets da lista aceita PRI-58 foram extraídos em branch
 `feat/pri-60-platform-extraction`. Esta entrega prepara versão fixável para PRI-61
 e PRI-62; a execução ativa do app-back foi preservada. Confira o commit/tree no

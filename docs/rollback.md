@@ -1,5 +1,11 @@
 # Retorno do consumo do Prisma para os scripts do app-back (PRI-62)
 
+> Captura histórica da entrega indicada neste documento. Para o consumo entregue
+> na PRI-63 (a50ff9f), o entrypoint de 08/10 e o retorno, consulte
+> [consumer-operations.md](consumer-operations.md) e
+> [extraction-handoff.md](extraction-handoff.md). As provas abaixo permanecem
+> atribuídas à sua revisão original; não são instruções atuais de troca.
+
 Procedimento para voltar o app-back a executar os próprios scripts depois de ter
 consumido a candidata `fbb597cb2ffe6053351a5d6ed2bff6e444bf3b6c` (tree
 `4633d9fd5f5bdf30c6be9f990d84cb847a9cb3cc`). Este documento não autoriza parar,
