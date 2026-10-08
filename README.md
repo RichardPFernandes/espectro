@@ -1,51 +1,45 @@
 # Prisma
 
-Prisma é uma plataforma de engenharia de software com agentes. O bootstrap da
-PRI-59 preparou este repositório. A PRI-60 traz a versão candidata da plataforma,
-extraída da fronteira aceita na PRI-58, sem trocar a execução ativa do app-back.
+Plataforma de engenharia de software com agentes, extraída para o repositório
+privado [RichardPFernandes/prisma](https://github.com/RichardPFernandes/prisma).
+O app-back é o primeiro consumidor/dogfood; configuração, credenciais, dados,
+worktrees e estado autoritativo permanecem no consumidor.
 
-## Estado desta entrega
+## Entrada
 
-A candidata está neste checkout, na branch de extração. O destino confirmado na
-PRI-59 continua o repo privado
-[RichardPFernandes/prisma](https://github.com/RichardPFernandes/prisma).
-Consumo, retorno e o que ainda não foi trocado estão em
-[docs/pri-60-candidate.md](docs/pri-60-candidate.md).
+- [Baseline e contratos](docs/prisma/README.md): cinco documentos F31 adaptados.
+- [Consumo, diagnóstico, cutover e retorno](docs/consumer-operations.md).
+- [Handoff da extração](docs/extraction-handoff.md): sete entregas, provas e limites.
+- [Paths extraídos](docs/extraction-paths.md) e [manifesto](provenance/extraction-manifest.json).
+- [Workflow e troubleshooting](docs/runbook.md), [specs](docs/spec-guide.md).
 
-`app-back` segue o primeiro projeto consumidor e a origem em execução. A
-configuração, os dados e o estado dele permanecem no projeto consumidor.
+## Revisões
 
-## Organização mínima proposta
+O consumidor entregue na PRI-63 está fixado em `a50ff9f`; a main posterior contém
+mudanças que ainda não foram admitidas nele. Não usar latest para reatar uma Run
+nem atualizar o pin pela publicação de documentação. `npm start` do dashboard do
+app-back chama seu launcher; `npm run start:source` é o retorno explícito após
+parada, conferência de writers e saneamento do ambiente.
 
-- `scripts/`: pacote de ferramentas existente a extrair/adaptar na PRI-60.
-- `dashboard/`: pacote de interface existente a extrair/adaptar na PRI-60.
-- `.graph/`: definições e schemas selecionados, com configuração do consumidor
-  delimitada antes do transporte.
-- `templates/`: templates neutros selecionados e versionados.
-- `docs/`: documentação técnica do bootstrap e da entrada de extração.
-- `provenance/`: referência da baseline aceita e seus limites.
+Dois pacotes Node separados, scripts/ e dashboard/, com manifests/locks próprios;
+a extração foi verificada com Node 20.20.2/npm 10.8.2. Não há runner de raiz.
+Preparação isolada e comandos operacionais estão no runbook de consumo; este
+README não inicia watcher, agente ou preview.
 
-A nota de bootstrap dos diretórios reservados foi superada pela candidata PRI-60, que contém os artefatos selecionados. A organização
-preserva os caminhos dos pacotes AS-IS e não escolhe distribuição, engine ou
-modelo de persistência novo.
+## Governança
 
-## Entrada de desenvolvimento
+Roadmap/Freeze governam arquitetura, Linear conserva planejamento e decisões,
+Git conserva implementação/documentação e runtime/CI comprova o que foi executado.
+Plan → Implement → Review independente → Test → Verify → Commit. A extração local
+não certifica MP-00, SDD READY, produção TMS ou DOM06 na revisão consumida.
+RRC-F31-001/002 continuam NOT APPLIED; nenhum dado/estado do app-back acompanha
+esta promoção documental. Proveniência em
+[pri-64-documentation.json](provenance/pri-64-documentation.json).
 
-Leia [o bootstrap](docs/bootstrap.md), [a entrada de extração](docs/extraction-entry.md)
-e [a referência da fonte](provenance/source-baseline.json). Planejamento e decisões
-operacionais permanecem no Linear; a arquitetura segue suas baselines congeladas.
-Código e documentação técnica serão versionados no destino efetivamente autorizado.
+## Histórico atribuído
 
-O bootstrap não oferece comandos de execução da plataforma: a extração, a
-compatibilidade dos pacotes, a integração e suas provas pertencem às entregas
-seguintes do Project Repository Extraction & Bootstrap.
-
-## Candidata de extração PRI-60
-
-A branch `feat/pri-60-platform-extraction` incorpora a lista aceita PRI-58 e seus
-seams mínimos. Consulte [consumo](docs/consumption.md), [paths](docs/extraction-paths.md)
-e provenance/extraction-manifest.json. O texto anterior registra o bootstrap
-PRI-59 e continua como histórico atribuído; os placeholders já receberam código
-selecionado nesta candidata. Testes/readback e limites estão no handoff FINAL da
-PRI-60, sem ativação do consumidor ou cutover. Padrão Git informado por Richard:
-`feat/` para feature e `fix/` para bug.
+[Bootstrap PRI-59](docs/bootstrap.md), [entrada PRI-60](docs/extraction-entry.md),
+[candidata PRI-60](docs/pri-60-candidate.md), [consumo original](docs/consumption.md)
+e [retorno PRI-62](docs/rollback.md) conservam capturas das respectivas revisões.
+O estado entregue e as instruções de operação atuais estão no handoff e no
+runbook de consumo acima, sem retrocertificar essas capturas.

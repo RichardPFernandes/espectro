@@ -1,5 +1,11 @@
 # PRI-60 — versão candidata
 
+> Captura histórica da entrega indicada neste documento. Para o consumo entregue
+> na PRI-63 (a50ff9f), o entrypoint de 08/10 e o retorno, consulte
+> [consumer-operations.md](consumer-operations.md) e
+> [extraction-handoff.md](extraction-handoff.md). As provas abaixo permanecem
+> atribuídas à sua revisão original; não são instruções atuais de troca.
+
 A plataforma candidata está neste repositório. O app-back continua a execução
 ativa: os scripts de lá não foram substituídos e nenhum watcher novo foi iniciado.
 
