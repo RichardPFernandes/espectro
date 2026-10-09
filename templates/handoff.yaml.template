@@ -1,12 +1,25 @@
-# Maestri — Agent Handoff Contract v1. Regras: docs/handoff-contract.md
+# Maestri — Agent Handoff Contract v1.1. Regras: docs/handoff-contract.md
+# Validar antes de entregar: node scripts/validate-handoff.js <arquivo>
 # status: COMPLETED | BLOCKED | NEEDS_HUMAN | FAILED | PARTIAL
 # result de validation.executed só é PASSED com execução comprovada em evidence.
-handoff_version: "1.0"
+handoff_version: "1.1"
 
 task:
   id: "PRI-XXX"
   objective: ""
   specification_ref: ""
+  acceptance_criteria: []
+
+routing:
+  from: ""
+  to: ""
+  runtime: ""            # claude | codex | human | other
+  fallback_reason: null
+
+risk:
+  level: ""              # LOW | MEDIUM | HIGH | MAX
+  signals: []            # obrigatório em HIGH/MAX
+  classified_by: ""
 
 execution:
   agent: ""
@@ -28,6 +41,7 @@ validation:
   executed: []
     # - command: ""
     #   result: "PASSED | FAILED"
+    #   expected: "PASSED"     # FAILED só em teste de injeção de falha
     #   evidence: ""
   not_executed: []
 
@@ -39,3 +53,11 @@ next:
   prerequisites: []
 
 context_refs: []
+
+facts: []
+assumptions: []
+
+usage:                   # só valores observados; senão UNKNOWN
+  duration: "UNKNOWN"
+  retries: 0
+  tokens: "UNKNOWN"
