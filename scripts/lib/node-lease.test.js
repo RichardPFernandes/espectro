@@ -226,10 +226,16 @@ test('dispatchTicket: grava node_started_at/node_timeout_ms/running e o wrapper 
     assert.ok(await waitFor(() => claudeCalled(new RegExp(`/implement ${taskId}`))));
     assert.ok(await waitFor(() => read(dir).status === 'in_progress'), 'release do wrapper devolve pra in_progress');
     assert.strictEqual(read(dir).node_started_at, s.node_started_at);
-    const attemptDir = path.join(dir, 'dom06', 'attempts');
-    const attemptName = fs.readdirSync(attemptDir).find(name => name.endsWith('.json'));
-    const attempt = JSON.parse(fs.readFileSync(path.join(attemptDir, attemptName), 'utf8'));
-    assert.strictEqual(attempt.obligations.find(item => item.id === 'execute_node').status, 'fulfilled');
+    // A CLI de release grava em duas etapas: releaseNode (in_progress) e só depois
+    // fulfillOnExit (Attempt). Ver in_progress não garante o Attempt já cumprido.
+    const executeNodeStatus = () => {
+        const attemptDir = path.join(dir, 'dom06', 'attempts');
+        const attemptName = fs.readdirSync(attemptDir).find(name => name.endsWith('.json'));
+        const attempt = JSON.parse(fs.readFileSync(path.join(attemptDir, attemptName), 'utf8'));
+        return attempt.obligations.find(item => item.id === 'execute_node').status;
+    };
+    await waitFor(() => executeNodeStatus() === 'fulfilled');
+    assert.strictEqual(executeNodeStatus(), 'fulfilled', 'fulfillOnExit do wrapper não cumpriu execute_node no Attempt em 5 s após o release');
 });
 
 test('dispatchTicket: running dentro do prazo não redespacha; needs_human_review também não', async () => {
