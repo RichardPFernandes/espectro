@@ -1034,3 +1034,27 @@ test('POST /pre-build/retry: recompila no worktree do ticket e grava o resultado
         d3.close();
     }
 });
+
+// ---------------------------------------------------------------------------------
+// Bolinhas das etapas: /test, /verify e /commit não gravam em history (ticket 43812)
+
+test('nodes: run commitado marca todas as etapas; node_end dos events conta como concluído', async () => {
+    const endOf = node => [{ type: 'node_start', node }, { type: 'node_end', node }];
+    seed(wtRuns('96001'), '96001-commitado', {
+        node: 'commit', status: 'committed', updated_at: t1,
+        history: ['fetch_ticket', 'plan', 'implement', 'review'],
+        events: [...endOf('test'), ...endOf('verify'), { type: 'node_start', node: 'commit' }],
+    });
+    seed(wtRuns('96002'), '96002-verificando', {
+        node: 'verify', status: 'running', updated_at: t1,
+        history: ['fetch_ticket', 'plan', 'implement', 'review'], events: endOf('test'),
+    });
+    const ids = ['96001-commitado', '96002-verificando'];
+    const body = await eventually(async () => {
+        const runs = (await get('/api/runs')).body;
+        return ids.every(id => runs.some(r => r.taskId === id)) && runs;
+    });
+    const all = Object.fromEntries(['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify', 'commit'].map(n => [n, 'done']));
+    assert.deepStrictEqual(body.find(r => r.taskId === '96001-commitado').nodes, all);
+    assert.deepStrictEqual(body.find(r => r.taskId === '96002-verificando').nodes, { ...all, verify: 'running', commit: 'pending' });
+});
