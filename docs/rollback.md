@@ -56,15 +56,17 @@ põe aspas nesses valores e faz o `set -a`/`set +a` no próprio arquivo. Carrega
 
 1. **Fixar o par.** Candidata = revisão/tree acima. Fonte = app-back HEAD
    `a1ac43307cc5f275caf5a70ad3068c9af099b127` mais os bytes selecionados do snapshot
-   `memory/runs/pri-62-reversal-preparation/source-snapshot-2026-10-07-pri67-71/source-selected-current.tar.gz`
+   `memory/runs/_prisma/pri-62-reversal-preparation/source-snapshot-2026-10-07-pri67-71/source-selected-current.tar.gz`
    (sha256 `1191361d93f1a3dbe609a45bd881c0c8633bf8e491b99b5036b7d251aeda5731`),
    236 arquivos. Inclui a correção do comparador da PRI-61 e, na fonte, PRI-67
    (`--dry-run` sem escrita), PRI-68 (filtro `--ticket`), PRI-70 (trava e identidade
    do agente) e PRI-71 (PR aberto reutilizado; 401/403 não segue para o POST).
    O snapshot anterior permanece em
-   `memory/runs/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/source-selected-current.tar.gz`
+   `memory/runs/_prisma/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/source-selected-current.tar.gz`
    (sha256 `ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03`, 230 arquivos).
    O anterior a esse (`ad618099…`) difere só nos 6 arquivos do comparador (ver manifesto).
+   As runs de trabalho do Prisma ficam em `memory/runs/_prisma/` do app-back (movidas em
+   2026-10-09): o prefixo `_` tira essas pastas da lista de demandas do dashboard e do watcher.
    Config admitida: os 2 arquivos acima, com hash em `provenance/pri-62-rollback.json`.
 2. **Parar o writer da candidata com SIGTERM** (botão Parar do dashboard da candidata ou
    `kill -TERM <pid>`), nunca SIGKILL. O graceful shutdown marca o nó em voo como

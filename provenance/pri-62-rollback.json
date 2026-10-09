@@ -28,12 +28,12 @@
     "head": "a1ac43307cc5f275caf5a70ad3068c9af099b127",
     "selected_files": 236,
     "accepted_list_sha256": "e3ba5c9ffa43c6fb2cb1e955ec1a2715af1337df5f11835941a42ae9b104ca84",
-    "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/source-snapshot-2026-10-07-pri67-71/source-selected-current.tar.gz",
+    "snapshot": "app-back/memory/runs/_prisma/pri-62-reversal-preparation/source-snapshot-2026-10-07-pri67-71/source-selected-current.tar.gz",
     "snapshot_sha256": "1191361d93f1a3dbe609a45bd881c0c8633bf8e491b99b5036b7d251aeda5731",
     "readback": "tar -xzf em tmp; hash, tamanho e bit de execução dos 236 contra o preflight",
     "live_checkout_matches_snapshot": true,
     "delta_vs_previous_snapshot": {
-      "previous_snapshot": "app-back/memory/runs/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/source-selected-current.tar.gz",
+      "previous_snapshot": "app-back/memory/runs/_prisma/pri-62-reversal-preparation/candidate-fbb597c-2026-10-07/source-selected-current.tar.gz",
       "previous_snapshot_sha256": "ee42191da8945055f37aca773ec8e585e0d0ae8eb3c23c9a105ff829c2159a03",
       "previous_selected_files": 230,
       "kept_in_place": true,
@@ -102,14 +102,14 @@
             "source_equals_candidate": true
           }
         ],
-        "pre_fix_originals": "app-back/memory/runs/pri-61-integration-validation/rerun-2026-10-07-fix/app-back-pre-fix/ (os 6 batem com o snapshot anterior)",
+        "pre_fix_originals": "app-back/memory/runs/_prisma/pri-61-integration-validation/rerun-2026-10-07-fix/app-back-pre-fix/ (os 6 batem com o snapshot anterior)",
         "note": "run-comparator.js já diferia entre fonte e candidata na PRI-60 (seam adaptado); continua diferindo."
       }
     }
   },
   "consumer_config": {
     "location": "app-back, fora do Git; nenhum arquivo contém chave de segredo",
-    "snapshot": "app-back/memory/runs/pri-62-reversal-preparation/consumption-return-2026-10-07/consumer-config-snapshot/",
+    "snapshot": "app-back/memory/runs/_prisma/pri-62-reversal-preparation/consumption-return-2026-10-07/consumer-config-snapshot/",
     "unchanged_since_previous_round": false,
     "decision": "Linear PRI-61/PRI-62, comentário 3928a7eb-e679-4742-8c79-9be5b0dc9041 (Richard): config de consumo admitida = prisma-consumer.env + config/consolidator-module-keywords.json; scripts/prisma-consumer.env.example e .claude/prisma-*.json são só exemplo",
     "admitted": [
@@ -175,7 +175,7 @@
         "new_bytes": 1020,
         "reason": "source no zsh/bash não exportava PRE_BUILD_COMMAND/TEST_COMMAND/TEST_SCOPED_COMMAND (valor com espaço sem aspas); valores entre aspas simples e set -a/set +a no próprio arquivo",
         "same_keys_and_values": true,
-        "evidence": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/ (env-load-check.log, prisma-consumer.env.diff)"
+        "evidence": "app-back/memory/runs/_prisma/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/ (env-load-check.log, prisma-consumer.env.diff)"
       },
       {
         "issue": "PRI-62-snapshot",
@@ -190,7 +190,7 @@
     ]
   },
   "exercise": {
-    "folder": "app-back/memory/runs/pri-62-reversal-preparation/source-snapshot-2026-10-07-pri67-71/",
+    "folder": "app-back/memory/runs/_prisma/pri-62-reversal-preparation/source-snapshot-2026-10-07-pri67-71/",
     "preflight": "candidate-source-preflight.json (236 fontes + 248 candidatas fbb597c)",
     "preflight_builder_sha256": "777a1128a82442e50d60a1ac9928460a3ad1097b530167371da750494725a3e4",
     "preflight_workspace_restored": "workspace tmp do preflight recriado no mesmo caminho a partir do snapshot da fonte e do git archive de fbb597c (os 2 passos do builder, sem reescrever snapshot/preflight); 478 de 478 hashes conferem",
@@ -222,7 +222,7 @@
       "revalidation-2026-10-07/ (candidata 04c130b)"
     ],
     "previous_exercise": {
-      "folder": "app-back/memory/runs/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/",
+      "folder": "app-back/memory/runs/_prisma/pri-62-reversal-preparation/config-admitted-2026-10-07-pri65/",
       "preflight_sha256": "d7901edf82676d72ce82cb531254b9809da07d189c02396fe2be658132f05ca4",
       "preflight_builder_sha256": "777a1128a82442e50d60a1ac9928460a3ad1097b530167371da750494725a3e4",
       "harness_sha256": "a7c33c4ffc8a8ef9c2d4242bd8ea2274ef6f11738c087b50f844734e9e9dfcd8",
@@ -263,6 +263,6 @@
     "Decision formal além do 'aprovado' no Redmine e do state-writer set do contrato atual",
     "exclusividade global entre hosts/processos",
     "revisão de cutover diferente de fbb597c",
-    "Exercício real (Redmine/agentes reais) é executado por outra frente em app-back/memory/runs/pri-61-62-real-exercise-2026-10-07/; não faz parte deste ensaio"
+    "Exercício real (Redmine/agentes reais) é executado por outra frente em app-back/memory/runs/_prisma/pri-61-62-real-exercise-2026-10-07/; não faz parte deste ensaio"
   ]
 }
