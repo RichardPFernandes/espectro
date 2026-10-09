@@ -1,4 +1,4 @@
-# Maestri — Agent Handoff Contract v1
+# Maestri — Agent Handoff Contract v1.1
 
 ## Objetivo
 
@@ -14,6 +14,7 @@ que continua sendo o estado operacional de cada run com o formato definido em
 contrato referencia aquele arquivo em `context_refs` em vez de reproduzi-lo.
 
 Template: [templates/handoff.yaml.template](../templates/handoff.yaml.template).
+Validador: `node scripts/validate-handoff.js <handoff.yaml|handoff.md> [--check-paths]`.
 
 ### Regras obrigatórias
 
@@ -26,6 +27,7 @@ Template: [templates/handoff.yaml.template](../templates/handoff.yaml.template).
 7. Nunca declarar testes como aprovados sem execução comprovada.
 8. Não modificar requisitos ou decisões aprovadas sem autorização.
 9. O agente receptor deve validar as pré-condições antes de prosseguir.
+10. O handoff é YAML: arquivo `.yaml` ou um bloco ```` ```yaml ```` dentro de um `.md`. Prosa sem esse bloco não atende o contrato.
 
 ## Estrutura obrigatória
 
@@ -69,6 +71,54 @@ next:
 
 context_refs: []
 ```
+
+## Versão 1.1 (aditiva)
+
+A 1.1 só acrescenta campos; todo handoff 1.0 válido continua válido como 1.0.
+Com `handoff_version: "1.1"`, `routing` e `risk` passam a ser obrigatórios.
+
+```yaml
+handoff_version: "1.1"
+
+task:
+  acceptance_criteria: []      # IDs ou textos dos ACs da spec/issue (não reescrever)
+
+routing:                       # obrigatório na 1.1
+  from: "Implementador"        # agente que entrega
+  to: "Revisor"                # agente que recebe
+  runtime: "claude"            # claude | codex | human | other — runtime de quem executou
+  fallback_reason: null        # preenchido quando a tarefa trocou de runtime
+
+risk:                          # obrigatório na 1.1
+  level: "MEDIUM"              # LOW | MEDIUM | HIGH | MAX
+  signals: []                  # obrigatório em HIGH/MAX: o que motivou (ex.: migração, auth)
+  classified_by: "Coordenador"
+
+facts: []                      # constatações com evidência
+assumptions: []                # hipóteses — nunca tratadas como fato pelo receptor
+
+usage:                         # só valores observados; o que não foi medido é UNKNOWN
+  duration: "UNKNOWN"
+  retries: 0
+  tokens: "UNKNOWN"
+```
+
+Em `validation.executed`, o campo opcional `expected` (`PASSED` padrão, ou `FAILED`)
+declara o resultado esperado. Teste de injeção de falha — rodado contra código
+sabotado para provar que o teste detecta o defeito — usa `expected: "FAILED"`.
+Só conta como falha o item cujo `result` difere de `expected`.
+
+## Validação
+
+O receptor roda `node scripts/validate-handoff.js` antes de aceitar o handoff:
+
+- `ERROR` impede a aceitação: campo obrigatório ausente, status fora do enum,
+  resultado sem evidência, `COMPLETED` com falha inesperada não explicada em
+  `open_issues`, `NEEDS_HUMAN`/`BLOCKED` sem `open_issues`, credencial no arquivo,
+  `usage` com valor estimado.
+- `WARN` é conferido e registrado, sem bloquear.
+- O validador confere forma e coerência, não verdade: não reexecuta testes. Com
+  `--check-paths`, confere que artefatos e evidências citados existem.
 
 ## Estados permitidos
 
