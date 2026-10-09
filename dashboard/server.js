@@ -400,11 +400,14 @@ function createDashboard(options = {}) {
 
     // state.node = PRÓXIMO nó a rodar (convenção do watcher); history = já visitados.
     // awaiting_approval cai no 'pending': o nó atual está esperando, não falhou.
+    // /test, /verify e /commit não gravam em history: o node_end dos events também conta,
+    // e run commitado tem todas as etapas concluídas.
     function nodeStatuses(state) {
         const out = {};
-        const visited = new Set(state?.history || []);
         const status = runStatus(state);
-        for (const n of NODES) out[n] = visited.has(n) ? 'done' : 'pending';
+        const visited = new Set(state?.history || []);
+        for (const e of state?.events || []) if (e?.type === 'node_end') visited.add(e.node);
+        for (const n of NODES) out[n] = status === 'committed' || visited.has(n) ? 'done' : 'pending';
         if (state && status !== 'committed' && NODES.includes(state.node)) {
             out[state.node] = status === 'running' ? 'running'
                 : (status === 'failed' || status === 'needs_human_review') ? 'failed'
