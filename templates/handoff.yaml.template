@@ -1,0 +1,41 @@
+# Maestri — Agent Handoff Contract v1. Regras: docs/handoff-contract.md
+# status: COMPLETED | BLOCKED | NEEDS_HUMAN | FAILED | PARTIAL
+# result de validation.executed só é PASSED com execução comprovada em evidence.
+handoff_version: "1.0"
+
+task:
+  id: "PRI-XXX"
+  objective: ""
+  specification_ref: ""
+
+execution:
+  agent: ""
+  status: ""
+  summary: ""
+  branch: ""
+  commit: null
+
+artifacts: []
+  # - path: ""
+  #   action: "CREATED | MODIFIED | DELETED"
+  #   description: ""
+
+decisions:
+  approved: []
+  proposed: []
+
+validation:
+  executed: []
+    # - command: ""
+    #   result: "PASSED | FAILED"
+    #   evidence: ""
+  not_executed: []
+
+open_issues: []
+
+next:
+  recommended_agent: ""
+  action: ""
+  prerequisites: []
+
+context_refs: []

@@ -21,6 +21,8 @@
    Não transformar UNKNOWN ou ausência de prova em aprovação ou zero.
 8. Impacto além da baseline retorna à reconciliação pertinente. Os candidatos
    RRC-F31-001/002 continuam NOT APPLIED até decisão governada explícita.
+9. Ao concluir, bloquear ou interromper uma tarefa delegada, entregue o handoff
+   de docs/handoff-contract.md, partindo de templates/handoff.yaml.template.
 
 Este arquivo é instrução nova do scaffold. Regras e configuração de cada
 consumidor continuam no respectivo projeto; nenhum estado vivo é definido aqui.
