@@ -35,6 +35,40 @@ As credenciais das integrações vêm, nesta ordem, do ambiente, do `dashboard/.
 `.env` da raiz do repo (o mesmo que o watcher lê; do arquivo da raiz só essas 5 chaves, as
 `PREVIEW_*` e `SPEC_APPROVAL_KEYWORD` são lidas). Não é preciso copiá-las para `dashboard/.env`. `KEY=` vazio não conta.
 
+
+## Coordenação (somente leitura)
+
+A aba **Coordenação** lê `GET /api/coordination`; não despacha agentes nem grava estado.
+`COORD_STATUS_PATH` configura o JSON do Coordenador (padrão
+`~/.maestro-guard/coord-status.json`). Fonte v1:
+
+```json
+{"schemaVersion":1,"updatedAt":"2026-10-10T15:00:00Z","frentes":[{"id":"prisma","nome":"Prisma","restricted":false}],"tarefas":[{"id":"PRI-99","frente":"prisma","tarefa":"Coordenação","agente":"Codex","runtime":"codex","estado":"Em andamento","nota":"Implementar","link":"https://linear.app/prisma-app/issue/PRI-99","atualizado":"2026-10-10T15:00:00Z"}]}
+```
+
+`restricted` é booleano, default `false`. Para frente restrita (incluindo M&O),
+o produtor publica somente nome da tarefa/estado, além dos IDs estruturais.
+A API descarta **id da tarefa, nota, agente, runtime, link e atualizado**;
+mantém `frente` só para agrupar, `tarefa` e `estado`. A aba também omite essas
+colunas, mesmo se recebesse campos extras. Campos desconhecidos são ignorados.
+Estados: Em andamento, Na fila, Aguardando você, Concluído, Bloqueado.
+Arquivo ausente resulta em `empty`; ilegível/inválido em `invalid` com mensagem
+fixa, sem ecoar dados. Contadores sem fonte válida são `null` (sem medição),
+não zero. Chokidar observa apenas esse arquivo com polling de 250ms (cobre
+arquivo inicialmente ausente e rename atômico no macOS) e publica
+`coordination_update` pelo WebSocket; o cliente relê a rota, inclusive depois de reconectar.
+
+`COORD_CAPACITY_SCRIPT` é o caminho absoluto do script Node (padrão
+`~/src/maestro-guard/capacity/capacity.mjs`), não uma linha de shell.
+Executa `node <script> --json` sem shell, timeout 5s, cache de 30s (inclusive
+falhas) e deduplicação de chamadas concorrentes. Só runtime e percentuais 5h/7d
+validados são retornados. Falha resulta em `{ "status": "unavailable" }`;
+janelas sem medição ou snapshots marcados `UNKNOWN` pelo produtor permanecem
+`null`, nunca zero inventado nem percentuais antigos tratados como capacidade atual.
+Contrato OpenAPI da rota: `coordination.openapi.json`, coberto por
+`openapi-contract-api.test.js`. Fixtures dos testes são temporárias, sem ler
+o estado real do Maestro. Nenhuma mudança é feita no produtor ou no script de capacidade.
+
 ## De onde vêm os runs
 
 O watcher grava o estado das tasks no **worktree do ticket**

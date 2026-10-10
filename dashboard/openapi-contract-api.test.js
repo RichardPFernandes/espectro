@@ -39,7 +39,7 @@ seed('81002-sem-endpoint', { node: 'implement', status: 'running', updated_at: '
 
 process.env.BITBUCKET_API_TOKEN = SECRET;
 const { createDashboard } = require('./server');
-const dash = createDashboard({ memoryDir: mainRuns });
+const dash = createDashboard({ memoryDir: mainRuns, env: { ...process.env, COORD_STATUS_PATH: path.join(tmp, 'coord-status.json'), COORD_CAPACITY_SCRIPT: path.join(tmp, 'unavailable.mjs') } });
 let base;
 
 test.before(async () => {
@@ -75,4 +75,20 @@ test('GET /openapi-contract: 404 em run sem contrato e em run inexistente', asyn
     assert.strictEqual(semContrato.status, 404);
     assert.match((await semContrato.json()).error, /sem contrato OpenAPI/);
     assert.strictEqual((await fetch(`${base}/api/runs/99999-nao-existe/openapi-contract`)).status, 404);
+});
+
+test('GET /api/coordination: adjacent OpenAPI contract describes and matches read-only response', async () => {
+    const contract = JSON.parse(fs.readFileSync(path.join(__dirname, 'coordination.openapi.json'), 'utf8'));
+    assert.strictEqual(contract.openapi, '3.0.3');
+    const route = contract.paths['/api/coordination'];
+    assert.deepStrictEqual(Object.keys(route), ['get']);
+    assert.strictEqual(route.get.responses['200'].content['application/json'].schema.$ref, '#/components/schemas/Coordination');
+    const body = await (await fetch(`${base}/api/coordination`)).json();
+    const schema = contract.components.schemas.Coordination;
+    assert.deepStrictEqual(Object.keys(body).sort(), schema.required.slice().sort());
+    assert.ok(schema.properties.status.enum.includes(body.status));
+    assert.strictEqual(body.status, 'empty');
+    assert.deepStrictEqual(body.capacity, { status: 'unavailable' });
+    assert.deepStrictEqual(contract.components.schemas.State.enum.slice().sort(), Object.keys(body.counts).sort());
+    assert.deepStrictEqual(contract.components.schemas.RestrictedTask.required, ['frente', 'tarefa', 'estado']);
 });

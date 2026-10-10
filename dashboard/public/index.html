@@ -3590,6 +3590,7 @@ function connect() {
   ws.onmessage = ev => {
     let msg; try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === 'hello') { setRuns(msg.runs); if (selected) loadContext(false); }
+    if ((msg.type === 'hello' || msg.type === 'coordination_update') && window.Views?.current() === 'coordenacao') window.CoordinationView?.load();
     else if (msg.type === 'state_update') {
       const prev = runs.get(msg.taskId);
       runs.set(msg.taskId, msg.run || { ...(prev || {}), taskId: msg.taskId, state: msg.state });
@@ -3652,6 +3653,7 @@ document.addEventListener('click', async e => {
 <script src="views.js"></script>
 <script src="graph.js"></script>
 <script src="patterns.js"></script>
+<script src="coordination.js"></script>
 <script src="prs.js"></script>
 <script src="redmine.js"></script>
 <script src="ux.js"></script>

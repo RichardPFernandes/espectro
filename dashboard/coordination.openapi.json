@@ -1,0 +1,34 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Dashboard Coordination (read-only)", "version": "1.0.0" },
+  "paths": {
+    "/api/coordination": {
+      "get": {
+        "summary": "Validated coordinator status and cached subscription capacity",
+        "description": "Localhost only. Missing source: empty; invalid source: invalid with a fixed message, never raw content. Restricted tasks expose only tarefa/estado and the structural grouping key frente. No write operation.",
+        "responses": {
+          "200": { "description": "Read-only view; source and capacity failures remain explicit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Coordination" } } } },
+          "403": { "description": "Non-local Host or Origin" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "State": { "type": "string", "enum": ["Em andamento", "Na fila", "Aguardando você", "Concluído", "Bloqueado"] },
+      "Front": { "type": "object", "additionalProperties": false, "required": ["id", "nome", "restricted"], "properties": { "id": { "type": "string" }, "nome": { "type": "string" }, "restricted": { "type": "boolean", "default": false } } },
+      "RestrictedTask": { "type": "object", "additionalProperties": false, "required": ["frente", "tarefa", "estado"], "properties": { "frente": { "type": "string" }, "tarefa": { "type": "string" }, "estado": { "$ref": "#/components/schemas/State" } } },
+      "Task": { "type": "object", "additionalProperties": false, "required": ["id", "frente", "tarefa", "agente", "runtime", "estado", "nota", "atualizado"], "properties": { "id": { "type": "string" }, "frente": { "type": "string" }, "tarefa": { "type": "string" }, "agente": { "type": "string" }, "runtime": { "type": "string" }, "estado": { "$ref": "#/components/schemas/State" }, "nota": { "type": "string" }, "link": { "type": "string", "format": "uri", "pattern": "^https?://" }, "atualizado": { "type": "string", "format": "date-time" } } },
+      "Window": { "type": "object", "nullable": true, "additionalProperties": false, "required": ["used"], "properties": { "used": { "type": "number", "minimum": 0, "maximum": 100 } } },
+      "Capacity": { "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["status"], "properties": { "status": { "type": "string", "enum": ["unavailable"] } } },
+        { "type": "object", "additionalProperties": false, "required": ["status", "runtimes"], "properties": { "status": { "type": "string", "enum": ["ok"] }, "runtimes": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["runtime", "five_hour", "seven_day"], "properties": { "runtime": { "type": "string" }, "five_hour": { "$ref": "#/components/schemas/Window" }, "seven_day": { "$ref": "#/components/schemas/Window" } } } } } }
+      ] },
+      "Coordination": { "type": "object", "additionalProperties": false, "required": ["status", "updatedAt", "counts", "frentes", "tarefas", "capacity"], "properties": {
+        "status": { "type": "string", "enum": ["ok", "empty", "invalid"] }, "updatedAt": { "type": "string", "format": "date-time", "nullable": true }, "message": { "type": "string" },
+        "counts": { "type": "object", "description": "Null counts when source is empty/invalid; zero only from a validated source.", "additionalProperties": false, "required": ["Em andamento", "Na fila", "Aguardando você", "Concluído", "Bloqueado"], "properties": { "Em andamento": { "type": "integer", "minimum": 0, "nullable": true }, "Na fila": { "type": "integer", "minimum": 0, "nullable": true }, "Aguardando você": { "type": "integer", "minimum": 0, "nullable": true }, "Concluído": { "type": "integer", "minimum": 0, "nullable": true }, "Bloqueado": { "type": "integer", "minimum": 0, "nullable": true } } },
+        "frentes": { "type": "array", "items": { "$ref": "#/components/schemas/Front" } }, "tarefas": { "type": "array", "items": { "oneOf": [{ "$ref": "#/components/schemas/Task" }, { "$ref": "#/components/schemas/RestrictedTask" }] } }, "capacity": { "$ref": "#/components/schemas/Capacity" }
+      } }
+    }
+  }
+}
