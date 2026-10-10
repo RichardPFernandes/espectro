@@ -21,6 +21,9 @@ function seed(taskId, state) {
 }
 
 const SECRET = 'segredo-do-contrato-nao-pode-vazar';
+const coordinationPath = path.join(tmp, 'coord-status.json');
+const capacityPath = path.join(tmp, 'coord-capacity.mjs');
+fs.writeFileSync(capacityPath, "console.log(JSON.stringify([{runtime:'codex',reading:{five_hour:{used:12},seven_day:{used:34}}}]))");
 const CONTRACT = `openapi: 3.0.3
 info:
   title: Contrato 81001
@@ -39,7 +42,7 @@ seed('81002-sem-endpoint', { node: 'implement', status: 'running', updated_at: '
 
 process.env.BITBUCKET_API_TOKEN = SECRET;
 const { createDashboard } = require('./server');
-const dash = createDashboard({ memoryDir: mainRuns, env: { ...process.env, COORD_STATUS_PATH: path.join(tmp, 'coord-status.json'), COORD_CAPACITY_SCRIPT: path.join(tmp, 'unavailable.mjs') } });
+const dash = createDashboard({ memoryDir: mainRuns, env: { ...process.env, COORD_STATUS_PATH: coordinationPath, COORD_CAPACITY_SCRIPT: capacityPath } });
 let base;
 
 test.before(async () => {
@@ -83,12 +86,54 @@ test('GET /api/coordination: adjacent OpenAPI contract describes and matches rea
     const route = contract.paths['/api/coordination'];
     assert.deepStrictEqual(Object.keys(route), ['get']);
     assert.strictEqual(route.get.responses['200'].content['application/json'].schema.$ref, '#/components/schemas/Coordination');
-    const body = await (await fetch(`${base}/api/coordination`)).json();
-    const schema = contract.components.schemas.Coordination;
-    assert.deepStrictEqual(Object.keys(body).sort(), schema.required.slice().sort());
-    assert.ok(schema.properties.status.enum.includes(body.status));
+    const schemas = contract.components.schemas;
+    const validateObject = (value, schema) => {
+        for (const key of schema.required || []) assert.ok(Object.hasOwn(value, key), `required ${key}`);
+        for (const key of Object.keys(value)) assert.ok(Object.hasOwn(schema.properties, key), `unexpected ${key}`);
+    };
+    const validateResponse = body => {
+        validateObject(body, schemas.Coordination);
+        assert.ok(schemas.Coordination.properties.status.enum.includes(body.status));
+        assert.deepStrictEqual(schemas.State.enum.slice().sort(), Object.keys(body.counts).sort());
+        for (const front of body.frentes) validateObject(front, schemas.Front);
+        for (const task of body.tarefas) {
+            const taskSchema = task.id === undefined ? schemas.RestrictedTask : schemas.Task;
+            validateObject(task, taskSchema);
+            assert.ok(schemas.State.enum.includes(task.estado));
+        }
+        if (body.capacity.status === 'ok') {
+            for (const runtime of body.capacity.runtimes) {
+                validateObject(runtime, schemas.Capacity.oneOf[1].properties.runtimes.items);
+                assert.match(runtime.runtime, /^(codex|claude)( \([^\r\n]{1,100}\))?$/);
+                for (const window of [runtime.five_hour, runtime.seven_day]) {
+                    if (window !== null) {
+                        validateObject(window, schemas.Window);
+                        assert.equal(typeof window.used, 'number');
+                        assert.ok(window.used >= 0 && window.used <= 100);
+                    }
+                }
+            }
+        } else validateObject(body.capacity, schemas.Capacity.oneOf[0]);
+    };
+    let body = await (await fetch(`${base}/api/coordination`)).json();
     assert.strictEqual(body.status, 'empty');
-    assert.deepStrictEqual(body.capacity, { status: 'unavailable' });
-    assert.deepStrictEqual(contract.components.schemas.State.enum.slice().sort(), Object.keys(body.counts).sort());
-    assert.deepStrictEqual(contract.components.schemas.RestrictedTask.required, ['frente', 'tarefa', 'estado']);
+    validateResponse(body);
+
+    fs.writeFileSync(coordinationPath, JSON.stringify({ schemaVersion: 1, updatedAt: '2026-10-10T15:00:00Z',
+        frentes: [{ id: 'public', nome: 'Plataforma' }, { id: 'restricted', nome: 'M&O', restricted: true }],
+        tarefas: [
+            { id: 'T-1', frente: 'public', tarefa: 'Implementar', agente: 'Codex', runtime: 'codex', estado: 'Em andamento', nota: 'Segue', atualizado: '2026-10-10T15:00:00Z', link: 'https://example.com/task' },
+            { id: 'T-2', frente: 'restricted', tarefa: 'Revisar', estado: 'Na fila' },
+        ] }));
+    body = await (await fetch(`${base}/api/coordination`)).json();
+    assert.strictEqual(body.status, 'ok');
+    assert.deepStrictEqual(body.capacity, { status: 'ok', runtimes: [{ runtime: 'codex', five_hour: { used: 12 }, seven_day: { used: 34 } }] });
+    validateResponse(body);
+
+    fs.writeFileSync(coordinationPath, '{ invalid secret }');
+    body = await (await fetch(`${base}/api/coordination`)).json();
+    assert.strictEqual(body.status, 'invalid');
+    assert.ok(!JSON.stringify(body).includes('invalid secret'));
+    validateResponse(body);
+    assert.deepStrictEqual(schemas.RestrictedTask.required, ['frente', 'tarefa', 'estado']);
 });

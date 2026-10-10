@@ -6,7 +6,14 @@ const { execFile } = require('child_process');
 const chokidar = require('chokidar');
 const STATES = ['Em andamento', 'Na fila', 'Aguardando você', 'Concluído', 'Bloqueado'];
 const string = v => typeof v === 'string' && v.length <= 4000;
-const timestamp = v => string(v) && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(v) && Number.isFinite(Date.parse(v));
+const timestamp = v => {
+    if (!string(v) || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(v) || !Number.isFinite(Date.parse(v))) return false;
+    const [, year, month, day] = v.match(/^(\d{4})-(\d\d)-(\d\d)T/);
+    const y = Number(year), m = Number(month), d = Number(day);
+    const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return m >= 1 && m <= 12 && d >= 1 && d <= days[m - 1];
+};
 const link = v => {
     try { return string(v) && ['https:', 'http:'].includes(new URL(v).protocol); } catch { return false; }
 };
@@ -45,12 +52,17 @@ function normalizeCapacity(rows) {
         if (typeof w.used !== 'number' || !Number.isFinite(w.used) || w.used < 0 || w.used > 100) throw new Error('window');
         return { used: w.used };
     };
-    return { status: 'ok', runtimes: rows.map(r => {
-        if (!r || !string(r.runtime) || !/^(codex|claude)( \([^\r\n]{1,100}\))?$/.test(r.runtime)) throw new Error('runtime');
+    const runtimes = rows.flatMap(r => {
+        if (!r || !string(r.runtime) || !/^(codex|claude)( \([^\r\n]{1,100}\))?$/.test(r.runtime)) return [];
         // The provider marks old snapshots UNKNOWN; they are not current capacity.
-        return { runtime: r.runtime, five_hour: r.level === 'UNKNOWN' ? null : window(r.reading?.five_hour),
-            seven_day: r.level === 'UNKNOWN' ? null : window(r.reading?.seven_day) };
-    }) };
+        const safeWindow = input => {
+            if (r.level === 'UNKNOWN') return null;
+            try { return window(input); } catch { return null; }
+        };
+        return [{ runtime: r.runtime, five_hour: safeWindow(r.reading?.five_hour),
+            seven_day: safeWindow(r.reading?.seven_day) }];
+    });
+    return { status: 'ok', runtimes };
 }
 function createCoordination({ env, broadcast, redact = v => v }) {
     const statusPath = path.resolve(env.COORD_STATUS_PATH || path.join(os.homedir(), '.maestro-guard', 'coord-status.json'));

@@ -61,7 +61,8 @@ test('ok: validates, counts states, ignores unknown fields, strips restricted me
     assert.equal(fs.readFileSync(hits, 'utf8').trim().split('\n').length, 1, 'capacity cached for at least 30 seconds');
 });
 test('invalid JSON/schema/references/links never echo invalid content', async () => {
-    const cases = [secret, { ...fixture(), schemaVersion: 2 }, { ...fixture(), updatedAt: null }];
+    const impossibleCalendarDate = { ...fixture(), updatedAt: '2026-02-30T00:00:00Z' };
+    const cases = [secret, { ...fixture(), schemaVersion: 2 }, { ...fixture(), updatedAt: null }, impossibleCalendarDate];
     for (const mutate of [
         f => { f.frentes[0].restricted = 'false'; },
         f => { f.tarefas[0].estado = 'UNKNOWN'; },
@@ -146,4 +147,33 @@ test('UI: DOM/textContent, restricted two-column table, unsafe links and UNKNOWN
     const privateTable = all(tables[1]);
     assert.equal(privateTable.filter(n => n.tag === 'th').length, 2);
     assert.equal(privateTable.filter(n => n.tag === 'td').length, 2);
+});
+
+test('Views.setView reloads Coordination after returning from another tab', async () => {
+    const elements = new Map();
+    const element = () => ({ innerHTML: '', scrollTop: 0, dataset: {}, children: [], classList: { add() {}, remove() {} }, setAttribute() {},
+        addEventListener() {}, querySelector() { return null; }, replaceChildren(...children) { this.children = children; } });
+    const dollar = id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
+    const location = { hash: '#runs', pathname: '/' };
+    const prefs = {};
+    let loadedVersion = 0;
+    const window = { addEventListener() {}, CoordinationView: {
+        async load() { loadedVersion++; window.Views?.refresh(); }, render() { return `version-${loadedVersion}`; },
+    } };
+    const document = { body: { dataset: {}, appendChild() {} }, activeElement: { dataset: {} }, createElement: element };
+    const context = {
+        window, document, location, prefs, selected: null, runs: new Map(), NODES: [], $: dollar,
+        history: { replaceState(_state, _title, url) { location.hash = url.startsWith('#') ? url : ''; } },
+        persist() {}, requestAnimationFrame: callback => callback(),
+    };
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'public', 'views.js'), 'utf8'), context);
+    window.Views.setView('coordenacao');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(loadedVersion, 1);
+    assert.equal(dollar('view').children[0], 'version-1');
+    window.Views.setView('runs');
+    window.Views.setView('coordenacao');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(loadedVersion, 2, 'voltar para Coordination executa outra leitura da API');
+    assert.equal(dollar('view').children[0], 'version-2');
 });

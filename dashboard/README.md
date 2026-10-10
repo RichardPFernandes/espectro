@@ -47,9 +47,11 @@ A aba **Coordenação** lê `GET /api/coordination`; não despacha agentes nem g
 ```
 
 `restricted` é booleano, default `false`. Para frente restrita (incluindo M&O),
-o produtor publica somente nome da tarefa/estado, além dos IDs estruturais.
-A API descarta **id da tarefa, nota, agente, runtime, link e atualizado**;
-mantém `frente` só para agrupar, `tarefa` e `estado`. A aba também omite essas
+o produtor publica somente nome da frente, nome da tarefa e estado, conforme
+instrução do Coordenador, além dos IDs estruturais. `id` é obrigatório e único
+em toda tarefa, inclusive nas restritas; a API o usa para validar a fonte e
+descarta **id da tarefa, nota, agente, runtime, link e atualizado**. A resposta
+mantém `frente` para agrupamento, `tarefa` e `estado`. A aba também omite essas
 colunas, mesmo se recebesse campos extras. Campos desconhecidos são ignorados.
 Estados: Em andamento, Na fila, Aguardando você, Concluído, Bloqueado.
 Arquivo ausente resulta em `empty`; ilegível/inválido em `invalid` com mensagem
@@ -485,9 +487,10 @@ Por baixo, é `scripts/watcher-manager.js`:
 | GET/PUT | `/api/watcher/prefs` | `{ auto_start: boolean }`. |
 | GET  | `/api/validate-config` | Painel **Saúde do Sistema** (🔧 no topo): roda `scripts/validate-config.js --format json` (só leitura, nunca `--fix`) e devolve o relatório `{ contractVersion, valid, exitCode, message, summary: { errors, warnings, info, rules, passedRules }, results: [{ rule, severity, passed, message, details? }] }`. Exit 1 do script continua 200 com `exitCode: 1` — é o que acende o alerta **⚠ Erros de Configuração** no topo. 500 se o validador não rodou. |
 | GET  | `/api/status` | Saúde: `{ uptime_ms, ws_clients, last_file_change, runs_tracked }`. Único endpoint fora do filtro de localhost (só contadores). |
+| GET  | `/api/coordination` | Estado v1 validado de frentes/tarefas e capacidade; `empty`/`invalid` explícitos. Read-only. Contrato adjacente `coordination.openapi.json`. |
 
 Eventos WebSocket: `hello` (lista inicial), `state_update` `{ taskId, state, run }`,
-`context_update`, `human_input`, `runs_changed`.
+`context_update`, `human_input`, `runs_changed`, `coordination_update`.
 
 ## Segurança (dev tool local)
 

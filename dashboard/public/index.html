@@ -3589,9 +3589,12 @@ function connect() {
   ws.onopen = () => { backoff = 1000; setLive('on', 'Ao vivo'); };
   ws.onmessage = ev => {
     let msg; try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.type === 'hello') { setRuns(msg.runs); if (selected) loadContext(false); }
-    if ((msg.type === 'hello' || msg.type === 'coordination_update') && window.Views?.current() === 'coordenacao') window.CoordinationView?.load();
-    else if (msg.type === 'state_update') {
+    if (msg.type === 'hello') {
+      setRuns(msg.runs); if (selected) loadContext(false);
+      if (window.Views?.current() === 'coordenacao') window.CoordinationView?.load();
+    } else if (msg.type === 'coordination_update') {
+      if (window.Views?.current() === 'coordenacao') window.CoordinationView?.load();
+    } else if (msg.type === 'state_update') {
       const prev = runs.get(msg.taskId);
       runs.set(msg.taskId, msg.run || { ...(prev || {}), taskId: msg.taskId, state: msg.state });
       const changed = JSON.stringify(prev) !== JSON.stringify(runs.get(msg.taskId));

@@ -804,7 +804,10 @@ function createDashboard(options = {}) {
     app.use(express.json({ limit: '100kb' }));
     app.use(express.static(path.join(__dirname, 'public')));
     const coordination = createCoordination({ env, broadcast, redact: redactDeep });
-    app.get('/api/coordination', async (req, res) => res.json(await coordination.read()));
+    app.get('/api/coordination', (req, res) => {
+        coordination.read().then(result => res.json(result))
+            .catch(() => res.status(500).json({ error: 'não foi possível ler o estado de coordenação' }));
+    });
 
     function withRun(req, res) {
         // Run ativo primeiro; senão, um arquivado com demanda aberta (só leitura).
