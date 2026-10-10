@@ -1,0 +1,50 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Dashboard Version (Prisma pin)", "version": "1.0.0" },
+  "paths": {
+    "/api/version": {
+      "get": {
+        "summary": "Running Prisma revision vs origin/main",
+        "parameters": [{ "name": "refresh", "in": "query", "required": false, "schema": { "type": "string", "enum": ["1"] }, "description": "Force git fetch (otherwise cached 60s)" }],
+        "responses": {
+          "200": { "description": "Version state; unavailable when PRISMA_ROOT is not a readable git checkout", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Version" } } } },
+          "403": { "description": "Non-local Host or Origin" },
+          "500": { "description": "Internal server error" }
+        }
+      }
+    },
+    "/api/version/update": {
+      "post": {
+        "summary": "Move the consumer pin to a revision on origin/main via PRISMA_BUMP_COMMAND",
+        "description": "Localhost only. Requires watcher loop stopped, free watcher lock and no live detached agent; one update at a time. Restarts via PRISMA_RESTART_COMMAND only after a successful bump that left PRISMA_ROOT at target.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["target"], "properties": { "target": { "type": "string", "pattern": "^[0-9a-f]{40}$" } } } } } },
+        "responses": {
+          "200": { "description": "Pin moved", "content": { "application/json": { "schema": { "type": "object", "required": ["ok", "update", "restarting", "restart_log"], "properties": { "ok": { "type": "boolean" }, "update": { "$ref": "#/components/schemas/Update" }, "restarting": { "type": "boolean" }, "restart_log": { "type": "string", "nullable": true } } } } } },
+          "400": { "description": "target is not a full SHA" },
+          "409": { "description": "Not configured, busy (watcher/lock/agent/update in progress), target outside origin/main or already current" },
+          "500": { "description": "Bump failed or left PRISMA_ROOT elsewhere; no restart", "content": { "application/json": { "schema": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" }, "update": { "$ref": "#/components/schemas/Update" } } } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Commit": { "type": "object", "required": ["sha", "date", "subject"], "properties": { "sha": { "type": "string" }, "date": { "type": "string", "format": "date-time" }, "subject": { "type": "string" } } },
+      "Update": { "type": "object", "required": ["at", "from", "to", "ok", "exit_code", "output"], "properties": { "at": { "type": "string", "format": "date-time" }, "from": { "type": "string", "nullable": true }, "to": { "type": "string" }, "ok": { "type": "boolean" }, "exit_code": { "type": "integer" }, "output": { "type": "string" }, "error": { "type": "string" } } },
+      "Version": { "oneOf": [
+        { "type": "object", "required": ["status", "message"], "properties": { "status": { "type": "string", "enum": ["unavailable"] }, "message": { "type": "string" } } },
+        { "type": "object", "required": ["status", "current", "latest", "behind", "behind_truncated", "fetched_at", "fetch_error", "update", "last_update"], "properties": {
+          "status": { "type": "string", "enum": ["ok"] },
+          "current": { "$ref": "#/components/schemas/Commit" },
+          "latest": { "allOf": [{ "$ref": "#/components/schemas/Commit" }], "nullable": true },
+          "behind": { "type": "array", "maxItems": 200, "items": { "type": "object", "required": ["sha", "subject"], "properties": { "sha": { "type": "string" }, "subject": { "type": "string" } } } },
+          "behind_truncated": { "type": "boolean" },
+          "fetched_at": { "type": "string", "format": "date-time" },
+          "fetch_error": { "type": "string", "nullable": true },
+          "update": { "type": "object", "required": ["configured", "enabled", "reason", "restart"], "properties": { "configured": { "type": "boolean" }, "enabled": { "type": "boolean" }, "reason": { "type": "string", "nullable": true }, "restart": { "type": "boolean" } } },
+          "last_update": { "allOf": [{ "$ref": "#/components/schemas/Update" }], "nullable": true }
+        } }
+      ] }
+    }
+  }
+}

@@ -5,6 +5,7 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
 const { createCoordination } = require('./coordination');
+const { createVersion } = require('./version');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -2579,10 +2580,32 @@ function createDashboard(options = {}) {
     const watcherAction = fn => async (req, res) => {
         try { res.json(await fn()); } catch (e) { res.status(500).json({ error: e.message, status: watcherManager.status() }); }
     };
-    app.post('/api/watcher/start', watcherAction(() => watcherManager.start()));
+    // Durante a troca do pin (painel Versão) o checkout/node_modules estão mudando: não sobe loop.
+    const unlessUpdating = fn => (req, res) => (version.isUpdating()
+        ? res.status(409).json({ error: 'Atualização de versão em andamento; aguarde o dashboard reiniciar.', status: watcherManager.status() })
+        : fn(req, res));
+    app.post('/api/watcher/start', unlessUpdating(watcherAction(() => watcherManager.start())));
     app.post('/api/watcher/stop', watcherAction(() => watcherManager.stop()));
-    app.post('/api/watcher/restart', watcherAction(() => watcherManager.restart()));
+    app.post('/api/watcher/restart', unlessUpdating(watcherAction(() => watcherManager.restart())));
     app.get('/api/watcher/status', (req, res) => res.json(watcherManager.status()));
+    // Painel Versão (version.js): pin do Prisma vs origin/main; troca só com o loop parado.
+    const watcherLock = require('../scripts/lib/watcher-lock');
+    const version = createVersion({
+        prismaRoot, repoRoot, env: consumerEnv, redact: redactDeep,
+        watcherStatus: () => watcherManager.status(),
+        lockStatus: options.versionLockStatus || (() => watcherLock.status(repoRoot)),
+        requestExit: options.requestExit || null,
+        ...(options.versionExec ? { exec: options.versionExec } : {}),
+        ...(options.versionSpawn ? { spawnDetached: options.versionSpawn } : {}),
+    });
+    app.get('/api/version', async (req, res) => {
+        try { res.json(await version.read({ force: req.query.refresh === '1' })); }
+        catch { res.status(500).json({ error: 'não foi possível ler a versão' }); }
+    });
+    app.post('/api/version/update', async (req, res) => {
+        try { const r = await version.update(req.body?.target); res.status(r.status).json(r.body); }
+        catch { res.status(500).json({ error: 'falha inesperada na atualização' }); }
+    });
     // Modo do watcher (banner "DRY-RUN MODE"): memory/runs/.watcher-mode, gravado pelo
     // watcher no início de cada tick (scripts/lib/dry-run.js) — o tick live regrava com
     // mode="live", então o banner some sozinho. DRY_RUN=true no env do dashboard também
@@ -3001,7 +3024,12 @@ if (require.main === module) {
         'WATCHER_SIBLING_REPOS', 'WATCHER_MAIN_REPO_NAME', 'BITBUCKET_PR_REPOS', 'BITBUCKET_ACCOUNT_ID', 'REDMINE_USER_ID']);
     const PORT = Number(process.env.PORT) || 3333;
     const HOST = process.env.HOST || '127.0.0.1';
-    const dashboard = createDashboard();
+    // Reinício pedido pelo painel Versão: mesmo caminho do SIGTERM (para o watcher e sai).
+    // Se parar watcher/previews travar, sai assim mesmo: o processo novo espera este PID.
+    const dashboard = createDashboard({ requestExit: () => {
+        setTimeout(() => process.exit(0), 15000).unref();
+        process.kill(process.pid, 'SIGTERM');
+    } });
     if (!fs.existsSync(dashboard.memoryDir)) {
         console.warn(`[dashboard] MEMORY_DIR não existe: ${dashboard.memoryDir}`);
     }
