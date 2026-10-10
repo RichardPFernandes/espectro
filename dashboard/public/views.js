@@ -9,6 +9,7 @@
     ['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'],
     ['timeline', 'Linha do tempo'], ['metricas', 'Métricas'], ['tickets', 'Tickets e PRs'],
     ['redmine', 'Redmine'], ['grafo', 'Grafo'], ['padroes', 'Padrões'], ['prs', 'PRs'],
+    ['coordenacao', 'Coordenação'],
   ];
   // Etapas agrupadas em 4 fases pra linha do tempo: 7 tons de um matiz não ficam
   // distinguíveis (validado), 4 ficam. O nome exato da etapa vai no tooltip.
@@ -90,6 +91,7 @@
     refresh();
     if (v === 'tickets' && !bulk.running && !bulk.loadedOnce) loadAll(false);
     if (v === 'redmine') window.RedmineView?.load(false);
+    if (v === 'coordenacao') window.CoordinationView?.load();
   }
   $('tabs').addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
   window.addEventListener('hashchange', () => { const v = alias(location.hash.slice(1)) || 'runs'; if (VIEWS.some(([k]) => k === v)) setView(v); });
@@ -616,7 +618,8 @@
       const el = $('view');
       const keepY = el.scrollTop;
       const focusKey = document.activeElement?.dataset?.tfilter;
-      el.innerHTML = RENDER[view]();
+      if (view === 'coordenacao' && window.CoordinationView) el.replaceChildren(window.CoordinationView.render());
+      else el.innerHTML = view === 'coordenacao' ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
       el.scrollTop = keepY;
       if (focusKey) el.querySelector(`[data-tfilter="${focusKey}"]`)?.focus();
     });

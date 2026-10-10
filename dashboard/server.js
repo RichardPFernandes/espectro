@@ -4,6 +4,7 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
+const { createCoordination } = require('./coordination');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -802,6 +803,11 @@ function createDashboard(options = {}) {
     app.use((req, res, next) => (isLocalRequest(req) ? next() : res.status(403).json({ error: 'somente localhost' })));
     app.use(express.json({ limit: '100kb' }));
     app.use(express.static(path.join(__dirname, 'public')));
+    const coordination = createCoordination({ env, broadcast, redact: redactDeep });
+    app.get('/api/coordination', (req, res) => {
+        coordination.read().then(result => res.json(result))
+            .catch(() => res.status(500).json({ error: 'não foi possível ler o estado de coordenação' }));
+    });
 
     function withRun(req, res) {
         // Run ativo primeiro; senão, um arquivado com demanda aberta (só leitura).
@@ -2969,7 +2975,7 @@ function createDashboard(options = {}) {
     return {
         app, server, wss, watcher, memoryDir, worktreesDir, watcherManager, readPrefs,
         get previewManager() { return previewManager; },
-        ready: new Promise(resolve => watcher.on('ready', resolve)),
+        ready: Promise.all([new Promise(resolve => watcher.on('ready', resolve)), coordination.ready]),
         close: async () => {
             await watcherManager.stop?.();
             for (const c of [...sseClients]) { c.cleanup(); c.res.end(); }
@@ -2977,6 +2983,7 @@ function createDashboard(options = {}) {
             clearInterval(rootsTimer);
             clearInterval(archivedTimer);
             await watcher.close();
+            await coordination.close();
             wss.clients.forEach(c => c.terminate());
             wss.close();
             await new Promise(resolve => server.close(resolve));
