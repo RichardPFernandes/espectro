@@ -62,6 +62,7 @@ function normalizeCapacity(rows) {
         return [{ runtime: r.runtime, five_hour: safeWindow(r.reading?.five_hour),
             seven_day: safeWindow(r.reading?.seven_day) }];
     });
+    if (runtimes.length === 0) return { status: 'unavailable' };
     return { status: 'ok', runtimes };
 }
 function createCoordination({ env, broadcast, redact = v => v }) {

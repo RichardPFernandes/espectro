@@ -93,6 +93,18 @@ test('capacity missing/malformed/timeout: unavailable, independently of valid st
         } finally { await other.close(); }
     }
 });
+test('capacity with no valid runtime rows is unavailable, not an empty successful section', async () => {
+    write(fixture());
+    const script = path.join(tmp, 'all-invalid.mjs');
+    fs.writeFileSync(script, "console.log(JSON.stringify([{runtime:'unknown'}, null, {runtime:'codex; secret'}]))");
+    const other = createDashboard({ memoryDir: path.join(tmp, 'all-invalid', 'memory', 'runs'), env: { ...env, COORD_CAPACITY_SCRIPT: script } });
+    try {
+        await new Promise(resolve => other.server.listen(0, '127.0.0.1', resolve));
+        const result = await (await fetch(`http://localhost:${other.server.address().port}/api/coordination`)).json();
+        assert.equal(result.status, 'ok');
+        assert.deepEqual(result.capacity, { status: 'unavailable' });
+    } finally { await other.close(); }
+});
 test('watch: change, atomic replacement, removal and creation broadcast WS refresh; GET rereads', async () => {
     write(fixture());
     const ws = new WebSocket(base.replace('http:', 'ws:'));

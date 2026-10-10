@@ -8,7 +8,8 @@
         "description": "Localhost only. Missing source: empty; invalid source: invalid with a fixed message, never raw content. Restricted tasks expose only tarefa/estado and the structural grouping key frente. No write operation.",
         "responses": {
           "200": { "description": "Read-only view; source and capacity failures remain explicit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Coordination" } } } },
-          "403": { "description": "Non-local Host or Origin" }
+          "403": { "description": "Non-local Host or Origin" },
+          "500": { "description": "Internal server error" }
         }
       }
     }

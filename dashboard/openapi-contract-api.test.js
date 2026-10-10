@@ -86,6 +86,7 @@ test('GET /api/coordination: adjacent OpenAPI contract describes and matches rea
     const route = contract.paths['/api/coordination'];
     assert.deepStrictEqual(Object.keys(route), ['get']);
     assert.strictEqual(route.get.responses['200'].content['application/json'].schema.$ref, '#/components/schemas/Coordination');
+    assert.ok(route.get.responses['500'], 'route contract documents internal errors');
     const schemas = contract.components.schemas;
     const validateObject = (value, schema) => {
         for (const key of schema.required || []) assert.ok(Object.hasOwn(value, key), `required ${key}`);
