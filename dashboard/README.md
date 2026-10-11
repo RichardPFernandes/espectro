@@ -71,6 +71,28 @@ Contrato OpenAPI da rota: `coordination.openapi.json`, coberto por
 `openapi-contract-api.test.js`. Fixtures dos testes são temporárias, sem ler
 o estado real do Maestro. Nenhuma mudança é feita no produtor ou no script de capacidade.
 
+## Versão (pin do Prisma)
+
+A aba **Versão** lê `GET /api/version`: revisão em execução (HEAD de `PRISMA_ROOT`),
+`origin/main` (depois de `git fetch`, cache de 60s; **Consultar origin** força) e os
+commits entre elas. O Prisma não conhece o consumidor: a troca do pin roda comandos
+que o consumidor declara no ambiente do dashboard:
+
+| Variável | O que faz |
+|---|---|
+| `PRISMA_BUMP_COMMAND` | Linha de shell que recebe o SHA alvo como último argumento e move o pin (no app-back: `bash scripts/prisma-bump.sh`). Vazia = painel somente leitura. Roda com cwd no consumidor e `PRISMA_DASHBOARD_PID` no env. |
+| `PRISMA_RESTART_COMMAND` | Opcional. Linha de shell que sobe o dashboard de novo (no app-back: `bash scripts/prisma-start.sh dashboard`). Sem ela, o painel avisa para reiniciar à mão. |
+
+**Atualizar** (`POST /api/version/update` `{ target }`) só roda com o loop do watcher
+parado, sem outro watcher na trava e sem agente destacado vivo (409 com o motivo),
+um update por vez, e só para SHA que esteja na `origin/main`. Sucesso = comando com
+exit 0 **e** `PRISMA_ROOT` no SHA alvo; só então, com `PRISMA_RESTART_COMMAND`, um
+processo destacado espera este dashboard sair e sobe o novo (saída em
+`dashboard/version-restart.log` do consumidor), e o atual encerra pelo mesmo caminho
+do SIGTERM (que também para watcher e previews; se travar, sai em 15s). "Em execução" é a revisão do boot do processo; o HEAD em disco aparece à parte quando diverge (bump sem reinício), e aí nova atualização fica bloqueada até reiniciar. Falha devolve o erro e a saída saneada do bump e não reinicia nada.
+As duas variáveis vêm do ambiente do processo (ou de `dashboard/.env`); o `.env` da raiz do consumidor não as fornece. No app-back, quem as exporta é `scripts/prisma-start.sh dashboard`.
+Contrato: `version.openapi.json`; testes: `version-api.test.js`.
+
 ## De onde vêm os runs
 
 O watcher grava o estado das tasks no **worktree do ticket**
@@ -488,6 +510,8 @@ Por baixo, é `scripts/watcher-manager.js`:
 | GET  | `/api/validate-config` | Painel **Saúde do Sistema** (🔧 no topo): roda `scripts/validate-config.js --format json` (só leitura, nunca `--fix`) e devolve o relatório `{ contractVersion, valid, exitCode, message, summary: { errors, warnings, info, rules, passedRules }, results: [{ rule, severity, passed, message, details? }] }`. Exit 1 do script continua 200 com `exitCode: 1` — é o que acende o alerta **⚠ Erros de Configuração** no topo. 500 se o validador não rodou. |
 | GET  | `/api/status` | Saúde: `{ uptime_ms, ws_clients, last_file_change, runs_tracked }`. Único endpoint fora do filtro de localhost (só contadores). |
 | GET  | `/api/coordination` | Estado v1 validado de frentes/tarefas e capacidade; `empty`/`invalid` explícitos. Read-only. Contrato adjacente `coordination.openapi.json`. |
+| GET  | `/api/version` | Pin do Prisma: `{ status, current, latest, behind[], behind_truncated, fetched_at, fetch_error, update: { configured, enabled, reason, restart }, last_update }`. `?refresh=1` refaz o fetch. |
+| POST | `/api/version/update` | `{ target: <sha40> }`: roda `PRISMA_BUMP_COMMAND` e, se houver, reinicia via `PRISMA_RESTART_COMMAND`. 400 SHA inválido, 409 travado/fora da main/já na revisão, 500 bump falhou. |
 
 Eventos WebSocket: `hello` (lista inicial), `state_update` `{ taskId, state, run }`,
 `context_update`, `human_input`, `runs_changed`, `coordination_update`.
