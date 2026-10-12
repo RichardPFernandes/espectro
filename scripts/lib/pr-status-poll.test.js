@@ -344,7 +344,14 @@ test('schema: fully_merged e status/last_checked_at/pr_id por PR são válidos; 
     assert.ok(!validateState({ ...base, status: 'committed', pull_request: { 'app-back': { url: 'u', status: 'WHATEVER' } } }).valid);
 });
 
-test('pr_status acompanha o draft do Bitbucket: algum Draft → "draft", nenhum → "ready"; pr_id do app-back', async () => {
+test('pr_status acompanha o draft do Bitbucket: algum Draft → "draft", nenhum → "ready"; pr_id do app-back', async t => {
+    // pr_id vem do repo principal: fixa a identidade da fixture, não a do checkout.
+    const savedMain = process.env.WATCHER_MAIN_REPO_NAME;
+    process.env.WATCHER_MAIN_REPO_NAME = 'app-back';
+    t.after(() => {
+        if (savedMain === undefined) delete process.env.WATCHER_MAIN_REPO_NAME;
+        else process.env.WATCHER_MAIN_REPO_NAME = savedMain;
+    });
     const r = freshRepo();
     const both = { 'app-front': url('app-front', 81), 'app-back': url('app-back', 80) };
     const dir = seed(r.main, '6100-draft', { pull_request: both });

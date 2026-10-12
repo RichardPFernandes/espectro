@@ -60,6 +60,14 @@ const post = async (p, body) => {
     const res = await fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
     return { status: res.status, body: await res.json() };
 };
+const eventually = async (fn, timeoutMs = 3000) => {
+    const deadline = Date.now() + timeoutMs;
+    do {
+        if (await fn()) return true;
+        await new Promise(r => setTimeout(r, 50));
+    } while (Date.now() < deadline);
+    return false;
+};
 
 test('GET /api/tickets/mine: devolve a lista e cacheia por 30s', async () => {
     fetchCalls = 0;
@@ -79,8 +87,8 @@ test('POST /api/runs/start: ticketId inválido => 400', async () => {
 test('POST /api/runs/start: run ativa para o ticket => 409 com runId, sem chamar dispatchNode', async () => {
     writeRun('43590-em-andamento', { redmine_ticket: { id: 43590 } });
     dispatchCalls = [];
-    // /api/runs depende do watcher de arquivos (chokidar) já ter visto a pasta nova.
-    await new Promise(r => setTimeout(r, 200));
+    assert.ok(await eventually(async () => (await get('/api/runs')).body.some(run => run.taskId === '43590-em-andamento')),
+        'chokidar não publicou a run ativa em 3s');
     const r = await post('/api/runs/start', { ticketId: '43590' });
     assert.strictEqual(r.status, 409);
     assert.strictEqual(r.body.runId, '43590-em-andamento');

@@ -119,13 +119,15 @@ test('cabeçalhos tolerantes: ###, caixa, acento, singular, sufixo, Textile, CRL
     assert.strictEqual(validateSpec(textile).valid, true);
 });
 
-test('template sem preencher (só comentários) não passa', () => {
-    const tpl = fs.readFileSync(path.join(__dirname, '..', '..', '.claude', 'worktrees', 'spec-gate', 'templates', 'spec-template.md'), 'utf8');
+// node:test lê as opções no 2º argumento; no 3º o skip era ignorado.
+const SPEC_TEMPLATE = path.join(__dirname, '..', '..', '.claude', 'worktrees', 'spec-gate', 'templates', 'spec-template.md');
+test('template sem preencher (só comentários) não passa', { skip: !fs.existsSync(SPEC_TEMPLATE) && 'template fora deste checkout' }, () => {
+    const tpl = fs.readFileSync(SPEC_TEMPLATE, 'utf8');
     const r = validateSpec(tpl);
     assert.strictEqual(r.valid, false);
     assert.deepStrictEqual(r.errors.map(e => e.code).sort(), ['EMPTY_SECTION', 'EMPTY_SECTION', 'INSUFFICIENT_ACCEPTANCE_CRITERIA', 'TOO_SHORT']);
     assert.deepStrictEqual(r.warnings, []);
-}, { skip: !fs.existsSync(path.join(__dirname, '..', '..', '.claude', 'worktrees', 'spec-gate', 'templates', 'spec-template.md')) && 'template fora deste checkout' });
+});
 
 test('sem Restrições/Arquivos/Dependências: válida com 3 warnings', () => {
     const r = validateSpec(NO_RESTRICTIONS_SPEC);

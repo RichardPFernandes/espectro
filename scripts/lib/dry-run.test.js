@@ -19,6 +19,7 @@ const WATCHER = path.join(__dirname, '..', 'readmine-watcher.js');
 const mkTmp = prefix => fs.mkdtempSync(path.join(TMP_ROOT, prefix));
 const readJson = f => JSON.parse(fs.readFileSync(f, 'utf8'));
 const quiet = () => {};
+process.env.WATCHER_MAIN_REPO_NAME = 'app-back'; // identidade da fixture, não do checkout da plataforma
 
 // ---------------------------------------------------------------------------------
 // Fixture
@@ -46,7 +47,7 @@ test('fixture: aceita objeto, array e { issues }; rejeita ticket sem id/subject'
 
 test('DRY_RUN_FIXTURE: absoluto, relativo ao cwd ou à raiz do repo; ausente = padrão', () => {
     const root = path.join(__dirname, '..', '..');
-    assert.strictEqual(dryRun.resolveFixturePath({}), dryRun.DEFAULT_FIXTURE);
+    assert.strictEqual(dryRun.resolveFixturePath({}, root), path.join(root, dryRun.DEFAULT_FIXTURE));
     assert.strictEqual(dryRun.resolveFixturePath({ DRY_RUN_FIXTURE: '/x/y.json' }), '/x/y.json');
     assert.strictEqual(
         dryRun.resolveFixturePath({ DRY_RUN_FIXTURE: './scripts/fixtures/ticket-example.json' }, root),
@@ -194,6 +195,10 @@ function sandbox() {
     const bin = path.join(tmp, 'bin');
     const claudeMarker = path.join(tmp, 'claude-foi-chamado');
     fs.mkdirSync(path.join(repo, 'memory', 'runs'), { recursive: true });
+    fs.mkdirSync(path.join(repo, 'scripts', 'fixtures'), { recursive: true });
+    fs.copyFileSync(path.resolve(__dirname, '..', 'fixtures', 'ticket-example.json'), path.join(repo, dryRun.DEFAULT_FIXTURE));
+    fs.mkdirSync(path.join(repo, '.claude'));
+    fs.copyFileSync(path.resolve(__dirname, '..', '..', '.claude', 'spec-hash-config.json'), path.join(repo, '.claude', 'spec-hash-config.json'));
     fs.mkdirSync(bin);
     for (const name of ['claude', 'mvn', 'osascript', 'curl']) {
         fs.writeFileSync(path.join(bin, name), `#!/bin/sh\necho "${name} $@" >> "${claudeMarker}"\nexit 0\n`, { mode: 0o755 });

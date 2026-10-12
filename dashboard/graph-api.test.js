@@ -15,6 +15,9 @@ fs.mkdirSync(mainRuns, { recursive: true });
 const graphPath = path.join(repo, 'memory', 'knowledge-graph.json');
 
 process.env.BITBUCKET_API_TOKEN = 'segredo-que-nao-vaza';
+// Identidade do repo principal da fixture, não o nome do checkout: arquivo do
+// principal tem ID canônico = path puro (fileNodeId), irmão = <repo>/<path>.
+process.env.WATCHER_MAIN_REPO_NAME = 'app-back';
 const kg = require('../scripts/lib/knowledge-graph');
 const { createDashboard } = require('./server');
 const dash = createDashboard({ memoryDir: mainRuns });

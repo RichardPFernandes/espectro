@@ -10,6 +10,7 @@ const { createDashboard } = require('./server');
 
 const tmpBase = process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp') : os.tmpdir();
 const tmp = fs.mkdtempSync(path.join(tmpBase, 'validate-config-api-'));
+const prismaRoot = path.resolve(__dirname, '..');
 fs.mkdirSync(path.join(tmp, 'memory', 'runs'), { recursive: true });
 
 const watcherManager = {
@@ -23,7 +24,7 @@ const opts = extra => ({
     prefsFile: path.join(tmp, 'prefs.json'), ...extra,
 });
 const dash = createDashboard(opts({ validateConfig: async () => { if (next instanceof Error) throw next; return JSON.parse(JSON.stringify(next)); } }));
-const realDash = createDashboard(opts({ prefsFile: path.join(tmp, 'prefs2.json') }));
+const realDash = createDashboard(opts({ repoRoot: prismaRoot, prefsFile: path.join(tmp, 'prefs2.json') }));
 
 const listen = async d => { await new Promise(r => d.server.listen(0, '127.0.0.1', r)); await d.ready; return `http://localhost:${d.server.address().port}`; };
 let base, realBase;
