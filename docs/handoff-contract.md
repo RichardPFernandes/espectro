@@ -128,6 +128,47 @@ O receptor roda `node scripts/validate-handoff.js` antes de aceitar o handoff:
 - FAILED: etapa não concluída.
 - PARTIAL: resultado parcial aproveitável.
 
+## Encerramento por tipo de tarefa
+
+`COMPLETED` conclui a etapa do agente; não encerra automaticamente a issue no
+Linear. `Done` registra o encerramento da issue no escopo aprovado, não prova
+implementação, validação ou promoção fora desse escopo. O coordenador confere
+evidências e registra as transições, sem substituir a decisão humana.
+
+| Tipo de tarefa | Evidências mínimas para Done | Quem confirma |
+| -- | -- | -- |
+| Planejamento/documental — planejamento Prisma | Approved Document + Evidence + Handoff FINAL + Planning Ledger atualizado; após a confirmação, issue em Done. Preservar os gates aplicáveis à baseline da tarefa. | Richard confirma a aprovação humana; o coordenador confere a persistência das evidências e registra a transição. |
+| Planejamento/documental — demais entregas documentais | Handoff com fatos verificáveis e referências aos artefatos, conforme este contrato; critérios adicionais de encerramento: a definir pelo Richard. | Conferência do handoff pelo coordenador; confirmação de Done: a definir pelo Richard. |
+| Implementação (feature/refactor) | Handoff com artefatos, revisão independente, testes/Verify aplicáveis e evidências atribuíveis à versão, conforme o ciclo vigente. Critérios adicionais de Done e relação entre merge e encerramento: a definir pelo Richard. | Revisor/QA confirmam somente os resultados técnicos do seu escopo; confirmação de Done: a definir pelo Richard. Merge exclusivo do Richard. |
+| Correção de bug | Handoff com evidências exigidas pelos critérios de aceite da issue, revisão independente e testes/Verify aplicáveis, atribuíveis à versão. Não presumir reprodução, cobertura ou teste não executado. Critérios adicionais de Done: a definir pelo Richard. | Revisor/QA confirmam somente os resultados técnicos do seu escopo; confirmação de Done: a definir pelo Richard. Merge exclusivo do Richard. |
+| Investigação/discovery (só leitura) | Handoff com fontes/versões, escopo observado, resultados e limites verificáveis; distinguir fatos, hipóteses e UNKNOWN. Critérios adicionais de Done: a definir pelo Richard. | Conferência do handoff pelo coordenador; confirmação de Done: a definir pelo Richard. |
+| Revisão/QA | Handoff com escopo/versão revisados, achados e evidências das verificações efetivamente executadas, separadas das não executadas. Critérios adicionais de Done: a definir pelo Richard. | Revisor/QA confirmam o resultado técnico da própria etapa; confirmação de Done: a definir pelo Richard. |
+
+A aprovação técnica de Revisor/QA não substitui a decisão humana. Não inferir
+autorização de merge nem encerramento da issue a partir de parecer técnico,
+validação formal do YAML ou status `COMPLETED`. Merge é exclusivo do Richard.
+
+As evidências citadas no Linear ficam em
+`~/Workspace/prisma-evidence/<data>-<frente>/`, não em `/tmp` ou `/private/tmp`.
+Um handoff temporário de transferência entre agentes não substitui a persistência
+da evidência citada no Linear nem, no planejamento Prisma, o Handoff FINAL e o
+Planning Ledger atualizado.
+
+`UNKNOWN` não bloqueia por si só e não vira aprovação, sucesso ou zero. Uma prova
+necessária ausente impede apenas a operação que dela depende; não cria bloqueio
+global para trabalho independente. Preservar os UNKNOWNs e os gates aplicáveis,
+sem resolver omissões por inferência: onde a regra não estiver definida, o
+critério é "a definir pelo Richard".
+
+Base: [F31 — Approved Document FINAL](https://linear.app/prisma-app/document/f31-approved-document-final-planning-development-handoff-9d557a552a9a),
+[Planning Ledger — Human Interaction](https://linear.app/prisma-app/document/planning-ledger-human-interaction-4c93d6f8be2d),
+[baseline arquitetural](prisma/architecture-baseline.md) e
+[condições e resíduos por atividade](prisma/residual-gates.md).
+A custódia das evidências segue a aprovação do Richard de 2026-10-12
+(fila de governança, GOV-3, item 3); a exclusividade de merge, a regra aprovada
+em 2026-10-09.
+Esta seção não acrescenta campos ao handoff nem altera o validador.
+
 ## Responsabilidades do coordenador
 
 - Validar a estrutura recebida.
