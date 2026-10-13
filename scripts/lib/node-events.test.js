@@ -193,6 +193,8 @@ test('dispatchTicket: exit code != 0 → node_error com exit_code; review no max
 
     const max = seed(93202, 'review', 'max', { retries: { review: 2 } });
     await runNode(93202, max.dir);
+    assert.ok(await waitFor(() => read(max.dir).events?.at(-1)?.type === 'escalation'),
+        'review não gravou o evento final escalation em 10s após node_end');
     const s = read(max.dir);
     assert.deepStrictEqual(s.events.map(e => e.type), ['node_start', 'node_end', 'escalation']);
     assert.match(s.events.at(-1).detail, /max_retries atingido em review/);

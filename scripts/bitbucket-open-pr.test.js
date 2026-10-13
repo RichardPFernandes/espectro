@@ -19,14 +19,19 @@ fs.mkdirSync(path.join(tmp, 'scripts'));
 const script = path.join(tmp, 'scripts', 'bitbucket-open-pr.sh');
 fs.copyFileSync(path.join(__dirname, 'bitbucket-open-pr.sh'), script);
 fs.chmodSync(script, 0o755);
+// O gate e o CLI reais operam apenas nesta fixture; sem bypass de autorização.
+fs.cpSync(path.join(__dirname, 'lib'), path.join(tmp, 'scripts', 'lib'), { recursive: true });
+const dom06 = require('./lib/dom06-attempt');
 
 // Comportamento do Bitbucket falso, trocado por teste.
 let fake;
 const posts = [];
 const listGets = [];
+const hits = [];
 const page = (users, next) => ({ values: users.map(([account_id, display_name]) => ({ reviewer_type: 'repository', user: { account_id, display_name } })), next });
 
 const server = http.createServer((req, res) => {
+    hits.push(req.method);
     let body = '';
     req.on('data', c => { body += c; });
     req.on('end', () => {
@@ -77,17 +82,43 @@ const base = () => `http://127.0.0.1:${server.address().port}/2.0`;
 function run(extraEnv = {}, branches = {}) {
     const source = branches.source || '41948';
     const dest = branches.dest || 'development';
+    const { attemptFile } = dom06.beginAttempt(path.join(tmp, 'run'), {
+        node: 'commit',
+        admission: { status: 'ADMITTED', owner: 'dom06', snapshot: { ticket_id: 41948, node: 'commit', repo: REPO, source, destination: dest } },
+        obligations: [{ id: 'pull_request', kind: 'external_effect' }],
+    });
     return new Promise(resolve => {
         const child = execFile('bash', [script, REPO, source, dest, 'Melhoria #41948'], {
-            env: { PATH: process.env.PATH, HOME: process.env.HOME, BITBUCKET_WORKSPACE: WS, BITBUCKET_API_TOKEN: 'tok-fake', BITBUCKET_API_BASE: base(), REPO_PATH: tmp, ...extraEnv },
-        }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr }));
+            env: { PATH: process.env.PATH, HOME: tmp, BITBUCKET_WORKSPACE: WS, BITBUCKET_API_TOKEN: 'tok-fake', BITBUCKET_API_BASE: base(), REPO_PATH: tmp, DOM06_ATTEMPT_FILE: attemptFile, ...extraEnv },
+        }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr, attempt: dom06.readAttempt(attemptFile) }));
         child.stdin.end('descrição');
     });
 }
 
 test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
-test.beforeEach(() => { posts.length = 0; listGets.length = 0; });
+test.beforeEach(() => { posts.length = 0; listGets.length = 0; hits.length = 0; });
+
+test('DOM06: sem Attempt o gate recusa antes de qualquer request', async () => {
+    fake = { pages: [[]] };
+    const r = await run({ DOM06_ATTEMPT_FILE: '' });
+    assert.notStrictEqual(r.code, 0);
+    assert.match(r.stderr, /AUTHORITY_INVALID/);
+    assert.strictEqual(posts.length, 0);
+    assert.strictEqual(listGets.length, 0);
+    assert.strictEqual(hits.length, 0);
+});
+
+test('DOM06: Attempt não admitido recusa antes de qualquer request', async () => {
+    fake = { pages: [[]] };
+    const { attemptFile } = dom06.beginAttempt(path.join(tmp, 'denied'), {
+        node: 'commit', admission: { status: 'DENIED' },
+    });
+    const r = await run({ DOM06_ATTEMPT_FILE: attemptFile });
+    assert.notStrictEqual(r.code, 0);
+    assert.match(r.stderr, /AUTHORITY_INVALID/);
+    assert.strictEqual(hits.length, 0);
+});
 
 test('BITBUCKET_ACCOUNT_ID: manda os default reviewers sem o autor, num POST só (com paginação)', async () => {
     fake = { pages: [[['acc-ana', 'Ana'], [ME, 'Eu Mesmo']], [['acc-beto', 'Beto']]] };
@@ -98,6 +129,9 @@ test('BITBUCKET_ACCOUNT_ID: manda os default reviewers sem o autor, num POST só
     assert.strictEqual(posts[0].draft, true);
     assert.strictEqual(r.stdout.trim(), `https://bitbucket.org/${WS}/${REPO}/pull-requests/42`);
     assert.match(r.stderr, /Reviewers: Ana, Beto/);
+    assert.deepStrictEqual(r.attempt.obligations, [{ id: 'pull_request', kind: 'external_effect', status: 'fulfilled' }]);
+    assert.strictEqual(r.attempt.effects.length, 1);
+    assert.strictEqual(r.attempt.effects[0].idempotency_key, 'pr:app-front:41948:development');
     assert.strictEqual(listGets[0], 'source.branch.name="41948" AND destination.branch.name="development" AND state="OPEN"');
 });
 

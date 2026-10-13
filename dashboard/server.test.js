@@ -38,6 +38,9 @@ seed(mainRuns, '90002-segredo', { node: 'test', status: 'spec-invalid', updated_
     'REDMINE_API_KEY=abcdef1234567890\nX-Redmine-API-Key: zzzsecretzzz\nvalor literal: super-secreto-env\n');
 fs.mkdirSync(path.join(mainRuns, '_archive', '90003-velho'), { recursive: true });
 fs.writeFileSync(path.join(mainRuns, 'watcher-state.json'), '{}');
+// Root observado desde o start (coberto por dash.ready): o teste de arquivar espera
+// o unlinkDir do chokidar, que só sai para pasta que ele já rastreava.
+fs.mkdirSync(wtRuns('95002'), { recursive: true });
 
 process.env.BITBUCKET_API_TOKEN = 'super-secreto-env';
 const { createDashboard } = require('./server');
@@ -50,6 +53,12 @@ test.before(async () => {
     await dash.ready;
 });
 test.after(() => dash.close());
+// Cleanup não pode depender de uma assertion passar: o upstream/dash2 abertos
+// por cenários anteriores mantinham a suíte viva após falhas de configuração.
+test.after(async () => {
+    if (dash2) await dash2.close();
+    if (fakeUpstream.listening) await new Promise(r => fakeUpstream.close(r));
+});
 
 async function get(p, headers) {
     const res = await fetch(base + p, { headers });
@@ -245,6 +254,19 @@ const fakeUpstream = http.createServer(async (req, res) => {
 });
 let upstreamBase, dash2, base2;
 const logged = [];
+const dashboardEnv = overrides => ({
+    REDMINE_URL: upstreamBase + '/',
+    REDMINE_API_KEY: REDMINE_KEY,
+    BITBUCKET_API_TOKEN: BB_TOKEN,
+    ...overrides,
+});
+async function startDash2(env = dashboardEnv()) {
+    if (dash2) await dash2.close();
+    dash2 = createDashboard({ env, memoryDir: mainRuns, bitbucketApi: `${upstreamBase}/bb` });
+    await new Promise(r => dash2.server.listen(0, '127.0.0.1', r));
+    base2 = `http://localhost:${dash2.server.address().port}`;
+    await dash2.ready;
+}
 
 test('proxies: sobe servidor falso e dashboard apontando pra ele', async () => {
     await new Promise(r => fakeUpstream.listen(0, '127.0.0.1', r));
@@ -257,12 +279,7 @@ test('proxies: sobe servidor falso e dashboard apontando pra ele', async () => {
         },
     });
     seed(mainRuns, 'sem-ticket', { node: 'plan', status: 'in_progress', updated_at: t1 });
-    process.env.REDMINE_URL = upstreamBase + '/';
-    process.env.REDMINE_API_KEY = REDMINE_KEY;
-    process.env.BITBUCKET_API_TOKEN = BB_TOKEN;
-    dash2 = createDashboard({ memoryDir: mainRuns, bitbucketApi: `${upstreamBase}/bb` });
-    await new Promise(r => dash2.server.listen(0, '127.0.0.1', r));
-    base2 = `http://localhost:${dash2.server.address().port}`;
+    await startDash2();
     for (const k of ['log', 'error', 'warn']) {
         const orig = console[k];
         console[k] = (...a) => { logged.push(a.join(' ')); orig.apply(console, a); };
@@ -433,11 +450,11 @@ test('POST /api/redmine/comment: posta só a palavra-chave, key só no header; 4
     assert.ok(!call.url.includes(REDMINE_KEY) && !r.text.includes(REDMINE_KEY));
 
     // Palavra-chave do .env vale.
-    process.env.SPEC_APPROVAL_KEYWORD = 'OK-SPEC';
+    await startDash2(dashboardEnv({ SPEC_APPROVAL_KEYWORD: 'OK-SPEC' }));
     try {
         await post2('/api/redmine/comment', { taskId: '93003-aprovar' });
         assert.match(JSON.parse(upstreamCalls[upstreamCalls.length - 1].body).issue.notes, /^OK-SPEC\n/);
-    } finally { delete process.env.SPEC_APPROVAL_KEYWORD; }
+    } finally { await startDash2(); }
 
     assert.strictEqual((await post2('/api/redmine/comment', {})).status, 404);
     assert.strictEqual((await post2('/api/redmine/comment', { taskId: 'nao-existe' })).status, 404);
@@ -451,13 +468,12 @@ test('POST /api/redmine/comment: posta só a palavra-chave, key só no header; 4
     assert.match(fail.body.error, /^Redmine: HTTP 500/);
     assert.ok(!fail.text.includes(REDMINE_KEY));
 
-    const saved = process.env.REDMINE_API_KEY;
-    delete process.env.REDMINE_API_KEY;
+    await startDash2(dashboardEnv({ REDMINE_API_KEY: undefined }));
     try {
         const nc = await post2('/api/redmine/comment', { taskId: '93003-aprovar' });
         assert.strictEqual(nc.status, 503);
         assert.deepStrictEqual(nc.body, { error: 'Redmine not configured' });
-    } finally { process.env.REDMINE_API_KEY = saved; }
+    } finally { await startDash2(); }
 
     // Filtro de localhost cobre o endpoint (Host não-local => 403).
     const { port } = dash2.server.address();
@@ -573,8 +589,7 @@ test('pré-task: /fetch-ticket despachado sem state.json aparece rodando; some c
 });
 
 test('não configurado => 503 com mensagem curta, sem stack', async () => {
-    const saved = { u: process.env.REDMINE_URL, k: process.env.REDMINE_API_KEY, t: process.env.BITBUCKET_API_TOKEN };
-    delete process.env.REDMINE_API_KEY; delete process.env.BITBUCKET_API_TOKEN;
+    await startDash2(dashboardEnv({ REDMINE_API_KEY: undefined, BITBUCKET_API_TOKEN: undefined }));
     try {
         const t = await get2('/api/runs/93001-monitor/ticket');
         assert.strictEqual(t.status, 503);
@@ -582,25 +597,20 @@ test('não configurado => 503 com mensagem curta, sem stack', async () => {
         const p = await get2('/api/runs/93001-monitor/pr');
         assert.strictEqual(p.status, 503);
         assert.deepStrictEqual(p.body, { error: 'Bitbucket not configured' });
-    } finally {
-        process.env.REDMINE_API_KEY = saved.k; process.env.BITBUCKET_API_TOKEN = saved.t;
-    }
+    } finally { await startDash2(); }
 });
 
 test('upstream fora do ar => 502 amigável, e nada de credencial em log', async () => {
-    const saved = process.env.REDMINE_URL;
-    process.env.REDMINE_URL = 'http://127.0.0.1:1';
+    await startDash2(dashboardEnv({ REDMINE_URL: 'http://127.0.0.1:1' }));
     try {
         const r = await get2('/api/runs/93001-monitor/ticket');
         assert.strictEqual(r.status, 502);
         assert.ok(!/at .*\.js:\d+/.test(r.text), 'sem stack trace');
-    } finally { process.env.REDMINE_URL = saved; }
+    } finally { await startDash2(); }
     const all = logged.join('\n');
     assert.ok(!all.includes(BB_TOKEN) && !all.includes(REDMINE_KEY));
     const html = await (await fetch(base2 + '/')).text();
     assert.ok(!html.includes(BB_TOKEN) && !html.includes(REDMINE_KEY));
-    await dash2.close();
-    await new Promise(r => fakeUpstream.close(r));
 });
 
 test('task-id com data no começo não vira número de ticket', async () => {
@@ -766,14 +776,21 @@ test('GET /api/archive: rotação em memory/archive/ agrupada por mês; summary 
     assert.deepStrictEqual((await get('/api/archive')).body.months, []);
 });
 
-test('arquivar run ativo exige force; run que volta a andar reaparece', async () => {
+test('arquivar run ativo exige force; run que volta a andar reaparece', async t => {
     const dir = seed(wtRuns('95002'), '95002-andando', { node: 'implement', status: 'in_progress', updated_at: t0 });
-    await eventually(async () => (await get('/api/runs')).body.some(r => r.taskId === '95002-andando'));
+    assert.ok(await eventually(async () => (await get('/api/runs')).body.some(r => r.taskId === '95002-andando')));
     const no = await post('/api/runs/95002-andando/archive', {});
     assert.strictEqual(no.status, 409);
     assert.ok(fs.existsSync(dir));
+    // O unlinkDir da pasta movida precisa chegar antes de recriar o mesmo path;
+    // sem isso o backend FSEvents pode coalescer delete+create num único evento.
+    let unlinked = false;
+    const onUnlinkDir = p => { if (path.basename(p) === '95002-andando') unlinked = true; };
+    dash.watcher.on('unlinkDir', onUnlinkDir);
+    t.after(() => dash.watcher.off('unlinkDir', onUnlinkDir));
     assert.strictEqual((await post('/api/runs/95002-andando/archive', { force: true })).status, 200);
     assert.ok(!(await get('/api/runs')).body.some(r => r.taskId === '95002-andando'));
+    assert.ok(await eventually(() => unlinked), 'unlinkDir do run arquivado não chegou ao watcher');
     // O agente recria a pasta com updated_at novo: volta a aparecer.
     seed(wtRuns('95002'), '95002-andando', { node: 'review', status: 'in_progress', updated_at: new Date(Date.now() + 1000).toISOString() });
     assert.ok(await eventually(async () => (await get('/api/runs')).body.some(r => r.taskId === '95002-andando')));
@@ -924,7 +941,7 @@ test('POST /pre-build/ai-fix: despacha o agente no worktree, transmite os passos
     };
     const validateCalls = [];
     const validateBuild = async worktree => { validateCalls.push(worktree); return { success: true, errors: [], duration: 800, javaHome: '/jdk25' }; };
-    const d4 = createDashboard({ memoryDir: runs4, validateBuild, aiFixSpawn });
+    const d4 = createDashboard({ env: { PRE_BUILD_COMMAND: 'mvn compile' }, memoryDir: runs4, validateBuild, aiFixSpawn });
     await new Promise(r => d4.server.listen(0, '127.0.0.1', r));
     await d4.ready;
     const b4 = `http://localhost:${d4.server.address().port}`;
@@ -960,13 +977,15 @@ test('POST /pre-build/ai-fix: despacha o agente no worktree, transmite os passos
         assert.deepStrictEqual(validateCalls, [path.join(r4, '.claude', 'worktrees', '97001')]);
         assert.match(fs.readFileSync(path.join(dOk, 'context.md'), 'utf8'), /Correção do build pré-implement por IA/);
 
-        const live = messages.filter(m => m.type === 'prebuild_ai_event' && m.taskId === '97001-ok').map(m => m.event);
-        assert.ok(live.some(e => e.kind === 'tool' && e.text === 'Editando src/A.java'));
-        assert.ok(live.some(e => e.kind === 'build' && e.ok === true));
-        assert.ok(live.every(e => !e.text.includes('abc123secret')), 'secret redigido no WS');
+        assert.ok(await eventually(() => messages.some(m => m.type === 'prebuild_ai_event' && m.taskId === '97001-ok' &&
+            m.event.kind === 'tool' && m.event.text === 'Editando src/A.java')), 'evento tool não chegou ao WebSocket');
+        assert.ok(await eventually(() => messages.some(m => m.type === 'prebuild_ai_event' && m.taskId === '97001-ok' &&
+            m.event.kind === 'build' && m.event.ok === true)), 'evento build não chegou ao WebSocket');
+        const liveFinal = messages.filter(m => m.type === 'prebuild_ai_event' && m.taskId === '97001-ok').map(m => m.event);
+        assert.ok(liveFinal.every(e => !e.text.includes('abc123secret')), 'secret redigido no WS');
         const hist = (await (await fetch(`${b4}/api/runs/97001-ok/pre-build/ai-fix`)).json());
         assert.strictEqual(hist.aiFix.status, 'passed');
-        assert.deepStrictEqual(hist.events.map(e => e.kind), live.map(e => e.kind), 'GET devolve o mesmo histórico do WS');
+        assert.deepStrictEqual(hist.events.map(e => e.kind), liveFinal.map(e => e.kind), 'GET devolve o mesmo histórico do WS');
 
         // Cancelar: não valida, marca cancelled e continua pre-build-failed.
         assert.strictEqual((await post4('/api/runs/97002-stop/pre-build/ai-fix')).status, 202);

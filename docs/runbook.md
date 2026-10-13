@@ -78,6 +78,71 @@ Status do Redmine que o sistema mexe:
 
 ---
 
+## Testes dos pacotes (receita oficial)
+
+Procedimento de desenvolvimento da plataforma, não de operação do consumidor. Rode
+em checkout/floor descartável da revisão exata, com dependências já preparadas
+pelos locks de cada pacote. Não use o consumidor ativo como fixture. O ambiente
+de referência é Node 20.20.2/npm 10.8.2. Registre as versões efetivamente
+executadas, HEAD e diff: testes de árvore modificada não certificam o commit base
+sozinho.
+
+```bash
+# Substitua os caminhos absolutos antes de executar. CK é o checkout descartável,
+# que faz também o papel de raiz de assets sintéticos dos testes (não de consumidor
+# vivo). EV fica fora do checkout e guarda HOME/TMPDIR sintéticos e os TAPs.
+CK="/caminho/checkout-descartavel"; EV="/caminho/evidencia"
+mkdir -p "$EV/home" "$EV/tmp"
+run_suite() {
+  env -i PATH="/caminho/node/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+    HOME="$EV/home" TMPDIR="$EV/tmp" \
+    NODE_OPTIONS="--require=$CK/harness/loopback-only.cjs" \
+    PRISMA_ROOT="$CK" REPO_PATH="$CK" \
+    npm --prefix "$CK/$1" test > "$EV/$1.tap" 2>&1
+}
+run_suite scripts; scripts_exit=$?
+run_suite dashboard; dashboard_exit=$?
+printf 'scripts exit=%s; dashboard exit=%s\n' "$scripts_exit" "$dashboard_exit"
+shasum -a 256 "$EV/scripts.tap" "$EV/dashboard.tap"
+```
+
+- `env -i` com HOME/TMPDIR sintéticos impede que o `npm` use cache, logs e config
+  do home real e que os testes gravem no TMPDIR do sistema.
+- `harness/loopback-only.cjs` recusa conexões TCP Node fora do loopback. É um
+  reforço bounded: não cobre subprocessos shell (curl, git) nem é sandbox universal.
+
+Os dois `npm test` passam pelo harness `harness/run-tests.js`. Ele exige
+REPO_PATH/PRISMA_ROOT absolutos e existentes, confere a identidade do checkout do
+harness e os assets de teste, executa os arquivos selecionados pelo manifest com
+cwd REPO_PATH, gera TAP e preserva o exit code. Root ausente é exit 2 antes dos
+testes, sem fallback para scripts/ ou dashboard/. Roots distintos são permitidos
+quando REPO_PATH contém os assets sintéticos necessários:
+`.claude/spec-hash-config.json`, `.claude/config-contract.json` e
+`scripts/fixtures/ticket-example.json`. Esta fixture é própria dos testes, não
+traz ticket, configuração, histórico ou segredo do consumidor.
+
+O runner também isola o ambiente: o `node --test` recebe só `PATH`, `HOME`,
+`TMPDIR`, `LANG`, `LC_ALL`, `TZ`, `CI`, `NODE_OPTIONS` e os dois roots. Config do
+consumidor (`WATCHER_*`, `OPENAPI_*`), credenciais e variáveis `npm_*` são
+descartadas mesmo sem `env -i`. Teste que precisa de identidade ou config de
+consumidor deve fixá-la na própria fixture.
+
+A seleção preexistente de cada pacote é preservada; scripts acrescenta o
+harness legado de abertura de PR e os testes do runner. Não equivale a todos os
+arquivos `*.test.js` do repositório, nem a C0–C5. Os testes de API usam servidores
+falsos loopback e os de DOM06 criam Attempts sintéticos com o CLI/gate reais.
+Execute sem credenciais/rede externa. Em ambientes restritos, `ps` e eventos do
+filesystem precisam estar disponíveis aos testes de lease/watchers; falha de
+infraestrutura não é PASS.
+
+Exija resumo TAP final e exit code, liste cada falha com causa ou UNKNOWN e
+preserve os hashes. Um run verde isolado não substitui a reconciliação das
+baselines por revisão (C0–C5) nem a revisão independente; harness histórico
+ausente deste repo não deve ser transportado por este procedimento. Nenhum teste
+admite repin, cutover, alteração de contrato ou relaxamento de DOM06.
+
+---
+
 ## Diagnóstico rápido
 
 Rode da raiz do consumidor (`cd <checkout-consumidor>` ou onde estiver o checkout

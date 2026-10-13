@@ -1,0 +1,10 @@
+{
+  "id": 99999,
+  "subject": "[DRY-RUN] Ticket sintético de teste",
+  "description": "## Contexto\nFixture própria do harness, sem dados do consumidor.\n\n## Objetivo\nExercitar o ciclo simulado sem efeito externo.\n\n## Escopo\n- Somente fixture sintética\n\n## Problema\nVerificar persistência no ciclo simulado.\n\n## Solução\nRegistrar uma marca de teste.\n\n## Critérios de Aceite\n- AC-01: Marca sintética registrada no fluxo simulado\n- AC-02: Marca sintética preservada no retorno simulado\n\n## Restrições\n- Nenhum efeito externo\n\n## Arquivos Afetados\n- scripts/fixtures/ticket-example.json\n\n## Dependências\n- Nenhuma\n",
+  "status": { "id": 11, "name": "Aprovada" },
+  "tracker": { "id": 2, "name": "Melhoria" },
+  "assigned_to": { "id": 1, "name": "Fixture" },
+  "project": { "id": 1, "identifier": "fixture" },
+  "custom_fields": [{ "name": "Branch Liberação", "value": "Dev - Local" }]
+}

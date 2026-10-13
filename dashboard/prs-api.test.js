@@ -17,7 +17,13 @@ const ME_ACCOUNT_ID = 'acc-eu-mesmo-123';
 const FRONT = 'app-front';
 // Repo irmão consultado junto com o primário; 'repo-sem-acesso' devolve 404
 // no Bitbucket falso e tem que virar warning, não erro da aba inteira.
-process.env.BITBUCKET_PR_REPOS = `${FRONT},repo-sem-acesso`;
+const configuredEnv = {
+    BITBUCKET_WORKSPACE: WORKSPACE,
+    BITBUCKET_REPO_SLUG: REPO,
+    BITBUCKET_API_TOKEN: TOKEN,
+    BITBUCKET_PR_REPOS: `${FRONT},repo-sem-acesso`,
+    REDMINE_URL: 'https://redmine.example.com/',
+};
 
 const tmpBase = process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp') : os.tmpdir();
 const tmp = fs.mkdtempSync(path.join(tmpBase, 'prs-api-'));
@@ -119,9 +125,10 @@ const bb = http.createServer((req, res) => {
 });
 
 let dash, base;
-test.before(async () => {
-    await new Promise(r => bb.listen(0, '127.0.0.1', r));
+async function startDashboard(env = configuredEnv) {
+    if (dash) await dash.close();
     dash = createDashboard({
+        env,
         memoryDir: runs,
         worktreesDir: path.join(tmp, 'wt'),
         prefsFile: path.join(tmp, 'prefs.json'),
@@ -132,15 +139,14 @@ test.before(async () => {
     await new Promise(r => dash.server.listen(0, '127.0.0.1', r));
     base = `http://localhost:${dash.server.address().port}`;
     await dash.ready;
+}
+test.before(async () => {
+    await new Promise(r => bb.listen(0, '127.0.0.1', r));
+    await startDashboard();
 });
 test.after(async () => {
     await dash.close();
-    bb.close();
-    delete process.env.BITBUCKET_WORKSPACE;
-    delete process.env.BITBUCKET_REPO_SLUG;
-    delete process.env.BITBUCKET_API_TOKEN;
-    delete process.env.REDMINE_URL;
-    delete process.env.BITBUCKET_PR_REPOS;
+    await new Promise(r => bb.close(r));
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -156,19 +162,14 @@ const post = async (p, body) => {
 };
 
 test('GET /api/prs sem BITBUCKET_API_TOKEN/WORKSPACE/REPO_SLUG configurado -> 503', async () => {
-    delete process.env.BITBUCKET_WORKSPACE;
-    delete process.env.BITBUCKET_REPO_SLUG;
-    delete process.env.BITBUCKET_API_TOKEN;
+    await startDashboard({});
     try {
         const r = await get('/api/prs');
         assert.strictEqual(r.status, 503, r.text);
         assert.ok(typeof r.body.error === 'string' && r.body.error.length > 0);
         assert.ok(!r.text.includes(TOKEN));
     } finally {
-        process.env.BITBUCKET_WORKSPACE = WORKSPACE;
-        process.env.BITBUCKET_REPO_SLUG = REPO;
-        process.env.BITBUCKET_API_TOKEN = TOKEN;
-        process.env.REDMINE_URL = 'https://redmine.example.com/';
+        await startDashboard();
     }
 });
 
@@ -284,13 +285,13 @@ test('GET /api/prs: só PRs do dono do token, do repo primário e dos irmãos; r
 });
 
 test('GET /api/prs: BITBUCKET_ACCOUNT_ID tem precedência sobre /user', async () => {
-    process.env.BITBUCKET_ACCOUNT_ID = 'acc-outra-pessoa';
+    await startDashboard({ ...configuredEnv, BITBUCKET_ACCOUNT_ID: 'acc-outra-pessoa' });
     try {
         const { status, body } = await get('/api/prs');
         assert.strictEqual(status, 200);
         assert.deepStrictEqual(body.prs.map(p => p.id), [503]);
     } finally {
-        delete process.env.BITBUCKET_ACCOUNT_ID;
+        await startDashboard();
     }
 });
 
