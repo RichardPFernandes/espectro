@@ -50,7 +50,10 @@ Você está executando o nó **Fetch Ticket**, um entry point alternativo do gra
    `warnings` no intake (passo 6) e siga. Sem anexos, pule este passo.
 
    Abra com Read as imagens e os `converted_path` baixados antes de escrever a
-   spec — é esse conteúdo que o passo 5 resume em `## Anexos`.
+   spec — é esse conteúdo que o passo 5 resume em `## Anexos`. PDF **sem**
+   `converted_path` (pdftotext indisponível, conversão falhou ou texto vazio —
+   provável escaneado) não é ignorado: abra o PDF original (`path`) com Read, que
+   lê o conteúdo visual; acima de 10 páginas o Read exige `pages` (até 20 por vez).
 2. Antes de rodar `git status`, confira se já existe
    `memory/runs/$ARGUMENTS-pretask-question.md` (na raiz do repo — não no
    worktree, que pode nem existir ainda) com a seção `## Resposta` preenchida
@@ -159,6 +162,8 @@ Você está executando o nó **Fetch Ticket**, um entry point alternativo do gra
      mostra (tela, erro, dado) depois de abri-lo;
    - PDF/DOCX convertido: resumo de 2 linhas do texto extraído (`converted_path`)
      e o caminho do `.txt`/`.md`;
+   - PDF sem `converted_path`: acrescente `[lido via Read no original]` e o resumo
+     de 2 linhas do que o PDF mostra;
    - XLSX: as primeiras 3 linhas do CSV (campo `excerpt`) num bloco de código, e
      o caminho do `.csv`;
    - raw: só presença (nome e tipo) — não abra arquivo executável/compactado.
@@ -177,7 +182,7 @@ Você está executando o nó **Fetch Ticket**, um entry point alternativo do gra
    base usada, e um resumo de 2 linhas do que foi capturado — seguindo o mesmo
    padrão das outras decisions já salvas no grafo. Se o passo 1b rodou, inclua
    quantos anexos foram baixados e, para cada `skipped[]`/`warnings` (ex:
-   `size_exceeded` com o tamanho real, `pdftotext` indisponível), uma linha com
+   `size_exceeded` com o tamanho real, `pdftotext` indisponível, PDF escaneado), uma linha com
    arquivo e motivo.
 7. Gere o task-id no formato `$ARGUMENTS-<slug-curto>` (slug curto a partir do
    título do ticket, ex: `$ARGUMENTS-ajuste-status-transporte`).

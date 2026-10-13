@@ -5,7 +5,8 @@
 //
 // Por tipo:
 //   - imagem (png/jpeg/gif/webp) → salva original; o agente lê via visão (Read);
-//   - PDF  → original + .txt via `pdftotext` (poppler) — sem o binário, só o PDF + aviso;
+//   - PDF  → original + .txt via `pdftotext` (poppler) — sem o binário, ou com texto
+//     extraído vazio (PDF escaneado), só o PDF + aviso: o agente abre o original via Read;
 //   - DOCX → original + .md via mammoth;
 //   - XLSX → original + .csv (primeira sheet) via xlsx/SheetJS;
 //   - resto (zip, código, executável...) → salva sem abrir, type "raw".
@@ -38,6 +39,9 @@ const DOWNLOAD_TIMEOUT_MS = 60_000;
 const CONVERT_TIMEOUT_MS = 60_000;
 const EXCERPT_CHARS = 600;
 const CSV_PREVIEW_LINES = 3;
+// Abaixo disso (caracteres visíveis por página, em média) o PDF é tratado como sem
+// camada de texto — escaneado/print — e o .txt é descartado.
+const MIN_PDF_CHARS_PER_PAGE = 20;
 const MANIFEST_NAME = 'attachments.json';
 const MAX_REDIRECTS = 3;
 
@@ -178,10 +182,19 @@ function excerptOf(text) {
 const converters = {
     async pdf(file, destDir, used, ctx) {
         const bin = await findPdftotext(ctx.pdftotextPath);
-        if (!bin) return { warnings: ['pdftotext não encontrado (instale poppler: brew install poppler) — salvo só o PDF.'] };
+        if (!bin) return { warnings: ['pdftotext não encontrado (instale poppler: brew install poppler) — salvo só o PDF; abra o original via Read.'] };
         const txt = derivedName(path.basename(file), '.txt', used);
-        await run(bin, [file, path.join(destDir, txt)]);
-        return { converted: txt, excerpt: excerptOf(fs.readFileSync(path.join(destDir, txt), 'utf8')) };
+        const txtPath = path.join(destDir, txt);
+        await run(bin, [file, txtPath]);
+        const text = fs.readFileSync(txtPath, 'utf8');
+        // pdftotext termina cada página com \f.
+        const pages = Math.max(1, (text.match(/\f/g) || []).length);
+        const visible = text.replace(/\s+/g, '').length;
+        if (visible < pages * MIN_PDF_CHARS_PER_PAGE) {
+            fs.rmSync(txtPath, { force: true });
+            return { warnings: [`pdftotext extraiu só ${visible} caractere(s) em ${pages} página(s) — provável PDF escaneado; .txt descartado, abra o PDF original via Read.`] };
+        }
+        return { converted: txt, excerpt: excerptOf(text) };
     },
     async docx(file, destDir, used) {
         const mammoth = require('mammoth');
