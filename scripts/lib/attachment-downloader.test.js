@@ -149,6 +149,45 @@ test('PDF sem pdftotext: salva só o PDF, com aviso', async t => {
     assert.deepStrictEqual(fs.readdirSync(dest), ['req.pdf']);
 });
 
+test('PDF escaneado (texto extraído vazio): descarta o .txt, sem converted_path, com aviso', async t => {
+    const { server, url } = await startServer({ '/attachments/download/2/scan.pdf': { body: '%PDF' } });
+    t.after(() => server.close());
+    const dest = tmpDir();
+    const bin = path.join(tmpDir(), 'pdftotext');
+    fs.writeFileSync(bin, '#!/bin/sh\nprintf " \\f\\n\\f12\\f" > "$2"\n', { mode: 0o755 });
+    const r = await downloadAttachments([att(2, 'scan.pdf', 'application/pdf', url)], dest, { apiKey: API_KEY, redmineUrl: url, pdftotextPath: bin });
+    assert.strictEqual(r.downloaded[0].converted_path, undefined);
+    assert.strictEqual(r.downloaded[0].excerpt, undefined);
+    assert.match(r.downloaded[0].warnings[0], /2 caractere\(s\) em 3 página\(s\).*abra o PDF original via Read/);
+    assert.deepStrictEqual(fs.readdirSync(dest), ['scan.pdf']);
+});
+
+test('PDF real convertido pelo pdftotext instalado (pula sem poppler)', async t => {
+    const real = await new Promise(r => execFile('which', ['pdftotext'], (e, out) => r(e ? null : out.trim())));
+    if (!real) return t.skip('pdftotext não instalado');
+    // PDF mínimo de uma página com texto.
+    const content = 'BT /F1 12 Tf 72 720 Td (Requisito: agrupar vendas por UF e por cidade.) Tj ET';
+    const objs = [
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+        `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    ];
+    let pdf = '%PDF-1.4\n';
+    const offsets = objs.map((o, i) => { const at = pdf.length; pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; return at; });
+    const xref = pdf.length;
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`;
+    pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    const { server, url } = await startServer({ '/attachments/download/2/req.pdf': { body: pdf } });
+    t.after(() => server.close());
+    const dest = tmpDir();
+    const r = await downloadAttachments([att(2, 'req.pdf', 'application/pdf', url)], dest, { apiKey: API_KEY, redmineUrl: url });
+    assert.deepStrictEqual(r.downloaded[0].warnings, []);
+    assert.strictEqual(r.downloaded[0].converted_path, path.join(dest, 'req.txt'));
+    assert.match(r.downloaded[0].excerpt, /agrupar vendas por UF/);
+});
+
 test('conversão que falha vira aviso e mantém o original', async t => {
     const { server, url } = await startServer({ '/attachments/download/4/ruim.docx': { body: 'não é zip' } });
     t.after(() => server.close());
