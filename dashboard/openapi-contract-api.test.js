@@ -138,3 +138,58 @@ test('GET /api/coordination: adjacent OpenAPI contract describes and matches rea
     validateResponse(body);
     assert.deepStrictEqual(schemas.RestrictedTask.required, ['frente', 'tarefa', 'estado']);
 });
+
+test('GET /api/version: version.openapi.json descreve e confere a resposta', async () => {
+    const contract = JSON.parse(fs.readFileSync(path.join(__dirname, 'version.openapi.json'), 'utf8'));
+    assert.strictEqual(contract.openapi, '3.0.3');
+    const getRoute = contract.paths['/api/version'].get;
+    assert.strictEqual(getRoute.responses['200'].content['application/json'].schema.$ref, '#/components/schemas/Version');
+    assert.ok(getRoute.responses['403']);
+    assert.ok(getRoute.responses['500'], 'route contract documents internal errors');
+    const postRoute = contract.paths['/api/version/update'].post;
+    assert.deepStrictEqual(postRoute.requestBody.content['application/json'].schema.required, ['target']);
+    for (const status of ['200', '400', '409', '500']) assert.ok(postRoute.responses[status], `POST documenta ${status}`);
+    const schemas = contract.components.schemas;
+    const resolve = schema => (schema.$ref ? schemas[schema.$ref.slice('#/components/schemas/'.length)] : schema);
+    const validate = (value, schema, pathName) => {
+        schema = resolve(schema);
+        if (schema.nullable && value === null) return;
+        if (schema.allOf) { for (const part of schema.allOf) validate(value, part, pathName); return; }
+        if (schema.enum) assert.ok(schema.enum.includes(value), `${pathName} enum`);
+        if (schema.type === 'string') assert.equal(typeof value, 'string', pathName);
+        if (schema.type === 'boolean') assert.equal(typeof value, 'boolean', pathName);
+        if (schema.type === 'integer') assert.equal(Number.isInteger(value), true, pathName);
+        if (schema.type === 'array') {
+            assert.ok(Array.isArray(value), pathName);
+            if (schema.maxItems != null) assert.ok(value.length <= schema.maxItems, pathName);
+            value.forEach((item, i) => validate(item, schema.items, `${pathName}[${i}]`));
+            return;
+        }
+        if (schema.type === 'object' || schema.properties) {
+            assert.equal(typeof value, 'object', pathName);
+            for (const key of schema.required || []) assert.ok(Object.hasOwn(value, key), `required ${pathName}.${key}`);
+            for (const key of Object.keys(value)) assert.ok(Object.hasOwn(schema.properties, key), `unexpected ${pathName}.${key}`);
+            for (const [key, prop] of Object.entries(schema.properties)) {
+                if (value[key] !== undefined) validate(value[key], prop, `${pathName}.${key}`);
+            }
+        }
+    };
+    const res = await fetch(`${base}/api/version`);
+    assert.strictEqual(res.status, 200);
+    assert.match(res.headers.get('content-type'), /application\/json/);
+    const body = await res.json();
+    const variant = schemas.Version.oneOf.find(item => item.properties.status.enum.includes(body.status));
+    assert.ok(variant, 'status documentado no oneOf');
+    validate(body, variant, 'version');
+    if (body.status === 'ok') {
+        assert.match(body.current.sha, /^[0-9a-f]{40}$/);
+        assert.equal(body.drift, body.checkout.sha !== body.current.sha);
+        assert.equal(typeof body.update.configured, 'boolean');
+    }
+    assert.strictEqual((await fetch(`${base}/api/version`, { headers: { Origin: 'https://evil.example' } })).status, 403);
+    const refused = await fetch(`${base}/api/version/update`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: 'main' }),
+    });
+    assert.strictEqual(refused.status, 409);
+    assert.match((await refused.json()).error, /PRISMA_BUMP_COMMAND/);
+});

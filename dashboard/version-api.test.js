@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const { createVersion, runGroup } = require('./version');
 
 const tmpBase = process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp') : os.tmpdir();
@@ -248,4 +248,63 @@ test('rotas montadas no dashboard: GET /api/version e POST /api/version/update',
         assert.equal(done.status, 500, 'slow.sh sai 3');
         assert.equal((await fetch(`${b}/api/watcher/start`, { method: 'POST' })).status, 200, 'liberado depois do bump');
     } finally { await dash.close(); await busyDash.close(); }
+});
+
+test('corrida Start/Atualizar com watcher órfão: update recusa enquanto o Start encerra o órfão', async () => {
+    const { createWatcherManager } = require('../scripts/watcher-manager');
+    const { createDashboard } = require('./server');
+    const dir = path.join(tmp, 'orphan-race');
+    fs.mkdirSync(dir, { recursive: true });
+    const script = path.join(dir, 'orphan-watcher.js');
+    const pidFile = path.join(dir, 'watcher.pid');
+    const bumpLog = path.join(dir, 'bump.log');
+    const readyFile = path.join(dir, 'ready');
+    fs.writeFileSync(script, `process.on('SIGTERM', () => {});\nrequire('fs').writeFileSync(${JSON.stringify(readyFile)}, 'ready');\nsetInterval(() => {}, 1000);\n`);
+    const bump = path.join(dir, 'bump.sh');
+    fs.writeFileSync(bump, `#!/bin/sh\necho bump >> ${JSON.stringify(bumpLog)}\n`);
+    fs.chmodSync(bump, 0o755);
+    let orphan, watcherManager, dash, pending;
+    try {
+        orphan = spawn(process.execPath, [script], { stdio: 'ignore' });
+        for (let i = 0; i < 50 && !fs.existsSync(readyFile); i++) await new Promise(r => setTimeout(r, 20));
+        assert.equal(fs.existsSync(readyFile), true, 'handler de SIGTERM instalado antes do Start');
+        fs.writeFileSync(pidFile, `${orphan.pid}\n`);
+        watcherManager = createWatcherManager({
+            repoRoot: dir, cwd: dir, script, pidFile, historyFile: null, lock: false,
+            envFile: path.join(dir, 'missing.env'), stopGraceMs: 2000, intervalMs: 60000,
+        });
+        dash = createDashboard({
+            memoryDir: path.join(dir, 'memory', 'runs'),
+            env: { ...process.env, PRISMA_BUMP_COMMAND: bump },
+            watcherManager,
+            versionLockStatus: () => ({ lock_state: 'free', agents: [] }),
+        });
+        assert.equal(watcherManager.status().orphan_pid, orphan.pid);
+        assert.equal(watcherManager.status().state, 'stopped');
+        await new Promise(resolve => dash.server.listen(0, '127.0.0.1', resolve));
+        const base = `http://127.0.0.1:${dash.server.address().port}`;
+        pending = fetch(`${base}/api/watcher/start`, { method: 'POST' });
+        let sawStarting = false;
+        for (let i = 0; i < 50 && !sawStarting; i++) {
+            if (watcherManager.status().state === 'starting') sawStarting = true;
+            else await new Promise(r => setTimeout(r, 20));
+        }
+        assert.equal(sawStarting, true, 'Start permanece em starting durante o killOrphan');
+        assert.equal(process.kill(orphan.pid, 0), true, 'órfão ainda vivo na janela');
+        const update = await fetch(`${base}/api/version/update`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target: 'a'.repeat(40) }),
+        });
+        assert.equal(update.status, 409);
+        assert.match((await update.json()).error, /Loop do watcher/);
+        assert.equal(fs.existsSync(bumpLog), false, 'bump não corre na janela do órfão');
+        const started = await pending;
+        assert.equal(started.status, 200);
+        assert.equal((await started.json()).state, 'running');
+    } finally {
+        if (pending) await pending.catch(() => {});
+        if (watcherManager) await watcherManager.stop();
+        if (orphan) { try { process.kill(orphan.pid, 'SIGKILL'); } catch { /* já saiu */ } }
+        if (dash) await dash.close();
+    }
 });

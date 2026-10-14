@@ -30,12 +30,16 @@
   "components": {
     "schemas": {
       "Commit": { "type": "object", "required": ["sha", "date", "subject"], "properties": { "sha": { "type": "string" }, "date": { "type": "string", "format": "date-time" }, "subject": { "type": "string" } } },
-      "Update": { "type": "object", "required": ["at", "from", "to", "ok", "exit_code", "output"], "properties": { "at": { "type": "string", "format": "date-time" }, "from": { "type": "string", "nullable": true }, "to": { "type": "string" }, "ok": { "type": "boolean" }, "exit_code": { "type": "integer" }, "output": { "type": "string" }, "error": { "type": "string" } } },
+      "Update": { "type": "object", "required": ["at", "from", "to", "ok", "exit_code", "output"], "properties": { "at": { "type": "string", "format": "date-time" }, "from": { "type": "string", "nullable": true }, "to": { "type": "string" }, "ok": { "type": "boolean" }, "exit_code": { "type": "integer" }, "output": { "type": "string" }, "error": { "type": "string" }, "warning": { "type": "string" } } },
       "Version": { "oneOf": [
         { "type": "object", "required": ["status", "message"], "properties": { "status": { "type": "string", "enum": ["unavailable"] }, "message": { "type": "string" } } },
-        { "type": "object", "required": ["status", "current", "latest", "behind", "behind_truncated", "fetched_at", "fetch_error", "update", "last_update"], "properties": {
+        { "type": "object", "required": ["status", "pid", "started_at", "current", "checkout", "drift", "latest", "behind", "behind_truncated", "fetched_at", "fetch_error", "update", "last_update"], "properties": {
           "status": { "type": "string", "enum": ["ok"] },
+          "pid": { "type": "integer" },
+          "started_at": { "type": "string", "format": "date-time" },
           "current": { "$ref": "#/components/schemas/Commit" },
+          "checkout": { "allOf": [{ "$ref": "#/components/schemas/Commit" }], "nullable": true },
+          "drift": { "type": "boolean" },
           "latest": { "allOf": [{ "$ref": "#/components/schemas/Commit" }], "nullable": true },
           "behind": { "type": "array", "maxItems": 200, "items": { "type": "object", "required": ["sha", "subject"], "properties": { "sha": { "type": "string" }, "subject": { "type": "string" } } } },
           "behind_truncated": { "type": "boolean" },
