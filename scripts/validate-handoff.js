@@ -11,9 +11,15 @@
 //
 // Saída: linhas `[ERROR] código: mensagem` / `[WARN] código: mensagem`.
 // Exit 0 = válido (pode ter WARN); 1 = ERROR; 2 = arquivo ilegível ou sem YAML.
+//
+// `--pre-done` é a checagem do maestro-guard (GOV-4). Ela não altera a aceitação
+// sem essa flag. Exit 0 nesse modo significa que as citações do planejamento
+// Prisma estão presentes; Done não é registrado. Exit 3 = tipo sem critério
+// automático, confirmação humana. O pior código entre os arquivos vale.
 const fs = require('fs');
 const path = require('path');
 const { parseYaml } = require('./lib/openapi-validator.js');
+const { checkPreDone } = require('./lib/maestro-guard-pre-done.js');
 
 const STATUSES = ['COMPLETED', 'BLOCKED', 'NEEDS_HUMAN', 'FAILED', 'PARTIAL'];
 const ARTIFACT_ACTIONS = ['CREATED', 'MODIFIED', 'DELETED'];
@@ -147,35 +153,98 @@ function validate(doc, opts = {}) {
 
 function validateFile(file, opts = {}) {
     let text;
-    try { text = fs.readFileSync(file, 'utf8'); } catch (e) { return { code: 2, results: [{ level: 'ERROR', code: 'UNREADABLE', msg: e.message }] }; }
+    try { text = fs.readFileSync(file, 'utf8'); } catch (e) { return { code: 2, results: [{ level: 'ERROR', code: 'UNREADABLE', msg: e.message }], doc: null }; }
     const results = [];
     if (SECRET.test(text)) results.push({ level: 'ERROR', code: 'SECRET', msg: 'o handoff contém algo com formato de credencial — remova antes de entregar' });
     const yaml = extractYaml(text, file);
-    if (yaml === null) return { code: 2, results: [...results, { level: 'ERROR', code: 'NO_YAML', msg: 'nenhum bloco ```yaml com handoff_version (handoff em prosa não atende o contrato)' }] };
+    if (yaml === null) return { code: 2, results: [...results, { level: 'ERROR', code: 'NO_YAML', msg: 'nenhum bloco ```yaml com handoff_version (handoff em prosa não atende o contrato)' }], doc: null };
     let doc;
-    try { doc = parseYaml(yaml); } catch (e) { return { code: 2, results: [...results, { level: 'ERROR', code: 'YAML_PARSE', msg: e.message }] }; }
+    try { doc = parseYaml(yaml); } catch (e) { return { code: 2, results: [...results, { level: 'ERROR', code: 'YAML_PARSE', msg: e.message }], doc: null }; }
     results.push(...validate(doc, { ...opts, baseDir: opts.baseDir || path.dirname(path.resolve(file)) }));
-    return { code: results.some((r) => r.level === 'ERROR') ? 1 : 0, results };
+    return { code: results.some((r) => r.level === 'ERROR') ? 1 : 0, results, doc };
 }
 
-module.exports = { validate, validateFile, extractYaml };
+function rankExit(code) {
+    if (code === 2) return 40;
+    if (code === 1) return 30;
+    if (code === 3) return 20;
+    return 0;
+}
+
+function combineExit(structuralCode, preDoneExit) {
+    return rankExit(structuralCode) >= rankExit(preDoneExit) ? structuralCode : preDoneExit;
+}
+
+function parseArgs(argv) {
+    const checkPaths = argv.includes('--check-paths');
+    const preDone = argv.includes('--pre-done');
+    const baseIdx = argv.indexOf('--base');
+    const typeIdx = argv.indexOf('--task-type');
+    const missingValue = (idx) => idx >= 0 && (argv[idx + 1] === undefined || argv[idx + 1].startsWith('--'));
+    const skip = new Set();
+    if (baseIdx >= 0 && !missingValue(baseIdx)) skip.add(baseIdx + 1);
+    if (typeIdx >= 0 && !missingValue(typeIdx)) skip.add(typeIdx + 1);
+    const files = argv.filter((a, i) => !a.startsWith('--') && !skip.has(i));
+    return {
+        checkPaths,
+        preDone,
+        baseDir: baseIdx >= 0 && !missingValue(baseIdx) ? argv[baseIdx + 1] : undefined,
+        taskType: typeIdx >= 0 && !missingValue(typeIdx) ? argv[typeIdx + 1] : undefined,
+        missingFlagValue: missingValue(baseIdx) || missingValue(typeIdx),
+        files,
+    };
+}
+
+function runFile(file, opts = {}) {
+    const structural = validateFile(file, opts);
+    if (!opts.preDone) return { code: structural.code, results: structural.results, preDone: null };
+    if (!structural.doc) return { code: structural.code, results: structural.results, preDone: null };
+    const preDone = checkPreDone(structural.doc, {
+        baseDir: opts.baseDir || path.dirname(path.resolve(file)),
+        handoffPath: path.resolve(file),
+        taskType: opts.taskType,
+        homeDir: opts.homeDir,
+    });
+    return {
+        code: combineExit(structural.code, preDone.exitCode),
+        results: structural.results,
+        preDone,
+    };
+}
+
+module.exports = { validate, validateFile, extractYaml, parseArgs, runFile, combineExit, checkPreDone };
 
 if (require.main === module) {
-    const args = process.argv.slice(2);
-    const checkPaths = args.includes('--check-paths');
-    const baseIdx = args.indexOf('--base');
-    const baseDir = baseIdx >= 0 ? args[baseIdx + 1] : undefined;
-    const files = args.filter((a, i) => !a.startsWith('--') && !(baseIdx >= 0 && i === baseIdx + 1));
-    if (!files.length) {
-        console.error('Uso: node scripts/validate-handoff.js <handoff.yaml|handoff.md> [...] [--check-paths] [--base <dir>]');
+    const parsed = parseArgs(process.argv.slice(2));
+    if (parsed.missingFlagValue || !parsed.files.length) {
+        console.error('Uso: node scripts/validate-handoff.js <handoff.yaml|handoff.md> [...] [--check-paths] [--base <dir>] [--pre-done] [--task-type <tipo da tabela>]');
         process.exit(2);
     }
     let worst = 0;
-    for (const f of files) {
-        const { code, results } = validateFile(f, { checkPaths, baseDir });
-        console.log(`${f}: ${code === 0 ? 'VÁLIDO' : 'INVÁLIDO'}`);
+    for (const f of parsed.files) {
+        const { code, results, preDone } = runFile(f, parsed);
+        const structuralError = results.some((r) => r.level === 'ERROR');
+        let label = structuralError ? 'INVÁLIDO' : 'VÁLIDO';
+        if (parsed.preDone && preDone && !structuralError) {
+            if (preDone.outcome === 'evidence_present') label = 'VÁLIDO; pré-Done com citações presentes';
+            else if (preDone.outcome === 'human') label = 'VÁLIDO; pré-Done aguarda critério humano';
+            else label = 'VÁLIDO; pré-Done recusado';
+        }
+        console.log(`${f}: ${label}`);
         for (const r of results) console.log(`  [${r.level}] ${r.code}: ${r.msg}`);
-        worst = Math.max(worst, code);
+        if (preDone) {
+            const outcome = preDone.outcome === 'evidence_present'
+                ? 'citações presentes'
+                : (preDone.outcome === 'human' ? 'aguarda critério humano' : 'recusado');
+            console.log(`  pré-Done: ${outcome}`);
+            for (const r of preDone.results) console.log(`  [${r.level}] ${r.code}: ${r.msg}`);
+            console.log('  confirmação do Richard: obrigatória');
+            console.log('  Done no Linear: não registrado');
+            if (preDone.outcome === 'evidence_present') {
+                for (const limit of preDone.limits) console.log(`  [LIMITE] ${limit}`);
+            }
+        }
+        worst = rankExit(code) > rankExit(worst) ? code : worst;
     }
     process.exit(worst);
 }
