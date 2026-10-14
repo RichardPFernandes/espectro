@@ -39,8 +39,11 @@ As credenciais das integrações vêm, nesta ordem, do ambiente, do `dashboard/.
 ## Coordenação (somente leitura)
 
 A aba **Coordenação** lê `GET /api/coordination`; não despacha agentes nem grava estado.
-`COORD_STATUS_PATH` configura o JSON do Coordenador (padrão
-`~/.maestro-guard/coord-status.json`). Fonte v1:
+`COORD_STATUS_PATH` configura o JSON do Coordenador. No `npm start`, a
+ausência da variável (ambiente e `.env` do dashboard) usa
+`~/.maestro-guard/coord-status.json`. Um servidor criado sem esse caminho,
+como na suíte de testes, observa um arquivo temporário próprio e não o
+arquivo real do usuário. Fonte v1:
 
 ```json
 {"schemaVersion":1,"updatedAt":"2026-10-10T15:00:00Z","frentes":[{"id":"prisma","nome":"Prisma","restricted":false}],"tarefas":[{"id":"PRI-99","frente":"prisma","tarefa":"Coordenação","agente":"Codex","runtime":"codex","estado":"Em andamento","nota":"Implementar","link":"https://linear.app/prisma-app/issue/PRI-99","atualizado":"2026-10-10T15:00:00Z"}]}

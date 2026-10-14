@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { WebSocket } = require('ws');
 const { createDashboard } = require('./server');
+const { userCoordinationStatusPath, applyCoordinationDefault } = require('./coordination');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coordination-api-'));
 const statusPath = path.join(tmp, 'status.json');
 const capacityScript = path.join(tmp, 'capacity.mjs');
@@ -38,6 +39,42 @@ test.before(async () => {
     await dash.ready;
 });
 test.after(async () => { await dash.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
+test('a suíte de coordenação observa o arquivo da fixture, não o do usuário', () => {
+    assert.equal(dash.coordinationStatusPath, path.resolve(statusPath));
+    assert.notEqual(path.resolve(dash.coordinationStatusPath), path.resolve(userCoordinationStatusPath()));
+});
+test('npm start aplica ~/.maestro-guard/coord-status.json só quando COORD_STATUS_PATH falta', () => {
+    const home = path.join(tmp, 'operator-home');
+    const fresh = {};
+    assert.equal(applyCoordinationDefault(fresh, home), path.join(home, '.maestro-guard', 'coord-status.json'));
+    assert.equal(fresh.COORD_STATUS_PATH, path.join(home, '.maestro-guard', 'coord-status.json'));
+    const explicit = { COORD_STATUS_PATH: statusPath };
+    assert.equal(applyCoordinationDefault(explicit, home), statusPath);
+});
+test('dashboard sem COORD_STATUS_PATH não observa o coord-status real do usuário', async () => {
+    const script = path.join(tmp, 'hermetic-capacity.mjs');
+    const marker = path.join(tmp, 'hermetic-capacity-hit');
+    fs.writeFileSync(script, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, 'ran');\nconsole.log('[]');\n`);
+    const userFile = userCoordinationStatusPath();
+    const other = createDashboard({
+        memoryDir: path.join(tmp, 'hermetic', 'memory', 'runs'),
+        env: { COORD_CAPACITY_SCRIPT: script },
+    });
+    try {
+        await new Promise(resolve => other.server.listen(0, '127.0.0.1', resolve));
+        await other.ready;
+        assert.notEqual(path.resolve(other.coordinationStatusPath), path.resolve(userFile));
+        assert.equal(other.coordinationStatusPath.includes(`${path.sep}.maestro-guard${path.sep}`), false);
+        const result = await (await fetch(`http://localhost:${other.server.address().port}/api/coordination`)).json();
+        assert.equal(result.status, 'empty');
+        assert.deepEqual(result.tarefas, []);
+        assert.equal(fs.readFileSync(marker, 'utf8'), 'ran');
+    } finally {
+        const owned = other.coordinationStatusPath;
+        await other.close();
+        assert.equal(fs.existsSync(path.dirname(owned)), false);
+    }
+});
 test('missing file: empty; valid capacity has explicit unknown windows and no raw fields', async () => {
     const result = await read();
     assert.equal(result.status, 'empty'); assert.equal(result.updatedAt, null);
