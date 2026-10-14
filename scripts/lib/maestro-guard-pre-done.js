@@ -180,7 +180,7 @@ function checkPreDone(doc, opts = {}) {
             const abs = resolveLocal(evidence.text, baseDir, homeDir);
             if (isEphemeral(abs)) {
                 err('PRE_DONE_EPHEMERAL', `Evidence em caminho efêmero (${abs}); a custódia fica em ~/Workspace/prisma-evidence/<data>-<frente>/`);
-            } else if (!matchEvidenceDir(abs, homeDir)) {
+            } else if (!matchesCustody(abs, homeDir)) {
                 err('PRE_DONE_EVIDENCE_CUSTODY', `Evidence fora de ~/Workspace/prisma-evidence/<data>-<frente>/: ${evidence.text}`);
             } else {
                 const seen = inspect(abs);

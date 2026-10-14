@@ -195,6 +195,27 @@ test('~/Workspace/... conta como a mesma custódia', () => {
     assert.strictEqual(r.exitCode, 0, preCodes(r).join());
 });
 
+test('caminho canônico da Evidence é aceito quando o diretório home é um symlink', () => {
+    const realHome = makeHome();
+    const pack = planningPack(realHome);
+    const linkHome = path.join(homeParent, `home-link-${process.pid}-${Date.now()}`);
+    fs.symlinkSync(realHome, linkHome);
+    try {
+        pack.doc.closure.evidence = fs.realpathSync(pack.evidence);
+        pack.doc.closure.handoff_final = fs.realpathSync(pack.handoffFinal);
+        const accepted = checkPreDone(pack.doc, { homeDir: linkHome, baseDir: linkHome, handoffPath: pack.transfer });
+        assert.strictEqual(accepted.exitCode, 0, preCodes(accepted).join(' '));
+        assert.strictEqual(accepted.outcome, 'evidence_present');
+
+        const outside = planningPack(realHome).doc;
+        outside.closure.evidence = fs.realpathSync(path.join(realHome, 'Workspace'));
+        const refused = checkPreDone(outside, { homeDir: linkHome, baseDir: linkHome });
+        assert.ok(preCodes(refused).includes('PRE_DONE_EVIDENCE_CUSTODY'), preCodes(refused).join(' '));
+    } finally {
+        fs.unlinkSync(linkHome);
+    }
+});
+
 test('planejamento Prisma recusa citação ausente, UNKNOWN, /tmp, /private/tmp e data inválida', () => {
     const home = makeHome();
     const missing = v11();
@@ -358,10 +379,74 @@ test('CLI --pre-done em tipo sem critério sai 3 e declara que Done não foi reg
     assert.match(ran.stdout, /confirmação do Richard: obrigatória/);
 });
 
+function evidenceDirsCreatedBy(leaf) {
+    const created = [];
+    let cursor = path.resolve(leaf);
+    while (!fs.existsSync(cursor)) {
+        created.push(cursor);
+        const parent = path.dirname(cursor);
+        if (parent === cursor) break;
+        cursor = parent;
+    }
+    return created;
+}
+
+function removeEvidenceDirs(created, leaf) {
+    const leafResolved = path.resolve(leaf);
+    const owned = new Set(created.map((dir) => path.resolve(dir)));
+    if (owned.has(leafResolved)) fs.rmSync(leafResolved, { recursive: true, force: true });
+    const parents = [...owned]
+        .filter((dir) => dir !== leafResolved)
+        .sort((a, b) => b.split(path.sep).length - a.split(path.sep).length);
+    for (const dir of parents) {
+        if (!fs.existsSync(dir)) continue;
+        const st = fs.lstatSync(dir);
+        if (!st.isDirectory() || st.isSymbolicLink()) continue;
+        if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+    }
+}
+
+test('a limpeza do CLI pré-Done remove só diretórios que o teste criou', () => {
+    const root = fs.mkdtempSync(path.join(homeParent, 'custody-preexist-'));
+    const workspace = path.join(root, 'Workspace');
+    const custody = path.join(workspace, 'prisma-evidence');
+    fs.mkdirSync(custody, { recursive: true });
+    const leaf = path.join(custody, `2026-10-14-gov4cli${process.pid}`);
+    const created = evidenceDirsCreatedBy(leaf);
+    fs.mkdirSync(leaf, { recursive: true });
+    fs.writeFileSync(path.join(leaf, 'handoff-final.md'), 'final\n');
+    removeEvidenceDirs(created, leaf);
+    assert.strictEqual(fs.existsSync(leaf), false);
+    assert.strictEqual(fs.existsSync(custody), true);
+    assert.strictEqual(fs.existsSync(workspace), true);
+    assert.deepStrictEqual(fs.readdirSync(custody), []);
+
+    const onlyWorkspace = fs.mkdtempSync(path.join(homeParent, 'custody-workspace-'));
+    const workspaceOnly = path.join(onlyWorkspace, 'Workspace');
+    fs.mkdirSync(workspaceOnly);
+    const createdLeaf = path.join(workspaceOnly, 'prisma-evidence', `2026-10-14-gov4cli${process.pid}`);
+    const createdParents = evidenceDirsCreatedBy(createdLeaf);
+    fs.mkdirSync(createdLeaf, { recursive: true });
+    removeEvidenceDirs(createdParents, createdLeaf);
+    assert.strictEqual(fs.existsSync(createdLeaf), false);
+    assert.strictEqual(fs.existsSync(path.join(workspaceOnly, 'prisma-evidence')), false);
+    assert.strictEqual(fs.existsSync(workspaceOnly), true);
+
+    const fresh = fs.mkdtempSync(path.join(homeParent, 'custody-fresh-'));
+    const freshLeaf = path.join(fresh, 'Workspace', 'prisma-evidence', `2026-10-14-gov4cli${process.pid}`);
+    const freshCreated = evidenceDirsCreatedBy(freshLeaf);
+    fs.mkdirSync(freshLeaf, { recursive: true });
+    fs.writeFileSync(path.join(freshLeaf, 'handoff-final.md'), 'final\n');
+    removeEvidenceDirs(freshCreated, freshLeaf);
+    assert.strictEqual(fs.existsSync(path.join(fresh, 'Workspace')), false);
+    assert.strictEqual(fs.existsSync(fresh), true);
+});
+
 test('CLI do planejamento Prisma aceita a custódia em ~/Workspace e recusa citação faltante', () => {
     const leaf = path.join(os.homedir(), 'Workspace', 'prisma-evidence', `2026-10-14-gov4cli${process.pid}`);
     const finalPath = path.join(leaf, 'handoff-final.md');
     const f = path.join(tmp, 'plan.yaml');
+    const created = evidenceDirsCreatedBy(leaf);
     try {
         fs.mkdirSync(leaf, { recursive: true });
         fs.writeFileSync(finalPath, 'final\n');
@@ -384,10 +469,7 @@ test('CLI do planejamento Prisma aceita a custódia em ~/Workspace e recusa cita
         assert.match(refused.stdout, /PRE_DONE_MISSING/);
         assert.match(refused.stdout, /Done no Linear: não registrado/);
     } finally {
-        fs.rmSync(leaf, { recursive: true, force: true });
-        for (const dir of [path.dirname(leaf), path.dirname(path.dirname(leaf))]) {
-            if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
-        }
+        removeEvidenceDirs(created, leaf);
     }
 });
 
