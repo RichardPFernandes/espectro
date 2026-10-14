@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { validateState } = require('../validate-state');
-const { cleanupWorktrees } = require('./worktree-cleanup');
+const { cleanupWorktrees, stopPreviewViaDashboard } = require('./worktree-cleanup');
 
 let Ajv = null;
 try { Ajv = require('ajv'); } catch { Ajv = null; }
@@ -344,16 +344,20 @@ function runsIn(dir, { archived, onlyTicket = null, source }) {
     return out;
 }
 
-function ticketOfDir(ctx, name) {
+function matchTicketDir(ctx, name) {
     const pattern = ctx.contract?.worktrees?.ticketPattern;
     if (!pattern || name == null) return null;
     const m = new RegExp(pattern).exec(String(name));
     if (!m) return null;
     // Grupo nomeado `ticket` (nome maior que o id), senão o primeiro grupo.
     // Padrão sem grupo — o contrato histórico e quem o copiou — usa o match inteiro.
-    if (m.groups && m.groups.ticket) return m.groups.ticket;
-    if (m[1]) return m[1];
-    return m[0];
+    const ticket = (m.groups && m.groups.ticket) || m[1] || m[0];
+    if (!ticket) return null;
+    return { ticket: String(ticket), entire: m[0] === String(name) };
+}
+
+function ticketOfDir(ctx, name) {
+    return matchTicketDir(ctx, name)?.ticket || null;
 }
 
 function collectRuns(ctx) {
@@ -364,11 +368,14 @@ function collectRuns(ctx) {
     if (s.includeTicketWorktrees) {
         const wtDir = path.join(ctx.root, ctx.contract.worktrees.dir);
         for (const name of listDirs(wtDir)) {
-            const ticket = ticketOfDir(ctx, name);
-            if (!ticket || name !== ticket) continue; // só o worktree do app-back carrega memory/
+            const hit = matchTicketDir(ctx, name);
+            // O padrão casa o diretório inteiro (pre-601 com ^pre-(\d+)$), mesmo
+            // quando o id capturado é mais curto. Prefixo de irmão (601-app-core
+            // com ^(\d+)) não carrega memory/.
+            if (!hit || !hit.entire) continue;
             const base = path.join(wtDir, name, 'memory', 'runs');
-            runs.push(...runsIn(base, { archived: false, onlyTicket: ticket, source: 'worktree' }));
-            runs.push(...runsIn(path.join(base, '_archive'), { archived: true, onlyTicket: ticket, source: 'worktree' }));
+            runs.push(...runsIn(base, { archived: false, onlyTicket: hit.ticket, source: 'worktree' }));
+            runs.push(...runsIn(path.join(base, '_archive'), { archived: true, onlyTicket: hit.ticket, source: 'worktree' }));
         }
     }
     for (const r of runs) {
@@ -668,21 +675,52 @@ function validateAll(configPath = DEFAULT_CONFIG_PATH, opts = {}) {
 // os runs do ticket que moram nele pra memory/runs/_archive/ (mesma coisa que o
 // watcher faz em onTaskFullyMerged / cleanupWorktreesAfterPrOpen) — sem isso o
 // histórico do ciclo sumiria junto. Cópia desfeita se o worktree acabar ficando.
-function rescueTicketRuns(root, worktreesDir, ticketId) {
-    const src = path.join(worktreesDir, String(ticketId), 'memory', 'runs');
+function underWorktrees(worktreesDir, target) {
+    const relp = path.relative(realish(worktreesDir), realish(target));
+    return !!relp && !relp.startsWith('..') && !path.isAbsolute(relp);
+}
+
+function ticketFixDirs(worktreesDir, fix) {
+    const listed = Array.isArray(fix.paths) ? fix.paths : [];
+    const source = listed.length ? listed : [path.join(worktreesDir, String(fix.ticketId))];
+    return source.filter(p => underWorktrees(worktreesDir, p));
+}
+
+// Copia os runs do ticket a partir dos diretórios reais do fix (fixes[].paths).
+// O id capturado pode ser mais curto que o nome do worktree.
+function rescueTicketRuns(root, ticketId, dirs) {
     const archive = path.join(root, 'memory', 'runs', '_archive');
     const copied = [];
-    for (const base of [src, path.join(src, '_archive')]) {
-        for (const r of runsIn(base, { archived: false, onlyTicket: ticketId })) {
-            const inMain = fs.existsSync(path.join(root, 'memory', 'runs', r.taskId)) || fs.existsSync(path.join(archive, r.taskId));
-            if (inMain) continue;
-            const dst = path.join(archive, r.taskId);
-            fs.mkdirSync(archive, { recursive: true });
-            fs.cpSync(r.dir, dst, { recursive: true });
-            copied.push(dst);
+    const seen = new Set();
+    for (const dir of dirs) {
+        const src = path.join(dir, 'memory', 'runs');
+        for (const base of [src, path.join(src, '_archive')]) {
+            for (const r of runsIn(base, { archived: false, onlyTicket: String(ticketId) })) {
+                if (seen.has(r.taskId)) continue;
+                seen.add(r.taskId);
+                const inMain = fs.existsSync(path.join(root, 'memory', 'runs', r.taskId)) || fs.existsSync(path.join(archive, r.taskId));
+                if (inMain) continue;
+                const dst = path.join(archive, r.taskId);
+                fs.mkdirSync(archive, { recursive: true });
+                fs.cpSync(r.dir, dst, { recursive: true });
+                copied.push(dst);
+            }
         }
     }
     return copied;
+}
+
+function worktreeIsDirty(dir, exec) {
+    try {
+        return !!exec('git', ['-C', dir, 'status', '--porcelain', '--untracked-files=no']).trim();
+    } catch { return true; }
+}
+
+function removeWorktreePath(dir, exec) {
+    const common = exec('git', ['-C', dir, 'rev-parse', '--path-format=absolute', '--git-common-dir']).trim();
+    const repo = path.dirname(common);
+    exec('git', ['-C', repo, 'worktree', 'remove', '--force', dir]);
+    return repo;
 }
 
 async function applyFixes(report, opts = {}) {
@@ -697,16 +735,57 @@ async function applyFixes(report, opts = {}) {
 
     for (const f of fixes) {
         if (f.type === 'cleanup-ticket') {
-            let copied = [];
-            try { copied = rescueTicketRuns(root, worktreesDir, f.ticketId); } catch (e) {
-                out.errors.push({ path: path.join(worktreesDir, f.ticketId), error: `não consegui preservar os runs do worktree: ${e.message}` });
+            const realDirs = ticketFixDirs(worktreesDir, f);
+            if (!realDirs.length) {
+                out.errors.push({ path: path.join(worktreesDir, String(f.ticketId)), error: 'fora de .claude/worktrees — recusado' });
                 continue;
+            }
+            let copied = [];
+            try { copied = rescueTicketRuns(root, f.ticketId, realDirs); } catch (e) {
+                out.errors.push({ path: realDirs[0], error: `não consegui preservar os runs do worktree: ${e.message}` });
+                continue;
+            }
+            const conventional = path.resolve(path.join(worktreesDir, String(f.ticketId)));
+            const extras = realDirs.filter(d => path.resolve(d) !== conventional && fs.existsSync(d));
+            // cleanupWorktrees deriva .claude/worktrees/<ticket> e só para o preview
+            // quando esse caminho existe. O diretório real pode ter outro nome.
+            if (extras.length) {
+                try {
+                    const stop = opts.stopPreview || stopPreviewViaDashboard;
+                    await stop(String(f.ticketId));
+                } catch (e) {
+                    for (const c of copied) fs.rmSync(c, { recursive: true, force: true });
+                    for (const d of extras) out.errors.push({ path: d, error: `preview não parou: ${e.message}` });
+                    continue;
+                }
             }
             const r = await (opts.cleanupWorktrees || cleanupWorktrees)(f.ticketId, {
                 worktreesDir, siblingRepos: siblings, exec, log, skipDirty: true,
                 ...(opts.stopPreview ? { stopPreview: opts.stopPreview } : {}),
             });
-            if (fs.existsSync(path.join(worktreesDir, String(f.ticketId)))) {
+            const handled = new Set([
+                ...(r.kept || []).map(k => path.resolve(k.path)),
+                ...(r.errors || []).filter(e => e.path).map(e => path.resolve(e.path)),
+            ]);
+            for (const dir of realDirs) {
+                const abs = path.resolve(dir);
+                if (!fs.existsSync(dir) || handled.has(abs) || abs === conventional) continue;
+                if (worktreeIsDirty(dir, exec)) {
+                    out.kept.push({ path: dir, reason: 'mudança rastreada não commitada' });
+                    log.warn(`[worktree-cleanup] #${f.ticketId}: ${dir} tem mudança não commitada — mantido.`);
+                    continue;
+                }
+                try {
+                    const repo = removeWorktreePath(dir, exec);
+                    out.removed.push(dir);
+                    log.log(`[worktree-cleanup] #${f.ticketId}: removido ${dir} (repo ${path.basename(repo)}).`);
+                } catch (e) {
+                    const error = String(e.stderr || e.message || e).trim().split('\n')[0];
+                    out.errors.push({ path: dir, error });
+                    log.error(`[worktree-cleanup] #${f.ticketId}: falha removendo ${dir}: ${error}`);
+                }
+            }
+            if (realDirs.some(d => fs.existsSync(d))) {
                 for (const c of copied) fs.rmSync(c, { recursive: true, force: true });
             } else out.rescuedRuns.push(...copied);
             out.removed.push(...r.removed);

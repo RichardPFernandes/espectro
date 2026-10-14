@@ -343,6 +343,28 @@ test('worktrees-clean: grupo de captura e grupo nomeado extraem o ticket de um n
     assert.match(byName, /\.claude\/worktrees\/pre-602 — 602-feito: cancelled/);
 });
 
+test('--fix enxerga run fechado só no worktree e remove o diretório real, não .claude/worktrees/<ticket>', async () => {
+    const root = makeGitRepo();
+    const contract = JSON.parse(fs.readFileSync(contractOf(root), 'utf8'));
+    contract.worktrees.ticketPattern = '^pre-(\\d+)$';
+    fs.writeFileSync(contractOf(root), JSON.stringify(contract));
+    const dir = addWorktree(root, 'pre-710');
+    write(root, '.claude/worktrees/pre-710/memory/runs/_archive/710-feito/state.json', state('710-feito', 'fully_merged'));
+
+    const report = v.validateAll(contractOf(root));
+    const all = failing(report, 'worktrees-clean', 'warning').map(w => w.details.join('\n')).join('\n');
+    assert.match(all, /\.claude\/worktrees\/pre-710 — 710-feito: fully_merged/);
+    const fixes = report.results.flatMap(r => r.fixes || []).filter(f => f.type === 'cleanup-ticket');
+    assert.ok(fixes.some(f => f.paths.some(p => path.resolve(p) === path.resolve(dir))));
+
+    const fix = await v.applyFixes(report, { configPath: contractOf(root), stopPreview: async () => ({ stopped: false }) });
+    assert.ok(fix.removed.some(p => path.resolve(p) === path.resolve(dir)), `removido: ${fix.removed.join(', ')}`);
+    assert.ok(!fs.existsSync(dir), 'diretório real do worktree permanece');
+    assert.ok(!fs.existsSync(path.join(root, '.claude', 'worktrees', '710')));
+    assert.ok(fs.existsSync(path.join(root, 'memory', 'runs', '_archive', '710-feito', 'state.json')));
+    assert.doesNotMatch(git(root, 'worktree', 'list'), /pre-710/);
+});
+
 test('--fix mantém worktree de ciclo encerrado com mudança rastreada não commitada', async () => {
     const root = makeGitRepo();
     write(root, 'rastreado.txt', 'a');
