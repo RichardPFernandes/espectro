@@ -4,11 +4,15 @@
   "private": true,
   "description": "Utilitários de operação do orquestrador (readmine-watcher.js e scripts/lib) — não é código de produto",
   "scripts": {
-    "test": "node ../harness/run-tests.js scripts lib/*.test.js validate-state.test.js invalidate.test.js invalidate-concurrency.test.js state-concurrency.test.js sanitize-log.test.js retry.test.js notify.test.js memory-consolidator.test.js cleanup-runs.test.js cleanup-transcripts.test.js compare-runs.test.js bitbucket-open-pr.test.js ../harness/run-tests.test.js"
+    "build": "tsc -b --pretty false",
+    "check:js": "tsc -p tsconfig.checkjs.json --pretty false --noEmit",
+    "test": "node ../harness/run-tests.js scripts lib/*.test.js validate-state.test.js invalidate.test.js invalidate-concurrency.test.js state-concurrency.test.js sanitize-log.test.js retry.test.js notify.test.js memory-consolidator.test.js cleanup-runs.test.js cleanup-transcripts.test.js compare-runs.test.js bitbucket-open-pr.test.js ../harness/run-tests.test.js platform-roots.test.js"
   },
   "devDependencies": {
+    "@types/node": "20.19.43",
     "ajv": "^8.20.0",
-    "ajv-formats": "^3.0.1"
+    "ajv-formats": "^3.0.1",
+    "typescript": "7.0.2"
   },
   "dependencies": {
     "mammoth": "1.12.3",
