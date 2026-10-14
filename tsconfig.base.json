@@ -1,0 +1,24 @@
+{
+  // Fundação PRI-103 (D3/D4): tsc emite CJS. ESM fica na fase 2.
+  // TypeScript 7 removeu moduleResolution node/node10; bundler + module commonjs preserva o emit CJS.
+  // engines Node 22+24 não é declarado aqui: PRI-101 (AI-TS-03) ainda não foi aplicado.
+  // checkJs permanece desligado; a allowlist seletiva é tsconfig.checkjs.json de cada pacote.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "allowJs": true,
+    "checkJs": false,
+    "declaration": true,
+    "sourceMap": true,
+    "noEmitOnError": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  }
+}

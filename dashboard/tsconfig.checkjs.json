@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "checkJs": true,
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false,
+    "composite": false,
+    "incremental": false
+  },
+  "include": ["src/server/marker.js"]
+}
