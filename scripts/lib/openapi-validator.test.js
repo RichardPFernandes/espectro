@@ -8,6 +8,10 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// Mapa sintético do próprio teste. O runner descarta OPENAPI_* do operador;
+// ResponseFactory.ok/badRequest só viram status com este arquivo.
+process.env.OPENAPI_RESPONSE_FACTORY_FILE = path.join(__dirname, '..', 'fixtures', 'openapi-response-factory.json');
+
 const {
     validate, toMarkdown, parseYaml, javaEndpoints, javaStatuses, dtoFieldsFromSource, pathsMatch,
 } = require('./openapi-validator');

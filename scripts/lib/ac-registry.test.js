@@ -9,7 +9,8 @@ const path = require('path');
 
 const tmp = fs.mkdtempSync(path.join(process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp') : os.tmpdir(), 'ac-registry-'));
 const repo = path.join(tmp, 'app-back');
-fs.mkdirSync(repo, { recursive: true });
+fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+fs.copyFileSync(path.join(__dirname, '..', '..', '.claude', 'spec-hash-config.json'), path.join(repo, '.claude', 'spec-hash-config.json'));
 process.env.REPO_PATH = repo;
 // Portão de build pré-implement roda mvn de verdade — coberto em build-validator.test.js.
 process.env.SKIP_PRE_BUILD_VALIDATION = 'true';

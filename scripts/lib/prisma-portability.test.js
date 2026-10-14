@@ -215,14 +215,20 @@ test('dashboard provider wrappers, QA status and secret union are scoped to cons
 
 test('ResponseFactory map is explicit per consumer; platform has no business factory defaults', () => {
     const validator = require('./openapi-validator');
+    // 442 e 501 são a expectativa já escrita neste teste. O arquivo do consumidor
+    // não está no repo e o runner descarta OPENAPI_*; a contagem 15 daquele arquivo
+    // não é reproduzível aqui.
+    const factory = { entityRelationship: 442, notImplemented: 501 };
+    const factoryFile = path.join(tmp, 'response-factory.json');
+    fs.writeFileSync(factoryFile, JSON.stringify(factory));
     const old = process.env.OPENAPI_RESPONSE_FACTORY_FILE;
     try {
         delete process.env.OPENAPI_RESPONSE_FACTORY_FILE;
         assert.equal(validator.javaStatuses('return ResponseFactory.entityRelationship();', 1).codes.size, 0);
-        process.env.OPENAPI_RESPONSE_FACTORY_FILE = old;
+        process.env.OPENAPI_RESPONSE_FACTORY_FILE = factoryFile;
         const statuses = validator.javaStatuses('return ResponseFactory.entityRelationship(); return ResponseFactory.notImplemented();', 1);
         assert.deepEqual([...statuses.codes.keys()], [442, 501]);
-        assert.equal(Object.keys(JSON.parse(fs.readFileSync(path.resolve(process.env.REPO_PATH, old), 'utf8'))).length, 15);
+        assert.deepEqual(JSON.parse(fs.readFileSync(factoryFile, 'utf8')), factory);
     } finally { if (old === undefined) delete process.env.OPENAPI_RESPONSE_FACTORY_FILE; else process.env.OPENAPI_RESPONSE_FACTORY_FILE = old; }
 });
 

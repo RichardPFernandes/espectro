@@ -41,7 +41,7 @@ test('remove worktree do app-back e do irmão (no repo dono); ausentes ignorados
     const order = [];
     try {
         const r = await cleanupWorktrees('6001', {
-            worktreesDir: wts, log: quiet,
+            worktreesDir: wts, siblingRepos: [core], log: quiet,
             stopPreview: async id => { order.push(`stop:${id}`); assert.ok(fs.existsSync(path.join(wts, '6001')), 'worktree ainda existe ao parar o preview'); return { running: true, stopped: true }; },
             exec: (cmd, args) => { if (args.includes('remove')) order.push(`remove:${path.basename(args[args.length - 1])}`); return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); },
         });
@@ -58,10 +58,10 @@ test('remove worktree do app-back e do irmão (no repo dono); ausentes ignorados
 });
 
 test('preview não confirmou a parada → nada removido, erro por worktree', async () => {
-    const { root, wts } = setup();
+    const { root, core, wts } = setup();
     try {
         const r = await cleanupWorktrees('6001', {
-            worktreesDir: wts, log: quiet,
+            worktreesDir: wts, siblingRepos: [core], log: quiet,
             stopPreview: async () => { throw new Error('HTTP 500'); },
         });
         assert.deepStrictEqual(r.removed, []);
@@ -74,10 +74,10 @@ test('preview não confirmou a parada → nada removido, erro por worktree', asy
 });
 
 test('falha parcial: um removido, o outro no erro; sem worktree nenhum → vazio', async () => {
-    const { root, wts } = setup();
+    const { root, core, wts } = setup();
     try {
         const r = await cleanupWorktrees('6001', {
-            worktreesDir: wts, log: quiet, stopPreview: async () => ({ running: false }),
+            worktreesDir: wts, siblingRepos: [core], log: quiet, stopPreview: async () => ({ running: false }),
             exec: (cmd, args) => {
                 if (args.includes('remove') && args[args.length - 1].endsWith('-app-core')) throw Object.assign(new Error('x'), { stderr: 'fatal: bloqueado\n' });
                 return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -164,7 +164,7 @@ test('skipDirty: mudança rastreada não commitada mantém o worktree; untracked
     const { root, back, core, wts } = setup();
     try {
         fs.writeFileSync(path.join(wts, '6001-app-core', 'a.txt'), 'mudou'); // rastreado
-        const r = await cleanupWorktrees('6001', { worktreesDir: wts, log: quiet, skipDirty: true, stopPreview: async () => ({ stopped: false }) });
+        const r = await cleanupWorktrees('6001', { worktreesDir: wts, siblingRepos: [core], log: quiet, skipDirty: true, stopPreview: async () => ({ stopped: false }) });
         assert.deepStrictEqual(r.errors, []);
         assert.deepStrictEqual(r.removed.map(p => path.basename(p)), ['6001'], 'só untracked (sujo.txt) → sai');
         assert.deepStrictEqual(r.kept.map(k => path.basename(k.path)), ['6001-app-core']);
