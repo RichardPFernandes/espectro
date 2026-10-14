@@ -386,6 +386,42 @@ test('--fix conserva o run do worktree removido quando um irmão sujo permanece'
     assert.ok(fs.existsSync(path.join(root, 'memory', 'runs', '_archive', '601-feito', 'state.json')));
 });
 
+test('--fix seguinte arquiva o run do irmão que ainda o tinha', async () => {
+    const root = makeGitRepo();
+    write(root, 'rastreado.txt', 'a');
+    git(root, 'add', 'rastreado.txt');
+    git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'arquivo');
+    const contract = JSON.parse(fs.readFileSync(contractOf(root), 'utf8'));
+    contract.worktrees.ticketPattern = '^(\\d+)(-app-core)?$';
+    fs.writeFileSync(contractOf(root), JSON.stringify(contract));
+    const clean = addWorktree(root, '602');
+    const dirty = addWorktree(root, '602-app-core');
+    const runRel = 'memory/runs/_archive/602-feito/state.json';
+    write(root, path.join('.claude/worktrees/602', runRel), state('602-feito', 'fully_merged', { origem: 'limpo' }));
+    write(root, path.join('.claude/worktrees/602-app-core', runRel), state('602-feito', 'fully_merged', { origem: 'irmao' }));
+    fs.writeFileSync(path.join(dirty, 'rastreado.txt'), 'mudou');
+
+    const report = v.validateAll(contractOf(root));
+    for (const result of report.results) {
+        for (const f of result.fixes || []) {
+            if (f.type === 'cleanup-ticket') f.paths = [clean, dirty];
+        }
+    }
+    const opts = { configPath: contractOf(root), stopPreview: async () => ({ stopped: false }) };
+    await v.applyFixes(report, opts);
+    const archived = path.join(root, 'memory', 'runs', '_archive', '602-feito', 'state.json');
+    const onSibling = path.join(dirty, runRel);
+    assert.ok(fs.existsSync(dirty));
+    assert.ok(!fs.existsSync(clean));
+    assert.ok(!fs.existsSync(archived));
+    assert.strictEqual(JSON.parse(fs.readFileSync(onSibling, 'utf8')).origem, 'irmao');
+
+    fs.writeFileSync(path.join(dirty, 'rastreado.txt'), 'a');
+    const second = await v.applyFixes(v.validateAll(contractOf(root)), opts);
+    assert.ok(!fs.existsSync(dirty), `irmão removido; mantidos: ${JSON.stringify(second.kept)}`);
+    assert.strictEqual(JSON.parse(fs.readFileSync(archived, 'utf8')).origem, 'irmao');
+});
+
 test('--fix mantém worktree de ciclo encerrado com mudança rastreada não commitada', async () => {
     const root = makeGitRepo();
     write(root, 'rastreado.txt', 'a');

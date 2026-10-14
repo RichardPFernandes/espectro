@@ -674,9 +674,9 @@ function validateAll(configPath = DEFAULT_CONFIG_PATH, opts = {}) {
 // Nunca toca arquivo de configuração. Antes de remover o worktree de um ticket, copia
 // os runs do ticket que moram nele pra memory/runs/_archive/ (mesma coisa que o
 // watcher faz em onTaskFullyMerged / cleanupWorktreesAfterPrOpen) — sem isso o
-// histórico do ciclo sumiria junto. A cópia de um diretório só é desfeita se
-// esse diretório continuar no disco — um irmão sujo que fica não apaga o run
-// que só existia no worktree já removido.
+// histórico do ciclo sumiria junto. A cópia fica no arquivo só quando nenhum
+// diretório que tinha aquele run continua no disco. Um irmão que ainda tem o
+// run não fica bloqueado por uma cópia tirada de outro worktree já removido.
 function underWorktrees(worktreesDir, target) {
     const relp = path.relative(realish(worktreesDir), realish(target));
     return !!relp && !relp.startsWith('..') && !path.isAbsolute(relp);
@@ -689,35 +689,39 @@ function ticketFixDirs(worktreesDir, fix) {
 }
 
 // Copia os runs do ticket a partir dos diretórios reais do fix (fixes[].paths).
-// O id capturado pode ser mais curto que o nome do worktree.
+// O id capturado pode ser mais curto que o nome do worktree. Cada task id
+// registra todos os diretórios que o têm; os bytes saem do primeiro.
 function rescueTicketRuns(root, ticketId, dirs) {
     const archive = path.join(root, 'memory', 'runs', '_archive');
-    const copied = [];
-    const seen = new Set();
+    const byTask = new Map();
     for (const dir of dirs) {
         const src = path.join(dir, 'memory', 'runs');
         for (const base of [src, path.join(src, '_archive')]) {
             for (const r of runsIn(base, { archived: false, onlyTicket: String(ticketId) })) {
-                if (seen.has(r.taskId)) continue;
-                seen.add(r.taskId);
-                const inMain = fs.existsSync(path.join(root, 'memory', 'runs', r.taskId)) || fs.existsSync(path.join(archive, r.taskId));
+                let entry = byTask.get(r.taskId);
+                if (!entry) {
+                    entry = { dst: path.join(archive, r.taskId), sources: [], copied: false };
+                    byTask.set(r.taskId, entry);
+                }
+                if (!entry.sources.includes(dir)) entry.sources.push(dir);
+                if (entry.copied) continue;
+                const inMain = fs.existsSync(path.join(root, 'memory', 'runs', r.taskId)) || fs.existsSync(entry.dst);
                 if (inMain) continue;
-                const dst = path.join(archive, r.taskId);
                 fs.mkdirSync(archive, { recursive: true });
-                fs.cpSync(r.dir, dst, { recursive: true });
-                copied.push({ dst, source: dir });
+                fs.cpSync(r.dir, entry.dst, { recursive: true });
+                entry.copied = true;
             }
         }
     }
-    return copied;
+    return [...byTask.values()].filter(e => e.copied);
 }
 
-// Desfaz só a cópia cujo diretório de origem ainda existe. Devolve os destinos
-// que ficam no arquivo.
+// Desfaz a cópia se algum diretório que tinha o run ainda existe. Devolve os
+// destinos que ficam no arquivo.
 function dropRescuesStillOnDisk(copied) {
     const kept = [];
     for (const c of copied) {
-        if (fs.existsSync(c.source)) fs.rmSync(c.dst, { recursive: true, force: true });
+        if (c.sources.some(s => fs.existsSync(s))) fs.rmSync(c.dst, { recursive: true, force: true });
         else kept.push(c.dst);
     }
     return kept;
