@@ -541,8 +541,8 @@ test('Centralização: templates das fases não comparam hash — chamam scripts
         const t = fs.readFileSync(path.join(dir, f), 'utf8');
         assert.ok(!/spec_hash\s*(!==?|==)/.test(t), `${f} compara spec_hash por conta própria`);
     }
-    assert.match(fs.readFileSync(path.join(dir, 'verify.md'), 'utf8'), /scripts\/invalidate\.js guard memory\/runs\/\$ARGUMENTS --phase=verify/);
-    assert.match(fs.readFileSync(path.join(dir, 'review.md'), 'utf8'), /scripts\/invalidate\.js guard memory\/runs\/\$ARGUMENTS --phase=review/);
+    assert.match(fs.readFileSync(path.join(dir, 'verify.md'), 'utf8'), /scripts\/invalidate\.js" guard memory\/runs\/\$ARGUMENTS --phase=verify/);
+    assert.match(fs.readFileSync(path.join(dir, 'review.md'), 'utf8'), /scripts\/invalidate\.js" guard memory\/runs\/\$ARGUMENTS --phase=review/);
 });
 
 test('Credenciais: nada de BITBUCKET_API_TOKEN/REDMINE_API_KEY em state, matriz, saída de CLI ou dados do dashboard', () => {

@@ -98,12 +98,19 @@ test('readRegrasInvioláveis: project.yaml ausente -> [] sem lançar', () => {
 });
 
 test('matchesRegra: casa classe com prefixo de convenção do projeto (F<Classe>) e por pacote br.com.mosistemas.app.*', () => {
-    assert.strictEqual(matchesRegra('x/CalculoFreteService.java', 'usa FCalculoFreteService em algum lugar'), true);
-    assert.strictEqual(
-        matchesRegra('src/main/java/br/com/mosistemas/app/track/calculofrete/GrupoDTO.java', 'tudo em br.com.mosistemas.app.track.calculofrete é crítico'),
-        true
-    );
-    assert.strictEqual(matchesRegra('x/OutraCoisa.java', 'nada a ver com isso'), false);
+    const old = process.env.SPEC_RULE_PACKAGE_PREFIX;
+    process.env.SPEC_RULE_PACKAGE_PREFIX = 'br.com.mosistemas.app';
+    try {
+        assert.strictEqual(matchesRegra('x/CalculoFreteService.java', 'usa FCalculoFreteService em algum lugar'), true);
+        assert.strictEqual(
+            matchesRegra('src/main/java/br/com/mosistemas/app/track/calculofrete/GrupoDTO.java', 'tudo em br.com.mosistemas.app.track.calculofrete é crítico'),
+            true
+        );
+        assert.strictEqual(matchesRegra('x/OutraCoisa.java', 'nada a ver com isso'), false);
+    } finally {
+        if (old === undefined) delete process.env.SPEC_RULE_PACKAGE_PREFIX;
+        else process.env.SPEC_RULE_PACKAGE_PREFIX = old;
+    }
 });
 
 // --- patterns.md -------------------------------------------------------------------
