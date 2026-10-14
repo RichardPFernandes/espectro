@@ -31,6 +31,7 @@ const { cleanupWorktrees, dashboardBase } = require('./lib/worktree-cleanup');
 const acRegistry = require('./lib/ac-registry');
 const acProvenance = require('./lib/ac-provenance');
 const specAuthority = require('./lib/spec-authority');
+const specArtifacts = require('./lib/spec-artifacts');
 const specChange = require('./lib/spec-change');
 const cleanupRuns = require('./cleanup-runs');
 const stateWriter = require('./state-writer');
@@ -441,8 +442,10 @@ async function syncQaRejection(ticket) {
 
 // Sinais de retry deixados pelo dashboard. Pra cada um: garante o worktree do ticket
 // (o merge pode tê-lo apagado), move o run pra <worktree>/memory/runs/<task-id> se ele
-// estiver em outro lugar (_archive, checkout principal), confere node=implement /
-// status=in_progress, remove o sinal e devolve os ids de ticket pro tick despachar.
+// estiver em outro lugar (_archive, checkout principal), copia os artefatos de spec
+// que o worktree recriado não herdou, confere node=implement / status=in_progress,
+// remove o sinal e devolve os ids de ticket pro tick despachar. Spec com spec_hash
+// ausente nos dois checkouts, ou spec_path fora de memory/spec/, mantém o sinal.
 // Problema com um sinal (ticket sumiu, sem base, destino ocupado) mantém o arquivo —
 // tenta de novo no próximo tick.
 async function consumeQaRetrySignals() {
@@ -487,6 +490,12 @@ async function consumeQaRetrySignal(dir) {
         console.log(`[dry-run] [qa-retry] ${taskId}: traria o run pro worktree do #${ticketId} e despacharia o implement.`);
         return null;
     }
+    const existingWorktree = fs.existsSync(worktreePathFor(REPO_PATH, ticketId)) ? worktreePathFor(REPO_PATH, ticketId) : null;
+    const preview = specArtifacts.assess({ mainRoot: REPO_PATH, workRoot: existingWorktree, state, taskId });
+    if (preview.blocked) {
+        console.warn(`[qa-retry] ${taskId}: ${preview.reason} — sinal mantido, implement não despachado.`);
+        return null;
+    }
     const target = `${taskRunsDir(ticketId)}/${taskId}`;
     if (path.resolve(dir) !== path.resolve(target)) {
         const ticket = await fetchTicketById(ticketId);
@@ -515,12 +524,32 @@ async function consumeQaRetrySignal(dir) {
             fs.rmSync(dir, { recursive: true, force: true });
         }
     }
+    const workRoot = path.resolve(target, '..', '..', '..');
+    const imported = specArtifacts.importMissing({
+        mainRoot: REPO_PATH, workRoot, state: readStateJson(target) || state, taskId,
+    });
+    if (imported.blocked) {
+        console.warn(`[qa-retry] ${taskId}: ${imported.reason} — sinal mantido, implement não despachado.`);
+        return null;
+    }
     const fresh = readStateJson(target) || state;
     // Carimbo da limpeza pós-PR é do ciclo anterior: o próximo /commit tem que limpar de novo.
     if (fresh.node !== 'implement' || fresh.status !== 'in_progress' || fresh.worktrees_removed_on_pr_open_at) {
         const { worktrees_removed_on_pr_open_at: _cleaned, ...reopened } = fresh;
         stateWriter.write(target, { ...reopened, node: 'implement', status: 'in_progress' }, { operation: 'qa_retry_reopen', actor: 'watcher', base: baseOf(fresh) });
         checkWrittenState(target);
+    }
+    if (imported.copied.length) {
+        const current = readStateJson(target);
+        if (current) {
+            const at = new Date().toISOString();
+            current.events = [...(Array.isArray(current.events) ? current.events : []), {
+                type: 'spec_imported', node: 'implement', ts: at, at,
+                detail: `retry de Recusa QA: artefatos copiados do checkout principal sem sobrescrever: ${imported.copied.join(', ')}`,
+            }];
+            stateWriter.write(target, current, { operation: 'qa_retry_spec_import', actor: 'watcher', base: baseOf(current) });
+            checkWrittenState(target);
+        }
     }
     // O /commit do ciclo anterior é autorizado a escrever na spec (notas de correção
     // datadas): o retry parte da spec atual como baseline, não do hash do Plan antigo.
@@ -2242,6 +2271,35 @@ function formatSpecDriftComment(ticket, taskId, node, result) {
 async function runSpecDriftGate(ticket, active, node) {
     const { taskId, state, dir } = active;
     const root = path.resolve(dir, '..', '..', '..');
+    // Spec ausente neste root e presente no checkout principal com o hash do Plan:
+    // restaura (evento spec_restored) e segue. Hash diferente ou ausente nos dois
+    // continua no portão, sem afrouxar. --dry-run não grava arquivo nem state.
+    let restored = null;
+    if (node !== 'plan' && specAuthority.GUARDED_NODES.has(node)) {
+        const candidate = specArtifacts.restoreMatchingSpec({
+            mainRoot: REPO_PATH, workRoot: root, state, taskId, dryRun: DRY_RUN,
+        });
+        if (DRY_RUN && candidate.wouldRestore) {
+            console.log(`[dry-run] Task ${taskId}: restauraria ${candidate.specPath} do checkout principal (hash igual ao spec_hash do Plan).`);
+            return {
+                proceed: true,
+                result: {
+                    status: 'match', ok: true, specPath: candidate.specPath,
+                    currentHash: candidate.hash, expectedHash: state.spec_hash,
+                    reason: `spec ${candidate.specPath} ausente no worktree seria restaurada do checkout principal (mesmo spec_hash)`,
+                },
+            };
+        }
+        if (!DRY_RUN && candidate.restored) {
+            restored = candidate;
+            const at = new Date().toISOString();
+            state.events = Array.isArray(state.events) ? state.events : [];
+            state.events.push({
+                type: 'spec_restored', node, ts: at, at,
+                detail: `spec ${candidate.specPath} ausente no worktree restaurada do checkout principal (hash ${String(candidate.hash).slice(0, 12)} igual ao spec_hash do Plan)`,
+            });
+        }
+    }
     // --dry-run não escreve nada: baseline tardio e aprovação manual gravam o changelog da
     // spec dentro do enforceSpecIntegrity, então ficam só no checkDrift; o resto roda numa cópia.
     const probe = DRY_RUN && node !== 'plan' ? specAuthority.checkDrift(state, { root, taskId }) : null;
@@ -2250,10 +2308,10 @@ async function runSpecDriftGate(ticket, active, node) {
         return { proceed: true, result: probe };
     }
     const outcome = specAuthority.enforceSpecIntegrity(DRY_RUN ? structuredClone(state) : state, { root, taskId, node });
-    if (outcome.changed) {
+    if (outcome.changed || restored) {
         if (DRY_RUN) console.log(`[dry-run] Task ${taskId}: gravaria state.json: spec integrity — ${outcome.message}.`);
         else writeTaskState(dir, state);
-        if (outcome.proceed) console.log(`Task ${taskId}: ${outcome.message}`);
+        if (outcome.proceed) console.log(`Task ${taskId}: ${restored ? `spec restaurada do checkout principal (${restored.specPath}). ` : ''}${outcome.message}`);
     }
     if (outcome.proceed) return { proceed: true, result: outcome.result };
     const notified = state.spec_drift?.notified_hash === (outcome.result.currentHash || 'removed');

@@ -118,7 +118,7 @@
   },
   "worktrees": {
     "dir": ".claude/worktrees",
-    "ticketPattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+    "ticketPattern": "^([A-Za-z0-9][A-Za-z0-9._-]*)$",
     "closedStatuses": [
       "fully_merged",
       "completed",

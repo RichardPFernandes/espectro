@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { validateState } = require('../validate-state');
-const { cleanupWorktrees } = require('./worktree-cleanup');
+const { cleanupWorktrees, stopPreviewViaDashboard } = require('./worktree-cleanup');
 
 let Ajv = null;
 try { Ajv = require('ajv'); } catch { Ajv = null; }
@@ -344,9 +344,20 @@ function runsIn(dir, { archived, onlyTicket = null, source }) {
     return out;
 }
 
+function matchTicketDir(ctx, name) {
+    const pattern = ctx.contract?.worktrees?.ticketPattern;
+    if (!pattern || name == null) return null;
+    const m = new RegExp(pattern).exec(String(name));
+    if (!m) return null;
+    // Grupo nomeado `ticket` (nome maior que o id), senão o primeiro grupo.
+    // Padrão sem grupo — o contrato histórico e quem o copiou — usa o match inteiro.
+    const ticket = (m.groups && m.groups.ticket) || m[1] || m[0];
+    if (!ticket) return null;
+    return { ticket: String(ticket), entire: m[0] === String(name) };
+}
+
 function ticketOfDir(ctx, name) {
-    const m = new RegExp(ctx.contract.worktrees.ticketPattern).exec(name);
-    return m ? m[1] : null;
+    return matchTicketDir(ctx, name)?.ticket || null;
 }
 
 function collectRuns(ctx) {
@@ -357,11 +368,14 @@ function collectRuns(ctx) {
     if (s.includeTicketWorktrees) {
         const wtDir = path.join(ctx.root, ctx.contract.worktrees.dir);
         for (const name of listDirs(wtDir)) {
-            const ticket = ticketOfDir(ctx, name);
-            if (!ticket || name !== ticket) continue; // só o worktree do app-back carrega memory/
+            const hit = matchTicketDir(ctx, name);
+            // O padrão casa o diretório inteiro (pre-601 com ^pre-(\d+)$), mesmo
+            // quando o id capturado é mais curto. Prefixo de irmão (601-app-core
+            // com ^(\d+)) não carrega memory/.
+            if (!hit || !hit.entire) continue;
             const base = path.join(wtDir, name, 'memory', 'runs');
-            runs.push(...runsIn(base, { archived: false, onlyTicket: ticket, source: 'worktree' }));
-            runs.push(...runsIn(path.join(base, '_archive'), { archived: true, onlyTicket: ticket, source: 'worktree' }));
+            runs.push(...runsIn(base, { archived: false, onlyTicket: hit.ticket, source: 'worktree' }));
+            runs.push(...runsIn(path.join(base, '_archive'), { archived: true, onlyTicket: hit.ticket, source: 'worktree' }));
         }
     }
     for (const r of runs) {
@@ -660,22 +674,70 @@ function validateAll(configPath = DEFAULT_CONFIG_PATH, opts = {}) {
 // Nunca toca arquivo de configuração. Antes de remover o worktree de um ticket, copia
 // os runs do ticket que moram nele pra memory/runs/_archive/ (mesma coisa que o
 // watcher faz em onTaskFullyMerged / cleanupWorktreesAfterPrOpen) — sem isso o
-// histórico do ciclo sumiria junto. Cópia desfeita se o worktree acabar ficando.
-function rescueTicketRuns(root, worktreesDir, ticketId) {
-    const src = path.join(worktreesDir, String(ticketId), 'memory', 'runs');
+// histórico do ciclo sumiria junto. A cópia fica no arquivo só quando nenhum
+// diretório que tinha aquele run continua no disco. Um irmão que ainda tem o
+// run não fica bloqueado por uma cópia tirada de outro worktree já removido.
+function underWorktrees(worktreesDir, target) {
+    const relp = path.relative(realish(worktreesDir), realish(target));
+    return !!relp && !relp.startsWith('..') && !path.isAbsolute(relp);
+}
+
+function ticketFixDirs(worktreesDir, fix) {
+    const listed = Array.isArray(fix.paths) ? fix.paths : [];
+    const source = listed.length ? listed : [path.join(worktreesDir, String(fix.ticketId))];
+    return source.filter(p => underWorktrees(worktreesDir, p));
+}
+
+// Copia os runs do ticket a partir dos diretórios reais do fix (fixes[].paths).
+// O id capturado pode ser mais curto que o nome do worktree. Cada task id
+// registra todos os diretórios que o têm; os bytes saem do primeiro.
+function rescueTicketRuns(root, ticketId, dirs) {
     const archive = path.join(root, 'memory', 'runs', '_archive');
-    const copied = [];
-    for (const base of [src, path.join(src, '_archive')]) {
-        for (const r of runsIn(base, { archived: false, onlyTicket: ticketId })) {
-            const inMain = fs.existsSync(path.join(root, 'memory', 'runs', r.taskId)) || fs.existsSync(path.join(archive, r.taskId));
-            if (inMain) continue;
-            const dst = path.join(archive, r.taskId);
-            fs.mkdirSync(archive, { recursive: true });
-            fs.cpSync(r.dir, dst, { recursive: true });
-            copied.push(dst);
+    const byTask = new Map();
+    for (const dir of dirs) {
+        const src = path.join(dir, 'memory', 'runs');
+        for (const base of [src, path.join(src, '_archive')]) {
+            for (const r of runsIn(base, { archived: false, onlyTicket: String(ticketId) })) {
+                let entry = byTask.get(r.taskId);
+                if (!entry) {
+                    entry = { dst: path.join(archive, r.taskId), sources: [], copied: false };
+                    byTask.set(r.taskId, entry);
+                }
+                if (!entry.sources.includes(dir)) entry.sources.push(dir);
+                if (entry.copied) continue;
+                const inMain = fs.existsSync(path.join(root, 'memory', 'runs', r.taskId)) || fs.existsSync(entry.dst);
+                if (inMain) continue;
+                fs.mkdirSync(archive, { recursive: true });
+                fs.cpSync(r.dir, entry.dst, { recursive: true });
+                entry.copied = true;
+            }
         }
     }
-    return copied;
+    return [...byTask.values()].filter(e => e.copied);
+}
+
+// Desfaz a cópia se algum diretório que tinha o run ainda existe. Devolve os
+// destinos que ficam no arquivo.
+function dropRescuesStillOnDisk(copied) {
+    const kept = [];
+    for (const c of copied) {
+        if (c.sources.some(s => fs.existsSync(s))) fs.rmSync(c.dst, { recursive: true, force: true });
+        else kept.push(c.dst);
+    }
+    return kept;
+}
+
+function worktreeIsDirty(dir, exec) {
+    try {
+        return !!exec('git', ['-C', dir, 'status', '--porcelain', '--untracked-files=no']).trim();
+    } catch { return true; }
+}
+
+function removeWorktreePath(dir, exec) {
+    const common = exec('git', ['-C', dir, 'rev-parse', '--path-format=absolute', '--git-common-dir']).trim();
+    const repo = path.dirname(common);
+    exec('git', ['-C', repo, 'worktree', 'remove', '--force', dir]);
+    return repo;
 }
 
 async function applyFixes(report, opts = {}) {
@@ -690,18 +752,57 @@ async function applyFixes(report, opts = {}) {
 
     for (const f of fixes) {
         if (f.type === 'cleanup-ticket') {
-            let copied = [];
-            try { copied = rescueTicketRuns(root, worktreesDir, f.ticketId); } catch (e) {
-                out.errors.push({ path: path.join(worktreesDir, f.ticketId), error: `não consegui preservar os runs do worktree: ${e.message}` });
+            const realDirs = ticketFixDirs(worktreesDir, f);
+            if (!realDirs.length) {
+                out.errors.push({ path: path.join(worktreesDir, String(f.ticketId)), error: 'fora de .claude/worktrees — recusado' });
                 continue;
+            }
+            let copied = [];
+            try { copied = rescueTicketRuns(root, f.ticketId, realDirs); } catch (e) {
+                out.errors.push({ path: realDirs[0], error: `não consegui preservar os runs do worktree: ${e.message}` });
+                continue;
+            }
+            const conventional = path.resolve(path.join(worktreesDir, String(f.ticketId)));
+            const extras = realDirs.filter(d => path.resolve(d) !== conventional && fs.existsSync(d));
+            // cleanupWorktrees deriva .claude/worktrees/<ticket> e só para o preview
+            // quando esse caminho existe. O diretório real pode ter outro nome.
+            if (extras.length) {
+                try {
+                    const stop = opts.stopPreview || stopPreviewViaDashboard;
+                    await stop(String(f.ticketId));
+                } catch (e) {
+                    dropRescuesStillOnDisk(copied);
+                    for (const d of extras) out.errors.push({ path: d, error: `preview não parou: ${e.message}` });
+                    continue;
+                }
             }
             const r = await (opts.cleanupWorktrees || cleanupWorktrees)(f.ticketId, {
                 worktreesDir, siblingRepos: siblings, exec, log, skipDirty: true,
                 ...(opts.stopPreview ? { stopPreview: opts.stopPreview } : {}),
             });
-            if (fs.existsSync(path.join(worktreesDir, String(f.ticketId)))) {
-                for (const c of copied) fs.rmSync(c, { recursive: true, force: true });
-            } else out.rescuedRuns.push(...copied);
+            const handled = new Set([
+                ...(r.kept || []).map(k => path.resolve(k.path)),
+                ...(r.errors || []).filter(e => e.path).map(e => path.resolve(e.path)),
+            ]);
+            for (const dir of realDirs) {
+                const abs = path.resolve(dir);
+                if (!fs.existsSync(dir) || handled.has(abs) || abs === conventional) continue;
+                if (worktreeIsDirty(dir, exec)) {
+                    out.kept.push({ path: dir, reason: 'mudança rastreada não commitada' });
+                    log.warn(`[worktree-cleanup] #${f.ticketId}: ${dir} tem mudança não commitada — mantido.`);
+                    continue;
+                }
+                try {
+                    const repo = removeWorktreePath(dir, exec);
+                    out.removed.push(dir);
+                    log.log(`[worktree-cleanup] #${f.ticketId}: removido ${dir} (repo ${path.basename(repo)}).`);
+                } catch (e) {
+                    const error = String(e.stderr || e.message || e).trim().split('\n')[0];
+                    out.errors.push({ path: dir, error });
+                    log.error(`[worktree-cleanup] #${f.ticketId}: falha removendo ${dir}: ${error}`);
+                }
+            }
+            out.rescuedRuns.push(...dropRescuesStillOnDisk(copied));
             out.removed.push(...r.removed);
             out.kept.push(...(r.kept || []));
             out.errors.push(...r.errors);

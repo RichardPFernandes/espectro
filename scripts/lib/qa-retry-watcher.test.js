@@ -33,6 +33,10 @@ global.fetch = async (url) => {
 };
 
 const watcher = require('../readmine-watcher');
+const specAuthority = require('./spec-authority');
+
+process.env.REDMINE_MIN_INTERVAL_MS = '0';
+process.env.REDMINE_RETRY_BASE_DELAY_MS = '0';
 
 function ticket(id, statusId) {
     return {
@@ -107,6 +111,186 @@ test('consumeQaRetrySignals: destino ocupado mantém o sinal e não sobrescreve'
     assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
     assert.ok(fs.existsSync(path.join(dir, 'retry-signal.json')));
     assert.ok(fs.existsSync(path.join(target, 'marker')));
+});
+
+function specBody(text) {
+    return `# Spec\n\n## Objetivo\n\n${text}\n`;
+}
+
+function writeSpecBundle(dir, id, content, { hash = specAuthority.specHash(content), changelogHash = hash, provenance = '{"events":[]}\n', attachment = 'anexo\n' } = {}) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${id}-spec.md`), content);
+    fs.writeFileSync(path.join(dir, `${id}-spec-changelog.json`), JSON.stringify({
+        schema_version: 1, spec_id: String(id), hash_scope: 'legacy_normative',
+        versions: [{ version: 1, hash: changelogHash, hash_scope: 'legacy_normative' }],
+        rebaselines: [],
+    }));
+    fs.writeFileSync(path.join(dir, `${id}-ac-provenance.json`), provenance);
+    fs.mkdirSync(path.join(dir, `${id}-attachments`), { recursive: true });
+    fs.writeFileSync(path.join(dir, `${id}-attachments`, 'nota.txt'), attachment);
+    return hash;
+}
+
+function worktreeOf(id) {
+    return path.join(repo, '.claude', 'worktrees', String(id));
+}
+
+test('consumeQaRetrySignals: pós-merge copia a spec do checkout principal sem sobrescrever o que já existe', async () => {
+    const id = 92010;
+    const content = specBody('tabela de frete destino');
+    const hash = specAuthority.specHash(content);
+    const { taskId, dir } = archived(id, {
+        node: 'implement', status: 'in_progress', qa_retry_count: 1,
+        spec_path: `memory/spec/${id}-spec.md`, spec_hash: hash, spec_hash_scope: 'legacy_normative',
+    });
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), JSON.stringify({ node: 'implement' }));
+    const wtSpec = path.join(worktreeOf(id), 'memory', 'spec');
+    fs.mkdirSync(wtSpec, { recursive: true });
+    fs.writeFileSync(path.join(wtSpec, '111-spec.md'), '# spec antiga commitada\n');
+    fs.writeFileSync(path.join(wtSpec, `${id}-spec-changelog.json`), '{"local":true}\n');
+    writeSpecBundle(path.join(repo, 'memory', 'spec'), id, content, { hash });
+
+    const ids = await watcher.consumeQaRetrySignals();
+    assert.deepStrictEqual(ids, [id]);
+    assert.strictEqual(fs.readFileSync(path.join(wtSpec, `${id}-spec.md`), 'utf8'), content);
+    assert.strictEqual(fs.readFileSync(path.join(wtSpec, '111-spec.md'), 'utf8'), '# spec antiga commitada\n');
+    assert.strictEqual(fs.readFileSync(path.join(wtSpec, `${id}-spec-changelog.json`), 'utf8'), '{"local":true}\n', 'changelog existente não é sobrescrito');
+    assert.strictEqual(fs.readFileSync(path.join(wtSpec, `${id}-ac-provenance.json`), 'utf8'), '{"events":[]}\n');
+    assert.strictEqual(fs.readFileSync(path.join(wtSpec, `${id}-attachments`, 'nota.txt'), 'utf8'), 'anexo\n');
+    const target = path.join(worktreeOf(id), 'memory', 'runs', taskId);
+    assert.ok(!fs.existsSync(path.join(target, 'retry-signal.json')));
+    const st = read(target);
+    assert.strictEqual(st.spec_hash, hash, 'hash do Plan permanece quando a spec copiada é a mesma');
+    assert.ok(st.events.some(e => e.type === 'spec_imported'));
+    assert.strictEqual(st.node, 'implement');
+    assert.strictEqual(st.status, 'in_progress');
+});
+
+test('consumeQaRetrySignals: spec com spec_hash ausente em todo lugar mantém o sinal e não despacha', async () => {
+    const id = 92011;
+    const { dir } = archived(id, {
+        node: 'implement', status: 'in_progress',
+        spec_path: `memory/spec/${id}-spec.md`, spec_hash: 'a'.repeat(64), spec_hash_scope: 'legacy_normative',
+    });
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), JSON.stringify({ node: 'implement' }));
+    fs.mkdirSync(worktreeOf(id), { recursive: true });
+
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    assert.ok(fs.existsSync(path.join(dir, 'retry-signal.json')), 'sinal mantido');
+    assert.ok(!fs.existsSync(path.join(worktreeOf(id), 'memory', 'runs')), 'run não foi para o worktree');
+    assert.strictEqual(read(dir).status, 'in_progress');
+});
+
+test('consumeQaRetrySignals: spec_path fora de memory/spec mantém o sinal e não escreve fora', async () => {
+    const id = 92012;
+    const { dir } = archived(id, {
+        node: 'implement', status: 'in_progress',
+        spec_path: 'memory/spec/../../secret-spec.md', spec_hash: 'b'.repeat(64),
+    });
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), JSON.stringify({ node: 'implement' }));
+    fs.mkdirSync(worktreeOf(id), { recursive: true });
+    const escaped = path.join(repo, 'secret-spec.md');
+
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    assert.ok(fs.existsSync(path.join(dir, 'retry-signal.json')));
+    assert.ok(!fs.existsSync(escaped));
+    assert.ok(!fs.existsSync(path.join(worktreeOf(id), 'memory', 'runs')));
+});
+
+test('consumeQaRetrySignals: symlink de spec que sai de memory/spec não conta como spec e não é copiado', async () => {
+    const id = 92013;
+    const content = specBody('fora de memory/spec');
+    const hash = specAuthority.specHash(content);
+    const outside = path.join(repo, 'fora', `${id}-spec.md`);
+    fs.mkdirSync(path.dirname(outside), { recursive: true });
+    fs.writeFileSync(outside, content);
+    fs.mkdirSync(path.join(repo, 'memory', 'spec'), { recursive: true });
+    fs.symlinkSync(outside, path.join(repo, 'memory', 'spec', `${id}-spec.md`));
+    const { dir } = archived(id, {
+        node: 'implement', status: 'in_progress',
+        spec_path: `memory/spec/${id}-spec.md`, spec_hash: hash,
+    });
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), JSON.stringify({ node: 'implement' }));
+    fs.mkdirSync(path.join(worktreeOf(id), 'memory', 'spec'), { recursive: true });
+
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    assert.ok(fs.existsSync(path.join(dir, 'retry-signal.json')));
+    assert.ok(!fs.existsSync(path.join(worktreeOf(id), 'memory', 'runs')));
+    assert.ok(!fs.existsSync(path.join(worktreeOf(id), 'memory', 'spec', `${id}-spec.md`)));
+    assert.strictEqual(fs.readFileSync(outside, 'utf8'), content);
+});
+
+function driftRun(id, extra = {}) {
+    const taskId = `${id}-entrega`;
+    const dir = path.join(worktreeOf(id), 'memory', 'runs', taskId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(path.join(worktreeOf(id), 'memory', 'spec'), { recursive: true });
+    const state = {
+        task_id: taskId, node: 'implement', history: ['plan'], status: 'in_progress',
+        started_at: UPDATED, updated_at: UPDATED, redmine_ticket: { id },
+        spec_path: `memory/spec/${id}-spec.md`, spec_hash_scope: 'legacy_normative', ...extra,
+    };
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(state));
+    return { taskId, dir, state };
+}
+
+test('runSpecDriftGate: spec ausente no worktree e com o mesmo hash no principal é restaurada', async () => {
+    const id = 92020;
+    const content = specBody('spec do Plan');
+    const hash = specAuthority.specHash(content);
+    writeSpecBundle(path.join(repo, 'memory', 'spec'), id, content, { hash, attachment: 'nao-copiar-no-portao\n' });
+    const { taskId, dir, state } = driftRun(id, { spec_hash: hash });
+
+    const gate = await watcher.runSpecDriftGate(ticket(id, 2), { taskId, state, dir }, 'implement');
+    assert.strictEqual(gate.proceed, true, JSON.stringify(gate));
+    const wtSpec = path.join(worktreeOf(id), 'memory', 'spec');
+    assert.strictEqual(fs.readFileSync(path.join(wtSpec, `${id}-spec.md`), 'utf8'), content);
+    const changelog = JSON.parse(fs.readFileSync(path.join(wtSpec, `${id}-spec-changelog.json`), 'utf8'));
+    assert.strictEqual(changelog.versions[0].hash, hash);
+    assert.ok(!fs.existsSync(path.join(wtSpec, `${id}-attachments`, 'nota.txt')), 'o portão restaura a spec, não o pacote inteiro do retry');
+    const st = read(dir);
+    assert.ok(st.events.some(e => e.type === 'spec_restored'));
+    assert.notStrictEqual(st.status, 'spec-drift');
+});
+
+test('runSpecDriftGate: hash diferente no principal continua spec-drift e não copia a spec', async () => {
+    const id = 92021;
+    const content = specBody('spec diferente');
+    writeSpecBundle(path.join(repo, 'memory', 'spec'), id, content);
+    const { taskId, dir, state } = driftRun(id, { spec_hash: 'c'.repeat(64) });
+
+    const gate = await watcher.runSpecDriftGate(ticket(id, 2), { taskId, state, dir }, 'implement');
+    assert.strictEqual(gate.proceed, false);
+    assert.ok(!fs.existsSync(path.join(worktreeOf(id), 'memory', 'spec', `${id}-spec.md`)));
+    assert.ok(!fs.existsSync(path.join(worktreeOf(id), 'memory', 'spec', `${id}-spec-changelog.json`)));
+    const st = read(dir);
+    assert.strictEqual(st.status, 'spec-drift');
+    assert.ok(!st.events.some(e => e.type === 'spec_restored'));
+});
+
+test('runSpecDriftGate: spec inexistente em todo lugar continua spec-drift', async () => {
+    const id = 92022;
+    const { taskId, dir, state } = driftRun(id, { spec_hash: 'd'.repeat(64) });
+
+    const gate = await watcher.runSpecDriftGate(ticket(id, 2), { taskId, state, dir }, 'implement');
+    assert.strictEqual(gate.proceed, false);
+    const st = read(dir);
+    assert.strictEqual(st.status, 'spec-drift');
+    assert.match(st.spec_drift.reason, /não existe mais/);
+    assert.ok(!st.events.some(e => e.type === 'spec_restored'));
+});
+
+test('runSpecDriftGate: changelog com hash diferente da spec não é restaurado', async () => {
+    const id = 92023;
+    const content = specBody('spec igual changelog diferente');
+    const hash = specAuthority.specHash(content);
+    writeSpecBundle(path.join(repo, 'memory', 'spec'), id, content, { hash, changelogHash: 'e'.repeat(64) });
+    const { taskId, dir, state } = driftRun(id, { spec_hash: hash });
+
+    const gate = await watcher.runSpecDriftGate(ticket(id, 2), { taskId, state, dir }, 'implement');
+    assert.strictEqual(gate.proceed, true, JSON.stringify(gate));
+    assert.strictEqual(fs.readFileSync(path.join(worktreeOf(id), 'memory', 'spec', `${id}-spec.md`), 'utf8'), content);
+    assert.ok(!fs.existsSync(path.join(worktreeOf(id), 'memory', 'spec', `${id}-spec-changelog.json`)));
 });
 
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
