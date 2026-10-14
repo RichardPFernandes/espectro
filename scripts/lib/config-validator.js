@@ -345,8 +345,15 @@ function runsIn(dir, { archived, onlyTicket = null, source }) {
 }
 
 function ticketOfDir(ctx, name) {
-    const m = new RegExp(ctx.contract.worktrees.ticketPattern).exec(name);
-    return m ? m[1] : null;
+    const pattern = ctx.contract?.worktrees?.ticketPattern;
+    if (!pattern || name == null) return null;
+    const m = new RegExp(pattern).exec(String(name));
+    if (!m) return null;
+    // Grupo nomeado `ticket` (nome maior que o id), senão o primeiro grupo.
+    // Padrão sem grupo — o contrato histórico e quem o copiou — usa o match inteiro.
+    if (m.groups && m.groups.ticket) return m.groups.ticket;
+    if (m[1]) return m[1];
+    return m[0];
 }
 
 function collectRuns(ctx) {

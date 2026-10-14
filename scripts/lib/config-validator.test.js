@@ -310,6 +310,39 @@ test('CLI --fix remove worktrees de ciclo encerrado e órfãos, lista quais, pre
     assert.match(r.stdout, /✅ \[worktrees-clean\]/);
 });
 
+test('worktrees-clean: padrão sem grupo de captura ainda identifica o ticket do diretório', () => {
+    const root = makeGitRepo();
+    const contract = JSON.parse(fs.readFileSync(contractOf(root), 'utf8'));
+    contract.worktrees.ticketPattern = '^[A-Za-z0-9][A-Za-z0-9._-]*$';
+    fs.writeFileSync(contractOf(root), JSON.stringify(contract));
+    addWorktree(root, '600');
+    write(root, '.claude/worktrees/600/memory/runs/_archive/600-feito/state.json', state('600-feito', 'fully_merged'));
+    const report = v.validateAll(contractOf(root));
+    const all = failing(report, 'worktrees-clean', 'warning').map(w => w.details.join('\n')).join('\n');
+    assert.match(all, /\.claude\/worktrees\/600 — 600-feito: fully_merged/);
+});
+
+test('worktrees-clean: grupo de captura e grupo nomeado extraem o ticket de um nome maior', () => {
+    const root = makeGitRepo();
+    const contract = JSON.parse(fs.readFileSync(contractOf(root), 'utf8'));
+    contract.worktrees.ticketPattern = '^pre-(\\d+)$';
+    fs.writeFileSync(contractOf(root), JSON.stringify(contract));
+    addWorktree(root, 'pre-601');
+    write(root, 'memory/runs/_archive/601-feito/state.json', state('601-feito', 'completed'));
+
+    const named = makeGitRepo();
+    const namedContract = JSON.parse(fs.readFileSync(contractOf(named), 'utf8'));
+    namedContract.worktrees.ticketPattern = '^(?<prefix>pre)-(?<ticket>\\d+)$';
+    fs.writeFileSync(contractOf(named), JSON.stringify(namedContract));
+    addWorktree(named, 'pre-602');
+    write(named, 'memory/runs/_archive/602-feito/state.json', state('602-feito', 'cancelled'));
+
+    const captured = failing(v.validateAll(contractOf(root)), 'worktrees-clean', 'warning').map(w => w.details.join('\n')).join('\n');
+    const byName = failing(v.validateAll(contractOf(named)), 'worktrees-clean', 'warning').map(w => w.details.join('\n')).join('\n');
+    assert.match(captured, /\.claude\/worktrees\/pre-601 — 601-feito: completed/);
+    assert.match(byName, /\.claude\/worktrees\/pre-602 — 602-feito: cancelled/);
+});
+
 test('--fix mantém worktree de ciclo encerrado com mudança rastreada não commitada', async () => {
     const root = makeGitRepo();
     write(root, 'rastreado.txt', 'a');

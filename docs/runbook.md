@@ -68,7 +68,7 @@ Status do Redmine que o sistema mexe:
 | `state_corrupted` | `state.json` falhou na validação | Não — ver cenário 7 |
 | `spec-invalid`, `spec-pending-approval` | Spec do ticket incompleta | Espera "aceito"/"aprovado" no Redmine |
 | `plan-escalation`, `churn-escalation`, `pre-build-failed` | Portões de qualidade | Espera "aceito" no Redmine ou flag `--aceitar-*` |
-| `spec-drift` | Spec mudou depois do /plan sem aprovação | Espera `spec_change_approved` + `spec_change_hash`, spec revertida ou `node="plan"` |
+| `spec-drift` | Spec mudou depois do /plan sem aprovação, ou a spec sumiu | Espera `spec_change_approved` + `spec_change_hash`, spec revertida, `node="plan"`, ou a mesma spec no checkout principal (o portão restaura e grava `spec_restored`) |
 | `spec-change-pending-approval` | O /implement propôs uma SPEC_CHANGE (ver `spec_change_pending` e `spec-change-audit.json`) | Espera "aprovado" (volta pro /plan) ou "rejeitado" no Redmine/dashboard. Sem Redmine: `node "$PRISMA_ROOT/scripts/lib/spec-change.js" approve\|reject memory/runs/<task-id> --by="<nome>"` |
 | `spec-change-rejected` | SPEC_CHANGE rejeitada, spec intacta | Sim, por mensagem no dashboard (Responder ao agente), interpretada como em `blocked` — ou grave `node="implement"`, `status="in_progress"` para implementar a spec como está |
 | `committed` | `/commit` terminou (PR aberto ou commit local) | Não — terminal |
@@ -420,7 +420,13 @@ faltando, lógica errada).
    para **Recusa QA** com uma nota explicando o que está errado e clique **"Corrigir recusa QA"**
    no dashboard. Esse é o caminho de retrabalho suportado: reaproveita o task-id, traz o run de
    volta pro worktree (recriado), injeta a nota no prompt e reentra em `implement`; o novo
-   `/commit` empurra na mesma branch e o PR se atualiza sozinho.
+   `/commit` empurra na mesma branch e o PR se atualiza sozinho. O worktree recriado não traz
+   `memory/` (gitignored). O retry copia, sem sobrescrever, a spec do ticket e os artefatos ao
+   lado (`*-spec-changelog.json`, `*-ac-provenance.json`, `*-attachments/`) do checkout principal.
+   Se a spec não estiver nos dois e o run tiver `spec_hash`, o sinal fica e o `implement` não
+   é despachado. Se a spec sumir depois, o portão de drift restaura só quando o arquivo do
+   checkout principal tem o mesmo `spec_hash` do Plan (evento `spec_restored`); hash diferente
+   ou spec ausente nos dois continua `spec-drift`.
 
    **b) Correção manual rápida:** recrie o worktree (ou use outro checkout), faça checkout da
    branch `<ticket>`, corrija, commite e `git push` — o PR se atualiza. O `state.json`
