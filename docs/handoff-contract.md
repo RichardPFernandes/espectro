@@ -14,7 +14,7 @@ que continua sendo o estado operacional de cada run com o formato definido em
 contrato referencia aquele arquivo em `context_refs` em vez de reproduzi-lo.
 
 Template: [templates/handoff.yaml.template](../templates/handoff.yaml.template).
-Validador: `node scripts/validate-handoff.js <handoff.yaml|handoff.md> [--check-paths]`.
+Validador: `node scripts/validate-handoff.js <handoff.yaml|handoff.md> [--check-paths] [--pre-done] [--task-type <tipo da tabela>]`.
 
 ### Regras obrigatórias
 
@@ -119,6 +119,8 @@ O receptor roda `node scripts/validate-handoff.js` antes de aceitar o handoff:
 - `WARN` é conferido e registrado, sem bloquear.
 - O validador confere forma e coerência, não verdade: não reexecuta testes. Com
   `--check-paths`, confere que artefatos e evidências citados existem.
+- `--pre-done` é outra invocação (checagem pré-Done, abaixo). Sem essa flag, o
+  resultado da aceitação permanece o mesmo.
 
 ## Estados permitidos
 
@@ -167,7 +169,45 @@ Base: [F31 — Approved Document FINAL](https://linear.app/prisma-app/document/f
 A custódia das evidências segue a aprovação do Richard de 2026-10-12
 (fila de governança, GOV-3, item 3); a exclusividade de merge, a regra aprovada
 em 2026-10-09.
-Esta seção não acrescenta campos ao handoff nem altera o validador.
+A aceitação do handoff não ganha campo obrigatório: sem `--pre-done`, o validador
+ignora `closure`. A checagem pré-Done é invocação separada.
+
+## Checagem pré-Done (maestro-guard)
+
+Antes de uma issue ir para Done, o coordenador roda:
+
+`node scripts/validate-handoff.js <handoff.yaml|handoff.md> --pre-done [--task-type <tipo da tabela>]`
+
+A checagem lê as citações do handoff. Não chama o Linear, não muda status e não
+registra Done. Exit 0 significa que as quatro citações do planejamento Prisma
+estão presentes e persistidas na forma exigida. A confirmação do Richard
+continua obrigatória. Exit 1 recusa essa linha. Exit 3 deixa o Done com o
+Richard porque o tipo não tem critério automático.
+
+O bloco `closure` é opcional na aceitação (1.0 e 1.1). `closure.task_type` usa o
+texto exato da tabela acima. Sem tipo no bloco e sem `--task-type`, a checagem
+não infere. Se os dois vierem preenchidos e divergirem, ela recusa em vez de
+escolher.
+
+| `task_type` | O que a checagem faz |
+| -- | -- |
+| Planejamento/documental — planejamento Prisma | Recusa quando falta Approved Document, Evidence, Handoff FINAL ou Planning Ledger; quando o valor é `UNKNOWN`; quando o caminho está em `/tmp` ou `/private/tmp`; quando Evidence não é o diretório existente `~/Workspace/prisma-evidence/<data>-<frente>/`; quando um arquivo local citado está fora desse diretório; quando o Handoff FINAL é o próprio handoff temporário de transferência. |
+| Demais tipos da tabela | Não aplica critério automático. A saída registra que os critérios adicionais seguem a definir pelo Richard. |
+
+`<data>` é uma data de calendário `AAAA-MM-DD`. `<frente>` é o sufixo do diretório,
+como em `2026-10-12-gov-3`. URL de documento é `https://linear.app/<caminho>`; a
+checagem não abre essa URL. Evidence é diretório local, não URL. A citação do
+Planning Ledger não prova que o ledger foi atualizado. Gates da baseline ficam
+fora desta checagem.
+
+```yaml
+closure:
+  task_type: "Planejamento/documental — planejamento Prisma"
+  approved_document: "https://linear.app/prisma-app/document/..."
+  evidence: "~/Workspace/prisma-evidence/2026-10-14-frente/"
+  handoff_final: "~/Workspace/prisma-evidence/2026-10-14-frente/handoff-final.md"
+  planning_ledger: "https://linear.app/prisma-app/document/..."
+```
 
 ## Responsabilidades do coordenador
 

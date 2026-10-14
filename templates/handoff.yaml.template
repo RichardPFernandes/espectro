@@ -61,3 +61,12 @@ usage:                   # só valores observados; senão UNKNOWN
   duration: "UNKNOWN"
   retries: 0
   tokens: "UNKNOWN"
+
+# closure é lido só por --pre-done. Sem esse bloco, a aceitação do handoff segue igual.
+# task_type usa o texto da tabela em docs/handoff-contract.md.
+# closure:
+#   task_type: "Planejamento/documental — planejamento Prisma"
+#   approved_document: ""
+#   evidence: ""
+#   handoff_final: ""
+#   planning_ledger: ""
