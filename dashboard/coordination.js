@@ -1,5 +1,5 @@
 // Read-only view of coordinator-owned status and subscription capacity.
-const fs = require('fs/promises');
+const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execFile } = require('child_process');
@@ -65,8 +65,24 @@ function normalizeCapacity(rows) {
     if (runtimes.length === 0) return { status: 'unavailable' };
     return { status: 'ok', runtimes };
 }
+// Padrão do operador: só o entrypoint de `npm start` aplica isto, depois do .env.
+// Sem COORD_STATUS_PATH, a instância não observa o arquivo real do usuário.
+function userCoordinationStatusPath(home = os.homedir()) {
+    return path.join(home, '.maestro-guard', 'coord-status.json');
+}
+function applyCoordinationDefault(env, home = os.homedir()) {
+    if (!env.COORD_STATUS_PATH) env.COORD_STATUS_PATH = userCoordinationStatusPath(home);
+    return env.COORD_STATUS_PATH;
+}
+function resolveStatusPath(env) {
+    if (typeof env?.COORD_STATUS_PATH === 'string' && env.COORD_STATUS_PATH) {
+        return { statusPath: path.resolve(env.COORD_STATUS_PATH), ownedDir: null };
+    }
+    const ownedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coord-status-'));
+    return { statusPath: path.join(ownedDir, 'coord-status.json'), ownedDir };
+}
 function createCoordination({ env, broadcast, redact = v => v }) {
-    const statusPath = path.resolve(env.COORD_STATUS_PATH || path.join(os.homedir(), '.maestro-guard', 'coord-status.json'));
+    const { statusPath, ownedDir } = resolveStatusPath(env);
     // A script path, not a shell command: fixed executable and arguments.
     const capacityScript = path.resolve(env.COORD_CAPACITY_SCRIPT || path.join(os.homedir(), 'src', 'maestro-guard', 'capacity', 'capacity.mjs'));
     let cached, expires = 0, pending;
@@ -87,9 +103,9 @@ function createCoordination({ env, broadcast, redact = v => v }) {
         let status;
         try {
             // Bound both parse work and response size. Invalid content is never echoed.
-            const stat = await fs.stat(statusPath);
+            const stat = await fs.promises.stat(statusPath);
             if (!stat.isFile() || stat.size > 1024 * 1024) throw new Error('file');
-            status = validate(JSON.parse(await fs.readFile(statusPath, 'utf8')));
+            status = validate(JSON.parse(await fs.promises.readFile(statusPath, 'utf8')));
         } catch (e) {
             status = e.code === 'ENOENT' ? { ...base, status: 'empty' } : { ...base, status: 'invalid', message: 'Arquivo de coordenação inválido ou ilegível.' };
         }
@@ -102,6 +118,12 @@ function createCoordination({ env, broadcast, redact = v => v }) {
     const ready = new Promise(resolve => { watcher.once('ready', resolve); watcher.once('error', resolve); });
     watcher.on('all', event => { if (['add', 'change', 'unlink'].includes(event)) broadcast({ type: 'coordination_update' }); });
     watcher.on('error', () => broadcast({ type: 'coordination_update' }));
-    return { read, ready, close: () => watcher.close() };
+    return {
+        read, ready, statusPath,
+        close: async () => {
+            await watcher.close();
+            if (ownedDir) await fs.promises.rm(ownedDir, { recursive: true, force: true });
+        },
+    };
 }
-module.exports = { createCoordination, STATES };
+module.exports = { createCoordination, STATES, userCoordinationStatusPath, applyCoordinationDefault };

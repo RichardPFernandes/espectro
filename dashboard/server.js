@@ -4,7 +4,7 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
-const { createCoordination } = require('./coordination');
+const { createCoordination, applyCoordinationDefault } = require('./coordination');
 const { createVersion } = require('./version');
 const fs = require('fs');
 const path = require('path');
@@ -2998,6 +2998,7 @@ function createDashboard(options = {}) {
     return {
         app, server, wss, watcher, memoryDir, worktreesDir, watcherManager, readPrefs,
         get previewManager() { return previewManager; },
+        coordinationStatusPath: coordination.statusPath,
         ready: Promise.all([new Promise(resolve => watcher.on('ready', resolve)), coordination.ready]),
         close: async () => {
             await watcherManager.stop?.();
@@ -3022,6 +3023,9 @@ if (require.main === module) {
     // aprovação da spec) — nada mais desse arquivo.
     loadDotEnv(path.join(consumerRoot, '.env'), [...INTEGRATION_KEYS, ...PREVIEW_KEYS, ...APPROVAL_KEYS, ...PRE_BUILD_KEYS, ...NOTIFY_KEYS,
         'WATCHER_SIBLING_REPOS', 'WATCHER_MAIN_REPO_NAME', 'BITBUCKET_PR_REPOS', 'BITBUCKET_ACCOUNT_ID', 'REDMINE_USER_ID']);
+    // Default do operador só neste processo. Testes que criam o servidor sem
+    // COORD_STATUS_PATH ficam num arquivo temporário (coordination.js).
+    applyCoordinationDefault(process.env);
     const PORT = Number(process.env.PORT) || 3333;
     const HOST = process.env.HOST || '127.0.0.1';
     // Reinício pedido pelo painel Versão: mesmo caminho do SIGTERM (para o watcher e sai).
