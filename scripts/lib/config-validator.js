@@ -674,7 +674,9 @@ function validateAll(configPath = DEFAULT_CONFIG_PATH, opts = {}) {
 // Nunca toca arquivo de configuração. Antes de remover o worktree de um ticket, copia
 // os runs do ticket que moram nele pra memory/runs/_archive/ (mesma coisa que o
 // watcher faz em onTaskFullyMerged / cleanupWorktreesAfterPrOpen) — sem isso o
-// histórico do ciclo sumiria junto. Cópia desfeita se o worktree acabar ficando.
+// histórico do ciclo sumiria junto. A cópia de um diretório só é desfeita se
+// esse diretório continuar no disco — um irmão sujo que fica não apaga o run
+// que só existia no worktree já removido.
 function underWorktrees(worktreesDir, target) {
     const relp = path.relative(realish(worktreesDir), realish(target));
     return !!relp && !relp.startsWith('..') && !path.isAbsolute(relp);
@@ -703,11 +705,22 @@ function rescueTicketRuns(root, ticketId, dirs) {
                 const dst = path.join(archive, r.taskId);
                 fs.mkdirSync(archive, { recursive: true });
                 fs.cpSync(r.dir, dst, { recursive: true });
-                copied.push(dst);
+                copied.push({ dst, source: dir });
             }
         }
     }
     return copied;
+}
+
+// Desfaz só a cópia cujo diretório de origem ainda existe. Devolve os destinos
+// que ficam no arquivo.
+function dropRescuesStillOnDisk(copied) {
+    const kept = [];
+    for (const c of copied) {
+        if (fs.existsSync(c.source)) fs.rmSync(c.dst, { recursive: true, force: true });
+        else kept.push(c.dst);
+    }
+    return kept;
 }
 
 function worktreeIsDirty(dir, exec) {
@@ -754,7 +767,7 @@ async function applyFixes(report, opts = {}) {
                     const stop = opts.stopPreview || stopPreviewViaDashboard;
                     await stop(String(f.ticketId));
                 } catch (e) {
-                    for (const c of copied) fs.rmSync(c, { recursive: true, force: true });
+                    dropRescuesStillOnDisk(copied);
                     for (const d of extras) out.errors.push({ path: d, error: `preview não parou: ${e.message}` });
                     continue;
                 }
@@ -785,9 +798,7 @@ async function applyFixes(report, opts = {}) {
                     log.error(`[worktree-cleanup] #${f.ticketId}: falha removendo ${dir}: ${error}`);
                 }
             }
-            if (realDirs.some(d => fs.existsSync(d))) {
-                for (const c of copied) fs.rmSync(c, { recursive: true, force: true });
-            } else out.rescuedRuns.push(...copied);
+            out.rescuedRuns.push(...dropRescuesStillOnDisk(copied));
             out.removed.push(...r.removed);
             out.kept.push(...(r.kept || []));
             out.errors.push(...r.errors);
