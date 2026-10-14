@@ -110,7 +110,7 @@ function createWatcherManager(options = {}) {
     const redact = createRedactor(envFile, () => options.env || {});
 
     let child = null;
-    let state = 'stopped'; // stopped | running | restarting | stopping
+    let state = 'stopped'; // stopped | starting | running | restarting | stopping
     let error = null;
     let startedAt = null;
     let tickStartedAt = null;
@@ -279,27 +279,37 @@ function createWatcherManager(options = {}) {
     async function start({ reason = 'manual' } = {}) {
         if (stopPromise) await stopPromise;
         if (state !== 'stopped') return status();
-        if (orphanPid) { const pid = orphanPid; orphanPid = null; if (isAlive(pid)) await killOrphan(pid); }
-        if (options.lock !== false) {
-            const res = watcherLock.acquire({ repoPath: repoRoot, role: 'loop', env: {} });
-            if (!res.acquired) {
-                error = 'lock_held';
-                note(`watcher não iniciado: ${res.message}. Pare a outra instância (confira com \`node scripts/lib/watcher-lock.js status --repo=${repoRoot}\`).`, 'ERROR');
-                return status();
+        // Claim antes do killOrphan. Sem isto o estado segue 'stopped' enquanto o
+        // órfão morre, e um POST /api/version/update no mesmo instante passa no
+        // busyReason e move o pin com o Start já em curso.
+        state = 'starting';
+        try {
+            if (orphanPid) { const pid = orphanPid; orphanPid = null; if (isAlive(pid)) await killOrphan(pid); }
+            if (state !== 'starting') return status();
+            if (options.lock !== false) {
+                const res = watcherLock.acquire({ repoPath: repoRoot, role: 'loop', env: {} });
+                if (!res.acquired) {
+                    error = 'lock_held';
+                    state = 'stopped';
+                    note(`watcher não iniciado: ${res.message}. Pare a outra instância (confira com \`node scripts/lib/watcher-lock.js status --repo=${repoRoot}\`).`, 'ERROR');
+                    return status();
+                }
+                if (res.takeover) note(`trava velha retomada (${watcherLock.describeHolder(res.previous)} não está mais vivo)`, 'WARN');
+                loopLock = res;
             }
-            if (res.takeover) note(`trava velha retomada (${watcherLock.describeHolder(res.previous)} não está mais vivo)`, 'WARN');
-            loopLock = res;
+            redact.reset(); // relê os secrets: o .env pode ter mudado desde o último start
+            error = null;
+            restarts = 0;
+            restartTimes = [];
+            startedAt = Date.now();
+            state = 'running';
+            note(`watcher iniciado (${reason}) — um tick a cada ${Math.round(intervalMs / 1000)}s`);
+            record('start', { reason });
+            spawnTick();
+            return status();
+        } finally {
+            if (state === 'starting') state = 'stopped';
         }
-        redact.reset(); // relê os secrets: o .env pode ter mudado desde o último start
-        error = null;
-        restarts = 0;
-        restartTimes = [];
-        startedAt = Date.now();
-        state = 'running';
-        note(`watcher iniciado (${reason}) — um tick a cada ${Math.round(intervalMs / 1000)}s`);
-        record('start', { reason });
-        spawnTick();
-        return status();
     }
 
     function stop({ reason = 'manual' } = {}) {

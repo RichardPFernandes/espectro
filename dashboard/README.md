@@ -91,7 +91,7 @@ processo destacado espera este dashboard sair e sobe o novo (saída em
 `dashboard/version-restart.log` do consumidor), e o atual encerra pelo mesmo caminho
 do SIGTERM (que também para watcher e previews; se travar, sai em 15s). "Em execução" é a revisão do boot do processo; o HEAD em disco aparece à parte quando diverge (bump sem reinício), e aí nova atualização fica bloqueada até reiniciar. Falha devolve o erro e a saída saneada do bump e não reinicia nada.
 As duas variáveis vêm do ambiente do processo (ou de `dashboard/.env`); o `.env` da raiz do consumidor não as fornece. No app-back, quem as exporta é `scripts/prisma-start.sh dashboard`.
-Contrato: `version.openapi.json`; testes: `version-api.test.js`.
+Contrato: `version.openapi.json`, coberto por `openapi-contract-api.test.js`. Testes: `version-api.test.js` e o e2e da aba em `version-ui.test.js`.
 
 ## De onde vêm os runs
 
