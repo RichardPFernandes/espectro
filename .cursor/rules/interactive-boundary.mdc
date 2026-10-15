@@ -1,0 +1,16 @@
+---
+description: Fronteira entre a sessão interativa do Cursor e o estado operacional do Prisma
+alwaysApply: true
+---
+
+# Fronteira interativa
+
+Esta sessão investiga, edita e testa código autorizado. Governança, contratos e o ciclo SDD continuam em `AGENTS.md`, na arquitetura congelada e em `.graph/graph.yaml`.
+
+Estado operacional muda só pelos mecanismos oficiais, em especial `scripts/state-writer.js` e o ciclo Plan → Implement → Review → Test → Verify → Commit. Esta sessão não avança nó do grafo e não grava `state.json`, `spec_hash`, aprovação, invalidação, proveniência, lock ou handoff oficial.
+
+Código autorizado segue editável. Commit, merge e operação destrutiva seguem o processo já existente. Não criar engine, registry, canal ou cópia dos comandos em `.claude/commands/`.
+
+Parecer de subagente desta sessão não é evidência oficial do Prisma. Exemplo permitido: corrigir um teste neste checkout. Exemplo fora da sessão: escrever `memory/runs/<id>/state.json` ou marcar `review` como PASS.
+
+No Cursor, `.cursor/hooks.json` aplica esta fronteira de forma determinística (nega escrita em `memory/runs/`, `state.json`, `state-writer.js`, `invalidate.js` e push em `main`; pede confirmação para commit, push, PR e chamadas que mudam estado no dashboard). Para começar uma issue use `/prisma-issue PRI-NNN`; para testar, `/prisma-tests`.

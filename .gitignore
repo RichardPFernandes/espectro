@@ -13,6 +13,12 @@ coverage/
 *.p12
 *.pfx
 
+# Cursor: .cursor/rules permanece versionável. MCP e override local não.
+.cursor/mcp.json
+.cursor/**/mcp.json
+.cursor/*.local.json
+.cursor/**/*.local.json
+
 # Estado/índices locais conhecidos: esta lista não escolhe onde eles devem residir
 memory/runs/
 memory/archive/
