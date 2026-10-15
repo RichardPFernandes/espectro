@@ -35,6 +35,10 @@ const REQUIRED = {
     commit: ['expected_state_version', 'expected_node', 'execution_id'],
     archive: ['expected_state_version', 'expected_node', 'execution_id'],
     qa_retry: ['expected_state_version', 'operation_id'],
+    // Pedido de autorização (scripts/lib/authorization.js): aprovar/recusar/"já apliquei"
+    // e devolver ao QA são só do dashboard, sempre com a versão da tela e o clique.
+    authorization_decision: ['expected_state_version', 'operation_id'],
+    qa_handback: ['expected_state_version', 'operation_id'],
 };
 
 // type gravado em processed_operations[] por operação humana.
@@ -43,6 +47,8 @@ const OPERATION_TYPES = {
     spec_approval: 'SPEC_APPROVAL',
     spec_change_approval: 'SPEC_CHANGE_APPROVAL',
     qa_retry: 'QA_RETRY',
+    authorization_decision: 'AUTHORIZATION_DECISION',
+    qa_handback: 'QA_HANDBACK',
 };
 
 class CASError extends Error {

@@ -28,7 +28,7 @@ const stateWriter = require('../state-writer');
 const GRAPH_PATH = path.join(__dirname, '..', '..', '.graph', 'graph.yaml');
 // Fallback se .graph/graph.yaml não puder ser lido — mesmos valores de hoje.
 const DEFAULT_MAX_RETRIES = { review: 3, test: 3, verify: 2 };
-const CHECKPOINT_STATUSES = new Set(['blocked', 'needs_human_review', 'spec-invalid', 'spec-drift', 'spec-change-pending-approval']);
+const CHECKPOINT_STATUSES = new Set(['blocked', 'needs_human_review', 'spec-invalid', 'spec-drift', 'spec-change-pending-approval', 'authorization-pending']);
 
 let maxRetriesCache = null;
 // Parser mínimo (sem dependência de YAML): pares `- id: <nó>` / `max_retries: N`.

@@ -327,6 +327,44 @@ async function applyExternalEffect(attemptFile, { obligationId, idempotencyKey, 
     return { ok: fulfilled, error: fulfilled ? null : 'EFFECT_FAILED', retry: false, duplicate: false, performed: true, status };
 }
 
+// Desfecho explícito de um Attempt de efeito (db-effect, handback_qa): COMPLETE, FAILED
+// ou UNCERTAIN. Não mexe em owner/snapshot (saveFrozen) nem nas obligations — quem
+// decide PASS continua sendo summarize; isto só registra que a tentativa acabou e como.
+const CLOSE_RESULTS = new Set(['COMPLETE', 'FAILED', 'UNCERTAIN']);
+function closeAttempt(attemptFile, { result, reason = null } = {}) {
+    if (!CLOSE_RESULTS.has(result)) throw new TypeError(`closeAttempt: resultado inválido ${result}`);
+    const { attempt, saved } = loadForUpdate(attemptFile);
+    attempt.result = result;
+    attempt.closed_at = new Date().toISOString();
+    attempt.close_reason = reason;
+    saveFrozen(attemptFile, attempt, saved);
+    return attempt;
+}
+
+// PUT/POST no Redmine como efeito governado: chave no header X-Redmine-API-Key (sem
+// ela o Redmine responde 401 e o Attempt seria revogado), idempotência pela chave e
+// 401/403 revogando. Usado pela CLI redmine-effect (/commit) e, em processo, pelo
+// handback ao QA (scripts/lib/qa-handback.js). Devolve também o corpo (truncado) da
+// resposta, para o caller explicar um 422.
+async function redmineEffect(attemptFile, { url, method = 'PUT', body, obligationId = 'redmine_notes', idempotencyKey = null, env = process.env, fetchImpl = null } = {}) {
+    const key = idempotencyKey || crypto.createHash('sha256').update(`${method}\n${url}\n${body}`).digest('hex');
+    const apiKey = String(env.REDMINE_API_KEY || '').trim();
+    if (!apiKey) return { ok: false, error: 'REDMINE_API_KEY_MISSING', performed: false, duplicate: false };
+    const { createRedmineFetch } = require('./redmine-fetch');
+    const redmineFetch = createRedmineFetch({ env, ...(fetchImpl ? { fetch: fetchImpl } : {}) });
+    let responseText = null;
+    const result = await applyExternalEffect(attemptFile, {
+        obligationId,
+        idempotencyKey: key,
+        perform: async () => {
+            const response = await redmineFetch(url, { method, body, headers: { 'X-Redmine-API-Key': apiKey, 'Content-Type': 'application/json' } });
+            responseText = await response.text();
+            return { status: response.status, ok: response.ok, detail: responseText.slice(0, 500) };
+        },
+    });
+    return { ...result, key, body: responseText };
+}
+
 // Exit 0 de um nó que não é commit cumpre execute_node. Commit fica com as
 // obrigações externas, gravadas pelos scripts de push/PR/Redmine. Chamar de
 // novo com a mesma chave não duplica o effect. code null (despacho detached
@@ -429,28 +467,16 @@ async function main(argv) {
         const url = argValue(argv, '--url');
         const method = argValue(argv, '--method') || 'PUT';
         const body = fs.readFileSync(0, 'utf8');
-        const key = idempotencyKey || crypto.createHash('sha256').update(`${method}\n${url}\n${body}`).digest('hex');
         // A chave vai no header, como em todo outro call site do Redmine (watcher,
         // dashboard). Sem ela o Redmine responde 401 e applyExternalEffect revoga o
         // Attempt — foi o que travou o "Ag Merge" de todos os /commit desde o PRI-66.
         // Chave ausente é erro de configuração, não autoridade revogada: sai antes do
         // efeito, sem gravar falha nem revogar.
-        const apiKey = String(process.env.REDMINE_API_KEY || '').trim();
-        if (!apiKey) {
+        const result = await redmineEffect(attemptFile, { url, method, body, obligationId: obligationId || 'redmine_notes', idempotencyKey });
+        if (result.error === 'REDMINE_API_KEY_MISSING') {
             process.stderr.write('ERROR: REDMINE_API_KEY ausente no ambiente — Redmine não foi chamado.\n');
             process.exit(1);
         }
-        const { createRedmineFetch } = require('./redmine-fetch');
-        const redmineFetch = createRedmineFetch({ env: process.env });
-        const result = await applyExternalEffect(attemptFile, {
-            obligationId: obligationId || 'redmine_notes',
-            idempotencyKey: key,
-            perform: async () => {
-                const response = await redmineFetch(url, { method, body, headers: { 'X-Redmine-API-Key': apiKey, 'Content-Type': 'application/json' } });
-                const text = await response.text();
-                return { status: response.status, ok: response.ok, detail: text.slice(0, 500) };
-            },
-        });
         if (result.duplicate) {
             process.stdout.write('DUPLICATE\n');
             return;
@@ -469,7 +495,7 @@ async function main(argv) {
 module.exports = {
     beginAttempt, retryAttempt, prepareDispatch, causeFromState, spawnIfAdmitted,
     readAttempt, recordEffect, revoke, authorizeEffect, applyExternalEffect, summarize,
-    fulfillOnExit, obligationsFor, listAttempts,
+    fulfillOnExit, obligationsFor, listAttempts, closeAttempt, redmineEffect,
 };
 
 if (require.main === module) {

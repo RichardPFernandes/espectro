@@ -33,6 +33,8 @@ const acProvenance = require('./lib/ac-provenance');
 const specAuthority = require('./lib/spec-authority');
 const specArtifacts = require('./lib/spec-artifacts');
 const specChange = require('./lib/spec-change');
+// Pedido de autorização humana estruturado (status authorization-pending, PRI-180).
+const authorization = require('./lib/authorization');
 const cleanupRuns = require('./cleanup-runs');
 const stateWriter = require('./state-writer');
 const cas = require('./cas');
@@ -343,7 +345,7 @@ function findLocallyActiveTicketIds() {
         .map(d => Number(d.name));
     return ids.filter(id => {
         const active = findActiveTask(id);
-        return active && (active.corrupted || active.state.status !== 'committed');
+        return active && (active.corrupted || !['committed', 'handed_back_qa'].includes(active.state.status));
     });
 }
 
@@ -1058,6 +1060,13 @@ async function interpretBlockedHumanInput(ticket, active) {
         }
         Object.assign(s, { status: 'in_progress', node: decision.node, updated_at: at });
         delete s.blocked_reason;
+        // Pedido de autorização que falhou/ficou incerto não é aprovado por mensagem: a
+        // retomada só o tira de cena (histórico). Aprovar é só pelo dashboard.
+        if (s.pending_authorization) {
+            s.authorization_history = [...(Array.isArray(s.authorization_history) ? s.authorization_history : []),
+                { id: s.pending_authorization.id, event: 'superseded', by: 'human_input', via: 'watcher', at, phase: s.pending_authorization.phase }];
+            delete s.pending_authorization;
+        }
     };
     try {
         if (decision.action === 'resume') {
@@ -1123,7 +1132,10 @@ async function notifyBlocked(ticket, taskId, node, status, dir, state, noteOverr
     const note = noteOverride || lastAgentNote(state) || '(sem nota do agente no agent_log — ver handoff.md/context.md do worktree pro detalhe.)';
     // Só blocked/escalated/spec-change-rejected destravam por mensagem (interpretBlockedHumanInput); os outros
     // status exigem mexer no state.json. Comentário aqui no Redmine não é lido pelo watcher.
-    const howToResume = HUMAN_INPUT_RESUMABLE_STATUSES.has(status)
+    const howToResume = status === authorization.STATUS
+        ? `Decida no dashboard, como aprovador cadastrado: Aprovar escolhendo o banco (o Prisma executa o SQL governado e confere antes/depois), ` +
+          `Recusar ou "Já apliquei manualmente". Mensagem livre (dashboard ou Redmine) não aprova.`
+        : HUMAN_INPUT_RESUMABLE_STATUSES.has(status)
         ? `Responda pelo dashboard (Responder ao agente): o watcher interpreta a mensagem e só retoma ` +
           `se ficar claro que é pra seguir — senão responde com o que entendeu e a task continua parada.`
         : `Para retomar, ajuste status/node em memory/runs/${taskId}/state.json no worktree deste ticket ` +
@@ -3811,6 +3823,21 @@ async function dispatchTicket(ticket) {
         console.log(`Task ${taskId}: nó "${node}" em execução ${nodeLease.describeRunning(state)} — não redespacho.`);
         return { action: 'skip', reason: 'no_em_execucao', taskId, node, agentPid: state.agent_pid ?? null, since: state.node_started_at ?? null };
     }
+    // authorization-pending: pedido estruturado de ação privilegiada (scripts/lib/authorization.js).
+    // Não redespacha, não interpreta mensagem livre (não está em HUMAN_INPUT_RESUMABLE_STATUSES)
+    // e comenta no Redmine uma vez; a decisão é só pelos endpoints do dashboard. Antes dos
+    // portões: nenhum deles mexe num run que espera decisão humana sobre efeito externo.
+    if (status === authorization.STATUS) {
+        const p = state.pending_authorization;
+        console.warn(`Task ${taskId}: aguardando autorização humana ${p?.id || '?'} (${p?.kind || '?'}, fase ${p?.phase || '?'}) — não despacho.`);
+        if (!DRY_RUN) {
+            const note = p
+                ? `Pedido de autorização ${p.id} (${p.kind}): ${p.summary}\nAlvo sugerido: ${p.target_hint?.alias || '—'} (o banco é escolhido por quem aprova). Artefato: ${p.artifact} (sha256 ${String(p.artifact_sha256 || '').slice(0, 12)}…). Esperado depois: ${p.expected}.`
+                : null;
+            await notifyBlocked(ticket, taskId, node, status, dir, state, note);
+        }
+        return { action: 'skip', reason: 'status_authorization_pending', taskId, node, authorization: p?.id || null };
+    }
     // Transição de contrato registrada para o run (scripts/invalidate.js — journal
     // pending-invalidation.jsonl, casos B e C): o nó terminou (sucesso ou falha) — aplica a
     // invalidação antes de despachar qualquer outro nó; a task volta para o /plan.
@@ -3847,6 +3874,10 @@ async function dispatchTicket(ticket) {
     if (status === 'interrupted') {
         console.warn(`Task ${taskId}: interrompida via SIGTERM no nó "${state.activeNodeAtInterruption || node}" em ${state.interruptedAt || '?'} — retome manualmente (status="in_progress" no state.json).`);
         return { action: 'skip', reason: 'status_interrupted', taskId, node };
+    }
+    if (status === 'handed_back_qa') {
+        console.warn(`Task ${taskId}: status "handed_back_qa" mas ainda em memory/runs/ (não arquivada) — a devolução ao QA não terminou o arquivamento.`);
+        return { action: 'skip', reason: 'handback_nao_arquivada', taskId };
     }
     if (status === 'committed') {
         console.warn(`Task ${taskId}: status "committed" mas ainda em memory/runs/ (não arquivada) — inconsistência, verifique o /commit desta task.`);
