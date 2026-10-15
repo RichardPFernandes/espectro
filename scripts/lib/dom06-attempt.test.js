@@ -239,3 +239,55 @@ test('exit 0 cumpre execute_node; commit, código diferente de 0 e repetição n
     }), false);
     assert.ok(dom06.readAttempt(commit.attemptFile).obligations.every(item => item.status === 'pending'));
 });
+
+// Regressão (#43511, #43782, #43812, #43819): o redmine-effect mandava o PUT sem
+// X-Redmine-API-Key, o Redmine respondia 401 e o Attempt era revogado — nenhum
+// /commit movia o ticket pra "Ag Merge". O Redmine falso aqui exige a chave.
+test('redmine-effect manda X-Redmine-API-Key do ambiente; sem chave não chama nem revoga', async () => {
+    const http = require('http');
+    const { execFile } = require('child_process');
+    const KEY = 'chave-falsa-redmine-effect';
+    const seen = [];
+    const server = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', c => { body += c; });
+        req.on('end', () => {
+            seen.push({ method: req.method, url: req.url, key: req.headers['x-redmine-api-key'] || null, body });
+            res.writeHead(req.headers['x-redmine-api-key'] === KEY ? 204 : 401);
+            res.end();
+        });
+    });
+    await new Promise(r => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${server.address().port}/issues/1.json`;
+    const cli = (attemptFile, env) => new Promise(resolve => {
+        const child = execFile(process.execPath, [path.join(__dirname, 'dom06-attempt.js'), 'redmine-effect',
+            '--attempt', attemptFile, '--obligation', 'redmine_status', '--url', url, '--method', 'PUT'],
+        { env: { PATH: process.env.PATH, REDMINE_RETRY_MAX_ATTEMPTS: '1', REDMINE_MIN_INTERVAL_MS: '0', ...env } },
+        (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr }));
+        child.stdin.end('{"issue":{"status_id":20}}');
+    });
+    const begin = () => dom06.beginAttempt(runDir(), {
+        node: 'commit',
+        admission: { ...admitted, snapshot: { ...snapshot, node: 'commit' } },
+        obligations: dom06.obligationsFor('commit'),
+    }).attemptFile;
+    try {
+        const semChave = begin();
+        const r1 = await cli(semChave, {});
+        assert.strictEqual(r1.code, 1, r1.stderr);
+        assert.match(r1.stderr, /REDMINE_API_KEY ausente/);
+        assert.strictEqual(seen.length, 0, 'sem chave o Redmine não é chamado');
+        assert.notStrictEqual(dom06.readAttempt(semChave).authority, 'revoked');
+
+        const comChave = begin();
+        const r2 = await cli(comChave, { REDMINE_API_KEY: KEY });
+        assert.strictEqual(r2.code, 0, r2.stderr);
+        assert.strictEqual(r2.stdout.trim(), 'OK');
+        assert.deepStrictEqual(seen.map(s => [s.method, s.key, s.body]), [['PUT', KEY, '{"issue":{"status_id":20}}']]);
+        const summary = dom06.summarize(dom06.readAttempt(comChave));
+        assert.strictEqual(summary.obligations.find(o => o.id === 'redmine_status').status, 'fulfilled');
+        assert.notStrictEqual(dom06.readAttempt(comChave).authority, 'revoked');
+    } finally {
+        server.close();
+    }
+});

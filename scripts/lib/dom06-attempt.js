@@ -430,13 +430,23 @@ async function main(argv) {
         const method = argValue(argv, '--method') || 'PUT';
         const body = fs.readFileSync(0, 'utf8');
         const key = idempotencyKey || crypto.createHash('sha256').update(`${method}\n${url}\n${body}`).digest('hex');
+        // A chave vai no header, como em todo outro call site do Redmine (watcher,
+        // dashboard). Sem ela o Redmine responde 401 e applyExternalEffect revoga o
+        // Attempt — foi o que travou o "Ag Merge" de todos os /commit desde o PRI-66.
+        // Chave ausente é erro de configuração, não autoridade revogada: sai antes do
+        // efeito, sem gravar falha nem revogar.
+        const apiKey = String(process.env.REDMINE_API_KEY || '').trim();
+        if (!apiKey) {
+            process.stderr.write('ERROR: REDMINE_API_KEY ausente no ambiente — Redmine não foi chamado.\n');
+            process.exit(1);
+        }
         const { createRedmineFetch } = require('./redmine-fetch');
         const redmineFetch = createRedmineFetch({ env: process.env });
         const result = await applyExternalEffect(attemptFile, {
             obligationId: obligationId || 'redmine_notes',
             idempotencyKey: key,
             perform: async () => {
-                const response = await redmineFetch(url, { method, body, headers: { 'Content-Type': 'application/json' } });
+                const response = await redmineFetch(url, { method, body, headers: { 'X-Redmine-API-Key': apiKey, 'Content-Type': 'application/json' } });
                 const text = await response.text();
                 return { status: response.status, ok: response.ok, detail: text.slice(0, 500) };
             },
