@@ -62,6 +62,12 @@ const runsExporter = require('../scripts/lib/runs-exporter');
 const transcriptWriter = require('../scripts/lib/transcript-writer');
 // Webhook de notificação (NOTIFY_WEBHOOK_URL) — mesmo módulo que o watcher usa.
 const notify = require('../scripts/notify');
+// Pedido de autorização humana (Aprovar/Recusar/Já apliquei), SQL governado (db-effect) e
+// devolução ao QA sem código (PRI-180) — ver docs/runbook.md, "Autorização humana".
+const authorization = require('../scripts/lib/authorization');
+const dbEffect = require('../scripts/lib/db-effect');
+const qaHandback = require('../scripts/lib/qa-handback');
+const approvers = require('../scripts/lib/approvers');
 const REPLAY_SCRIPT = path.join(__dirname, '..', 'scripts', 'replay-cycle.js');
 
 // .env do próprio dashboard (cp .env.example .env). Nunca sobrescreve env já setada.
@@ -82,7 +88,7 @@ function loadDotEnv(envPath, only) {
         }
         // `KEY=` vazio não conta: deixa o fallback (.env do repo) valer.
         if (!value) continue;
-        if (only && !only.includes(key)) continue;
+        if (only && !(typeof only === 'function' ? only(key) : only.includes(key))) continue;
         if (!(key in process.env)) process.env[key] = value;
     }
 }
@@ -99,6 +105,11 @@ const APPROVAL_KEYS = ['SPEC_APPROVAL_KEYWORD', 'SPEC_REJECTION_KEYWORD'];
 const PRE_BUILD_KEYS = ['PRE_BUILD_COMMAND', 'PRE_BUILD_JAVA_HOME', 'PRE_BUILD_TIMEOUT_MS', 'WATCHER_CLAUDE_CONFIG_DIR'];
 // Webhook de notificação do watcher (scripts/notify.js) — botão "Testar Notificação".
 const NOTIFY_KEYS = ['NOTIFY_WEBHOOK_URL'];
+// Allowlist de bancos do db-effect (só a referência ao segredo; a senha fica no Keychain),
+// aprovadores (hash), binário do psql, ids do handback ao QA e — fallback documentado,
+// desaconselhado — senhas por env (sempre PRISMA_DB_*PASSWORD: casa com a redação).
+const AUTHORIZATION_KEYS = key => ['PRISMA_DB_TARGETS', 'PRISMA_DB_TARGETS_FILE', 'PRISMA_PSQL_BIN', 'PRISMA_APPROVERS', 'PRISMA_APPROVERS_FILE',
+    'REDMINE_STATUS_AG_TESTE', 'REDMINE_CF_APONTAMENTOS_ID'].includes(key) || dbEffect.PASSWORD_ENV_RE.test(key);
 const FETCH_TIMEOUT_MS = 10000;
 // Reserva de aprovação (cas.reserveOperation) de dashboard que morreu no meio: vence
 // depois disso e o próximo clique confere o ticket antes de repostar.
@@ -157,8 +168,8 @@ function extractPrs(pr, primaryRepo = null) {
 // spec-change-pending-approval / spec-change-rejected: o /implement propôs uma SPEC_CHANGE
 // (scripts/lib/spec-change.js) — esperando aprovação no Redmine / rejeitada, parado até
 // alguém decidir.
-const MOVING_STATUSES = ['in_progress', 'running', 'interrupted', 'blocked', 'escalated', 'needs_human_review', 'spec-pending-approval', 'spec-draft', 'plan-escalation', 'churn-escalation', 'spec-drift', 'spec-change-pending-approval', 'spec-change-rejected'];
-const TERMINAL_STATUSES = ['committed', 'fully_merged', 'done', 'closed', 'archived'];
+const MOVING_STATUSES = ['in_progress', 'running', 'interrupted', 'blocked', 'escalated', 'needs_human_review', 'spec-pending-approval', 'spec-draft', 'plan-escalation', 'churn-escalation', 'spec-drift', 'spec-change-pending-approval', 'spec-change-rejected', 'authorization-pending'];
+const TERMINAL_STATUSES = ['committed', 'fully_merged', 'done', 'closed', 'archived', 'handed_back_qa'];
 function deriveRunKind(state) {
     if (!state) return 'unknown';
     if (MOVING_STATUSES.includes(state.status)) return 'active';
@@ -391,7 +402,9 @@ function createDashboard(options = {}) {
         if (!state) return 'unknown';
         const s = state.status;
         // fully_merged = committed com todos os PRs mergeados (polling de PRs do watcher).
-        if (s === 'committed' || s === 'fully_merged') return 'committed';
+        if (s === 'committed' || s === 'fully_merged' || s === 'handed_back_qa') return 'committed';
+        // authorization-pending: pedido de autorização humana (scripts/lib/authorization.js) — Aprovar/Recusar no detalhe.
+        if (s === 'authorization-pending') return 'awaiting_approval';
         if (s === 'blocked' || s === 'escalated' || s === 'needs_human_review' || s === 'interrupted' || s === 'session_limit' || s === 'plan-escalation' || s === 'churn-escalation' || s === 'spec-drift' || s === 'spec-change-rejected' || state.node === 'escalated') return 'needs_human_review';
         if (s === 'spec-pending-approval' || s === 'spec-draft' || s === 'spec-change-pending-approval') return 'awaiting_approval';
         // pre-build-failed: portão de build do watcher (runPreBuildGate) — mvn compile falhou antes do implement.
@@ -1780,6 +1793,213 @@ function createDashboard(options = {}) {
         res.json({ ok: true, taskId: run.taskId, kind, from: reg[run.taskId].from, to: reg[run.taskId].to });
     });
 
+    // ---------------------------------------------------------------------------
+    // Autorização humana (PRI-180). O agente registra pending_authorization pela CLI
+    // (scripts/lib/authorization.js request); a decisão é SÓ por estes endpoints, com CAS
+    // (expected_state_version + operation_id) e quem/quando em authorization_history.
+    // Aprovar executa o artefato como efeito governado (scripts/lib/db-effect.js, Attempt
+    // DOM06) aqui, no processo do dashboard, e só nesta chamada — nenhum estado gravado
+    // dispara SQL. Sucesso segue o `then` do pedido (retomar num nó ou devolver ao QA).
+    const authorizing = new Set();
+    const dbExecutor = options.dbExecutor || null;           // injetável nos testes (nunca banco real)
+    const handbackFetch = options.handbackFetch || null;     // idem, Redmine
+    // Aprovador: nome + senha de aprovação (hash scrypt em PRISMA_APPROVERS / arquivo,
+    // scripts/lib/approvers.js) em TODA ação privilegiada — o dashboard não tem login e
+    // qualquer página que alcance a porta faria POST. Sem credencial → 401; errada → 403;
+    // nada cadastrado → 403 (fail closed). 5 erros em 5 min por nome → 429.
+    const approverFailures = new Map(); // nome → [timestamps]
+    function requireApprover(req, res) {
+        const name = typeof req.body?.approver === 'string' ? req.body.approver.trim() : '';
+        const password = typeof req.body?.approver_password === 'string' ? req.body.approver_password : '';
+        const recent = (approverFailures.get(name) || []).filter(t => Date.now() - t < 5 * 60 * 1000);
+        if (recent.length >= 5) { res.status(429).json({ ok: false, code: 'TOO_MANY_ATTEMPTS', error: 'muitas tentativas erradas — espere alguns minutos' }); return null; }
+        const v = approvers.verify(name, password, consumerEnv);
+        if (v.ok) { approverFailures.delete(name); return v.name; }
+        if (v.code === 'DENIED') approverFailures.set(name, [...recent, Date.now()]);
+        res.status(v.code === 'MISSING' ? 401 : 403).json({ ok: false, code: v.code === 'MISSING' ? 'APPROVER_REQUIRED' : v.code === 'NO_APPROVERS' ? 'NO_APPROVERS' : 'APPROVER_DENIED', error: v.error });
+        return null;
+    }
+    function pushRun(taskId) {
+        const fresh = resolveRun(taskId);
+        if (fresh) {
+            const summary = summarizeAny(fresh);
+            broadcast({ type: 'state_update', taskId, state: summary.state, run: summary });
+        }
+        broadcast({ type: 'runs_changed' });
+    }
+    function afterHandbackArchive(run) {
+        runsCache.get(run.root.dir)?.names.delete(run.taskId);
+        broadcast({ type: 'runs_changed' });
+        scanArchivedOpen().catch(() => {});
+    }
+    function handbackFor(run, by) {
+        return (runDir, ctx) => qaHandback.handback(runDir, {
+            by, operationId: ctx.operationId, authorization: ctx.authorization, env: consumerEnv, fetchImpl: handbackFetch,
+            onArchived: () => afterHandbackArchive(run),
+        });
+    }
+    // Run onde a decisão faz sentido: ativo, com state.json, sem agente rodando.
+    function authorizationRun(req, res) {
+        const run = withRun(req, res);
+        if (!run) return null;
+        if (run.archived || run.pretask) { res.status(409).json({ error: 'run arquivado ou sem task: nada a decidir' }); return null; }
+        const state = readJson(path.join(run.dir, 'state.json'));
+        if (!state) { res.status(404).json({ error: 'state.json ausente ou inválido' }); return null; }
+        if (state.status === 'running') { res.status(409).json({ error: 'há um nó rodando neste run agora' }); return null; }
+        if (authorizing.has(run.taskId)) { res.status(409).json({ error: 'outra decisão deste run está em andamento' }); return null; }
+        return { run, state };
+    }
+    function sendAuthorizationError(res, e) {
+        if (sendConflict(res, e)) return true;
+        if (e instanceof authorization.AuthorizationError) { res.status(409).json({ ok: false, code: e.code, error: e.message }); return true; }
+        return false;
+    }
+    const canHandback = state => ['blocked', authorization.STATUS].includes(state?.status) && state?.pending_authorization?.phase !== 'executing';
+
+    app.get('/api/runs/:taskId/authorization', (req, res) => {
+        const run = withRun(req, res);
+        if (!run) return;
+        const state = run.pretask ? null : readJson(path.join(run.dir, 'state.json'));
+        if (!state) return res.status(404).json({ error: 'state.json ausente ou inválido' });
+        const p = state.pending_authorization || null;
+        // Sem dados de alvo aqui (a lista de bancos só sai para aprovador autenticado).
+        let artifact = null;
+        if (p) {
+            const a = dbEffect.readArtifact(p, { roots: authorization.rootsFor(run.dir) });
+            artifact = a.ok
+                ? { path: p.artifact, content: redact(a.sql.slice(0, 200000)), truncated: a.sql.length > 200000, sha256_now: a.sha, matches: a.sha === p.artifact_sha256 }
+                : { path: p.artifact, error: a.error };
+        }
+        const executor = (dbExecutor || dbEffect.createChildExecutor({ env: consumerEnv, consumerRoot: repoRoot })).available?.() || { ok: true };
+        res.json({
+            taskId: run.taskId, status: state.status, pending: p ? redactDeep(p) : null,
+            history: redactDeep(Array.isArray(state.authorization_history) ? state.authorization_history : []),
+            artifact, executor,
+            approvers_configured: Object.keys(approvers.loadApprovers(consumerEnv).approvers).length > 0,
+            handback: { available: !run.archived && canHandback(state), preview: canHandback(state) ? redactDeep(qaHandback.preview(run.dir)) : null },
+        });
+    });
+
+    // Bancos da allowlist para o seletor do Aprovar — só para aprovador autenticado; só
+    // alias, rótulo, ambiente e host/banco mascarados (display "visible" mostra).
+    app.post('/api/authorization/targets', (req, res) => {
+        if (!requireApprover(req, res)) return;
+        const out = dbEffect.publicTargets(consumerEnv, { consumerRoot: repoRoot });
+        res.json({ ok: !out.error, targets: out.targets, error: out.error });
+    });
+
+    async function decideAndExecute(req, res, mode) {
+        const ctx = authorizationRun(req, res);
+        if (!ctx) return;
+        const by = requireApprover(req, res);
+        if (!by) return;
+        const { run, state } = ctx;
+        const expect = humanExpect(req, state);
+        const operationId = operationIdOf(req);
+        authorizing.add(run.taskId);
+        try {
+            let dec;
+            try {
+                const targetAlias = typeof req.body?.target_alias === 'string' ? req.body.target_alias : null;
+                const args = { by, operationId, expectedStateVersion: expect.expected_state_version, authorizationId: req.body?.authorization_id, targetAlias, env: consumerEnv };
+                dec = mode === 'apply'
+                    ? authorization.approve(run.dir, { ...args, artifactSha256: req.body?.artifact_sha256 })
+                    : authorization.markManual(run.dir, { ...args, note: typeof req.body?.note === 'string' ? req.body.note.slice(0, 2000) : null });
+                if (dec.status !== 'already_processed') console.log(`[dashboard] autorização ${mode === 'apply' ? 'aprovada' : 'manual'} em ${run.taskId} por ${by}${targetAlias ? ` (alvo ${targetAlias})` : ''}`);
+            } catch (e) {
+                if (sendAuthorizationError(res, e)) return;
+                throw e;
+            }
+            if (dec.status === 'already_processed') return res.json({ ok: true, status: 'already_processed', operation_id: operationId });
+            pushRun(run.taskId);
+            const out = await authorization.execute(run.dir, {
+                mode: mode === 'apply' ? 'apply' : 'verify', verify: req.body?.verify !== false,
+                env: consumerEnv, executor: dbExecutor, handback: handbackFor(run, by),
+            });
+            pushRun(run.taskId);
+            const body = {
+                ok: out.ok, taskId: run.taskId, by, target: out.result?.target?.alias || null, then: out.then || null, node: out.node || null,
+                outcome: out.result?.outcome || null, code: out.result?.code || null, outputs: out.result?.outputs || null,
+                handback: out.handback ? { ok: out.handback.ok, archived: !!out.handback.archived, error: out.handback.error || null } : null,
+                error: out.ok ? null : redact(out.error || 'falha'),
+            };
+            res.status(out.ok ? 200 : 502).json(body);
+        } catch (e) {
+            if (sendAuthorizationError(res, e)) return;
+            console.error(`[dashboard] autorização (${mode}) de ${run.taskId}: ${redact(e.message)}`);
+            res.status(500).json({ error: redact(`Falha na autorização: ${e.message}`) });
+        } finally {
+            authorizing.delete(run.taskId);
+        }
+    }
+    app.post('/api/runs/:taskId/authorization/approve', (req, res) => decideAndExecute(req, res, 'apply'));
+    app.post('/api/runs/:taskId/authorization/manual', (req, res) => decideAndExecute(req, res, 'manual'));
+    app.post('/api/runs/:taskId/authorization/reject', (req, res) => {
+        const ctx = authorizationRun(req, res);
+        if (!ctx) return;
+        const by = requireApprover(req, res);
+        if (!by) return;
+        const { run, state } = ctx;
+        const expect = humanExpect(req, state);
+        const operationId = operationIdOf(req);
+        try {
+            const out = authorization.reject(run.dir, {
+                by, reason: typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 2000) : '',
+                operationId, expectedStateVersion: expect.expected_state_version, authorizationId: req.body?.authorization_id,
+            });
+            if (out.status === 'already_processed') return res.json({ ok: true, status: 'already_processed', operation_id: operationId });
+        } catch (e) {
+            if (sendAuthorizationError(res, e)) return;
+            throw e;
+        }
+        pushRun(run.taskId);
+        res.json({ ok: true, taskId: run.taskId, status: 'blocked' });
+    });
+
+    // "Devolver ao QA": run blocked/authorization-pending resolvido sem código. Reserva o
+    // clique (cas.reserveOperation) antes do Redmine; desfecho incerto mantém a reserva e
+    // o mesmo operation_id retoma conferindo o marcador no ticket (sem repostar às cegas).
+    app.post('/api/runs/:taskId/handback-qa', async (req, res) => {
+        const ctx = authorizationRun(req, res);
+        if (!ctx) return;
+        const { run, state } = ctx;
+        if (!canHandback(state)) return res.status(409).json({ error: `devolver ao QA só vale para run blocked/${authorization.STATUS} (status atual: ${state.status})` });
+        const by = requireApprover(req, res);
+        if (!by) return;
+        const expect = humanExpect(req, state);
+        const operationId = operationIdOf(req);
+        authorizing.add(run.taskId);
+        try {
+            let reserved;
+            try {
+                reserved = cas.reserveOperation({ runDir: run.dir, operation: 'qa_handback', actor: 'dashboard', operation_id: operationId, expected_state_version: expect.expected_state_version });
+            } catch (e) {
+                if (sendConflict(res, e)) return;
+                throw e;
+            }
+            if (reserved.status === 'already_processed') return res.json({ ok: true, status: 'already_processed', operation_id: operationId });
+            if (reserved.status === 'in_progress') return res.status(409).json({ ok: false, code: 'OPERATION_IN_PROGRESS', error: 'devolução já em andamento' });
+            const out = await qaHandback.handback(run.dir, {
+                by, operationId, env: consumerEnv, fetchImpl: handbackFetch,
+                notes: typeof req.body?.notes === 'string' ? req.body.notes.slice(0, 20000) : null,
+                apontamentos: typeof req.body?.apontamentos === 'string' ? req.body.apontamentos.slice(0, 20000) : null,
+                onArchived: () => afterHandbackArchive(run),
+            });
+            if (!out.ok) {
+                const certain = Number.isInteger(out.http_status) && out.http_status < 500;
+                cas.finishOperation({ runDir: run.dir, operation: 'qa_handback', operation_id: operationId, actor: 'dashboard' }, certain ? 'failed' : 'uncertain');
+                pushRun(run.taskId);
+                return res.status(502).json({ ok: false, error: redact(out.error), http_status: out.http_status ?? null, operation_id: operationId, retry_same_operation: !certain });
+            }
+            res.json({ ok: true, taskId: run.taskId, archived: true, to: path.relative(repoRoot, out.to), ticketId: out.ticketId });
+        } catch (e) {
+            console.error(`[dashboard] devolver ao QA ${run.taskId}: ${redact(e.message)}`);
+            res.status(500).json({ error: redact(`Falha ao devolver ao QA: ${e.message}`) });
+        } finally {
+            authorizing.delete(run.taskId);
+        }
+    });
+
     // Arquivados. `dashboard`: os que o próprio dashboard arquivou (registro, com
     // Restaurar). `months`: a rotação automática (memory/archive/<YYYY-MM>/), só
     // leitura, agrupada por mês, mais recente primeiro; o mesmo task-id arquivado a
@@ -3021,8 +3241,9 @@ if (require.main === module) {
     // Fallback: mesmas credenciais que o watcher já lê do .env do repo (uma fonte só,
     // sem cópia pra ficar stale). Só as chaves das integrações (+ preview e a palavra de
     // aprovação da spec) — nada mais desse arquivo.
-    loadDotEnv(path.join(consumerRoot, '.env'), [...INTEGRATION_KEYS, ...PREVIEW_KEYS, ...APPROVAL_KEYS, ...PRE_BUILD_KEYS, ...NOTIFY_KEYS,
-        'WATCHER_SIBLING_REPOS', 'WATCHER_MAIN_REPO_NAME', 'BITBUCKET_PR_REPOS', 'BITBUCKET_ACCOUNT_ID', 'REDMINE_USER_ID']);
+    const repoKeys = [...INTEGRATION_KEYS, ...PREVIEW_KEYS, ...APPROVAL_KEYS, ...PRE_BUILD_KEYS, ...NOTIFY_KEYS,
+        'WATCHER_SIBLING_REPOS', 'WATCHER_MAIN_REPO_NAME', 'BITBUCKET_PR_REPOS', 'BITBUCKET_ACCOUNT_ID', 'REDMINE_USER_ID'];
+    loadDotEnv(path.join(consumerRoot, '.env'), key => repoKeys.includes(key) || AUTHORIZATION_KEYS(key));
     // Default do operador só neste processo. Testes que criam o servidor sem
     // COORD_STATUS_PATH ficam num arquivo temporário (coordination.js).
     applyCoordinationDefault(process.env);
