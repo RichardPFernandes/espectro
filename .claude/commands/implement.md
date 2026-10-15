@@ -113,6 +113,30 @@ abra-o **só** se a medição do passo 2 der **> limiar**; abaixo disso ele não
    tiver um subagente correspondente em `memory/project.yaml > agentes_por_dominio`
    (leia só essa seção: `sed -n '/^agentes_por_dominio:/,/^[a-z_]*:$/p' memory/project.yaml`),
    prefira delegar a ele em vez de fazer à mão na sessão principal.
+3b. **Correção que exige ação externa privilegiada** (DDL/DML num banco compartilhado —
+   QA, stage, produção —, ou outro efeito que você não tem autoridade para aplicar):
+   não aplique, não peça senha e não pare só com `blocked_reason` em texto. Registre um
+   **pedido de autorização estruturado** — o humano decide no dashboard (Aprovar → o
+   Prisma executa o SQL governado; Recusar; Já apliquei manualmente):
+   - O SQL tem que estar versionado no repo consumidor (ex.: `docs/migrations/<x>.sql`),
+     sem `BEGIN`/`COMMIT` próprios nem meta-comandos do psql (o Prisma envolve tudo numa
+     transação única com `lock_timeout`/`statement_timeout`). Se ainda não existir,
+     crie-o nesta rodada como parte da mudança.
+   - `node "$PRISMA_ROOT/scripts/lib/authorization.js" template` imprime o esqueleto. Preencha
+     `summary` (o que e por quê), `target_hint` (só uma sugestão: alias e/ou datasource/env
+     do banco — quem aprova escolhe o banco real na allowlist; nunca escreva host, usuário ou
+     credencial), `artifact`,
+     `verify_sql` (consulta **só leitura** que mostra o antes/depois), `expected` (o que a
+     verificação deve mostrar; `expected_contains` se der para conferir por texto) e `then`:
+     `"handback_qa"` quando, aplicado o SQL, não há mais código a mudar (o ticket volta ao
+     QA sem novo ciclo), ou `"resume:<nó>"` para retomar o fluxo (ex.: `resume:review`).
+   - Rode `node "$PRISMA_ROOT/scripts/lib/authorization.js" request memory/runs/$ARGUMENTS --input=<pedido.json>`.
+     Exit 4 = pedido registrado (`status="authorization-pending"`, `pending_authorization`
+     com o sha256 do arquivo, bloco no `handoff.md`): **pare aqui** — registre o `agent_log`
+     e o `context.md` (passos 4–5, **sem** `transition`) e não rode `/review`. Exit 2 = pedido
+     inválido (a mensagem diz o campo): corrija e rode de novo. Exit 3 = conflito CAS: pare e reporte.
+   - Nunca grave `pending_authorization`/`authorization_history` à mão nem tente aprovar:
+     aprovação só vem de humano pelo dashboard.
 4. Atualize `state.json` pelo `scripts/state-writer.js` (nunca direto): os campos
    de registro abaixo com `node "$PRISMA_ROOT/scripts/state-writer.js" set memory/runs/<task-id> --input=<patch.json>`
    e o nó com `node "$PRISMA_ROOT/scripts/state-writer.js" transition memory/runs/<task-id> --from=implement --to=review`.

@@ -144,3 +144,10 @@ Transição sempre pela CLI: `node "$PRISMA_ROOT/scripts/state-writer.js" transi
 
 ## Limite de loop
 Se `retries.verify >= 2`, pare e escale pro humano.
+
+## Dependência externa privilegiada
+Se o `BLOCKED` vier de algo que só uma ação privilegiada resolve (ex.: migration não
+aplicada no banco compartilhado do ambiente), não escale só com texto: registre o
+pedido estruturado como em `.claude/commands/implement.md` passo 3b
+(`node "$PRISMA_ROOT/scripts/lib/authorization.js" request ...`) e pare — o humano
+aprova no dashboard.

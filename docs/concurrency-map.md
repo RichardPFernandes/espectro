@@ -74,6 +74,9 @@ O endpoint de versão do dashboard usa a mesma versão efetiva.
 | Replay (persistência) | agente do run de replay | versão + nó | sim: o run de replay nasce com `init`, ou seja, execution_id próprio | — | agente: re-tenta 1x |
 | Resume-session | `POST /api/runs/:id/resume-session` | versão da tela | sim (o da tela); **gira** o execution_id | — | 409 |
 | QA retry | `POST /api/runs/:id/retry-qa-rejection` | versão da tela, conferida **antes** do Redmine | **gira** | UUID do clique | 409 / `already_processed` |
+| Pedido de autorização | agente: `authorization.js request` | versão lida (ou `--expected-version`) + `$STATE_EXECUTION_ID` | sim, se houver | — | um pedido em aberto por vez; exit 3 em conflito |
+| Aprovar / Recusar / Já apliquei (autorização) | `POST /api/runs/:id/authorization/{approve,reject,manual}` (aprovador autenticado) | versão da tela (+ hash confirmado e alias escolhido no approve) | — | UUID do clique (`AUTHORIZATION_DECISION`) | 409 / `already_processed`; a execução (db-effect) é escrita de sistema depois da decisão |
+| Devolver ao QA | `POST /api/runs/:id/handback-qa` (ou `then: handback_qa`) | versão da tela, na **reserva** antes do Redmine | — | UUID do clique (`QA_HANDBACK`), mesmo id na retomada de resultado incerto | 409 / `already_processed`; arquiva com lock até o rename |
 | Commit | agente: `transition --operation=commit` | versão + nó (`commit`) | sim (obrigatório) | — | agente: re-tenta 1x |
 | Archive | agente: `state-writer.js archive`; dashboard: `POST /api/runs/:id/archive` | versão + nó, lock até o `rename` da pasta | sim (obrigatório) | — | agente: aborta; dashboard: 409 |
 | Release do lease | watcher/wrapper: `node-lease releaseNode` | — | sim (o do lease) | — | `SESSION_CONFLICT`: release ignorado |
