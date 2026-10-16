@@ -105,11 +105,10 @@ const APPROVAL_KEYS = ['SPEC_APPROVAL_KEYWORD', 'SPEC_REJECTION_KEYWORD'];
 const PRE_BUILD_KEYS = ['PRE_BUILD_COMMAND', 'PRE_BUILD_JAVA_HOME', 'PRE_BUILD_TIMEOUT_MS', 'WATCHER_CLAUDE_CONFIG_DIR'];
 // Webhook de notificação do watcher (scripts/notify.js) — botão "Testar Notificação".
 const NOTIFY_KEYS = ['NOTIFY_WEBHOOK_URL'];
-// Allowlist de bancos do db-effect (só a referência ao segredo; a senha fica no Keychain),
-// aprovadores (hash), binário do psql, ids do handback ao QA e — fallback documentado,
-// desaconselhado — senhas por env (sempre PRISMA_DB_*PASSWORD: casa com a redação).
-const AUTHORIZATION_KEYS = key => ['PRISMA_DB_TARGETS', 'PRISMA_DB_TARGETS_FILE', 'PRISMA_PSQL_BIN', 'PRISMA_APPROVERS', 'PRISMA_APPROVERS_FILE',
-    'REDMINE_STATUS_AG_TESTE', 'REDMINE_CF_APONTAMENTOS_ID'].includes(key) || dbEffect.PASSWORD_ENV_RE.test(key);
+// Ids do handback ao QA (PRI-180). Allowlist de bancos, aprovadores e segredo NUNCA vêm
+// do .env do consumidor (um agente escreve nele): só de ~/.config/prisma
+// (scripts/lib/prisma-config.js).
+const AUTHORIZATION_KEYS = key => ['REDMINE_STATUS_AG_TESTE', 'REDMINE_CF_APONTAMENTOS_ID'].includes(key);
 const FETCH_TIMEOUT_MS = 10000;
 // Reserva de aprovação (cas.reserveOperation) de dashboard que morreu no meio: vence
 // depois disso e o próximo clique confere o ticket antes de repostar.
@@ -1803,19 +1802,29 @@ function createDashboard(options = {}) {
     const authorizing = new Set();
     const dbExecutor = options.dbExecutor || null;           // injetável nos testes (nunca banco real)
     const handbackFetch = options.handbackFetch || null;     // idem, Redmine
-    // Aprovador: nome + senha de aprovação (hash scrypt em PRISMA_APPROVERS / arquivo,
+    // Config privilegiada: ~/.config/prisma do usuário do processo; override só por código (testes).
+    const prismaConfigDir = options.prismaConfigDir || null;
+    // Aprovador: nome + senha de aprovação (hash scrypt em ~/.config/prisma/approvers.json,
     // scripts/lib/approvers.js) em TODA ação privilegiada — o dashboard não tem login e
     // qualquer página que alcance a porta faria POST. Sem credencial → 401; errada → 403;
-    // nada cadastrado → 403 (fail closed). 5 erros em 5 min por nome → 429.
+    // nada cadastrado → 403 (fail closed). Limites: 5 erros em 5 min por nome e 20 no
+    // total (qualquer nome) → 429; conferência assíncrona (não trava o servidor).
     const approverFailures = new Map(); // nome → [timestamps]
-    function requireApprover(req, res) {
-        const name = typeof req.body?.approver === 'string' ? req.body.approver.trim() : '';
+    let globalFailures = [];
+    async function requireApprover(req, res) {
+        const name = typeof req.body?.approver === 'string' ? req.body.approver.trim().slice(0, 64) : '';
         const password = typeof req.body?.approver_password === 'string' ? req.body.approver_password : '';
-        const recent = (approverFailures.get(name) || []).filter(t => Date.now() - t < 5 * 60 * 1000);
-        if (recent.length >= 5) { res.status(429).json({ ok: false, code: 'TOO_MANY_ATTEMPTS', error: 'muitas tentativas erradas — espere alguns minutos' }); return null; }
-        const v = approvers.verify(name, password, consumerEnv);
+        const now = Date.now();
+        const recent = (approverFailures.get(name) || []).filter(t => now - t < 5 * 60 * 1000);
+        globalFailures = globalFailures.filter(t => now - t < 5 * 60 * 1000);
+        if (recent.length >= 5 || globalFailures.length >= 20) { res.status(429).json({ ok: false, code: 'TOO_MANY_ATTEMPTS', error: 'muitas tentativas erradas — espere alguns minutos' }); return null; }
+        const v = await approvers.verify(name, password, { configDir: prismaConfigDir });
         if (v.ok) { approverFailures.delete(name); return v.name; }
-        if (v.code === 'DENIED') approverFailures.set(name, [...recent, Date.now()]);
+        if (v.code === 'DENIED') {
+            if (approverFailures.size > 1000) approverFailures.clear();
+            approverFailures.set(name, [...recent, now]);
+            globalFailures.push(now);
+        }
         res.status(v.code === 'MISSING' ? 401 : 403).json({ ok: false, code: v.code === 'MISSING' ? 'APPROVER_REQUIRED' : v.code === 'NO_APPROVERS' ? 'NO_APPROVERS' : 'APPROVER_DENIED', error: v.error });
         return null;
     }
@@ -1856,44 +1865,56 @@ function createDashboard(options = {}) {
     }
     const canHandback = state => ['blocked', authorization.STATUS].includes(state?.status) && state?.pending_authorization?.phase !== 'executing';
 
+    // Detalhe do pedido para a tela de aprovação. SQL e pedido INTEGRAIS, sem redação
+    // (a redação escondia trechos que executam — revisão de segurança C3); SQL acima do
+    // limite bloqueia a aprovação em vez de truncar. request_hash do pedido para o alvo
+    // em ?target= (a tela mostra e devolve na aprovação). Sem dados de alvo aqui.
     app.get('/api/runs/:taskId/authorization', (req, res) => {
         const run = withRun(req, res);
         if (!run) return;
         const state = run.pretask ? null : readJson(path.join(run.dir, 'state.json'));
         if (!state) return res.status(404).json({ error: 'state.json ausente ou inválido' });
         const p = state.pending_authorization || null;
-        // Sem dados de alvo aqui (a lista de bancos só sai para aprovador autenticado).
-        let artifact = null;
+        let artifact = null, request = null, problems = [];
         if (p) {
             const a = dbEffect.readArtifact(p, { roots: authorization.rootsFor(run.dir) });
             artifact = a.ok
-                ? { path: p.artifact, content: redact(a.sql.slice(0, 200000)), truncated: a.sql.length > 200000, sha256_now: a.sha, matches: a.sha === p.artifact_sha256 }
-                : { path: p.artifact, error: a.error };
+                ? { path: p.artifact, content: a.sql, bytes: Buffer.byteLength(a.sql), sha256_now: a.sha, matches: a.sha === p.artifact_sha256 }
+                : { path: p.artifact, content: null, error: a.error, code: a.code };
+            if (a.ok) problems = dbEffect.checkArtifactSql(a.sql);
+            problems = [...problems, ...dbEffect.checkVerifySql(p.verify_sql).map(x => `verify_sql: ${x}`)];
+            const targetAlias = typeof req.query.target === 'string' && dbEffect.ALIAS_RE.test(req.query.target) ? req.query.target : null;
+            request = authorization.describeRequest(run.dir, { targetAlias });
         }
-        const executor = (dbExecutor || dbEffect.createChildExecutor({ env: consumerEnv, consumerRoot: repoRoot })).available?.() || { ok: true };
+        let approversConfigured = false;
+        try { approversConfigured = Object.keys(approvers.loadApprovers({ configDir: prismaConfigDir }).approvers).length > 0; } catch { approversConfigured = false; }
+        const executor = (dbExecutor || dbEffect.createChildExecutor({ configDir: prismaConfigDir })).available?.() || { ok: true };
+        const ticketId = authorization.ticketOfTask(run.taskId);
+        const showHandback = canHandback(state) || p?.then === 'handback_qa';
         res.json({
-            taskId: run.taskId, status: state.status, pending: p ? redactDeep(p) : null,
-            history: redactDeep(Array.isArray(state.authorization_history) ? state.authorization_history : []),
-            artifact, executor,
-            approvers_configured: Object.keys(approvers.loadApprovers(consumerEnv).approvers).length > 0,
-            handback: { available: !run.archived && canHandback(state), preview: canHandback(state) ? redactDeep(qaHandback.preview(run.dir)) : null },
+            taskId: run.taskId, ticketId, status: state.status, pending: p,
+            history: Array.isArray(state.authorization_history) ? state.authorization_history : [],
+            artifact, problems, request, executor, max_sql_bytes: dbEffect.MAX_SQL_BYTES,
+            approvers_configured: approversConfigured,
+            handback: { available: !run.archived && canHandback(state), preview: showHandback ? qaHandback.preview(run.dir) : null },
         });
     });
 
     // Bancos da allowlist para o seletor do Aprovar — só para aprovador autenticado; só
     // alias, rótulo, ambiente e host/banco mascarados (display "visible" mostra).
-    app.post('/api/authorization/targets', (req, res) => {
-        if (!requireApprover(req, res)) return;
-        const out = dbEffect.publicTargets(consumerEnv, { consumerRoot: repoRoot });
+    app.post('/api/authorization/targets', async (req, res) => {
+        if (!await requireApprover(req, res)) return;
+        const out = dbEffect.publicTargets({ configDir: prismaConfigDir });
         res.json({ ok: !out.error, targets: out.targets, error: out.error });
     });
 
     async function decideAndExecute(req, res, mode) {
         const ctx = authorizationRun(req, res);
         if (!ctx) return;
-        const by = requireApprover(req, res);
+        const by = await requireApprover(req, res);
         if (!by) return;
         const { run, state } = ctx;
+        if (authorizing.has(run.taskId)) return res.status(409).json({ error: 'outra decisão deste run está em andamento' });
         const expect = humanExpect(req, state);
         const operationId = operationIdOf(req);
         authorizing.add(run.taskId);
@@ -1901,9 +1922,12 @@ function createDashboard(options = {}) {
             let dec;
             try {
                 const targetAlias = typeof req.body?.target_alias === 'string' ? req.body.target_alias : null;
-                const args = { by, operationId, expectedStateVersion: expect.expected_state_version, authorizationId: req.body?.authorization_id, targetAlias, env: consumerEnv };
+                const args = {
+                    by, operationId, expectedStateVersion: expect.expected_state_version, authorizationId: req.body?.authorization_id,
+                    targetAlias, requestHash: typeof req.body?.request_hash === 'string' ? req.body.request_hash : null, configDir: prismaConfigDir,
+                };
                 dec = mode === 'apply'
-                    ? authorization.approve(run.dir, { ...args, artifactSha256: req.body?.artifact_sha256 })
+                    ? authorization.approve(run.dir, args)
                     : authorization.markManual(run.dir, { ...args, note: typeof req.body?.note === 'string' ? req.body.note.slice(0, 2000) : null });
                 if (dec.status !== 'already_processed') console.log(`[dashboard] autorização ${mode === 'apply' ? 'aprovada' : 'manual'} em ${run.taskId} por ${by}${targetAlias ? ` (alvo ${targetAlias})` : ''}`);
             } catch (e) {
@@ -1912,9 +1936,10 @@ function createDashboard(options = {}) {
             }
             if (dec.status === 'already_processed') return res.json({ ok: true, status: 'already_processed', operation_id: operationId });
             pushRun(run.taskId);
+            // A execução usa a cópia congelada na decisão, passada em memória (não relê state/artefato).
             const out = await authorization.execute(run.dir, {
-                mode: mode === 'apply' ? 'apply' : 'verify', verify: req.body?.verify !== false,
-                env: consumerEnv, executor: dbExecutor, handback: handbackFor(run, by),
+                frozen: dec.frozen, mode: mode === 'apply' ? 'apply' : 'verify',
+                configDir: prismaConfigDir, executor: dbExecutor, handback: handbackFor(run, by),
             });
             pushRun(run.taskId);
             const body = {
@@ -1934,10 +1959,10 @@ function createDashboard(options = {}) {
     }
     app.post('/api/runs/:taskId/authorization/approve', (req, res) => decideAndExecute(req, res, 'apply'));
     app.post('/api/runs/:taskId/authorization/manual', (req, res) => decideAndExecute(req, res, 'manual'));
-    app.post('/api/runs/:taskId/authorization/reject', (req, res) => {
+    app.post('/api/runs/:taskId/authorization/reject', async (req, res) => {
         const ctx = authorizationRun(req, res);
         if (!ctx) return;
-        const by = requireApprover(req, res);
+        const by = await requireApprover(req, res);
         if (!by) return;
         const { run, state } = ctx;
         const expect = humanExpect(req, state);
@@ -1964,8 +1989,9 @@ function createDashboard(options = {}) {
         if (!ctx) return;
         const { run, state } = ctx;
         if (!canHandback(state)) return res.status(409).json({ error: `devolver ao QA só vale para run blocked/${authorization.STATUS} (status atual: ${state.status})` });
-        const by = requireApprover(req, res);
+        const by = await requireApprover(req, res);
         if (!by) return;
+        if (authorizing.has(run.taskId)) return res.status(409).json({ error: 'outra decisão deste run está em andamento' });
         const expect = humanExpect(req, state);
         const operationId = operationIdOf(req);
         authorizing.add(run.taskId);
