@@ -91,6 +91,14 @@ function readChangelog(root, rel) {
 }
 
 function writeJsonAtomic(file, data) {
+    // A união de memory/spec pode ligar arquivo a arquivo. Rename sobre o link
+    // o substituiria e deixaria o changelog durável só no worktree descartável.
+    let stat;
+    try { stat = fs.lstatSync(file); } catch (e) {
+        if (e.code !== 'ENOENT') throw e; // arquivo novo é permitido
+    }
+    // realpath fica fora do catch: link quebrado falha sem ser substituído.
+    if (stat?.isSymbolicLink()) file = fs.realpathSync(file);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
@@ -134,6 +142,10 @@ function appendRebaseline(root, rel, entry) {
     if (read.error) return { ok: false, error: `${read.error} — changelog não reescrito` };
     if (!read.data || !read.data.versions.some(v => v.version === entry.version)) return { ok: false, error: `${rel}: rebaseline da versão ${entry.version}, que não está no changelog` };
     const data = read.data;
+    // Retry com state antigo após falha no writer: a entrada já persistida é
+    // suficiente. Só deduplica o hash vigente, preservando transições A → B → A.
+    const latest = currentEntry(data);
+    if (latest?.version === entry.version && latest.hash === entry.hash) return { ok: true, entry: latest };
     data.rebaselines = [...data.rebaselines, entry];
     data.updated_at = entry.at;
     writeJsonAtomic(read.file, data);

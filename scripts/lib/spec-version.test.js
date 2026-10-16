@@ -115,6 +115,58 @@ const ADD_AC04 = {
     ac_changes: [{ action: 'add', text: 'Fretes com mais de 50 volumes recebem 10% de desconto.' }],
 };
 
+test('PRI-177: repetir rebaseline após falha de state não duplica hash nem apaga transições', () => {
+    const r = seedPlannedRun();
+    const original = stateOf(r.dir);
+    const changed = FILLED_SPEC.replace('5% de desconto', '7% de desconto');
+    const hash = sh.contractHash(changed, { scope: original.spec.hash_scope });
+    const baseline = (state, content, at) => sv.onBaseline(state, {
+        root: r.root, content, hash: sh.contractHash(content, { scope: state.spec.hash_scope }),
+        by: 'qa_retry', now: at, runId: r.taskId,
+    });
+    const first = structuredClone(original);
+    assert.strictEqual(baseline(first, changed, '2026-10-16T10:00:00.000Z').action, 'rebaselined');
+    const saved = fs.readFileSync(r.changelog, 'utf8');
+    // O changelog foi persistido, mas o writer do state falhou: retenta com state antigo.
+    const retry = structuredClone(original);
+    assert.strictEqual(baseline(retry, changed, '2026-10-16T10:01:00.000Z').action, 'rebaselined');
+    assert.strictEqual(retry.spec.hash, hash);
+    assert.strictEqual(fs.readFileSync(r.changelog, 'utf8'), saved, 'nem timestamp do changelog muda');
+    assert.strictEqual(readJson(r.changelog).rebaselines.length, 1);
+
+    // Hash já visto não basta para suprimir uma transição real A → B → A → B.
+    baseline(retry, FILLED_SPEC, '2026-10-16T10:02:00.000Z');
+    baseline(retry, changed, '2026-10-16T10:03:00.000Z');
+    assert.deepStrictEqual(readJson(r.changelog).rebaselines.map(e => e.hash), [hash, original.spec.hash, hash]);
+});
+
+test('PRI-177: escrita atômica segue cadeia de symlinks relativos até o changelog real', () => {
+    const r = seedPlannedRun();
+    const store = path.join(r.root, 'store');
+    fs.mkdirSync(store);
+    const target = path.join(store, 'changelog.json');
+    const hop = path.join(store, 'hop.json');
+    fs.renameSync(r.changelog, target);
+    fs.symlinkSync('changelog.json', hop);
+    fs.symlinkSync(path.relative(path.dirname(r.changelog), hop), r.changelog);
+    const entry = { version: 1, hash: 'a'.repeat(64), by: 'qa_retry', at: '2026-10-16T10:00:00.000Z' };
+    assert.strictEqual(sv.appendRebaseline(r.root, 'memory/spec/43700-spec-changelog.json', entry).ok, true);
+    assert.ok(fs.lstatSync(r.changelog).isSymbolicLink());
+    assert.ok(fs.lstatSync(hop).isSymbolicLink());
+    assert.deepStrictEqual(readJson(target).rebaselines, [entry]);
+    assert.ok(!fs.readdirSync(store).some(name => name.endsWith('.tmp')));
+});
+
+test('PRI-177: link quebrado do changelog falha sem substituir link ou criar destino', () => {
+    const r = seedFetchedRun();
+    fs.symlinkSync('ausente.json', r.changelog);
+    const entry = { version: 1, hash: 'a'.repeat(64), hash_scope: 'contract_sections_v1' };
+    assert.throws(() => sv.appendVersion(r.root, 'memory/spec/43700-spec-changelog.json', entry), { code: 'ENOENT' });
+    assert.strictEqual(fs.readlinkSync(r.changelog), 'ausente.json');
+    assert.ok(!fs.existsSync(path.join(path.dirname(r.changelog), 'ausente.json')));
+    assert.ok(!fs.readdirSync(path.dirname(r.changelog)).some(name => name.endsWith('.tmp')));
+});
+
 // 1 ───────────────────────────────────────────────────────────────────────────────
 test('1. spec nova: fetch-ticket grava spec v1 + hash do HASH_SCOPE; /plan sela v1 com o hash contratual da spec preenchida', () => {
     const r = seedFetchedRun();

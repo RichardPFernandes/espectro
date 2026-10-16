@@ -2,7 +2,7 @@
 // Recusa QA no watcher: detecção no polling (ticket_status + qa_rejection no run mais
 // recente, inclusive arquivado), ticket com run anterior não abre ciclo novo, e o
 // retry-signal.json do dashboard traz o run de volta pro worktree com node=implement.
-// REPO_PATH sintético, fetch stubado (Redmine falso), worktree já existente (sem git).
+// REPO_PATH sintético, fetch stubado (Redmine falso); Git local só nas regressões PRI-177.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -12,6 +12,8 @@ const path = require('path');
 const tmp = fs.mkdtempSync(path.join(process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp') : os.tmpdir(), 'qa-retry-watcher-'));
 const repo = path.join(tmp, 'app-back');
 fs.mkdirSync(repo, { recursive: true });
+fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+fs.copyFileSync(path.resolve(__dirname, '../../.claude/spec-hash-config.json'), path.join(repo, '.claude/spec-hash-config.json'));
 process.env.REPO_PATH = repo;
 process.env.REDMINE_URL = 'http://redmine.test';
 process.env.REDMINE_API_KEY = 'chave-watcher-teste';
@@ -45,9 +47,9 @@ function ticket(id, statusId) {
     };
 }
 const UPDATED = '2026-09-20T10:00:00.000Z';
-function archived(id, extra = {}) {
+function archived(id, extra = {}, root = repo) {
     const taskId = `${id}-entrega`;
-    const dir = path.join(repo, 'memory', 'runs', '_archive', taskId);
+    const dir = path.join(root, 'memory', 'runs', '_archive', taskId);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
         task_id: taskId, node: 'commit', history: ['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify', 'commit'],
@@ -291,6 +293,257 @@ test('runSpecDriftGate: changelog com hash diferente da spec não é restaurado'
     assert.strictEqual(gate.proceed, true, JSON.stringify(gate));
     assert.strictEqual(fs.readFileSync(path.join(worktreeOf(id), 'memory', 'spec', `${id}-spec.md`), 'utf8'), content);
     assert.ok(!fs.existsSync(path.join(worktreeOf(id), 'memory', 'spec', `${id}-spec-changelog.json`)));
+});
+
+
+// PRI-177: checkout de branch com memory/spec versionado, sem a spec do ticket.
+// Git real, sem remote; nenhum checkout consumidor é usado como fixture.
+const { execFileSync } = require('child_process');
+function git(root, ...args) {
+    return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: 'pipe' });
+}
+function retrySignal(id, extra = {}, root = repo) {
+    const run = archived(id, { spec_hash: specAuthority.specHash(specBody('baseline')), ...extra }, root);
+    fs.writeFileSync(path.join(run.dir, 'retry-signal.json'), '{"node":"implement"}');
+    return run;
+}
+
+test('PRI-177: qa-retry com memory e run versionados preserva links e rebaseline no principal', () => {
+    const id = 92030;
+    // Repo e processo próprios: git init/worktree não contaminam os demais testes.
+    const repo = path.join(tmp, 'git-fixture-92030', 'app-back');
+    fs.mkdirSync(repo, { recursive: true });
+    const tracked = {
+        'memory/spec/versionada-spec.md': 'spec versionada original\n',
+        'memory/decisions/nested/versionada.md': 'decisão versionada\n',
+        'memory/flows/versionado.md': 'fluxo versionado\n',
+    };
+    git(repo, 'init', '-b', 'main');
+    fs.writeFileSync(path.join(repo, '.gitignore'), 'memory/\n.claude/worktrees/\n');
+    git(repo, 'add', '.gitignore');
+    for (const [rel, content] of Object.entries(tracked)) {
+        fs.mkdirSync(path.dirname(path.join(repo, rel)), { recursive: true });
+        fs.writeFileSync(path.join(repo, rel), content);
+        git(repo, 'add', '-f', rel);
+    }
+    for (const [rel, target] of Object.entries({
+        'memory/decisions/link-existente': '../flows',
+        'memory/flows/link-quebrado.md': 'ausente.md',
+    })) {
+        fs.symlinkSync(target, path.join(repo, rel));
+        git(repo, 'add', '-f', rel);
+    }
+    git(repo, '-c', 'user.name=QA sintético', '-c', 'user.email=qa@example.test', 'commit', '-m', 'fixture versionada');
+    git(repo, 'branch', String(id));
+    fs.writeFileSync(path.join(repo, 'memory/spec/versionada-spec.md'), 'versão diferente no principal\n');
+    const content = specBody('baseline');
+    fs.writeFileSync(path.join(repo, `memory/spec/${id}-spec.md`), content);
+    fs.writeFileSync(path.join(repo, 'memory/decisions/nested/local.md'), 'decisão local\n');
+    fs.writeFileSync(path.join(repo, 'memory/flows/local.md'), 'fluxo local\n');
+    const { taskId, dir } = retrySignal(id, {}, repo);
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    fs.copyFileSync(path.resolve(__dirname, '../../.claude/spec-hash-config.json'), path.join(repo, '.claude/spec-hash-config.json'));
+    const state = read(dir);
+    require('./spec-version').init(state, { root: repo, specRel: `memory/spec/${id}-spec.md`, content, taskId });
+    specAuthority.applyBaseline(state, { root: repo, specPath: `memory/spec/${id}-spec.md`, taskId });
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(state));
+    const changed = specBody('baseline com correção pós-commit');
+    fs.writeFileSync(path.join(repo, `memory/spec/${id}-spec.md`), changed);
+    const hash = specAuthority.specHashFor(state, changed);
+    const mainStatus = git(repo, 'status', '--porcelain');
+
+    const wt = path.join(repo, '.claude/worktrees', String(id));
+    const run = path.join(wt, 'memory/runs', taskId);
+    const script = `
+        const assert = require('node:assert');
+        const fs = require('node:fs');
+        global.fetch = async () => ({ ok: true, json: async () => ({ issue: ${JSON.stringify(ticket(id, 2))} }) });
+        const watcher = require(${JSON.stringify(require.resolve('../readmine-watcher'))});
+        (async () => {
+            assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), [${id}]);
+            const state = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(run, 'state.json'))}));
+            const gate = await watcher.runSpecDriftGate(${JSON.stringify(ticket(id, 2))},
+                { taskId: ${JSON.stringify(taskId)}, state, dir: ${JSON.stringify(run)} }, 'implement');
+            assert.strictEqual(gate.proceed, true, JSON.stringify(gate));
+        })().catch(e => { console.error(e); process.exitCode = 1; });
+    `;
+    const retry = require('child_process').spawnSync(process.execPath, ['-e', script], {
+        cwd: repo, encoding: 'utf8', timeout: 60000,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
+            NODE_OPTIONS: process.env.NODE_OPTIONS, REPO_PATH: repo,
+            REDMINE_URL: 'http://redmine.test', REDMINE_API_KEY: 'chave-watcher-teste' },
+    });
+    assert.strictEqual(retry.status, 0, retry.stdout + retry.stderr);
+    for (const [rel, content] of Object.entries(tracked)) {
+        assert.strictEqual(fs.readFileSync(path.join(wt, rel), 'utf8'), content);
+        assert.ok(!fs.lstatSync(path.join(wt, rel)).isSymbolicLink());
+    }
+    assert.strictEqual(fs.readlinkSync(path.join(wt, 'memory/decisions/link-existente')), '../flows');
+    assert.strictEqual(fs.readlinkSync(path.join(wt, 'memory/flows/link-quebrado.md')), 'ausente.md');
+    assert.ok(fs.lstatSync(path.join(wt, `memory/spec/${id}-spec.md`)).isSymbolicLink());
+    for (const rel of ['memory/decisions/nested/local.md', 'memory/flows/local.md']) {
+        assert.strictEqual(fs.realpathSync(path.join(wt, rel)), fs.realpathSync(path.join(repo, rel)));
+    }
+    assert.ok(!fs.lstatSync(path.join(wt, 'memory/runs')).isSymbolicLink());
+    assert.ok(!fs.existsSync(path.join(repo, 'memory/runs', taskId)));
+    assert.strictEqual(read(run).spec_hash, hash);
+    const after = read(run);
+    assert.strictEqual(after.spec.hash, hash);
+    assert.strictEqual(after.spec.version, state.spec.version);
+    assert.strictEqual(after.spec_hash_version, state.spec.version);
+    const changelogRel = `memory/spec/${id}-spec-changelog.json`;
+    const log = JSON.parse(fs.readFileSync(path.join(repo, changelogRel)));
+    assert.strictEqual(log.versions.length, 1);
+    assert.strictEqual(log.rebaselines.length, 1);
+    assert.strictEqual(log.rebaselines[0].hash, hash);
+    assert.strictEqual(log.rebaselines[0].by, 'qa_retry');
+    assert.strictEqual(log.rebaselines[0].version, state.spec.version);
+    assert.ok(fs.lstatSync(path.join(wt, changelogRel)).isSymbolicLink());
+    assert.strictEqual(fs.realpathSync(path.join(wt, changelogRel)), fs.realpathSync(path.join(repo, changelogRel)));
+    assert.strictEqual(git(repo, 'status', '--porcelain'), mainStatus);
+    assert.strictEqual(execFileSync('git', ['-C', wt, 'diff', '--exit-code'], { encoding: 'utf8' }), '');
+});
+
+test('PRI-177: rebaseline sem spec após importação mantém estado, sinal e bloqueio de despacho', async () => {
+    const id = 92031;
+    writeSpecBundle(path.join(repo, 'memory/spec'), id, specBody('baseline'));
+    const { taskId } = retrySignal(id, { node: 'implement', status: 'in_progress' });
+    fs.mkdirSync(worktreeOf(id), { recursive: true });
+    const original = specAuthority.baselineFields;
+    const warnings = [];
+    const warn = console.warn;
+    try {
+        // Corrida: a spec deixa de estar legível entre importação e rebaseline.
+        specAuthority.baselineFields = () => null;
+        console.warn = (...args) => warnings.push(args.join(' '));
+        assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    } finally {
+        specAuthority.baselineFields = original;
+        console.warn = warn;
+    }
+    const target = path.join(worktreeOf(id), 'memory/runs', taskId);
+    assert.ok(fs.existsSync(path.join(target, 'retry-signal.json')));
+    assert.strictEqual(read(target).status, 'in_progress', 'status recebido do dashboard preservado');
+    assert.deepStrictEqual(await watcher.dispatchTicket(ticket(id, 2)), { action: 'skip', reason: 'qa_retry_pendente', taskId }, 'despacho normal também respeita sinal pendente');
+    assert.strictEqual(read(target).spec_hash, specAuthority.specHash(specBody('baseline')));
+    assert.match(warnings.join('\n'), /spec.*ausente.*sinal mantido/);
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), [id], 'tick seguinte pode tentar novamente');
+});
+
+test('PRI-177: erro de rebaseline mantém sinal e hash anterior sem despachar', async () => {
+    const id = 92032;
+    writeSpecBundle(path.join(repo, 'memory/spec'), id, specBody('baseline'));
+    const { taskId } = retrySignal(id);
+    fs.mkdirSync(worktreeOf(id), { recursive: true });
+    const original = specAuthority.baselineFields;
+    try {
+        specAuthority.baselineFields = () => { throw new Error('leitura indisponível'); };
+        assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    } finally { specAuthority.baselineFields = original; }
+    const target = path.join(worktreeOf(id), 'memory/runs', taskId);
+    assert.ok(fs.existsSync(path.join(target, 'retry-signal.json')));
+    assert.strictEqual(read(target).status, 'committed');
+    assert.strictEqual(read(target).spec_hash, specAuthority.specHash(specBody('baseline')));
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), [id]);
+});
+
+function versionedRetry(id) {
+    const rootSpec = path.join(repo, 'memory/spec');
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    fs.copyFileSync(path.resolve(__dirname, '../../.claude/spec-hash-config.json'), path.join(repo, '.claude/spec-hash-config.json'));
+    const content = specBody('baseline');
+    fs.writeFileSync(path.join(rootSpec, `${id}-spec.md`), content);
+    const { taskId, dir } = retrySignal(id);
+    const state = read(dir);
+    const specVersion = require('./spec-version');
+    specVersion.init(state, { root: repo, specRel: `memory/spec/${id}-spec.md`, content, taskId });
+    specAuthority.applyBaseline(state, { root: repo, specPath: `memory/spec/${id}-spec.md`, taskId });
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(state));
+    fs.mkdirSync(path.join(worktreeOf(id), 'memory/spec'), { recursive: true });
+    return { taskId, dir, state };
+}
+
+test('PRI-177: retry versionado mantém versão e registra rebaseline com hash e changelog', async () => {
+    const id = 92033;
+    const { taskId, state } = versionedRetry(id);
+    const content = specBody('baseline com correção pós-commit');
+    fs.writeFileSync(path.join(repo, `memory/spec/${id}-spec.md`), content);
+    const expected = specAuthority.specHashFor(state, content);
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), [id]);
+    const run = path.join(worktreeOf(id), 'memory/runs', taskId);
+    const after = read(run);
+    assert.strictEqual(after.spec_hash, expected);
+    assert.strictEqual(after.spec.hash, expected);
+    assert.strictEqual(after.spec.version, state.spec.version);
+    assert.strictEqual(after.spec_hash_version, state.spec.version);
+    assert.ok(after.events.some(e => e.type === 'spec_baseline' && e.detail.includes(expected.slice(0, 12))));
+    const log = JSON.parse(fs.readFileSync(path.join(worktreeOf(id), `memory/spec/${id}-spec-changelog.json`)));
+    assert.strictEqual(log.versions.length, 1);
+    assert.strictEqual(log.rebaselines.at(-1).hash, expected);
+    assert.strictEqual(log.rebaselines.at(-1).by, 'qa_retry');
+    assert.strictEqual(log.rebaselines.at(-1).version, state.spec.version);
+    const gate = await watcher.runSpecDriftGate(ticket(id, 2), { taskId, state: after, dir: run }, 'implement');
+    assert.strictEqual(gate.proceed, true);
+});
+
+test('PRI-177: changelog inválido impede rebaseline e mantém sinal, versão e hash anteriores', async () => {
+    const id = 92034;
+    const { taskId, state } = versionedRetry(id);
+    fs.writeFileSync(path.join(repo, `memory/spec/${id}-spec.md`), specBody('contrato novo'));
+    fs.writeFileSync(path.join(repo, `memory/spec/${id}-spec-changelog.json`), '{invalid');
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    const run = path.join(worktreeOf(id), 'memory/runs', taskId);
+    const after = read(run);
+    assert.ok(fs.existsSync(path.join(run, 'retry-signal.json')));
+    assert.strictEqual(after.status, 'committed');
+    assert.strictEqual(after.spec_hash, state.spec_hash);
+    assert.deepStrictEqual(after.spec, state.spec);
+    assert.strictEqual(fs.readFileSync(path.join(worktreeOf(id), `memory/spec/${id}-spec-changelog.json`), 'utf8'), '{invalid');
+});
+
+test('PRI-177: spec existente divergente não é sobrescrita e continua bloqueada pelo gate', async () => {
+    const id = 92035;
+    const content = specBody('contrato do Plan');
+    const hash = writeSpecBundle(path.join(repo, 'memory/spec'), id, content);
+    const { taskId, dir, state } = driftRun(id, { spec_hash: hash });
+    const changed = specBody('contrato local divergente');
+    fs.writeFileSync(path.join(worktreeOf(id), `memory/spec/${id}-spec.md`), changed);
+    const gate = await watcher.runSpecDriftGate(ticket(id, 2), { taskId, state, dir }, 'implement');
+    assert.strictEqual(gate.proceed, false);
+    assert.strictEqual(read(dir).status, 'spec-drift');
+    assert.strictEqual(read(dir).spec_hash, hash);
+    assert.strictEqual(fs.readFileSync(path.join(worktreeOf(id), `memory/spec/${id}-spec.md`), 'utf8'), changed);
+});
+
+
+test('PRI-177: --dry-run do retry mantém sinal e state, sem criar worktree nem ligar memória', () => {
+    const id = 92036;
+    writeSpecBundle(path.join(repo, 'memory/spec'), id, specBody('baseline'));
+    const { dir } = retrySignal(id);
+    const before = fs.readFileSync(path.join(dir, 'state.json'), 'utf8');
+    const signal = fs.readFileSync(path.join(dir, 'retry-signal.json'), 'utf8');
+    const script = `require(${JSON.stringify(require.resolve('../readmine-watcher'))}).consumeQaRetrySignals().then(ids => console.log('IDS=' + JSON.stringify(ids)));`;
+    const run = require('child_process').spawnSync(process.execPath, ['-e', script, '--', '--dry-run'], {
+        cwd: repo, encoding: 'utf8', timeout: 60000,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
+            NODE_OPTIONS: process.env.NODE_OPTIONS, REPO_PATH: repo,
+            REDMINE_URL: 'http://127.0.0.1:9', REDMINE_API_KEY: 'chave-teste' },
+    });
+    assert.strictEqual(run.status, 0, run.stderr);
+    assert.match(run.stdout, /IDS=\[\]/);
+    assert.ok(!fs.existsSync(worktreeOf(id)));
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'), before);
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'retry-signal.json'), 'utf8'), signal);
+});
+
+
+test('PRI-177: sinal ainda no arquivo impede o despacho normal de abrir outro ciclo', async () => {
+    const id = 92037;
+    const { taskId, dir } = retrySignal(id, { node: 'implement', status: 'in_progress' });
+    const before = fs.readFileSync(path.join(dir, 'state.json'), 'utf8');
+    assert.deepStrictEqual(await watcher.dispatchTicket(ticket(id, 2)), { action: 'skip', reason: 'qa_retry_pendente', taskId });
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'), before);
+    assert.ok(!fs.existsSync(worktreeOf(id)));
 });
 
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));

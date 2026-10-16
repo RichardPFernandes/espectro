@@ -424,11 +424,20 @@ faltando, lógica errada).
    para **Recusa QA** com uma nota explicando o que está errado e clique **"Corrigir recusa QA"**
    no dashboard. Esse é o caminho de retrabalho suportado: reaproveita o task-id, traz o run de
    volta pro worktree (recriado), injeta a nota no prompt e reentra em `implement`; o novo
-   `/commit` empurra na mesma branch e o PR se atualiza sozinho. O worktree recriado não traz
-   `memory/` (gitignored). O retry copia, sem sobrescrever, a spec do ticket e os artefatos ao
-   lado (`*-spec-changelog.json`, `*-ac-provenance.json`, `*-attachments/`) do checkout principal.
-   Se a spec não estiver nos dois e o run tiver `spec_hash`, o sinal fica e o `implement` não
-   é despachado. Se a spec sumir depois, o portão de drift restaura só quando o arquivo do
+   `/commit` empurra na mesma branch e o PR se atualiza sozinho. O worktree recriado liga
+   a memória local ao checkout principal. Se a branch trouxer `spec/`, `decisions/` ou
+   `flows/` versionados, preserva os diretórios e liga recursivamente só as entradas
+   ausentes; arquivos e links existentes não são substituídos e `runs/` fica separado.
+   O retry também copia, sem sobrescrever, os artefatos do ticket ainda ausentes
+   (`*-spec.md`, `*-spec-changelog.json`, `*-ac-provenance.json`, `*-attachments/`).
+   Spec ausente com `spec_hash`, falha de leitura ou erro no registro do rebaseline
+   mantém o sinal e gera aviso explícito. Enquanto houver sinal pendente, o despacho
+   normal também espera, mesmo com `node=implement`/`status=in_progress` do dashboard.
+   O retry explícito registra a spec pós-commit como baseline, mantendo a versão.
+   Se o changelog for um link de arquivo, sua gravação atômica usa o destino real
+   no checkout principal e preserva o link no worktree. Repetir o mesmo rebaseline
+   após falha na gravação do state não duplica o hash vigente no changelog.
+   Se a spec sumir depois, o portão de drift restaura só quando o arquivo do
    checkout principal tem o mesmo `spec_hash` do Plan (evento `spec_restored`); hash diferente
    ou spec ausente nos dois continua `spec-drift`.
 
