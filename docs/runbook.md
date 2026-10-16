@@ -433,7 +433,11 @@ faltando, lógica errada).
    Spec ausente com `spec_hash`, falha de leitura ou erro no registro do rebaseline
    mantém o sinal e gera aviso explícito. Enquanto houver sinal pendente, o despacho
    normal também espera, mesmo com `node=implement`/`status=in_progress` do dashboard.
-   O retry explícito registra a spec pós-commit como baseline, mantendo a versão. Se a spec sumir depois, o portão de drift restaura só quando o arquivo do
+   O retry explícito registra a spec pós-commit como baseline, mantendo a versão.
+   Se o changelog for um link de arquivo, sua gravação atômica usa o destino real
+   no checkout principal e preserva o link no worktree. Repetir o mesmo rebaseline
+   após falha na gravação do state não duplica o hash vigente no changelog.
+   Se a spec sumir depois, o portão de drift restaura só quando o arquivo do
    checkout principal tem o mesmo `spec_hash` do Plan (evento `spec_restored`); hash diferente
    ou spec ausente nos dois continua `spec-drift`.
 
