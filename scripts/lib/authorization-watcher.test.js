@@ -85,3 +85,15 @@ test('findLocallyActiveTicketIds: authorization-pending conta como ativo (reidra
     seed(92003);
     assert.ok(watcher.findLocallyActiveTicketIds().includes(92003));
 });
+
+test('A4: config/segredo de banco e aprovadores não chegam ao ambiente do agente', () => {
+    process.env.PRISMA_DB_QA_APP_PASSWORD = 'segredo-que-nao-pode-vazar';
+    process.env.PRISMA_APPROVERS = '{}';
+    process.env.PGPASSWORD = 'outro-segredo';
+    try {
+        const env = watcher.cleanAgentEnv();
+        for (const k of ['PRISMA_DB_QA_APP_PASSWORD', 'PRISMA_APPROVERS', 'PGPASSWORD']) assert.strictEqual(env[k], undefined, k);
+    } finally {
+        delete process.env.PRISMA_DB_QA_APP_PASSWORD; delete process.env.PRISMA_APPROVERS; delete process.env.PGPASSWORD;
+    }
+});

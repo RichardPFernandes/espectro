@@ -2799,6 +2799,8 @@ function cleanAgentEnv() {
     const env = { ...process.env };
     for (const key of Object.keys(env)) {
         if (key.startsWith('CLAUDE') || key === 'AI_AGENT') delete env[key];
+        // PRI-180: nada de config/segredo de banco ou de aprovadores no ambiente do agente.
+        if (/^PRISMA_(DB_|APPROVERS|PSQL)/.test(key) || /^PG(PASSWORD|PASSFILE|USER|HOST|SERVICE)/.test(key)) delete env[key];
     }
     withClaudeAccount(env);
     env.PRISMA_ROOT = PRISMA_ROOT;
@@ -4866,7 +4868,7 @@ module.exports = {
     runTicketSpecGate, runTaskSpecGate, runSpecDriftGate, SPEC_DRIFT_COMMENT_PREFIX, runSpecChangeGate, SPEC_CHANGE_COMMENT_PREFIX, findApprovalReply, fetchRepliesAfter, specGatePath, readSpecGate, syncSpecWarningsToContext, specAccepted,
     specDraftRel, SPEC_APPROVAL_KEYWORD,
     runSpecDraftGate, specDraftComment, SPEC_DRAFT_COMMENT_PREFIX, fillSpecDraftGaps,
-    commitRiskNote, checkHumanInput, peekHumanInput, humanInputNote, recoverOrphanedNodes, NODE_TIMEOUT_MS,
+    commitRiskNote, checkHumanInput, peekHumanInput, humanInputNote, cleanAgentEnv, recoverOrphanedNodes, NODE_TIMEOUT_MS,
     startPrStatusPolling, prStatusRoots, PR_STATUS_POLL_INTERVAL_MS, onTaskFullyMerged,
     cleanupWorktreesAfterPrOpen, openedPrUrls, notifyOpenedPrsSafe, notifyEscalationWebhook,
     costLedgerPath, readCostLedger, startCostRun, finishCostRun, finalizePendingCostRuns,

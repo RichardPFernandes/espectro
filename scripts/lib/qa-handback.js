@@ -35,10 +35,12 @@ function config(env = process.env) {
     };
 }
 
-function ticketIdOf(taskId, state) {
-    const fromTaskId = /^\d{4}-\d{2}-\d{2}-/.test(taskId) ? null : (String(taskId).match(/^(\d{4,6})-/) || [])[1];
-    const id = state?.ticket_id ?? state?.issue_id ?? state?.redmine_ticket?.id ?? fromTaskId;
-    return /^\d+$/.test(String(id ?? '')) ? Number(id) : null;
+// Ticket SÓ pelo task-id (nome da pasta do run, <ticket>-<slug>), nunca por campo do
+// state.json: um agente que edita o state não redireciona a devolução para outro ticket.
+function ticketIdOf(taskId) {
+    if (/^\d{4}-\d{2}-\d{2}-/.test(String(taskId))) return null;
+    const m = /^(\d{4,6})-/.exec(String(taskId));
+    return m ? Number(m[1]) : null;
 }
 
 function marker(operationId) {
@@ -76,7 +78,7 @@ function sqlLine(auth) {
 /** Textos sugeridos (o dashboard mostra e deixa editar antes de confirmar). */
 function preview(runDir, { authorization = null } = {}) {
     const state = stateWriter.read(runDir) || {};
-    const taskId = state.task_id || path.basename(runDir);
+    const taskId = path.basename(runDir);
     const auth = lastAuthorization(state, authorization || state.pending_authorization);
     const what = auth?.summary || state.blocked_reason || 'Correção resolvida fora do código.';
     const verify = auth?.expected ? `Verificação: ${auth.expected}${auth.last_result?.verify_matched === true ? ' — conferida.' : '.'}` : null;
@@ -97,7 +99,7 @@ function preview(runDir, { authorization = null } = {}) {
         'Não houve mudança de código nesta rodada.',
         body ? `\n${body}` : null,
     ].filter(Boolean).join('\n').slice(0, MAX_APONTAMENTOS);
-    return { notes, apontamentos, ticketId: ticketIdOf(taskId, state), taskId };
+    return { notes, apontamentos, ticketId: ticketIdOf(taskId), taskId };
 }
 
 // Corpo de um 422: {"errors": ["Apontamentos Desenvolvedor não pode ficar vazio", ...]}.

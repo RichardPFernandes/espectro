@@ -179,3 +179,12 @@ test('histórico: última execução com uptime e hora da parada', async () => {
     assert.ok(last.uptime_ms >= 100);
     assert.ok(Date.parse(last.ended_at) >= Date.parse(last.started_at));
 });
+
+test('PRI-180 A4: o tick do watcher não herda config/segredo de banco nem aprovadores', async () => {
+    const m = manager(fake('env', `console.log('ENV ' + Object.keys(process.env).filter(k => /^PRISMA_(DB_|APPROVERS|PSQL)/.test(k)).join(','));`),
+        { env: { PRISMA_DB_QA_APP_PASSWORD: 'nao-vaza', PRISMA_APPROVERS: '{}', PRISMA_PSQL_BIN: '/x' } });
+    await m.start();
+    await until(() => texts(m).some(t => t.startsWith('ENV ')));
+    await m.stop();
+    assert.strictEqual(texts(m).find(t => t.startsWith('ENV ')), 'ENV ');
+});

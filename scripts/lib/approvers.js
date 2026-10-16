@@ -3,96 +3,82 @@
 // aprovador cadastrado. O dashboard não tem login (só escuta em localhost); sem isto,
 // qualquer página/visitante que alcançasse a porta aprovaria SQL ou veria os alvos.
 //
-// Guarda só hash scrypt (sal por aprovador), nunca a senha:
-//   PRISMA_APPROVERS (JSON {"nome": "scrypt$..."}) vence; senão o arquivo
-//   PRISMA_APPROVERS_FILE (padrão ~/.config/prisma/approvers.json, modo 600).
-// Sem aprovador cadastrado o dashboard recusa (fail closed).
+// Guarda só hash scrypt (sal por aprovador), nunca a senha, em
+// ~/.config/prisma/approvers.json (scripts/lib/prisma-config.js: dono = usuário, modo
+// 600, sem symlink). NÃO lê variável de ambiente nem o .env do consumidor (um agente
+// que escreve no .env não se cadastra como aprovador). Sem aprovador o dashboard
+// recusa (fail closed). Conferência assíncrona (crypto.scrypt), o mesmo custo para
+// nome inexistente.
 //
-// Limite conhecido: um processo do MESMO usuário do SO com shell (ex.: agente sem
-// sandbox) pode editar esse arquivo. A proteção é contra visitante da página, outro
-// usuário da máquina e aprovação por texto; restrinja as permissões do agente para não
-// escrever em ~/.config/prisma.
+// Limite conhecido: o MESMO usuário do SO pode editar ~/.config/prisma. A proteção é
+// contra visitante da página, aprovação por texto e escrita no repo/state/.env; a
+// proteção definitiva é rodar o dashboard com outro usuário do SO (docs/runbook.md).
 //
 // CLI (pede a senha sem eco; nunca aceita a senha em argv):
 //   node scripts/lib/approvers.js add <nome>      cadastra/troca a senha
 //   node scripts/lib/approvers.js remove <nome>
 //   node scripts/lib/approvers.js list
-//   node scripts/lib/approvers.js hash <nome>     só imprime a entrada para PRISMA_APPROVERS
 
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const crypto = require('crypto');
+const prismaConfig = require('./prisma-config');
 
 const NAME_RE = /^[\p{L}\w.@-]{1,64}$/u;
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
 const MIN_PASSWORD = 10;
-
-function defaultFile(env = process.env) {
-    return path.join(env.HOME || os.homedir(), '.config', 'prisma', 'approvers.json');
-}
-function approversFile(env = process.env) {
-    return String(env.PRISMA_APPROVERS_FILE || '').trim() || defaultFile(env);
-}
+const FILE = 'approvers.json';
+const DUMMY = `scrypt$16384$8$1$${Buffer.alloc(16).toString('base64')}$${Buffer.alloc(32).toString('base64')}`;
 
 function hashPassword(password, { salt = crypto.randomBytes(16) } = {}) {
     const key = crypto.scryptSync(String(password), salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
     return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString('base64')}$${key.toString('base64')}`;
 }
 
-function checkHash(password, stored) {
+function parseHash(stored) {
     const m = /^scrypt\$(\d+)\$(\d+)\$(\d+)\$([A-Za-z0-9+/=]+)\$([A-Za-z0-9+/=]+)$/.exec(String(stored || ''));
-    if (!m) return false;
-    const [, N, r, p, salt, hash] = m;
-    const expected = Buffer.from(hash, 'base64');
-    let got;
-    try {
-        got = crypto.scryptSync(String(password), Buffer.from(salt, 'base64'), expected.length, { N: Number(N), r: Number(r), p: Number(p), maxmem: 64 * 1024 * 1024 });
-    } catch { return false; }
-    return got.length === expected.length && crypto.timingSafeEqual(got, expected);
+    if (!m) return null;
+    const N = Number(m[1]), r = Number(m[2]), p = Number(m[3]);
+    // Parâmetros fora da faixa = recusado (evita hash plantado que custe minutos de CPU).
+    if (N > 1 << 17 || r > 16 || p > 4) return null;
+    return { N, r, p, salt: Buffer.from(m[4], 'base64'), hash: Buffer.from(m[5], 'base64') };
 }
 
-/** @returns {{ approvers: object, source: string|null, error: string|null }} */
-function loadApprovers(env = process.env) {
-    let raw = String(env.PRISMA_APPROVERS || '').trim();
-    let source = raw ? 'PRISMA_APPROVERS' : null;
-    if (!raw) {
-        const file = approversFile(env);
-        if (!fs.existsSync(file)) return { approvers: {}, source: null, error: null };
-        source = 'arquivo de aprovadores';
-        try { raw = fs.readFileSync(file, 'utf8'); } catch (e) { return { approvers: {}, source, error: `arquivo de aprovadores ilegível (${e.code})` }; }
+function checkHash(password, stored) {
+    const h = parseHash(stored);
+    return new Promise(resolve => {
+        const use = h || parseHash(DUMMY);
+        crypto.scrypt(String(password), use.salt, use.hash.length, { N: use.N, r: use.r, p: use.p, maxmem: 64 * 1024 * 1024 }, (err, got) => {
+            if (err || !h) return resolve(false);
+            resolve(got.length === h.hash.length && crypto.timingSafeEqual(got, h.hash));
+        });
+    });
+}
+
+/** @returns {{ approvers: object, error: string|null }} */
+function loadApprovers({ configDir = null } = {}) {
+    let parsed;
+    try { parsed = prismaConfig.readSecureJson(FILE, { dir: configDir }); } catch (e) {
+        return { approvers: {}, error: `aprovadores recusados: ${e.message}` };
     }
-    try {
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('não é objeto');
-        const approvers = {};
-        for (const [name, h] of Object.entries(parsed)) if (NAME_RE.test(name) && typeof h === 'string' && h.startsWith('scrypt$')) approvers[name] = h;
-        return { approvers, source, error: null };
-    } catch {
-        return { approvers: {}, source, error: `${source} inválido (esperado JSON {"nome": "scrypt$..."})` };
-    }
+    if (parsed == null) return { approvers: {}, error: null };
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { approvers: {}, error: 'approvers.json inválido (esperado {"nome": "scrypt$..."})' };
+    const approvers = {};
+    for (const [name, h] of Object.entries(parsed)) if (NAME_RE.test(name) && parseHash(h)) approvers[name] = h;
+    return { approvers, error: null };
 }
 
 /**
- * Confere nome + senha. code: NO_APPROVERS (nada cadastrado), MISSING (faltou nome/senha),
- * DENIED (não confere). O mesmo trabalho de scrypt para nome inexistente.
+ * Confere nome + senha. code: NO_APPROVERS (nada cadastrado/config insegura), MISSING
+ * (faltou nome/senha), DENIED (não confere).
  */
-function verify(name, password, env = process.env) {
-    const { approvers, error } = loadApprovers(env);
+async function verify(name, password, { configDir = null } = {}) {
+    const { approvers, error } = loadApprovers({ configDir });
     if (error) return { ok: false, code: 'NO_APPROVERS', error };
     if (!Object.keys(approvers).length) return { ok: false, code: 'NO_APPROVERS', error: 'nenhum aprovador cadastrado — rode: node "$PRISMA_ROOT/scripts/lib/approvers.js" add <nome>' };
     if (typeof name !== 'string' || !name.trim() || typeof password !== 'string' || !password) return { ok: false, code: 'MISSING', error: 'informe aprovador e senha de aprovação' };
-    const stored = approvers[name.trim()];
-    const ok = checkHash(password, stored || 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=') && !!stored;
+    if (password.length > 1024) return { ok: false, code: 'DENIED', error: 'aprovador ou senha de aprovação não conferem' };
+    const stored = Object.prototype.hasOwnProperty.call(approvers, name.trim()) ? approvers[name.trim()] : null;
+    const ok = await checkHash(password, stored || DUMMY) && !!stored;
     return ok ? { ok: true, name: name.trim() } : { ok: false, code: 'DENIED', error: 'aprovador ou senha de aprovação não conferem' };
-}
-
-function writeFileSecure(file, data) {
-    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-    fs.renameSync(tmp, file);
-    fs.chmodSync(file, 0o600);
 }
 
 /** Lê uma senha do terminal sem eco (TTY); sem TTY, uma linha do stdin. */
@@ -136,40 +122,36 @@ async function askNewPassword() {
     return a;
 }
 
-module.exports = { hashPassword, checkHash, loadApprovers, verify, approversFile, promptHidden, writeFileSecure, NAME_RE, MIN_PASSWORD };
+module.exports = { hashPassword, checkHash, loadApprovers, verify, promptHidden, NAME_RE, MIN_PASSWORD };
 
 if (require.main === module) {
-    const [cmd, name] = process.argv.slice(2).filter(a => !a.startsWith('--'));
+    const argv = process.argv.slice(2);
+    const dirArg = (argv.find(a => a.startsWith('--config-dir=')) || '').slice('--config-dir='.length) || null;
+    const [cmd, name] = argv.filter(a => !a.startsWith('--'));
     const usage = msg => {
         if (msg) console.error(`[approvers] ${msg}`);
-        console.error('Uso: node scripts/lib/approvers.js add <nome> | remove <nome> | list | hash <nome>  (a senha é pedida sem eco)');
+        console.error('Uso: node scripts/lib/approvers.js add <nome> | remove <nome> | list  (a senha é pedida sem eco; grava em ~/.config/prisma/approvers.json)');
         process.exit(2);
     };
     (async () => {
-        if (process.argv.some(a => /^--(password|senha)/.test(a))) usage('senha não vai em argv: ela é pedida no terminal');
-        const file = approversFile();
-        const current = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } };
+        if (argv.some(a => /^--(password|senha)/.test(a))) usage('senha não vai em argv: ela é pedida no terminal');
+        const current = () => { try { return prismaConfig.readSecureJson(FILE, { dir: dirArg }) || {}; } catch (e) { usage(e.message); return {}; } };
         if (cmd === 'list') {
-            const { approvers, source } = loadApprovers();
-            console.log(JSON.stringify({ source, approvers: Object.keys(approvers) }, null, 2));
+            console.log(JSON.stringify(Object.keys(loadApprovers({ configDir: dirArg }).approvers), null, 2));
             return;
         }
         if (!name || !NAME_RE.test(name)) usage('nome inválido');
         if (cmd === 'add') {
             const data = current();
             data[name] = hashPassword(await askNewPassword());
-            writeFileSecure(file, data);
+            const file = prismaConfig.writeSecureJson(FILE, data, { dir: dirArg });
             console.error(`[approvers] "${name}" cadastrado em ${file} (hash scrypt, modo 600).`);
-            return;
-        }
-        if (cmd === 'hash') {
-            console.log(JSON.stringify({ [name]: hashPassword(await askNewPassword()) }));
             return;
         }
         if (cmd === 'remove') {
             const data = current();
             delete data[name];
-            writeFileSecure(file, data);
+            prismaConfig.writeSecureJson(FILE, data, { dir: dirArg });
             console.error(`[approvers] "${name}" removido.`);
             return;
         }

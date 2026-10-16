@@ -1,90 +1,67 @@
-// Efeito externo governado "db-effect": execução, autorizada por humano, de um artefato
-// SQL (pending_authorization kind=db_migration) num banco compartilhado. Quem chama é
-// scripts/lib/authorization.js, e só depois de um "Aprovar"/"Já apliquei manualmente"
-// autenticado pelos endpoints do dashboard. Este módulo deliberadamente NÃO tem CLI de
-// execução: nada que um agente rode no shell aplica SQL (ver docs/runbook.md,
-// "Autorização humana").
+// Efeito externo governado "db-effect": execução, autorizada por aprovador humano, de
+// um artefato SQL (pending_authorization kind=db_migration) num banco compartilhado.
+// Quem chama é scripts/lib/authorization.js, e só a partir da cópia CONGELADA na
+// aprovação (dashboard, aprovador autenticado). Sem CLI de execução.
 //
-// Garantias:
-// - Alvo só por allowlist explícita do consumidor (arquivo JSON, gerido pela CLI
-//   scripts/lib/db-targets.js; ou PRISMA_DB_TARGETS inline). O alvo NÃO vem do agente:
-//   quem aprova escolhe o alias na tela. Alias fora da lista = erro, nada executa.
-//   Entrada de produção (production: true ou env "prod*") exige allow_production: true.
-// - Segredo: a entrada guarda só a REFERÊNCIA — Keychain do macOS (padrão,
-//   "prisma-db-<alias>") ou, como fallback documentado, o nome de uma variável
-//   PRISMA_DB_*_PASSWORD. Quem lê o segredo é o processo filho (db-exec-child.js), no
-//   momento da execução; o dashboard nunca o tem em memória (no caso Keychain). Usuário,
-//   host e senha vão ao psql por PGUSER/PGHOST/PGPASSWORD no env do filho — nunca em
-//   argv, log, state.json, saída gravada ou resposta HTTP.
-// - artifact_sha256 conferido antes; mudou = aborta antes de conectar.
-// - verify_sql roda antes e depois, em transação READ ONLY.
-// - O artefato roda em transação única: BEGIN; SET LOCAL lock_timeout='5s';
-//   SET LOCAL statement_timeout='60s'; <sql>; COMMIT; com ON_ERROR_STOP. Artefato que
-//   controla a própria transação ou usa meta-comando do psql é recusado.
-// - Cada execução é um Attempt DOM06 (scripts/lib/dom06-attempt.js, node "db-effect"):
-//   pré-verificação, aplicação e pós-verificação viram effects; a aplicação tem chave de
-//   idempotência db-apply:<id>:<sha>:<alias> e, cumprida em qualquer Attempt do run, não
-//   roda de novo. Desfecho incerto (conexão caiu, timeout) fica UNCERTAIN e nunca é
-//   repetido sozinho.
-//
-// Executor: psql (PRISMA_PSQL_BIN ou PATH). O repo não depende de `pg` e este fluxo não
-// adiciona dependência npm; sem psql, erro claro pedindo `brew install libpq`. Testes
-// injetam um executor falso (nenhum teste conecta em banco).
+// Modelo de ameaça (revisão de segurança da PRI-180): agente malicioso/alucinado
+// rodando como o MESMO usuário do SO, que escreve no worktree, no state.json e no .env
+// do consumidor. Por isso:
+// - Allowlist SÓ em ~/.config/prisma/db-targets.json (scripts/lib/prisma-config.js:
+//   dono = usuário, sem escrita para grupo/outros, sem symlink). Nada de env/.env.
+// - Segredo SÓ no Keychain, no serviço amarrado ao alias (prisma-db-<alias>, conta =
+//   alias), criado com ACL vazia (-T ''): cada leitura pede confirmação do macOS.
+//   Quem lê é o processo filho (db-exec-child.js), por /usr/bin/security (caminho
+//   absoluto), no momento da execução. O dashboard nunca vê a senha.
+// - Execução pelo driver `pg` no filho, NÃO pelo psql: sem meta-comandos (\! etc.),
+//   um statement por mensagem do protocolo estendido (o servidor recusa mais de um),
+//   transação aberta e fechada pelo Node. verify_sql numa conexão com
+//   default_transaction_read_only=on + BEGIN READ ONLY + ROLLBACK. Timeouts fixos na
+//   própria conexão (startup options), que valem mesmo se algo escapar das checagens.
+// - Checagens pelo tokenizer (scripts/lib/sql-lexer.js), não por regex no texto:
+//   artefato sem controle de transação, sem SET/RESET de *_timeout/role/sessão, sem
+//   set_config, sem comandos fora de transação; verify com UM statement só leitura.
+// - Saídas sem segredo, usuário, host nem nome do banco.
+// - Attempt DOM06 por execução (node "db-effect"), chave de idempotência
+//   db-apply:<id>:<sha>:<alias>; desfecho incerto (COMMIT enviado e conexão caiu) fica
+//   UNCERTAIN e nunca é repetido sozinho.
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const dom06 = require('./dom06-attempt');
+const prismaConfig = require('./prisma-config');
+const { tokenize, words, SqlLexError } = require('./sql-lexer');
 
 const ALIAS_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
-const PASSWORD_ENV_RE = /^PRISMA_DB_[A-Z0-9_]*PASSWORD$/;
-const KEYCHAIN_SERVICE_RE = /^prisma-db-[a-z0-9._-]{1,64}$/i;
+const LOCK_TIMEOUT_MS = 5000;
+const STATEMENT_TIMEOUT_MS = 60000;
 const LOCK_TIMEOUT = '5s';
 const STATEMENT_TIMEOUT = '60s';
-// Prazo do processo inteiro (conexão + verify + aplicação). Estourou = UNCERTAIN.
-const PROCESS_TIMEOUT_MS = 120_000;
-const MAX_OUTPUT_CHARS = 200_000;
-const PSQL_MISSING = 'psql não encontrado — instale libpq (brew install libpq) e aponte PRISMA_PSQL_BIN para o binário (ex.: /opt/homebrew/opt/libpq/bin/psql).';
-// Saída do db-exec-child quando ELE falha antes de rodar o psql (nada executou).
-const CHILD_NOT_RUN_EXIT = 64;
+// Orçamento do filho (conexão + verify + aplicação + verify) e prazo duro do pai.
+const CHILD_BUDGET_MS = 150_000;
+// Pai: até 120 s para o humano confirmar o diálogo do Keychain + o orçamento do filho.
+const PARENT_TIMEOUT_MS = 300_000;
+// Maior artefato aceito: a tela mostra o SQL INTEGRAL; acima disso bloqueia, não trunca.
+const MAX_SQL_BYTES = 200_000;
+const TARGETS_FILE = 'db-targets.json';
+const DEFAULT_SECURITY_BIN = '/usr/bin/security';
 const CHILD_SCRIPT = path.join(__dirname, 'db-exec-child.js');
 
 function sha256(text) {
     return crypto.createHash('sha256').update(text).digest('hex');
 }
 
+// prod/prd/live em qualquer parte do env ("qa-prod", "live", "PRD") conta como produção.
 function isProductionEntry(entry) {
-    return entry.production === true || /^prod/i.test(String(entry.env || ''));
+    return entry.production === true || /(prod|prd|live)/i.test(String(entry.env || ''));
 }
 
 function keychainService(alias) {
     return `prisma-db-${alias}`;
 }
 
-// ── Allowlist ────────────────────────────────────────────────────────────────────
-
-/** Arquivo padrão da allowlist: fora de qualquer repo (não vai pro git por engano). */
-function defaultTargetsFile(env = process.env) {
-    return path.join(env.HOME || os.homedir(), '.config', 'prisma', 'db-targets.json');
-}
-
-function targetsFile(env = process.env, { consumerRoot = env.REPO_PATH || process.cwd() } = {}) {
-    const raw = String(env.PRISMA_DB_TARGETS_FILE || '').trim();
-    return raw ? path.resolve(consumerRoot, raw) : defaultTargetsFile(env);
-}
-
-/** Referência ao segredo da entrada: { kind: 'keychain', service } | { kind: 'env', name } | null. */
-function secretRef(alias, entry) {
-    const s = entry.secret;
-    if (s && typeof s === 'object') {
-        if (s.keychain) return { kind: 'keychain', service: String(s.keychain), account: s.account ? String(s.account) : null };
-        if (s.env) return { kind: 'env', name: String(s.env) };
-    }
-    if (entry.password_env) return { kind: 'env', name: String(entry.password_env) }; // forma antiga
-    return null;
-}
+// ── Allowlist (~/.config/prisma/db-targets.json) ─────────────────────────────────
 
 function validateEntry(alias, entry) {
     const errors = [];
@@ -94,64 +71,47 @@ function validateEntry(alias, entry) {
         if (typeof entry[k] !== 'string' || !entry[k].trim()) errors.push(`${alias}: "${k}" obrigatório`);
     }
     if (entry.port !== undefined && !(Number.isInteger(entry.port) && entry.port > 0 && entry.port < 65536)) errors.push(`${alias}: "port" inválida`);
-    if (Object.keys(entry).some(k => /^pass(word|wd)?$|^pwd$|connection|dsn|url$/i.test(k))) {
-        errors.push(`${alias}: senha/connection string não vão na allowlist — use "secret": {"keychain": "prisma-db-${alias}"}`);
+    if (Object.keys(entry).some(k => /^pass(word|wd)?$|^pwd$|connection|dsn|url$|password_env/i.test(k))) {
+        errors.push(`${alias}: senha/connection string/variável de senha não vão na allowlist — o segredo fica só no Keychain (prisma-db-${alias})`);
     }
-    const ref = secretRef(alias, entry);
-    if (!ref) errors.push(`${alias}: "secret" obrigatório ({"keychain": "prisma-db-${alias}"} ou {"env": "PRISMA_DB_..._PASSWORD"})`);
-    else if (ref.kind === 'keychain' && !KEYCHAIN_SERVICE_RE.test(ref.service)) errors.push(`${alias}: secret.keychain precisa ser "prisma-db-<alias>"`);
-    else if (ref.kind === 'env' && !PASSWORD_ENV_RE.test(ref.name)) errors.push(`${alias}: secret.env precisa ser o NOME de uma variável PRISMA_DB_..._PASSWORD (nunca a senha)`);
+    // O serviço do Keychain é derivado do alias: a entrada não escolhe de onde ler.
+    const s = entry.secret;
+    if (!s || typeof s !== 'object' || s.keychain !== keychainService(alias) || (s.account !== undefined && s.account !== alias) || Object.keys(s).some(k => !['keychain', 'account'].includes(k))) {
+        errors.push(`${alias}: "secret" precisa ser {"keychain": "${keychainService(alias)}", "account": "${alias}"} (fallback por env foi removido)`);
+    }
     if (entry.display !== undefined && !['masked', 'visible'].includes(entry.display)) errors.push(`${alias}: "display" é masked ou visible`);
+    if (entry.sslmode !== undefined && !['disable', 'require', 'verify-full'].includes(entry.sslmode)) errors.push(`${alias}: "sslmode" é disable, require ou verify-full`);
     return errors;
 }
 
-/**
- * Allowlist do consumidor: { alias: { label?, host, port?, database, user, env, secret,
- * display?, production?, allow_production?, sslmode? } }. PRISMA_DB_TARGETS (JSON inline)
- * vence; senão o arquivo (PRISMA_DB_TARGETS_FILE, ou ~/.config/prisma/db-targets.json).
- * @returns {{ targets: object|null, error: string|null, source: string|null }}
- */
-function loadTargets(env = process.env, opts = {}) {
-    let raw = String(env.PRISMA_DB_TARGETS || '').trim();
-    let source = raw ? 'PRISMA_DB_TARGETS' : null;
-    if (!raw) {
-        const file = targetsFile(env, opts);
-        if (fs.existsSync(file)) {
-            source = 'arquivo da allowlist';
-            try { raw = fs.readFileSync(file, 'utf8'); } catch (e) {
-                return { targets: null, source, error: `allowlist ilegível (${e.code || e.message})` };
-            }
-        }
-    }
-    if (!raw) return { targets: null, source: null, error: 'nenhuma allowlist de bancos configurada — cadastre com: node "$PRISMA_ROOT/scripts/lib/db-targets.js" add <alias> ...' };
+/** @returns {{ targets: object|null, error: string|null, code: string|null }} */
+function loadTargets({ configDir = null } = {}) {
     let parsed;
-    try { parsed = JSON.parse(raw); } catch { return { targets: null, source, error: `${source} não é JSON válido` }; }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { targets: null, source, error: `${source} precisa ser um objeto alias → alvo` };
+    try { parsed = prismaConfig.readSecureJson(TARGETS_FILE, { dir: configDir }); } catch (e) {
+        return { targets: null, code: e.code || 'CONFIG_INVALID', error: `allowlist recusada: ${e.message}` };
+    }
+    if (parsed == null) return { targets: null, code: 'NO_ALLOWLIST', error: 'nenhuma allowlist de bancos em ~/.config/prisma/db-targets.json — cadastre com: node "$PRISMA_ROOT/scripts/lib/db-targets.js" add <alias> ...' };
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { targets: null, code: 'CONFIG_INVALID', error: 'allowlist precisa ser um objeto alias → alvo' };
     const errors = Object.entries(parsed).flatMap(([alias, entry]) => validateEntry(alias, entry));
-    if (errors.length) return { targets: null, source, error: `${source} inválida: ${errors.join('; ')}` };
-    return { targets: parsed, source, error: null };
+    if (errors.length) return { targets: null, code: 'CONFIG_INVALID', error: `allowlist inválida: ${errors.join('; ')}` };
+    return { targets: parsed, code: null, error: null };
 }
 
 /**
- * Alvo que pode ser escolhido/executado. Sem segredo, sem usuário: o dashboard só
- * precisa saber que o alias existe e passa no guard de produção.
- * @returns {{ ok: true, target } | { ok: false, code, error }}
+ * Alvo que pode ser escolhido/executado (sem segredo nem usuário).
+ * @returns {{ ok: true, target, entry } | { ok: false, code, error }}
  */
-function resolveTarget(alias, env = process.env, opts = {}) {
-    const { targets, error } = loadTargets(env, opts);
-    if (!targets) return { ok: false, code: 'NO_ALLOWLIST', error };
+function resolveTarget(alias, { configDir = null } = {}) {
+    const { targets, error, code } = loadTargets({ configDir });
+    if (!targets) return { ok: false, code, error };
     if (typeof alias !== 'string' || !alias || !Object.prototype.hasOwnProperty.call(targets, alias)) {
-        return { ok: false, code: 'TARGET_NOT_ALLOWED', error: `alvo "${alias || ''}" não está na allowlist — nada foi executado` };
+        return { ok: false, code: 'TARGET_NOT_ALLOWED', error: `alvo "${typeof alias === 'string' ? alias.slice(0, 64) : ''}" não está na allowlist — nada foi executado` };
     }
     const entry = targets[alias];
     if (isProductionEntry(entry) && entry.allow_production !== true) {
         return { ok: false, code: 'PRODUCTION_REFUSED', error: `alvo "${alias}" é de produção e a entrada da allowlist não tem allow_production: true — nada foi executado` };
     }
-    const ref = secretRef(alias, entry);
-    if (ref.kind === 'env' && !String(env[ref.name] || '')) {
-        return { ok: false, code: 'SECRET_MISSING', error: `segredo do alvo "${alias}" (variável de ambiente de fallback) ausente no dashboard — nada foi executado` };
-    }
-    return { ok: true, target: { alias, label: entry.label || alias, env: entry.env, production: isProductionEntry(entry), secret_kind: ref.kind } };
+    return { ok: true, entry, target: { alias, label: entry.label || alias, env: entry.env, production: isProductionEntry(entry) } };
 }
 
 function mask(v) {
@@ -159,18 +119,14 @@ function mask(v) {
     return s.length <= 3 ? '***' : `${s.slice(0, 2)}…${s.slice(-1)}`;
 }
 
-/**
- * Lista para a tela de aprovação (só para aprovador autenticado): alias, rótulo, ambiente
- * e host/banco mascarados (display: "visible" mostra). Nunca usuário, senha ou
- * referência do segredo.
- */
-function publicTargets(env = process.env, opts = {}) {
-    const { targets, error } = loadTargets(env, opts);
+/** Lista para o seletor do Aprovar (aprovador autenticado): sem usuário nem segredo. */
+function publicTargets({ configDir = null } = {}) {
+    const { targets, error } = loadTargets({ configDir });
     if (!targets) return { targets: [], error };
     return {
         error: null,
         targets: Object.entries(targets).map(([alias, entry]) => {
-            const r = resolveTarget(alias, env, opts);
+            const r = resolveTarget(alias, { configDir });
             const visible = entry.display === 'visible';
             return {
                 alias, label: entry.label || alias, env: entry.env, production: isProductionEntry(entry),
@@ -181,137 +137,154 @@ function publicTargets(env = process.env, opts = {}) {
     };
 }
 
-// Descrição sem segredo nem usuário (vai pro result.json, notas, dashboard).
 function describeTarget(t) {
     return t ? { alias: t.alias, label: t.label, env: t.env, production: !!t.production } : null;
 }
 
-// ── SQL ──────────────────────────────────────────────────────────────────────────
+// ── Checagens de SQL (tokenizer) ─────────────────────────────────────────────────
 
-// Comentários e literais fora, só pra procurar palavra-chave (não altera o que executa).
-function stripSql(sql) {
-    return String(sql)
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/--[^\n]*/g, ' ')
-        .replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, ' ')
-        .replace(/'(?:[^']|'')*'/g, "''");
+const TX_CONTROL = new Set(['BEGIN', 'COMMIT', 'ROLLBACK', 'END', 'SAVEPOINT', 'RELEASE', 'ABORT', 'START']);
+const NON_TX = /^(VACUUM|CHECKPOINT|REINDEX|CLUSTER|COPY|LISTEN|UNLISTEN|NOTIFY|DISCARD|LOAD|IMPORT)$/;
+const FORBIDDEN_FUNCS = /^(SET_CONFIG|DBLINK\w*|PG_READ_\w+|PG_LS_DIR|PG_STAT_FILE|LO_IMPORT|LO_EXPORT|PG_TERMINATE_BACKEND|PG_CANCEL_BACKEND|PG_RELOAD_CONF)$/;
+// Corpo de função/DO ($...$) é código: procura o proibido no texto todo (conservador).
+const DOLLAR_BODY_FORBIDDEN = /\b(COMMIT|ROLLBACK|SAVEPOINT|SET_CONFIG|DBLINK\w*)\b|\b(SET|RESET)\s+(LOCAL\s+|SESSION\s+)?(ROLE|SESSION|ALL|AUTHORIZATION|[a-z_]*timeout|[a-z_]*read_only|standard_conforming_strings)\b/i;
+
+function lex(sql) {
+    try { return { ok: true, statements: tokenize(sql).statements }; } catch (e) {
+        if (e instanceof SqlLexError) return { ok: false, error: e.message };
+        throw e;
+    }
+}
+
+function setTargetForbidden(w, i) {
+    // w[i] é SET/RESET no início do statement; alvo depois de LOCAL/SESSION opcional.
+    let j = i + 1;
+    if (w[j] === 'LOCAL' || (w[j] === 'SESSION' && w[j + 1] !== 'AUTHORIZATION' && w[j + 1] !== 'CHARACTERISTICS')) j += 1;
+    const t = w[j] || '';
+    return /_TIMEOUT$|READ_ONLY$/.test(t) || ['ROLE', 'SESSION', 'ALL', 'AUTHORIZATION', 'TRANSACTION', 'STANDARD_CONFORMING_STRINGS', 'DEFAULT_TRANSACTION_ISOLATION'].includes(t);
 }
 
 /** Artefato que pode ir dentro da transação única. @returns {string[]} problemas */
 function checkArtifactSql(sql) {
+    const text = String(sql ?? '');
+    if (!text.trim()) return ['artefato vazio'];
+    if (Buffer.byteLength(text) > MAX_SQL_BYTES) return [`artefato maior que ${MAX_SQL_BYTES} bytes — divida em pedidos menores (a tela mostra o SQL inteiro)`];
+    const lexed = lex(text);
+    if (!lexed.ok) return [lexed.error];
+    if (!lexed.statements.length) return ['artefato sem nenhum comando'];
     const problems = [];
-    if (!String(sql || '').trim()) problems.push('artefato vazio');
-    if (/^\s*\\/m.test(String(sql))) problems.push('meta-comando do psql (linha começando com \\) não é permitido');
-    const bare = stripSql(sql);
-    if (/(^|;)\s*(BEGIN|COMMIT|ROLLBACK|END|START\s+TRANSACTION|SAVEPOINT|RELEASE|ABORT)\b/i.test(bare)) {
-        problems.push('o artefato controla a própria transação (BEGIN/COMMIT/ROLLBACK...) — o Prisma já envolve tudo numa transação única');
-    }
-    if (/\bCONCURRENTLY\b|\bVACUUM\b|\b(CREATE|DROP)\s+DATABASE\b|\bALTER\s+SYSTEM\b/i.test(bare)) {
-        problems.push('comando que não roda dentro de transação (CONCURRENTLY, VACUUM, CREATE/DROP DATABASE, ALTER SYSTEM)');
-    }
-    return problems;
+    lexed.statements.forEach((st, n) => {
+        const w = words(st);
+        const first = st.tokens[0]?.type === 'word' ? st.tokens[0].upper : null;
+        const where = `comando ${n + 1}`;
+        if (!first) { problems.push(`${where}: não começa com palavra-chave`); return; }
+        if (TX_CONTROL.has(first) || (first === 'PREPARE' && w[1] === 'TRANSACTION')) problems.push(`${where}: controle de transação (${first}) — o Prisma já envolve tudo numa transação única`);
+        if ((first === 'SET' || first === 'RESET') && setTargetForbidden(w, 0)) problems.push(`${where}: ${first} de timeout/role/sessão/transação não é permitido`);
+        if (first === 'ALTER' && ['SYSTEM', 'ROLE', 'USER', 'DATABASE', 'GROUP'].includes(w[1])) problems.push(`${where}: ALTER ${w[1]} não é permitido`);
+        if ((first === 'CREATE' || first === 'DROP') && ['DATABASE', 'TABLESPACE', 'ROLE', 'USER', 'SUBSCRIPTION'].includes(w[1])) problems.push(`${where}: ${first} ${w[1]} não é permitido`);
+        if (NON_TX.test(first)) problems.push(`${where}: ${first} não é permitido no artefato`);
+        if (w.includes('CONCURRENTLY')) problems.push(`${where}: CONCURRENTLY não roda dentro de transação`);
+        if (w.includes('SESSION') && w.includes('AUTHORIZATION')) problems.push(`${where}: SESSION AUTHORIZATION não é permitido`);
+        const fn = w.find(x => FORBIDDEN_FUNCS.test(x));
+        if (fn) problems.push(`${where}: ${fn.toLowerCase()} não é permitido`);
+        for (const t of st.tokens) if (t.type === 'dollar' && DOLLAR_BODY_FORBIDDEN.test(t.value)) problems.push(`${where}: corpo $...$ com controle de transação/SET de timeout/role/set_config — não é permitido`);
+    });
+    return [...new Set(problems)];
 }
 
-/** verify_sql: só leitura. O banco reforça (BEGIN READ ONLY). @returns {string[]} problemas */
+const VERIFY_FIRST = new Set(['SELECT', 'WITH', 'SHOW', 'TABLE', 'VALUES', 'EXPLAIN']);
+const VERIFY_FORBIDDEN = new Set(['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'TRUNCATE', 'ALTER', 'CREATE', 'DROP', 'GRANT', 'REVOKE', 'COMMENT', 'COPY',
+    'CALL', 'DO', 'LOCK', 'SET', 'RESET', 'BEGIN', 'COMMIT', 'ROLLBACK', 'SAVEPOINT', 'RELEASE', 'ANALYZE', 'INTO', 'PREPARE', 'EXECUTE', 'LISTEN', 'NOTIFY', 'VACUUM']);
+
+/** verify_sql: um statement só leitura. O banco reforça (read-only). @returns {string[]} */
 function checkVerifySql(sql) {
+    const text = String(sql ?? '');
+    if (!text.trim()) return ['verify_sql vazio'];
+    if (text.length > 10_000) return ['verify_sql grande demais'];
+    const lexed = lex(text);
+    if (!lexed.ok) return [lexed.error];
+    if (lexed.statements.length !== 1) return [`verify_sql precisa ser UM comando (achei ${lexed.statements.length})`];
+    const st = lexed.statements[0];
+    const w = words(st);
     const problems = [];
-    const bare = stripSql(sql).trim();
-    if (!bare) return ['verify_sql vazio'];
-    if (/^\s*\\/m.test(String(sql))) problems.push('meta-comando do psql não é permitido em verify_sql');
-    if (!/^(SELECT|WITH|SHOW|TABLE|VALUES|EXPLAIN)\b/i.test(bare)) problems.push('verify_sql precisa começar com SELECT/WITH/SHOW/TABLE/VALUES/EXPLAIN');
-    if (/\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|CREATE|DROP|GRANT|REVOKE|COMMENT|COPY|CALL|DO|LOCK|SET|RESET|BEGIN|COMMIT|ROLLBACK)\b/i.test(bare.replace(/^EXPLAIN\b/i, ''))) {
-        problems.push('verify_sql precisa ser só leitura (sem DML/DDL/controle de transação)');
-    }
+    const first = st.tokens[0]?.type === 'word' ? st.tokens[0].upper : null;
+    if (!VERIFY_FIRST.has(first)) problems.push('verify_sql precisa começar com SELECT/WITH/SHOW/TABLE/VALUES/EXPLAIN');
+    const bad = w.find(x => VERIFY_FORBIDDEN.has(x) || FORBIDDEN_FUNCS.test(x));
+    if (bad) problems.push(`verify_sql precisa ser só leitura (achei ${bad})`);
+    if (st.tokens.some(t => t.type === 'dollar')) problems.push('verify_sql não aceita $...$');
     return problems;
 }
 
-function terminated(sql) {
-    const t = String(sql).replace(/\s+$/, '');
-    return /;\s*$/.test(stripSql(t)) ? t : `${t};`;
+/** Statements do artefato para execução, um por mensagem (sem o ; final). */
+function splitStatements(sql) {
+    const lexed = lex(sql);
+    if (!lexed.ok) throw new SqlLexError(lexed.error);
+    return lexed.statements.map(s => s.text.replace(/;\s*$/, ''));
 }
 
-function composeApplyScript(sql) {
-    return [
-        '\\set ON_ERROR_STOP on',
-        'BEGIN;',
-        `SET LOCAL lock_timeout = '${LOCK_TIMEOUT}';`,
-        `SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}';`,
-        terminated(sql),
-        'COMMIT;',
-        '',
-    ].join('\n');
-}
-
-function composeVerifyScript(sql) {
-    return [
-        '\\set ON_ERROR_STOP on',
-        'BEGIN READ ONLY;',
-        `SET LOCAL lock_timeout = '${LOCK_TIMEOUT}';`,
-        `SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}';`,
-        terminated(sql),
-        'ROLLBACK;',
-        '',
-    ].join('\n');
-}
-
-// ── Executor ─────────────────────────────────────────────────────────────────────
-
-function findInPath(name, env) {
-    for (const dir of String(env.PATH || '').split(path.delimiter).filter(Boolean)) {
-        const candidate = path.join(dir, name);
-        try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch { /* próximo */ }
-    }
-    return null;
-}
-
-function resolvePsql(env = process.env) {
-    const explicit = String(env.PRISMA_PSQL_BIN || '').trim();
-    if (explicit) return fs.existsSync(explicit) ? explicit : null;
-    return findInPath('psql', env);
-}
+// ── Artefato ─────────────────────────────────────────────────────────────────────
 
 /**
- * Executor real: um processo filho (db-exec-child.js) recebe só { alias, script } no
- * stdin, lê allowlist + segredo ele mesmo e roda o psql. O dashboard não passa senha,
- * usuário nem host. run({ script, alias }) → { exitCode, stdout, stderr, timedOut,
- * spawnError }. Ambiente do filho mínimo: nada de tokens do dashboard.
+ * Lê o artefato do pedido. Raízes em ordem (worktree do ticket, checkout principal).
+ * Caminho absoluto, com .., ou cujo realpath (symlink) sai da raiz é recusado.
+ * @returns {{ ok, file?, sql?, sha?, error?, code? }}
  */
-function createChildExecutor({ env = process.env, consumerRoot = env.REPO_PATH || process.cwd(), spawnImpl = spawn, timeoutMs = PROCESS_TIMEOUT_MS } = {}) {
+function readArtifact(pending, { roots }) {
+    const rel = String(pending?.artifact || '');
+    if (!rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return { ok: false, code: 'ARTIFACT_INVALID', error: `artifact inválido: "${rel}" (caminho relativo ao repo consumidor, sem ..)` };
+    for (const root of roots.filter(Boolean)) {
+        let realRoot, real;
+        try { realRoot = fs.realpathSync(root); } catch { continue; }
+        try { real = fs.realpathSync(path.resolve(root, rel)); } catch { continue; }
+        if (!real.startsWith(realRoot + path.sep)) return { ok: false, code: 'ARTIFACT_OUTSIDE_REPO', error: `artifact ${rel} aponta (symlink) para fora do repo — recusado` };
+        let st;
+        try { st = fs.statSync(real); } catch { continue; }
+        if (!st.isFile()) continue;
+        if (st.size > MAX_SQL_BYTES) return { ok: false, code: 'ARTIFACT_TOO_LARGE', error: `artifact ${rel} tem ${st.size} bytes (máximo ${MAX_SQL_BYTES}) — a aprovação mostra o SQL inteiro; divida o artefato` };
+        const sql = fs.readFileSync(real, 'utf8');
+        return { ok: true, file: real, root: realRoot, sql, sha: sha256(sql) };
+    }
+    return { ok: false, code: 'ARTIFACT_MISSING', error: `artifact ${rel} não encontrado (${roots.filter(Boolean).length} raiz(es) conferida(s))` };
+}
+
+// ── Executor (processo filho + pg) ───────────────────────────────────────────────
+
+/**
+ * Executor real. run({ mode: 'apply'|'verify', alias, sql, verify_sql }) → resultado do
+ * filho: { fatal?: { code, message, certain }, pre?, apply?, post? } (cada passo
+ * { ok, text, error, certain?, skipped? }). O pai não passa senha, usuário nem host; o
+ * filho resolve tudo pela config segura. Prazo duro do pai: estourou = incerto.
+ */
+function createChildExecutor({ configDir = null, spawnImpl = spawn, timeoutMs = PARENT_TIMEOUT_MS } = {}) {
     return {
-        name: 'psql',
+        name: 'pg',
         available() {
-            return resolvePsql(env) ? { ok: true } : { ok: false, error: PSQL_MISSING };
+            try { require.resolve('pg'); return { ok: true }; } catch { return { ok: false, error: 'dependência `pg` ausente em scripts/ — rode npm ci em scripts/' }; }
         },
-        run({ script, alias }) {
-            const childEnv = {
-                PATH: env.PATH || '/usr/bin:/bin', HOME: env.HOME || os.homedir(), LANG: 'C.UTF-8', REPO_PATH: consumerRoot,
-                ...(env.PRISMA_PSQL_BIN ? { PRISMA_PSQL_BIN: env.PRISMA_PSQL_BIN } : {}),
-                ...(env.PRISMA_DB_TARGETS ? { PRISMA_DB_TARGETS: env.PRISMA_DB_TARGETS } : {}),
-                ...(env.PRISMA_DB_TARGETS_FILE ? { PRISMA_DB_TARGETS_FILE: env.PRISMA_DB_TARGETS_FILE } : {}),
-            };
-            // Fallback por env: só a variável do alvo escolhido segue para o filho.
-            const loaded = loadTargets(env, { consumerRoot }).targets;
-            const ref = loaded?.[alias] ? secretRef(alias, loaded[alias]) : null;
-            if (ref?.kind === 'env' && env[ref.name]) childEnv[ref.name] = env[ref.name];
+        run(job) {
+            const childEnv = { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', HOME: prismaConfig.homeDir() };
             return new Promise(resolve => {
-                let stdout = '', stderr = '', done = false, timedOut = false;
+                let stdout = '', done = false, timedOut = false;
                 let child;
                 try {
-                    child = spawnImpl(process.execPath, [CHILD_SCRIPT], { env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+                    child = spawnImpl(process.execPath, [CHILD_SCRIPT], { env: childEnv, stdio: ['pipe', 'pipe', 'ignore'] });
                 } catch (e) {
-                    resolve({ exitCode: null, stdout: '', stderr: String(e.message || e), spawnError: e.code || 'SPAWN_FAILED', timedOut: false });
+                    resolve({ fatal: { code: 'SPAWN_FAILED', message: String(e.code || e.message), certain: true } });
                     return;
                 }
-                const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGTERM'); } catch { /* saiu */ } }, timeoutMs);
+                const timer = setTimeout(() => { timedOut = true; try { child.kill('SIGKILL'); } catch { /* saiu */ } }, timeoutMs);
                 const finish = res => { if (done) return; done = true; clearTimeout(timer); resolve(res); };
-                child.stdout.on('data', d => { if (stdout.length < MAX_OUTPUT_CHARS) stdout += d; });
-                child.stderr.on('data', d => { if (stderr.length < MAX_OUTPUT_CHARS) stderr += d; });
-                child.on('error', e => finish({ exitCode: null, stdout, stderr: `${stderr}${e.message}`, spawnError: e.code || 'SPAWN_FAILED', timedOut }));
-                child.on('close', code => finish(code === CHILD_NOT_RUN_EXIT
-                    ? { exitCode: null, stdout, stderr, spawnError: 'NOT_RUN', timedOut }
-                    : { exitCode: code, stdout, stderr, spawnError: null, timedOut }));
-                child.stdin.on('error', () => { /* filho saiu antes de ler */ });
-                child.stdin.end(JSON.stringify({ alias, script }));
+                child.stdout.on('data', d => { if (stdout.length < 4 * MAX_SQL_BYTES) stdout += d; });
+                child.on('error', e => finish({ fatal: { code: 'SPAWN_FAILED', message: String(e.code || e.message), certain: true } }));
+                child.on('close', () => {
+                    let out = null;
+                    try { out = JSON.parse(stdout); } catch { /* sem JSON */ }
+                    if (out && typeof out === 'object') return finish(out);
+                    // Sem resposta legível do filho: se chegou a aplicar, não dá pra saber.
+                    finish({ fatal: { code: timedOut ? 'CHILD_TIMEOUT' : 'CHILD_NO_RESULT', message: timedOut ? 'executor excedeu o prazo' : 'executor saiu sem resultado', certain: job.mode !== 'apply' } });
+                });
+                child.stdin.on('error', () => { /* filho saiu antes */ });
+                child.stdin.end(JSON.stringify({ ...job, configDir, budget_ms: CHILD_BUDGET_MS }));
             });
         },
     };
@@ -319,8 +292,11 @@ function createChildExecutor({ env = process.env, consumerRoot = env.REPO_PATH |
 
 // ── Saídas ───────────────────────────────────────────────────────────────────────
 
-function redact(text) {
-    return String(text ?? '').replace(/(password\s*[=:]\s*)\S+/gi, '$1***').replace(/(PGPASSWORD\s*=\s*)\S+/g, '$1***');
+// Defesa em profundidade: o filho já esconde; o pai esconde de novo o que sabe da entrada.
+function scrubber(entry) {
+    const hide = [entry?.user, entry?.host, entry?.database].filter(v => typeof v === 'string' && v.length >= 3).sort((a, b) => b.length - a.length);
+    return text => hide.reduce((out, v) => out.split(v).join('***'), String(text ?? ''))
+        .replace(/(password\s*[=:]\s*)\S+/gi, '$1***');
 }
 
 function writeOut(dir, name, content) {
@@ -332,210 +308,139 @@ function writeOut(dir, name, content) {
     return file;
 }
 
-function stepText(label, res) {
-    return [
-        `# ${label}`,
-        `exit_code: ${res.exitCode ?? 'null'}${res.timedOut ? ' (timeout)' : ''}${res.spawnError ? ` (não executou: ${res.spawnError})` : ''}`,
-        '',
-        '## stdout',
-        redact(res.stdout || ''),
-        '',
-        '## stderr',
-        redact(res.stderr || ''),
-        '',
-    ].join('\n');
-}
-
-// psql: 0 ok; 3 erro de script com ON_ERROR_STOP (antes do COMMIT, ou o próprio COMMIT
-// falhou → rollback): certo que não aplicou; filho/spawn falhou: nada rodou. Conexão
-// caída (2), código 1 ou timeout no meio: pode ter commitado — UNCERTAIN.
-function classify(res, { applying }) {
-    if (res.spawnError) return 'not_run';
-    if (res.exitCode === 0 && !res.timedOut) return 'ok';
-    if (!applying) return 'failed';
-    if (res.exitCode === 3 && !res.timedOut) return 'failed';
-    return 'uncertain';
-}
-
-// Falha de autenticação/permissão do banco = autoridade revogada no Attempt (como 401/403).
-function httpLike(res) {
-    if (/password authentication failed|permission denied|no pg_hba\.conf entry/i.test(res.stderr || '')) return 403;
-    return res.exitCode === 0 && !res.timedOut ? 200 : 500;
+function stepText(label, step, scrub) {
+    return [`# ${label}`, `ok: ${!!step?.ok}${step?.skipped ? ' (não executado)' : ''}`, '', '## saída', scrub(step?.text || ''), '', '## erro', scrub(step?.error || ''), ''].join('\n');
 }
 
 function attemptsFulfilled(runDir, key) {
     return dom06.listAttempts(runDir).some(a => (a.effects || []).some(e => e.idempotency_key === key && e.status === 'fulfilled'));
 }
 
-function lastLine(res) {
-    return redact(((res?.stderr || '').trim().split('\n').filter(Boolean).pop()) || (res?.timedOut ? 'timeout' : `exit ${res?.exitCode}`));
-}
-
 /**
- * Lê e confere o artefato do pedido. Raízes, em ordem: a do run (worktree do ticket ou
- * checkout principal) e a principal. Caminho absoluto ou com .. é recusado.
- * @returns {{ ok, file?, sql?, sha?, error?, code? }}
- */
-function readArtifact(pending, { roots }) {
-    const rel = String(pending?.artifact || '');
-    if (!rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return { ok: false, code: 'ARTIFACT_INVALID', error: `artifact inválido: "${rel}" (caminho relativo ao repo consumidor, sem ..)` };
-    for (const root of roots.filter(Boolean)) {
-        const file = path.resolve(root, rel);
-        if (!file.startsWith(path.resolve(root) + path.sep)) continue;
-        let sql;
-        try { sql = fs.readFileSync(file, 'utf8'); } catch { continue; }
-        return { ok: true, file, root, sql, sha: sha256(sql) };
-    }
-    return { ok: false, code: 'ARTIFACT_MISSING', error: `artifact ${rel} não encontrado (${roots.filter(Boolean).length} raiz(es) conferida(s))` };
-}
-
-/**
- * Execução completa (pré-verify → aplicação → pós-verify) de um pedido aprovado, no
- * alvo escolhido pelo aprovador (pending.target.alias).
+ * Execução a partir do job congelado na aprovação.
  * @param {object} p
  * @param {string} p.runDir
- * @param {object} p.pending   state.pending_authorization (phase "executing")
- * @param {object} p.env       ambiente do dashboard (allowlist; segredo só no fallback env)
- * @param {object} p.executor  { run({script, alias}), available? } — filho+psql por padrão
- * @param {string[]} p.roots   raízes onde o artifact é procurado
- * @param {'apply'|'verify'} [p.mode]  verify = só a verificação ("Já apliquei manualmente")
+ * @param {object} p.job  { id, artifact, artifact_sha256, sql?, verify_sql, expected_contains?, target_alias }
+ * @param {'apply'|'verify'} [p.mode]
  * @returns {Promise<object>} outcome: applied | verified | failed | uncertain | refused
  */
-async function run({ runDir, pending, env = process.env, executor = null, roots = [], mode = 'apply', now = () => new Date().toISOString() }) {
-    const outDir = path.join(runDir, 'authorization', String(pending.id));
-    const alias = pending.target?.alias;
+async function run({ runDir, job, executor = null, configDir = null, mode = 'apply', now = () => new Date().toISOString() }) {
+    const outDir = path.join(runDir, 'authorization', String(job.id));
+    const alias = job.target_alias;
     const result = {
-        authorization_id: pending.id, mode, started_at: now(), finished_at: null, ok: false, outcome: 'refused', code: null, error: null,
-        artifact: pending.artifact, artifact_sha256: pending.artifact_sha256, target: null, steps: {}, attempt_id: null, verify_matched: null,
+        authorization_id: job.id, mode, started_at: now(), finished_at: null, ok: false, outcome: 'refused', code: null, error: null,
+        artifact: job.artifact, artifact_sha256: job.artifact_sha256, target: null, steps: {}, attempt_id: null, verify_matched: null,
     };
+    let scrub = scrubber(null);
     const finish = () => {
         result.finished_at = now();
+        if (result.error) result.error = scrub(result.error);
         writeOut(outDir, mode === 'verify' ? 'manual-result.json' : 'result.json', `${JSON.stringify(result, null, 2)}\n`);
         return { ...result, outputs: path.relative(runDir, outDir) };
     };
     const refuse = (code, error) => { result.code = code; result.error = error; result.outcome = 'refused'; return finish(); };
 
-    const resolved = resolveTarget(alias, env, { consumerRoot: roots[0] });
+    const resolved = resolveTarget(alias, { configDir });
     if (!resolved.ok) return refuse(resolved.code, resolved.error);
+    scrub = scrubber(resolved.entry);
     result.target = describeTarget(resolved.target);
 
-    const verifyProblems = checkVerifySql(pending.verify_sql);
+    const verifyProblems = checkVerifySql(job.verify_sql);
     if (verifyProblems.length) return refuse('VERIFY_SQL_INVALID', verifyProblems.join('; '));
-    let artifact = null;
     if (mode === 'apply') {
-        artifact = readArtifact(pending, { roots });
-        if (!artifact.ok) return refuse(artifact.code, artifact.error);
-        if (artifact.sha !== pending.artifact_sha256) {
-            return refuse('ARTIFACT_CHANGED', `o conteúdo de ${pending.artifact} mudou depois do pedido (sha256 ${artifact.sha.slice(0, 12)}… ≠ aprovado ${String(pending.artifact_sha256).slice(0, 12)}…) — nada foi executado; peça um novo pedido de autorização`);
-        }
-        const problems = checkArtifactSql(artifact.sql);
+        if (typeof job.sql !== 'string' || sha256(job.sql) !== job.artifact_sha256) return refuse('ARTIFACT_CHANGED', 'o SQL congelado não confere com o sha256 aprovado — nada foi executado');
+        const problems = checkArtifactSql(job.sql);
         if (problems.length) return refuse('ARTIFACT_SQL_REFUSED', problems.join('; '));
     }
-    const applyKey = `db-apply:${pending.id}:${pending.artifact_sha256}:${alias}`;
+    const applyKey = `db-apply:${job.id}:${job.artifact_sha256}:${alias}`;
     if (mode === 'apply' && attemptsFulfilled(runDir, applyKey)) {
-        return refuse('ALREADY_APPLIED', `pedido ${pending.id} já foi aplicado em "${alias}" por um Attempt anterior (mesma chave de idempotência) — não repito`);
+        return refuse('ALREADY_APPLIED', `pedido ${job.id} já foi aplicado em "${alias}" por um Attempt anterior (mesma chave de idempotência) — não repito`);
     }
-
-    const exec = executor || createChildExecutor({ env, consumerRoot: roots[0] });
+    const exec = executor || createChildExecutor({ configDir });
     if (typeof exec.available === 'function') {
         const avail = exec.available();
         if (!avail.ok) return refuse('EXECUTOR_UNAVAILABLE', avail.error);
     }
 
+    const obligations = mode === 'apply' ? [{ id: 'db_pre_verify' }, { id: 'db_apply' }, { id: 'db_post_verify' }] : [{ id: 'db_post_verify' }];
     const decision = dom06.beginAttempt(runDir, {
         node: 'db-effect',
-        admission: {
-            status: 'ADMITTED', owner: 'dom06',
-            snapshot: { task_id: path.basename(runDir), authorization_id: pending.id, artifact_sha256: pending.artifact_sha256, target: alias, mode },
-        },
-        obligations: mode === 'apply'
-            ? [{ id: 'db_pre_verify' }, { id: 'db_apply' }, { id: 'db_post_verify' }]
-            : [{ id: 'db_post_verify' }],
+        admission: { status: 'ADMITTED', owner: 'dom06', snapshot: { task_id: path.basename(runDir), authorization_id: job.id, artifact_sha256: job.artifact_sha256, target: alias, mode } },
+        obligations,
     });
     const attemptFile = decision.attemptFile;
     result.attempt_id = decision.attempt.attempt_id;
+    const auth = dom06.authorizeEffect(dom06.readAttempt(attemptFile), { obligationId: 'db_apply', idempotencyKey: applyKey });
+    if (!auth.ok) return refuse(auth.error, `Attempt sem autoridade (${auth.error})`);
 
-    const verifyStep = async (name, file) => {
-        const res = await exec.run({ script: composeVerifyScript(pending.verify_sql), alias, readOnly: true });
-        writeOut(outDir, file, stepText(`${name} (${alias}) — ${now()}`, res));
-        const status = classify(res, { applying: false });
-        dom06.recordEffect(attemptFile, {
-            obligation_id: name, idempotency_key: `${name}:${pending.id}:${result.attempt_id}`,
-            status: status === 'ok' ? 'fulfilled' : 'failed', detail: status === 'ok' ? file : lastLine(res).slice(0, 300),
-        });
-        result.steps[name] = { exit_code: res.exitCode, status, file };
-        return { res, status };
-    };
-    const matched = res => (pending.expected_contains ? String(res.stdout || '').includes(pending.expected_contains) : null);
+    const out = await exec.run({ mode, alias, sql: mode === 'apply' ? job.sql : null, verify_sql: job.verify_sql });
+    const matched = step => (job.expected_contains ? String(step?.text || '').includes(job.expected_contains) : null);
+    const record = (obligation, key, step) => dom06.recordEffect(attemptFile, {
+        obligation_id: obligation, idempotency_key: key, status: step?.ok ? 'fulfilled' : 'failed',
+        detail: scrub(step?.ok ? 'ok' : (step?.error || (step?.skipped ? 'não executado' : 'falhou'))).slice(0, 300),
+    });
+
+    if (out.fatal) {
+        const certain = out.fatal.certain !== false;
+        result.outcome = certain ? 'failed' : 'uncertain';
+        result.code = certain ? (out.fatal.code || 'EXECUTOR_FAILED') : 'APPLY_UNCERTAIN';
+        result.error = certain
+            ? `não executado em ${alias}: ${out.fatal.message}`
+            : `resultado INCERTO em ${alias} (${out.fatal.message}) — pode ter commitado; confira e use "Já apliquei manualmente" se aplicou. Não repito sozinho.`;
+        dom06.recordEffect(attemptFile, { obligation_id: mode === 'apply' ? 'db_apply' : 'db_post_verify', idempotency_key: mode === 'apply' ? applyKey : `db_post_verify:${job.id}:${result.attempt_id}`, status: 'failed', detail: scrub(out.fatal.message).slice(0, 300) });
+        if (/^(28P01|28000|SECRET_\w+)$/.test(String(out.fatal.code))) dom06.revoke(attemptFile, { reason: 'db_auth' });
+        dom06.closeAttempt(attemptFile, { result: certain ? 'FAILED' : 'UNCERTAIN', reason: result.code });
+        return finish();
+    }
 
     if (mode === 'verify') {
-        const post = await verifyStep('db_post_verify', 'manual-post.txt');
-        result.verify_matched = matched(post.res);
-        if (post.status !== 'ok') {
-            result.outcome = 'failed'; result.code = 'VERIFY_FAILED';
-            result.error = `verify_sql falhou em ${alias}: ${lastLine(post.res)}`;
-        } else if (result.verify_matched === false) {
-            result.outcome = 'failed'; result.code = 'VERIFY_MISMATCH';
-            result.error = `a verificação não mostrou o esperado ("${pending.expected_contains}") — ver authorization/${pending.id}/manual-post.txt`;
-        } else {
-            result.ok = true; result.outcome = 'verified';
-        }
+        writeOut(outDir, 'manual-post.txt', stepText(`db_post_verify (${alias}) — ${now()}`, out.post, scrub));
+        record('db_post_verify', `db_post_verify:${job.id}:${result.attempt_id}`, out.post);
+        result.steps.db_post_verify = { ok: !!out.post?.ok, file: 'manual-post.txt' };
+        result.verify_matched = matched(out.post);
+        if (!out.post?.ok) { result.outcome = 'failed'; result.code = 'VERIFY_FAILED'; result.error = `verify_sql falhou em ${alias}: ${out.post?.error || '?'}`; }
+        else if (result.verify_matched === false) { result.outcome = 'failed'; result.code = 'VERIFY_MISMATCH'; result.error = `a verificação não mostrou o esperado ("${job.expected_contains}") — ver authorization/${job.id}/manual-post.txt`; }
+        else { result.ok = true; result.outcome = 'verified'; }
         dom06.closeAttempt(attemptFile, { result: result.ok ? 'COMPLETE' : 'FAILED', reason: result.code });
         return finish();
     }
 
-    const pre = await verifyStep('db_pre_verify', 'pre.txt');
-    if (pre.status !== 'ok') {
+    writeOut(outDir, 'pre.txt', stepText(`db_pre_verify (${alias}) — ${now()}`, out.pre, scrub));
+    writeOut(outDir, 'apply.txt', stepText(`db_apply ${job.artifact} (${alias}) — ${now()}`, out.apply, scrub));
+    writeOut(outDir, 'post.txt', stepText(`db_post_verify (${alias}) — ${now()}`, out.post, scrub));
+    record('db_pre_verify', `db_pre_verify:${job.id}:${result.attempt_id}`, out.pre);
+    if (out.apply && !out.apply.skipped) record('db_apply', applyKey, out.apply);
+    if (out.post && !out.post.skipped) record('db_post_verify', `db_post_verify:${job.id}:${result.attempt_id}`, out.post);
+    result.steps = { db_pre_verify: { ok: !!out.pre?.ok }, db_apply: { ok: !!out.apply?.ok, skipped: !!out.apply?.skipped, certain: out.apply?.certain !== false }, db_post_verify: { ok: !!out.post?.ok } };
+
+    if (!out.pre?.ok) {
         result.outcome = 'failed'; result.code = 'PRE_VERIFY_FAILED';
-        result.error = `verify_sql (antes) falhou em ${alias} — SQL NÃO aplicado: ${lastLine(pre.res)}`;
-        dom06.closeAttempt(attemptFile, { result: 'FAILED', reason: result.code });
-        return finish();
-    }
-
-    let applyRes = null;
-    const effect = await dom06.applyExternalEffect(attemptFile, {
-        obligationId: 'db_apply', idempotencyKey: applyKey,
-        perform: async () => {
-            applyRes = await exec.run({ script: composeApplyScript(artifact.sql), alias, readOnly: false });
-            writeOut(outDir, 'apply.txt', stepText(`db_apply ${pending.artifact} (${alias}) — ${now()}`, applyRes));
-            return { status: httpLike(applyRes), ok: classify(applyRes, { applying: true }) === 'ok', detail: classify(applyRes, { applying: true }) };
-        },
-    });
-    const applyStatus = applyRes ? classify(applyRes, { applying: true }) : 'not_run';
-    result.steps.db_apply = { exit_code: applyRes?.exitCode ?? null, status: applyStatus, file: 'apply.txt', effect: effect.error || 'ok' };
-    if (applyStatus !== 'ok') {
-        if (applyStatus === 'uncertain') {
+        result.error = `verify_sql (antes) falhou em ${alias} — SQL NÃO aplicado: ${out.pre?.error || '?'}`;
+    } else if (!out.apply?.ok) {
+        if (out.apply?.certain === false) {
             result.outcome = 'uncertain'; result.code = 'APPLY_UNCERTAIN';
-            result.error = `resultado INCERTO aplicando ${pending.artifact} em ${alias} (${lastLine(applyRes)}) — pode ter commitado; confira com o verify_sql e use "Já apliquei manualmente" se aplicou. Não repito sozinho.`;
+            result.error = `resultado INCERTO aplicando ${job.artifact} em ${alias} (${out.apply?.error || '?'}) — o COMMIT saiu e a conexão caiu; confira e use "Já apliquei manualmente" se aplicou. Não repito sozinho.`;
         } else {
-            result.outcome = 'failed'; result.code = applyStatus === 'not_run' ? 'APPLY_NOT_RUN' : 'APPLY_FAILED';
-            result.error = applyStatus === 'not_run'
-                ? `SQL não executado em ${alias}: ${lastLine(applyRes)}`
-                : `SQL falhou e a transação foi desfeita em ${alias}: ${lastLine(applyRes)}`;
+            result.outcome = 'failed'; result.code = 'APPLY_FAILED';
+            result.error = `SQL falhou e a transação foi desfeita em ${alias}: ${out.apply?.error || '?'}`;
         }
-        if (applyStatus === 'failed') await verifyStep('db_post_verify', 'post.txt');
-        dom06.closeAttempt(attemptFile, { result: applyStatus === 'uncertain' ? 'UNCERTAIN' : 'FAILED', reason: result.code });
-        return finish();
-    }
-
-    const post = await verifyStep('db_post_verify', 'post.txt');
-    result.verify_matched = matched(post.res);
-    if (post.status !== 'ok') {
+        if (/28P01|28000|42501/.test(out.apply?.error || '')) dom06.revoke(attemptFile, { reason: 'db_auth' });
+    } else if (!out.post?.ok) {
         result.outcome = 'failed'; result.code = 'POST_VERIFY_FAILED';
         result.error = `SQL aplicado (COMMIT ok), mas o verify_sql de depois falhou em ${alias} — confira à mão antes de seguir`;
-    } else if (result.verify_matched === false) {
-        result.outcome = 'failed'; result.code = 'VERIFY_MISMATCH';
-        result.error = `SQL aplicado (COMMIT ok), mas a verificação de depois não mostrou o esperado ("${pending.expected_contains}") — ver authorization/${pending.id}/post.txt`;
     } else {
-        result.ok = true; result.outcome = 'applied';
+        result.verify_matched = matched(out.post);
+        if (result.verify_matched === false) {
+            result.outcome = 'failed'; result.code = 'VERIFY_MISMATCH';
+            result.error = `SQL aplicado (COMMIT ok), mas a verificação de depois não mostrou o esperado ("${job.expected_contains}") — ver authorization/${job.id}/post.txt`;
+        } else { result.ok = true; result.outcome = 'applied'; }
     }
-    dom06.closeAttempt(attemptFile, { result: result.ok ? 'COMPLETE' : 'FAILED', reason: result.code });
+    dom06.closeAttempt(attemptFile, { result: result.ok ? 'COMPLETE' : result.outcome === 'uncertain' ? 'UNCERTAIN' : 'FAILED', reason: result.code });
     return finish();
 }
 
 module.exports = {
-    LOCK_TIMEOUT, STATEMENT_TIMEOUT, PSQL_MISSING, PASSWORD_ENV_RE, CHILD_NOT_RUN_EXIT, ALIAS_RE,
-    sha256, keychainService, defaultTargetsFile, targetsFile, secretRef, validateEntry, loadTargets, resolveTarget, publicTargets, describeTarget, isProductionEntry,
-    checkArtifactSql, checkVerifySql, composeApplyScript, composeVerifyScript,
-    resolvePsql, findInPath, createChildExecutor, readArtifact, redact, run,
+    LOCK_TIMEOUT, STATEMENT_TIMEOUT, LOCK_TIMEOUT_MS, STATEMENT_TIMEOUT_MS, MAX_SQL_BYTES, ALIAS_RE, TARGETS_FILE, DEFAULT_SECURITY_BIN, CHILD_BUDGET_MS,
+    sha256, keychainService, validateEntry, loadTargets, resolveTarget, publicTargets, describeTarget, isProductionEntry,
+    checkArtifactSql, checkVerifySql, splitStatements, readArtifact, createChildExecutor, scrubber, run,
 };

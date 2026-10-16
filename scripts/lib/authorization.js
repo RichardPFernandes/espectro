@@ -37,6 +37,7 @@ const path = require('path');
 const cas = require('../cas');
 const stateWriter = require('../state-writer');
 const dbEffect = require('./db-effect');
+const prismaConfig = require('./prisma-config');
 
 const STATUS = 'authorization-pending';
 const KINDS = new Set(['db_migration']);
@@ -233,33 +234,114 @@ function humanEntry(event, p, { by, at, ...extra }) {
     return { id: p.id, event, by, via: 'dashboard', at, ...extra };
 }
 
-/**
- * Aprovação: CAS + operation_id; o humano confirma o hash que viu. Fase pending →
- * executing. A execução em si é execute() logo em seguida, no mesmo processo.
- */
-function checkTarget(targetAlias, env, runDir) {
-    const t = dbEffect.resolveTarget(targetAlias, env, { consumerRoot: consumerRootOf(runDir) });
+// ── Pedido canônico, hash e cópia congelada ──────────────────────────────────────
+//
+// O que o aprovador confere na tela vira um objeto canônico (ticket do task-id,
+// artefato + sha256, verify_sql, expected_contains, then, alvo escolhido) e o seu
+// sha256 — o request_hash. A tela mostra o hash e o devolve na aprovação; o servidor
+// recalcula a partir do disco e recusa se mudou (REQUEST_CHANGED). Aprovado, o pedido
+// (com o SQL) é congelado em ~/.config/prisma/approved/ e a execução usa ESSA cópia,
+// passada em memória pelo dashboard — editar state.json/artefato depois não muda o que
+// roda.
+
+function ticketOfTask(taskId) {
+    if (/^\d{4}-\d{2}-\d{2}-/.test(String(taskId))) return null;
+    const m = /^(\d{4,6})-/.exec(String(taskId));
+    return m ? Number(m[1]) : null;
+}
+
+function stableStringify(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v ?? null);
+    if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
+    return `{${Object.keys(v).sort().map(k => `${JSON.stringify(k)}:${stableStringify(v[k])}`).join(',')}}`;
+}
+
+function canonicalRequest(taskId, p, targetAlias) {
+    return {
+        v: 1, task_id: taskId, ticket: ticketOfTask(taskId), authorization_id: p.id, kind: p.kind,
+        artifact: p.artifact, artifact_sha256: p.artifact_sha256, verify_sql: p.verify_sql,
+        expected_contains: p.expected_contains ?? null, then: p.then, target: targetAlias || null,
+    };
+}
+
+function requestHashOf(canonical) {
+    return dbEffect.sha256(stableStringify(canonical));
+}
+
+const CANON_KEYS = ['v', 'task_id', 'ticket', 'authorization_id', 'kind', 'artifact', 'artifact_sha256', 'verify_sql', 'expected_contains', 'then', 'target'];
+function canonOfFrozen(f) {
+    const out = {};
+    for (const k of CANON_KEYS) out[k] = f[k] ?? null;
+    return out;
+}
+
+/** Hash do pedido em aberto para o alvo `targetAlias` (o que a tela mostra). */
+function describeRequest(runDir, { targetAlias = null } = {}) {
+    const state = stateWriter.read(runDir);
+    const p = state?.pending_authorization;
+    if (!p) return null;
+    const taskId = path.basename(runDir);
+    const canonical = canonicalRequest(taskId, p, targetAlias);
+    return { canonical, request_hash: requestHashOf(canonical) };
+}
+
+function checkTarget(targetAlias, configDir) {
+    const t = dbEffect.resolveTarget(targetAlias, { configDir });
     if (!t.ok) throw new AuthorizationError(t.code, t.error);
     return t.target;
 }
 
-function approve(runDir, { by, operationId, expectedStateVersion, authorizationId, artifactSha256, targetAlias, env = process.env, at = new Date().toISOString() }) {
+function freeze(runDir, p, { by, at, operationId, targetAlias, requestHash, configDir, mode }) {
+    const taskId = path.basename(runDir);
+    const canonical = canonicalRequest(taskId, p, targetAlias);
+    const hash = requestHashOf(canonical);
+    if (hash !== requestHash) {
+        throw new AuthorizationError('REQUEST_CHANGED', 'o pedido mudou desde que a tela carregou (SQL, verificação, desfecho ou alvo) — atualize e confira de novo antes de aprovar');
+    }
+    let sql = null;
+    if (mode === 'apply') {
+        const a = dbEffect.readArtifact(p, { roots: rootsFor(runDir) });
+        if (!a.ok) throw new AuthorizationError(a.code, a.error);
+        if (a.sha !== p.artifact_sha256) throw new AuthorizationError('ARTIFACT_CHANGED', `o conteúdo de ${p.artifact} mudou depois do pedido — nada aprovado; peça um novo pedido`);
+        const problems = dbEffect.checkArtifactSql(a.sql);
+        if (problems.length) throw new AuthorizationError('ARTIFACT_SQL_REFUSED', problems.join('; '));
+        sql = a.sql;
+    }
+    const vp = dbEffect.checkVerifySql(p.verify_sql);
+    if (vp.length) throw new AuthorizationError('VERIFY_SQL_INVALID', vp.join('; '));
+    const frozen = { ...canonical, request_hash: hash, mode, sql, summary: p.summary, expected: p.expected, approved_by: by, approved_at: at, operation_id: operationId };
+    const name = `approved/${taskId}__${p.id}__${mode}__${hash.slice(0, 16)}.json`;
+    try {
+        prismaConfig.writeSecureJson(name, frozen, { dir: configDir });
+    } catch (e) {
+        throw new AuthorizationError('CONFIG_UNSAFE', `não foi possível congelar a aprovação em ~/.config/prisma: ${e.message}`);
+    }
+    return { frozen, file: name };
+}
+
+/**
+ * Aprovação: CAS + operation_id + request_hash conferido + alvo da allowlist. Fase
+ * pending → executing. Devolve a cópia congelada que execute() recebe em memória.
+ */
+function approve(runDir, { by, operationId, expectedStateVersion, authorizationId, requestHash, targetAlias, configDir = null, at = new Date().toISOString() }) {
     const { lock, already, state, pending: p } = lockDecision(runDir, { expectedStateVersion, operationId, authorizationId });
     if (already) return { status: 'already_processed' };
     try {
         if (state.status !== STATUS || p.phase !== 'pending') throw new AuthorizationError('NOT_APPROVABLE', `pedido ${p.id} não está aguardando aprovação (status ${state.status}, fase ${p.phase})`);
-        if (artifactSha256 !== p.artifact_sha256) throw new AuthorizationError('HASH_NOT_CONFIRMED', 'o hash confirmado na tela não é o do pedido — atualize e confira o SQL de novo');
         if (!nonEmpty(targetAlias)) throw new AuthorizationError('TARGET_REQUIRED', 'escolha o banco alvo na allowlist');
-        const target = checkTarget(targetAlias, env, runDir);
+        const target = checkTarget(targetAlias, configDir);
+        if (!nonEmpty(requestHash)) throw new AuthorizationError('REQUEST_HASH_REQUIRED', 'a aprovação precisa do hash do pedido mostrado na tela');
+        const { frozen, file } = freeze(runDir, p, { by, at, operationId, targetAlias: target.alias, requestHash, configDir, mode: 'apply' });
         p.phase = 'executing';
         p.target = { alias: target.alias };
         p.approved_by = by;
         p.approved_at = at;
+        p.request_hash = frozen.request_hash;
         p.decision_operation_id = operationId;
         state.updated_at = at;
-        pushHistory(state, humanEntry('approved', p, { by, at, target: target.alias, artifact_sha256: p.artifact_sha256, operation_id: operationId }));
+        pushHistory(state, humanEntry('approved', p, { by, at, target: target.alias, request_hash: frozen.request_hash, artifact_sha256: p.artifact_sha256, frozen: file, operation_id: operationId }));
         pushEvent(state, { type: 'authorization_approved', agent: 'human', at, detail: `${p.id} aprovado por ${by} (dashboard) para o alvo ${target.alias}` });
-        return { status: 'applied', state: lock.commit(state), pending: p };
+        return { status: 'applied', state: lock.commit(state), pending: p, frozen };
     } finally {
         lock.release();
     }
@@ -286,24 +368,26 @@ function reject(runDir, { by, reason, operationId, expectedStateVersion, authori
     }
 }
 
-/** "Já apliquei manualmente": registra quem; a verificação (opcional) vem em execute(mode verify). */
-function markManual(runDir, { by, note = null, operationId, expectedStateVersion, authorizationId, targetAlias = null, env = process.env, at = new Date().toISOString() }) {
+/** "Já apliquei manualmente": registra quem; com alvo, a verificação vem em execute(mode verify). */
+function markManual(runDir, { by, note = null, operationId, expectedStateVersion, authorizationId, requestHash, targetAlias = null, configDir = null, at = new Date().toISOString() }) {
     const { lock, already, state, pending: p } = lockDecision(runDir, { expectedStateVersion, operationId, authorizationId });
     if (already) return { status: 'already_processed' };
     try {
         if (!DECIDABLE.has(p.phase)) throw new AuthorizationError('NOT_DECIDABLE', `pedido ${p.id} está em ${p.phase} — aguarde`);
-        // Alvo opcional: com ele (na allowlist) o Prisma confere com o verify_sql.
-        if (nonEmpty(targetAlias)) p.target = { alias: checkTarget(targetAlias, env, runDir).alias };
-        else delete p.target;
+        const alias = nonEmpty(targetAlias) ? checkTarget(targetAlias, configDir).alias : null;
+        if (!nonEmpty(requestHash)) throw new AuthorizationError('REQUEST_HASH_REQUIRED', 'a decisão precisa do hash do pedido mostrado na tela');
+        const { frozen, file } = freeze(runDir, p, { by, at, operationId, targetAlias: alias, requestHash, configDir, mode: 'verify' });
+        if (alias) p.target = { alias }; else delete p.target;
         p.phase = 'executing';
         p.manual_by = by;
         p.manual_at = at;
+        p.request_hash = frozen.request_hash;
         p.decision_operation_id = operationId;
         state.status = STATUS;
         state.updated_at = at;
-        pushHistory(state, humanEntry('manual_applied', p, { by, at, ...(p.target ? { target: p.target.alias } : {}), ...(nonEmpty(note) ? { note: note.trim() } : {}), operation_id: operationId }));
+        pushHistory(state, humanEntry('manual_applied', p, { by, at, ...(alias ? { target: alias } : {}), request_hash: frozen.request_hash, frozen: file, ...(nonEmpty(note) ? { note: note.trim() } : {}), operation_id: operationId }));
         pushEvent(state, { type: 'authorization_manual', agent: 'human', at, detail: `${p.id}: ${by} informou que aplicou manualmente` });
-        return { status: 'applied', state: lock.commit(state), pending: p };
+        return { status: 'applied', state: lock.commit(state), pending: p, frozen };
     } finally {
         lock.release();
     }
@@ -323,36 +407,32 @@ function lastHumanDecision(state, id) {
 }
 
 /**
- * Executa (mode apply) ou só verifica (mode verify, "Já apliquei manualmente") um pedido
- * em fase executing, e aplica o desfecho no state. Só roda com decisão humana registrada
- * pelo dashboard para este pedido.
- * @param {object} deps { env, executor, handback(runDir, ctx) → Promise<{ok, error}> }
+ * Executa (mode apply) ou só verifica (mode verify, "Já apliquei manualmente") a cópia
+ * CONGELADA na decisão (recebida em memória do dashboard) e aplica o desfecho no state.
+ * Confere que ela é a que a decisão humana registrou (request_hash) e que o pedido em
+ * aberto ainda é o mesmo; o conteúdo executado (SQL, verify, alvo, then) vem SÓ da cópia.
  */
-async function execute(runDir, { mode = 'apply', verify = true, env = process.env, executor = null, handback = null, now = () => new Date().toISOString() } = {}) {
+async function execute(runDir, { frozen, mode = 'apply', executor = null, configDir = null, handback = null, now = () => new Date().toISOString() } = {}) {
+    if (!frozen || typeof frozen !== 'object') throw new AuthorizationError('NO_FROZEN_APPROVAL', 'execução sem a cópia congelada da aprovação — nada executa');
+    if (requestHashOf(canonOfFrozen(frozen)) !== frozen.request_hash || frozen.mode !== mode) throw new AuthorizationError('FROZEN_INVALID', 'cópia congelada da aprovação não confere — nada executa');
     const state = stateWriter.read(runDir);
     const p = state?.pending_authorization;
-    if (!p || p.phase !== 'executing') throw new AuthorizationError('NOT_EXECUTING', 'pedido não está em execução (aprove ou informe a aplicação manual primeiro)');
+    if (!p || p.phase !== 'executing' || p.id !== frozen.authorization_id) throw new AuthorizationError('NOT_EXECUTING', 'pedido não está em execução (aprove ou informe a aplicação manual primeiro)');
     const decision = lastHumanDecision(state, p.id);
     const expected = mode === 'apply' ? 'approved' : 'manual_applied';
-    if (!decision || decision.event !== expected || decision.via !== 'dashboard') {
-        throw new AuthorizationError('NO_HUMAN_DECISION', `pedido ${p.id} sem decisão humana "${expected}" registrada pelo dashboard — nada executa`);
+    if (!decision || decision.event !== expected || decision.via !== 'dashboard' || decision.request_hash !== frozen.request_hash) {
+        throw new AuthorizationError('NO_HUMAN_DECISION', `pedido ${p.id} sem decisão humana "${expected}" do dashboard para esta cópia — nada executa`);
     }
-    // O alvo executado é o que o aprovador escolheu. Mudou depois (state editado) = nova aprovação.
-    if ((p.target?.alias || null) !== (decision.target || null)) {
-        throw new AuthorizationError('TARGET_CHANGED', `o alvo de ${p.id} (${p.target?.alias || 'nenhum'}) não é o aprovado por ${decision.by} (${decision.target || 'nenhum'}) — exige nova aprovação`);
+    // O alvo executado é o aprovado. Mudou depois no state = nova aprovação.
+    if ((p.target?.alias || null) !== (frozen.target || null)) {
+        throw new AuthorizationError('TARGET_CHANGED', `o alvo de ${p.id} no state (${p.target?.alias || 'nenhum'}) não é o aprovado por ${decision.by} (${frozen.target || 'nenhum'}) — exige nova aprovação`);
     }
-    if (mode === 'verify' && !p.target) verify = false;
-
+    const job = { id: frozen.authorization_id, artifact: frozen.artifact, artifact_sha256: frozen.artifact_sha256, sql: frozen.sql, verify_sql: frozen.verify_sql, expected_contains: frozen.expected_contains, target_alias: frozen.target };
+    const verify = mode === 'apply' || !!frozen.target;
     let result = null;
-    if (mode === 'apply' || verify) {
-        result = await dbEffect.run({ runDir, pending: p, env, executor, roots: rootsFor(runDir), mode: mode === 'apply' ? 'apply' : 'verify', now });
-        // Manual sem alvo na allowlist: não dá pra conferir daqui; segue com o registro humano.
-        if (mode === 'verify' && result.outcome === 'refused' && ['EXECUTOR_UNAVAILABLE'].includes(result.code)) {
-            result = { ...result, ok: true, outcome: 'verify_skipped' };
-        }
-    }
+    if (verify) result = await dbEffect.run({ runDir, job, executor, configDir, mode: mode === 'apply' ? 'apply' : 'verify', now });
     const at = now();
-    const ok = mode === 'verify' && !verify ? true : !!result?.ok;
+    const ok = !verify ? true : !!result?.ok;
     const summary = result ? { outcome: result.outcome, code: result.code, outputs: result.outputs, attempt_id: result.attempt_id, target: result.target?.alias || null, verify_matched: result.verify_matched } : { outcome: 'verify_not_requested' };
 
     if (!ok) {
@@ -370,13 +450,13 @@ async function execute(runDir, { mode = 'apply', verify = true, env = process.en
         return { ok: false, result, error: result.error, phase: uncertain ? 'uncertain' : 'failed' };
     }
 
-    const then = parseThen(p.then, p.requested_by);
+    const then = parseThen(frozen.then, p.requested_by);
     const completed = s => {
         pushHistory(s, { id: p.id, event: mode === 'apply' ? 'applied' : 'manual_confirmed', by: 'prisma', via: 'db-effect', at, ...summary });
         pushEvent(s, { type: 'authorization_completed', agent: 'prisma', at, detail: `${p.id}: ${mode === 'apply' ? `aplicado em ${summary.target}` : 'aplicação manual registrada'}${summary.outputs ? ` (saídas em ${summary.outputs})` : ''}` });
     };
-    const note = `\n\n---\n**Autorização ${p.id} concluída** (${at}): ${mode === 'apply' ? `o Prisma aplicou \`${p.artifact}\` em \`${p.target.alias}\` após aprovação de ${p.approved_by}` : `${p.manual_by} informou que aplicou \`${p.artifact}\` manualmente${p.target ? ` (conferido em \`${p.target.alias}\`)` : ''}`}` +
-        `${summary.outputs ? `; saídas (sem senha) em memory/runs/${path.basename(runDir)}/${summary.outputs}/` : ''}. Esperado: ${p.expected}.\n---\n`;
+    const note = `\n\n---\n**Autorização ${p.id} concluída** (${at}): ${mode === 'apply' ? `o Prisma aplicou \`${frozen.artifact}\` em \`${frozen.target}\` após aprovação de ${frozen.approved_by}` : `${frozen.approved_by} informou que aplicou \`${frozen.artifact}\` manualmente${frozen.target ? ` (conferido em \`${frozen.target}\`)` : ''}`}` +
+        `${summary.outputs ? `; saídas (sem senha) em memory/runs/${path.basename(runDir)}/${summary.outputs}/` : ''}. Esperado: ${frozen.expected}.\n---\n`;
     try { fs.appendFileSync(path.join(runDir, 'context.md'), note); } catch { /* sem context.md */ }
     writeHandoffBlock(runDir, '');
 
@@ -391,7 +471,7 @@ async function execute(runDir, { mode = 'apply', verify = true, env = process.en
             s.updated_at = at;
         }, 'authorization_resume');
         try { fs.rmSync(path.join(runDir, '.watcher-notified.json'), { force: true }); } catch { /* best-effort */ }
-        return { ok: true, result, then: p.then, node: then.node };
+        return { ok: true, result, then: frozen.then, node: then.node };
     }
 
     // handback_qa: fase handback enquanto o Redmine não confirma (crash aqui deixa o botão
@@ -402,9 +482,12 @@ async function execute(runDir, { mode = 'apply', verify = true, env = process.en
         cur.last_result = summary;
         s.updated_at = at;
     }, 'authorization_handback');
-    if (typeof handback !== 'function') return { ok: true, result, then: p.then, handback: null };
-    const hb = await handback(runDir, { authorization: { ...p, phase: 'handback', last_result: summary }, at, operationId: `handback:${p.id}` });
-    return { ok: !!hb?.ok, result, then: p.then, handback: hb, error: hb?.ok ? null : hb?.error };
+    if (typeof handback !== 'function') return { ok: true, result, then: frozen.then, handback: null };
+    const hb = await handback(runDir, {
+        authorization: { id: p.id, summary: frozen.summary, artifact: frozen.artifact, expected: frozen.expected, target: frozen.target ? { alias: frozen.target } : null, approved_by: mode === 'apply' ? frozen.approved_by : null, manual_by: mode === 'verify' ? frozen.approved_by : null, approved_at: frozen.approved_at, last_result: summary },
+        ticket: frozen.ticket, at, operationId: `handback:${p.id}`,
+    });
+    return { ok: !!hb?.ok, result, then: frozen.then, handback: hb, error: hb?.ok ? null : hb?.error };
 }
 
 function template() {
@@ -422,7 +505,7 @@ function template() {
 
 module.exports = {
     STATUS, KINDS, RESUME_NODES, HANDOFF_START, HANDOFF_END, AuthorizationError,
-    validateRequest, requestAuthorization, approve, reject, markManual, execute,
+    validateRequest, requestAuthorization, approve, reject, markManual, execute, describeRequest, canonicalRequest, requestHashOf, ticketOfTask,
     parseThen, rootsFor, consumerRootOf, renderHandoffBlock, upsertHandoffBlock, template,
 };
 
