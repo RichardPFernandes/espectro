@@ -193,6 +193,7 @@ function createWatcherManager(options = {}) {
     }
 
     // --------------------------------------------------------------- ciclo
+    const PRIVILEGED_ENV_RE = /^PRISMA_(DB_|APPROVERS|PSQL)/;
     function spawnTick() {
         timer = null;
         nextTickAt = null;
@@ -201,6 +202,8 @@ function createWatcherManager(options = {}) {
             // WATCHER_LOOP_STARTED_AT/WATCHER_TICK_INTERVAL_MS: o watcher grava uptime e
             // próxima poll no watcher-runtime.json (lido pelo --health-check).
             const env = { ...process.env, ...options.env, REPO_PATH: repoRoot, PRISMA_ROOT, WATCHER_LOOP_STARTED_AT: new Date(startedAt || Date.now()).toISOString(), WATCHER_TICK_INTERVAL_MS: String(intervalMs) };
+            // Config/segredo de banco e aprovadores (PRI-180) nunca chegam ao watcher nem aos agentes.
+            for (const key of Object.keys(env)) if (PRIVILEGED_ENV_RE.test(key)) delete env[key];
             if (loopLock) env[watcherLock.TOKEN_ENV] = loopLock.holder.token;
             else delete env[watcherLock.TOKEN_ENV];
             proc = spawn(process.execPath, [script, ...args], { cwd, env, detached: false, stdio: ['ignore', 'pipe', 'pipe'] });

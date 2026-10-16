@@ -153,13 +153,13 @@ function normalizeTotals(totals) {
     };
 }
 
-const TERMINAL_STATUSES = new Set(['committed', 'fully_merged', 'completed']);
+const TERMINAL_STATUSES = new Set(['committed', 'fully_merged', 'completed', 'handed_back_qa']);
 // Portões/paradas do watcher que representam falha/bloqueio de um nó — ver descrições
 // completas em .graph/schemas/state.schema.json > status.
 const FAILURE_STATUSES = new Set([
     'blocked', 'escalated', 'needs_human_review', 'state_corrupted',
     'spec-invalid', 'spec-pending-approval', 'plan-escalation', 'churn-escalation',
-    'pre-build-failed', 'churn-escalation', 'interrupted',
+    'pre-build-failed', 'churn-escalation', 'interrupted', 'authorization-pending',
 ]);
 
 function durationMsOf(state, tokenUsage) {
