@@ -131,9 +131,11 @@
         "session_limit",
         "spec-drift",
         "spec-change-pending-approval",
-        "spec-change-rejected"
+        "spec-change-rejected",
+        "authorization-pending",
+        "handed_back_qa"
       ],
-      "description": "spec-change-pending-approval: o /implement registrou uma SPEC_CHANGE (scripts/lib/spec-change.js record — decisão que remove/enfraquece AC, muda comportamento esperado, regra de negócio, exceção/restrição/escopo funcional) e não pode aprová-la; proposta em spec_change_pending e em memory/runs/<task-id>/spec-change-audit.json, publicada no Redmine pelo watcher (runSpecChangeGate). Nada é despachado até a resposta humana: SPEC_APPROVAL_KEYWORD aprova (spec + Histórico de Mudanças, spec_hash novo, stale_artifacts, node=plan, status=in_progress); SPEC_REJECTION_KEYWORD rejeita (spec-change-rejected). spec-change-rejected: SPEC_CHANGE rejeitada por humano (ver spec_change_rejected) — spec inalterada, nunca redespachado sozinho; para seguir implementando a spec como está, grave node=\"implement\" e status=\"in_progress\". spec-drift: portão de drift da spec (watcher, runSpecDriftGate; scripts/lib/spec-authority.js check --write dentro do nó) — a spec mudou depois que o /plan gravou spec_hash, sem SPEC_CHANGE aprovado; implement/review/test/verify não rodam (ver spec_drift). Volta pra in_progress sozinho quando spec_change_approved=true + spec_change_hash=hash atual, quando a spec volta ao spec_hash, ou quando um humano grava node=\"plan\" (replanejar sobre a spec nova). plan-escalation: portão de qualidade do plano (watcher, runPlanGate; scripts/lib/plan-scorer.js) — plano abaixo de PLAN_SCORE_THRESHOLD depois de 2 re-plans automáticos, revisão humana pedida no Redmine; volta pra in_progress (node=implement) com \"aceito\", --aceitar-plano ou plano editado que passe. spec-invalid: portão de spec (watcher, runTaskSpecGate). spec-pending-approval: portão de spec com draft do auto-repair (scripts/lib/spec-repairer.js) comentado no Redmine, aguardando SPEC_APPROVAL_KEYWORD (\"aprovado\") — ver spec_pending_approval; volta pra in_progress quando aprovado/aceito ou a spec passar. running: gravado pelo watcher ao despachar um nó (lease — ver node_started_at); volta pra in_progress quando o agente sai, ou é tratado como órfão no startup se passar de node_timeout_ms. needs_human_review: aguardando decisão humana (inclui commit órfão). state_corrupted: gravado pelo watcher quando este state.json falhou na validação — nunca redespachado, escala pra humano (ver state_error). fully_merged: gravado pelo polling de PRs do watcher (scripts/lib/pr-status-poll.js) quando todos os PRs de pull_request estão MERGED — sucessor de committed, a task sai do polling. planned/completed: legado, aparecem em tasks antigas. pre-build-failed: portão de build pré-implement do watcher (runPreBuildGate) — `mvn compile` falhou depois do /plan; implement não é despachado até o worktree mudar ou alguém responder \"aceito\" no Redmine (ver preBuildErrors). churn-escalation: portão de churn de implementação do watcher (runChurnGate; scripts/lib/churn-detector.js) — antes de um re-implement, algum arquivo apareceu em >= CHURN_THRESHOLD rodadas de implement do ciclo (padrão 3; dobrado pra arquivo de teste); relatório no Redmine e o ciclo para (ver churnReport); volta pra in_progress (node=implement) com \"aceito\" no Redmine ou --aceitar-churn. interrupted: gravado pelo shutdown graceful do watcher (scripts/lib/graceful-shutdown.js) quando ele recebe SIGTERM durante um nó que está conduzindo — ver interruptedAt/activeNodeAtInterruption; nunca redespachado sozinho, retome gravando status=\"in_progress\". session_limit: gravado pelo watcher (dispatchTicket, looksLikeSessionLimit) quando a sessão do agente morreu por estouro de janela de contexto/tokens (não indisponibilidade do provedor — ver looksUnavailable) — ver session_interrupted/interrupted_node/interrupted_at/resume_count; nunca redespachado sozinho, retomada é manual via POST /api/runs/:taskId/resume-session no dashboard, limitada a 3 tentativas (resume_count)."
+      "description": "authorization-pending: o agente registrou um pedido de autorização humana para ação externa privilegiada (scripts/lib/authorization.js request — ex.: DDL/DML em banco compartilhado), detalhado em pending_authorization; o watcher não despacha nem interpreta mensagem livre (comenta no Redmine uma vez) e a decisão é só pelos endpoints do dashboard (Aprovar → db-effect governado, Recusar → blocked, Já apliquei manualmente). handed_back_qa: terminal, gravado ao arquivar um run devolvido ao QA sem novo ciclo de código (scripts/lib/qa-handback.js; ver handed_back_qa); uma Recusa QA posterior reaproveita o run pelo fluxo normal de qa-retry. spec-change-pending-approval: o /implement registrou uma SPEC_CHANGE (scripts/lib/spec-change.js record — decisão que remove/enfraquece AC, muda comportamento esperado, regra de negócio, exceção/restrição/escopo funcional) e não pode aprová-la; proposta em spec_change_pending e em memory/runs/<task-id>/spec-change-audit.json, publicada no Redmine pelo watcher (runSpecChangeGate). Nada é despachado até a resposta humana: SPEC_APPROVAL_KEYWORD aprova (spec + Histórico de Mudanças, spec_hash novo, stale_artifacts, node=plan, status=in_progress); SPEC_REJECTION_KEYWORD rejeita (spec-change-rejected). spec-change-rejected: SPEC_CHANGE rejeitada por humano (ver spec_change_rejected) — spec inalterada, nunca redespachado sozinho; para seguir implementando a spec como está, grave node=\"implement\" e status=\"in_progress\". spec-drift: portão de drift da spec (watcher, runSpecDriftGate; scripts/lib/spec-authority.js check --write dentro do nó) — a spec mudou depois que o /plan gravou spec_hash, sem SPEC_CHANGE aprovado; implement/review/test/verify não rodam (ver spec_drift). Volta pra in_progress sozinho quando spec_change_approved=true + spec_change_hash=hash atual, quando a spec volta ao spec_hash, ou quando um humano grava node=\"plan\" (replanejar sobre a spec nova). plan-escalation: portão de qualidade do plano (watcher, runPlanGate; scripts/lib/plan-scorer.js) — plano abaixo de PLAN_SCORE_THRESHOLD depois de 2 re-plans automáticos, revisão humana pedida no Redmine; volta pra in_progress (node=implement) com \"aceito\", --aceitar-plano ou plano editado que passe. spec-invalid: portão de spec (watcher, runTaskSpecGate). spec-pending-approval: portão de spec com draft do auto-repair (scripts/lib/spec-repairer.js) comentado no Redmine, aguardando SPEC_APPROVAL_KEYWORD (\"aprovado\") — ver spec_pending_approval; volta pra in_progress quando aprovado/aceito ou a spec passar. running: gravado pelo watcher ao despachar um nó (lease — ver node_started_at); volta pra in_progress quando o agente sai, ou é tratado como órfão no startup se passar de node_timeout_ms. needs_human_review: aguardando decisão humana (inclui commit órfão). state_corrupted: gravado pelo watcher quando este state.json falhou na validação — nunca redespachado, escala pra humano (ver state_error). fully_merged: gravado pelo polling de PRs do watcher (scripts/lib/pr-status-poll.js) quando todos os PRs de pull_request estão MERGED — sucessor de committed, a task sai do polling. planned/completed: legado, aparecem em tasks antigas. pre-build-failed: portão de build pré-implement do watcher (runPreBuildGate) — `mvn compile` falhou depois do /plan; implement não é despachado até o worktree mudar ou alguém responder \"aceito\" no Redmine (ver preBuildErrors). churn-escalation: portão de churn de implementação do watcher (runChurnGate; scripts/lib/churn-detector.js) — antes de um re-implement, algum arquivo apareceu em >= CHURN_THRESHOLD rodadas de implement do ciclo (padrão 3; dobrado pra arquivo de teste); relatório no Redmine e o ciclo para (ver churnReport); volta pra in_progress (node=implement) com \"aceito\" no Redmine ou --aceitar-churn. interrupted: gravado pelo shutdown graceful do watcher (scripts/lib/graceful-shutdown.js) quando ele recebe SIGTERM durante um nó que está conduzindo — ver interruptedAt/activeNodeAtInterruption; nunca redespachado sozinho, retome gravando status=\"in_progress\". session_limit: gravado pelo watcher (dispatchTicket, looksLikeSessionLimit) quando a sessão do agente morreu por estouro de janela de contexto/tokens (não indisponibilidade do provedor — ver looksUnavailable) — ver session_interrupted/interrupted_node/interrupted_at/resume_count; nunca redespachado sozinho, retomada é manual via POST /api/runs/:taskId/resume-session no dashboard, limitada a 3 tentativas (resume_count)."
     },
     "spec_pending_approval": {
       "type": "object",
@@ -2063,6 +2065,170 @@
       "minimum": 0,
       "default": 0,
       "description": "Quantos retries de Recusa QA este run já teve (incrementado pelo dashboard; reaproveita o mesmo task-id)."
+    },
+    "pending_authorization": {
+      "type": "object",
+      "description": "Pedido de autorização humana em aberto (scripts/lib/authorization.js, PRI-180). Gravado pelo agente (CLI request) junto de status=\"authorization-pending\". phase: pending (aguardando decisão) → executing (aprovado ou aplicação manual informada; db-effect rodando) → failed/uncertain (status volta a blocked com blocked_reason) | handback (SQL ok, devolvendo ao QA). Sai do state quando o desfecho termina (vai para authorization_history). Aprovar/Recusar/Já apliquei: só endpoints do dashboard com CAS.",
+      "required": [
+        "id",
+        "kind",
+        "summary",
+        "artifact",
+        "artifact_sha256",
+        "verify_sql",
+        "expected",
+        "then",
+        "requested_by",
+        "requested_at",
+        "phase"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^AUTH-\\d{3,}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "db_migration"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_hint": {
+          "type": "object",
+          "description": "só sugestão do agente (alias/datasource/env); o alvo executado é escolhido por quem aprova",
+          "properties": {"alias": {"type": "string"}, "datasource": {"type": "string"}, "env": {"type": "string"}}
+        },
+        "target": {
+          "type": "object",
+          "required": [
+            "alias"
+          ],
+          "properties": {
+            "alias": {
+              "type": "string",
+              "minLength": 1,
+              "description": "alias da allowlist escolhido pelo aprovador (gravado na aprovação)"
+            },
+            "datasource": {
+              "type": "string"
+            },
+            "env": {
+              "type": "string"
+            }
+          }
+        },
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "description": "caminho do .sql relativo ao repo consumidor (worktree do ticket ou checkout principal)"
+        },
+        "artifact_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "verify_sql": {
+          "type": "string",
+          "minLength": 1,
+          "description": "consulta só leitura rodada antes e depois (BEGIN READ ONLY)"
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_contains": {
+          "type": "string",
+          "minLength": 1,
+          "description": "opcional: texto que a saída do verify_sql de depois precisa conter"
+        },
+        "then": {
+          "type": "string",
+          "pattern": "^(handback_qa|resume:(plan|implement|review|test|verify|commit))$"
+        },
+        "requested_by": {
+          "type": "string"
+        },
+        "requested_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "executing",
+            "failed",
+            "uncertain",
+            "handback",
+            "handback_failed"
+          ]
+        }
+      }
+    },
+    "authorization_history": {
+      "type": "array",
+      "description": "Append-only: cada evento de um pedido de autorização (requested, approved, rejected, manual_applied, applied, manual_confirmed, failed, uncertain, superseded, handed_back...) com quem (by), por onde (via: agent | dashboard | db-effect) e quando (at).",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "event",
+          "at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "by": {
+            "type": "string"
+          },
+          "via": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "handed_back_qa": {
+      "type": "object",
+      "description": "Gravado no arquivamento de status=\"handed_back_qa\" (scripts/lib/qa-handback.js): quem/quando, operation_id, status do Redmine aplicado, Attempt DOM06 e a autorização relacionada.",
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "by": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "redmine_status_id": {
+          "type": "integer"
+        },
+        "attempt_id": {
+          "type": "string"
+        },
+        "authorization_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "handback_qa_error": {
+      "type": "object",
+      "description": "Última falha da devolução ao QA (Redmine recusou/indisponível): o run fica blocked e não é arquivado."
     }
   },
   "description": "Validado em runtime pelo watcher (scripts/validate-state.js) a cada leitura/escrita de state.json. Campos fora deste schema são permitidos (additionalProperties aberto) — só tipos/enums dos campos listados e os obrigatórios são checados. Enums e obrigatórios foram calibrados contra os state.json reais existentes (2026-09-22) pra não marcar como corrompida nenhuma task que já funcionava.",

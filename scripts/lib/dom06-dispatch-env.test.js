@@ -90,6 +90,7 @@ fs.writeFileSync(path.join(binDir, 'osascript'), '#!/bin/sh\nexit 0\n', { mode: 
 // tudo, como credencial revogada no meio do ciclo.
 const WS = 'ws';
 const REVOKED_REPO = 'app-back-revogado';
+const REDMINE_KEY = 'chave-falsa-pri94';
 const calls = [];
 const prs = [];
 const server = http.createServer((req, res) => {
@@ -99,6 +100,8 @@ const server = http.createServer((req, res) => {
         const u = new URL(req.url, 'http://x');
         calls.push({ method: req.method, path: u.pathname, body });
         const send = (status, obj) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+        // Redmine real: sem X-Redmine-API-Key (ou com chave errada) responde 401.
+        if (u.pathname.startsWith('/redmine/') && req.headers['x-redmine-api-key'] !== REDMINE_KEY) return send(401, {});
         if (u.pathname.startsWith('/redmine/issues/') && req.method === 'PUT') return send(200, {});
         const m = u.pathname.match(/^\/2\.0\/repositories\/([^/]+)\/([^/]+)\/(.+)$/);
         if (!m || m[1] !== WS) return send(404, {});
@@ -185,7 +188,7 @@ function dispatch(id, { scenario, follow, flow = null, bbRepo = 'app-back' }) {
         PLAN_SCORE_THRESHOLD: '0',
         SKIP_PRE_BUILD_VALIDATION: 'true',
         REDMINE_URL: `${origin()}/redmine`,
-        REDMINE_API_KEY: 'chave-falsa-pri94',
+        REDMINE_API_KEY: REDMINE_KEY,
         REDMINE_RETRY_MAX_ATTEMPTS: '1',
         REDMINE_MIN_INTERVAL_MS: '0',
         BITBUCKET_WORKSPACE: WS,

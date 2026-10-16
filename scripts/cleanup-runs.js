@@ -11,7 +11,7 @@
 // em memory/runs/, e colisão de nome no destino ganha sufixo em vez de sobrescrever.
 //
 // Política (dias contados de updated_at → node_started_at → started_at do state.json):
-//   committed, fully_merged, completed, cancelled  arquiva após RUNS_RETENTION_DAYS (30)
+//   committed, fully_merged, completed, cancelled, handed_back_qa  arquiva após RUNS_RETENTION_DAYS (30)
 //   escalated, state_corrupted                     arquiva após RUNS_ERROR_RETENTION_DAYS (90)
 //   qualquer outro status (running, needs_human_review, in_progress, blocked, ...)  nunca
 //   screenshots (<run>/browser*/, <run>/screenshots/)  apaga após SCREENSHOTS_RETENTION_DAYS (14)
@@ -29,10 +29,10 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const ARCHIVE_STATUSES = new Set(['committed', 'fully_merged', 'completed', 'cancelled']);
+const ARCHIVE_STATUSES = new Set(['committed', 'fully_merged', 'completed', 'cancelled', 'handed_back_qa']);
 const ERROR_STATUSES = new Set(['escalated', 'state_corrupted']);
 // Nunca arquivados (já cobertos por "qualquer outro status"), e nem os screenshots mexidos.
-const PROTECTED_STATUSES = new Set(['running', 'needs_human_review']);
+const PROTECTED_STATUSES = new Set(['running', 'needs_human_review', 'authorization-pending']);
 const SCREENSHOT_DIR_RE = /^(browser.*|screenshots)$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DASHBOARD_REGISTRY = 'dashboard-archived.json';

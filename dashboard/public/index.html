@@ -552,6 +552,11 @@
   .approval-box dl.spec-change { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0; }
   .approval-box dl.spec-change dt { font-weight: 600; }
   .approval-box dl.spec-change dd { margin: 0; overflow-wrap: anywhere; }
+  .auth-box .err { color: var(--risk, #b42318); }
+  .auth-box .auth-sql pre { max-height: 320px; overflow: auto; }
+  .auth-box .auth-field { display: block; margin: 8px 0; font-weight: 600; }
+  .auth-box .auth-field textarea { display: block; width: 100%; margin-top: 4px; font: inherit; font-weight: 400; }
+  .auth-box .auth-history ul { margin: 6px 0 0; padding-left: 18px; }
   .approval-box {
     margin-top: 14px; padding: 12px 16px; border-radius: 10px; background: var(--attention-bg);
     border-left: 4px solid var(--attention);
@@ -2008,6 +2013,13 @@ function explanation(r) {
       ? `O watcher montou ${s.spec_draft.spec_path || 'a spec'} com os campos do ticket, a IA sugeriu as seções que faltavam e o rascunho foi comentado no Redmine. Revise (principalmente o que veio da IA) e troque draft: true para draft: false no frontmatter. O watcher libera o ciclo no próximo tick.`
       : `O watcher montou ${s.spec_draft?.spec_path || 'a spec'} com os campos do ticket e comentou no Redmine. Solução e Critérios de Aceite não vieram do ticket: complete o que faltar e troque draft: true para draft: false no frontmatter. O watcher libera o ciclo no próximo tick.` };
   }
+  if (s.status === 'authorization-pending') {
+    const p = s.pending_authorization || {};
+    return { icon: 'alert', title: `O agente pediu autorização para uma ação privilegiada (${p.id || 'pedido'}): ${p.kind === 'db_migration' ? 'aplicar SQL num banco compartilhado' : p.kind || ''}.`, body: 'O agente não aplica isso sozinho e o watcher não despacha nada até você decidir na caixa abaixo: Aprovar (o Prisma executa o SQL com hash conferido, em transação única, e verifica antes/depois), Recusar (o run volta para bloqueado com o motivo) ou Já apliquei manualmente. Mensagem livre não aprova.' };
+  }
+  if (s.status === 'handed_back_qa') {
+    return { icon: 'info', title: 'Devolvido ao QA sem nova mudança de código.', body: 'O ticket foi para Ag Teste com o resumo e o run foi arquivado. Se o QA recusar de novo, use “Corrigir recusa QA”.' };
+  }
   if (s.status === 'spec-change-rejected') {
     const p = s.spec_change_rejected || {};
     return { icon: 'alert', title: `SPEC_CHANGE ${p.id || ''} rejeitada${p.rejector ? ` por ${p.rejector}` : ''}. A spec não mudou.`, body: `O /implement propôs mudar ${p.ac_affected?.length ? p.ac_affected.join(', ') : 'um requisito funcional'} e a proposta foi rejeitada. O run fica parado até alguém decidir: responda na conversa dizendo como seguir (ex.: implementar só o que cabe na spec) e o watcher retoma o /implement, ou grave node="implement" e status="in_progress" no state.json.` };
@@ -2112,7 +2124,8 @@ function renderDetail() {
         <p>${esc(s.risk_reason || 'O Verify não registrou o motivo (risk_reason ausente).')}</p>
         <small>O PR abre como Draft, com [HIGH-RISK] no título. Faça uma revisão redobrada antes do merge.</small>
       </div>` : ''}
-      ${r.status === 'awaiting_approval' ? `<div id="approvalBox">${approvalHtml(r)}</div>` : ''}
+      ${r.status === 'awaiting_approval' && s.status !== 'authorization-pending' ? `<div id="approvalBox">${approvalHtml(r)}</div>` : ''}
+      ${window.Authorization ? Authorization.html(r) : ''}
       <div id="intBanner">${interruptedHtml(s)}</div>
       <div id="prAlert">${prAlertHtml(prRows(r))}</div>
       <div class="facts">
@@ -2178,6 +2191,7 @@ function renderDetail() {
     </div>`;
 
   wireDetail(r);
+  window.Authorization?.wire(r);
   wireFolds(r);
   wireEventsTimeline(r);
   wireTranscripts(r);
@@ -3669,5 +3683,6 @@ document.addEventListener('click', async e => {
 <script src="config-health.js"></script>
 <script src="dry-run-banner.js"></script>
 <script src="preview.js"></script>
+<script src="authorization.js"></script>
 </body>
 </html>
