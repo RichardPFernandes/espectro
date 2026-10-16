@@ -534,6 +534,9 @@ async function consumeQaRetrySignal(dir) {
         console.warn(`[qa-retry] ${taskId}: ${imported.reason} — sinal mantido, implement não despachado.`);
         return null;
     }
+    // Não consome o sinal nem reabre o implement se a spec sumir entre a
+    // importação e o baseline, ou se não for possível registrar sua versão/hash.
+    if (!rebaselineSpecForQaRetry(target, taskId)) return null;
     const fresh = readStateJson(target) || state;
     // Carimbo da limpeza pós-PR é do ciclo anterior: o próximo /commit tem que limpar de novo.
     if (fresh.node !== 'implement' || fresh.status !== 'in_progress' || fresh.worktrees_removed_on_pr_open_at) {
@@ -553,23 +556,28 @@ async function consumeQaRetrySignal(dir) {
             checkWrittenState(target);
         }
     }
-    // O /commit do ciclo anterior é autorizado a escrever na spec (notas de correção
-    // datadas): o retry parte da spec atual como baseline, não do hash do Plan antigo.
-    rebaselineSpecForQaRetry(target, taskId);
     fs.rmSync(`${target}/${QA_RETRY_SIGNAL}`, { force: true });
     qaRetryTasks.add(taskId);
     console.log(`[qa-retry] ${taskId}: retry de Recusa QA #${fresh.qa_retry_count || 1} — run em ${path.relative(REPO_PATH, target)}, implement a despachar.`);
     return ticketId;
 }
 
+// O /commit anterior pode acrescentar notas de correção: só o retry explícito
+// admite a spec atual como baseline, registrando o hash e mantendo a versão.
+// false mantém o sinal pendente; o gate de drift continua sendo obrigatório.
 function rebaselineSpecForQaRetry(dir, taskId) {
     try {
         const s = readStateJson(dir);
-        if (!s) return;
+        if (!s) throw new Error('state.json indisponível para rebaseline');
         const root = path.resolve(dir, '..', '..', '..');
         const rel = specAuthority.specRelFor(s, taskId);
         const probe = specAuthority.baselineFields(root, rel, 'qa_retry', undefined, s);
-        if (!probe || probe.spec_hash === s.spec_hash) return;
+        if (!probe) {
+            if (!s.spec_hash) return true; // run legado sem spec/sem baseline
+            console.warn(`[qa-retry] ${taskId}: spec ${rel} ausente ou ilegível no rebaseline — sinal mantido, implement não despachado.`);
+            return false;
+        }
+        if (probe.spec_hash === s.spec_hash) return true;
         // applyBaseline: run versionado registra o hash novo como rebaseline da mesma
         // spec_version (nota de correção do /commit não é SPEC_CHANGE — versão não sobe).
         const { spec_drift: _drift, ...next } = s;
@@ -577,6 +585,8 @@ function rebaselineSpecForQaRetry(dir, taskId) {
             root, specPath: rel, by: 'qa_retry', taskId,
             reason: 'retry de Recusa QA: spec pós-/commit (notas de correção) vira o baseline — versão mantida',
         });
+        if (!fields) throw new Error(`spec ${rel} ausente durante applyBaseline`);
+        if (fields.version_error) throw new Error(fields.version_error);
         const at = fields.spec_hash_at;
         next.events = [...(Array.isArray(next.events) ? next.events : []), {
             type: 'spec_baseline', node: 'implement', ts: at, at,
@@ -584,8 +594,10 @@ function rebaselineSpecForQaRetry(dir, taskId) {
         }];
         stateWriter.write(dir, { ...next, updated_at: at }, { operation: 'qa_retry_rebaseline', actor: 'watcher', base: baseOf(s) });
         checkWrittenState(dir);
+        return true;
     } catch (e) {
-        console.error(`[qa-retry] ${taskId}: falha regravando spec_hash (o portão de drift grava no próximo tick):`, e.message);
+        console.error(`[qa-retry] ${taskId}: falha regravando spec_hash — sinal mantido, implement não despachado:`, e.message);
+        return false;
     }
 }
 
@@ -640,24 +652,38 @@ function branchCheckedOutElsewhere(repoPath, id) {
     return false;
 }
 
-// memory/ é local (gitignored, fora do índice), então um worktree novo nasce sem ela.
-// Liga por symlink as partes compartilhadas (project.yaml, spec/,
-// decisions/...) à cópia do checkout principal; runs/ fica como diretório próprio
-// do worktree, porque é contexto de trabalho por ticket. Repos irmãos sem memory/
-// não são afetados.
+// memory/ é local, mas branches antigas podem conter spec/decisions/flows
+// versionados. Mantém esses diretórios e liga só as entradas ausentes ao checkout
+// principal. Arquivos e links existentes nunca são substituídos; runs/ é próprio.
 function linkLocalMemory(repoPath, worktreePath) {
+    if (path.resolve(repoPath) === path.resolve(worktreePath)) return;
     const src = `${repoPath}/memory`;
     if (!fs.existsSync(src)) return;
     const dst = `${worktreePath}/memory`;
     fs.mkdirSync(`${dst}/runs`, { recursive: true });
+    const mergeable = new Set(['spec', 'decisions', 'flows']);
+    function linkMissing(source, target, mergeDirectories) {
+        let existing;
+        try { existing = fs.lstatSync(target); } catch (e) {
+            if (e.code !== 'ENOENT') throw e;
+        }
+        if (!existing) {
+            try { fs.symlinkSync(source, target); } catch (e) {
+                if (e.code !== 'EEXIST') throw e; // outra escrita venceu; não sobrescreve
+            }
+            return;
+        }
+        // Não segue links existentes (inclusive quebrados), nem links na origem
+        // para recursão: evita escrever por um alias ou entrar em ciclos.
+        if (!mergeDirectories || !existing.isDirectory() || !fs.lstatSync(source).isDirectory()) return;
+        for (const name of fs.readdirSync(source)) {
+            if (name === '.DS_Store') continue;
+            linkMissing(path.join(source, name), path.join(target, name), true);
+        }
+    }
     for (const name of fs.readdirSync(src)) {
         if (name === 'runs' || name === '.DS_Store') continue;
-        const target = `${dst}/${name}`;
-        try {
-            fs.lstatSync(target);
-            continue; // já existe (arquivo, pasta ou link) — não sobrescreve
-        } catch {}
-        fs.symlinkSync(`${src}/${name}`, target);
+        linkMissing(path.join(src, name), path.join(dst, name), mergeable.has(name));
     }
 }
 
@@ -3635,6 +3661,17 @@ async function dispatchTicket(ticket) {
     const active = findActiveTask(id);
 
     if (active?.corrupted) return handleCorruptedState(ticket, active);
+
+    // O dashboard já pode ter marcado implement/in_progress antes de o watcher
+    // consumir o sinal. Um retry pendente não pode contornar a falha de preparação
+    // pelo despacho normal (inclui sinal ainda no _archive ou destino ocupado).
+    for (const root of ticketRunRoots(id)) {
+        for (const taskId of listTaskDirs(root, id)) {
+            if (fs.existsSync(path.join(root, taskId, QA_RETRY_SIGNAL))) {
+                return { action: 'skip', reason: 'qa_retry_pendente', taskId };
+            }
+        }
+    }
 
     if (!active) {
         // Sem task ativa: ou é a primeira vez que vemos este ticket, ou já tratamos
