@@ -780,38 +780,50 @@ cadastrado** decide no dashboard, escolhendo o banco.
 
 ### Uma vez por máquina: aprovador e bancos
 
+Tudo fica em `~/.config/prisma/` (dono = você, diretório 700, arquivos 600, sem symlink — se
+não estiver assim, o dashboard recusa) e no Keychain. **Nada** disso é lido do `.env` do
+consumidor ou de variável de ambiente: um agente escreve no worktree, no `state.json` e no `.env`.
+
 ```bash
-# 1. Aprovador (senha de aprovação pedida sem eco; guarda só hash scrypt em ~/.config/prisma/approvers.json, modo 600)
+# 1. Aprovador (senha de aprovação pedida sem eco; só o hash scrypt vai para ~/.config/prisma/approvers.json)
 node "$PRISMA_ROOT/scripts/lib/approvers.js" add richard
 
-# 2. Banco alvo na allowlist (~/.config/prisma/db-targets.json, fora do repo). A senha do banco
-#    é pedida pelo próprio `security` do macOS e vai para o Keychain (serviço prisma-db-<alias>):
-node "$PRISMA_ROOT/scripts/lib/db-targets.js" add qa-app --host=<host do QA> --db=<banco> \
-     --user=<usuário> --env=qa --label="QA – <banco>"
-node "$PRISMA_ROOT/scripts/lib/db-targets.js" check qa-app     # "segredo presente" (não imprime)
+# 2. Banco do QA a partir do .properties do app-back (ISO-8859-1/CRLF; só o datasource padrão,
+#    os nomeados como "portal" ficam de fora). Mostra host/banco/usuário mascarados e pede
+#    confirmação; a senha vai DIRETO para o Keychain pelo stdin do `security -i`
+#    (nunca em argv, na tela ou em arquivo temporário):
+cd ~/Workspace/app-back
+node "$PRISMA_ROOT/scripts/lib/db-targets.js" add qa-app \
+     --from-properties=src/main/resources/application.properties --env=qa --label="QA – embarc_db_stage"
+#    (datasource nomeado: --datasource=portal). Sem o .properties: add qa-app --host= --db= --user= --env=qa
+#    e o macOS pede a senha.
+node "$PRISMA_ROOT/scripts/lib/db-targets.js" check qa-app     # item existe no Keychain (não lê a senha)
 node "$PRISMA_ROOT/scripts/lib/db-targets.js" list             # alias, rótulo, ambiente
 # trocar a senha: db-targets.js secret qa-app · tirar: db-targets.js remove qa-app
-
-# 3. psql (o executor): brew install libpq; se não ficar no PATH do dashboard:
-#    PRISMA_PSQL_BIN=/opt/homebrew/opt/libpq/bin/psql no .env do consumidor
 ```
 
-- A allowlist guarda só a **referência** ao segredo. Usuário, host, senha e connection string
-  nunca vão para o navegador, o `state.json`, os logs, as saídas gravadas nem o argv: quem lê a
-  senha é o processo filho do db-effect (`scripts/lib/db-exec-child.js`), na hora de executar, e
-  passa ao psql por `PGHOST/PGUSER/PGPASSWORD` no ambiente.
-- Produção (`env` começando com `prod` ou `production: true`) não é selecionável sem
-  `allow_production: true` na entrada. Não deduza pelo nome do banco (o QA do app-back usa
-  `embarc_db_production`) — `--env=qa` é o que vale.
-- Fallback documentado (desaconselhado): `--secret-env=PRISMA_DB_<ALIAS>_PASSWORD` e a variável no
-  `.env` do consumidor (texto puro). Reinicie o dashboard depois de mudar o `.env`.
-- Sem aprovador cadastrado, o dashboard recusa toda ação privilegiada (403).
+- **Atenção (app-back):** use o `application.properties` (`192.168.10.234/embarc_db_stage`). O
+  `application-qa.properties` aponta para `embarc_db_production` nesse mesmo host, um banco que **não
+  existe** lá: o cadastro passaria, mas a execução falharia na conexão.
+- **Keychain com ACL vazia:** o item é criado com `-T ''`, então **cada** leitura (cada execução
+  aprovada) mostra o diálogo do macOS "security quer usar a informação confidencial prisma-db-qa-app".
+  Clique **Permitir**, nunca **Sempre Permitir**: isso põe o `security` na ACL e qualquer processo seu
+  passa a ler a senha sem perguntar. O diálogo é a confirmação física que um agente com shell não
+  consegue dar. Sem sessão gráfica (SSH), a leitura falha e nada executa.
+- O segredo é lido só pelo processo filho do db-effect (`scripts/lib/db-exec-child.js`, por
+  `/usr/bin/security`), na hora de executar. O filho conecta pelo driver `pg` (senha no objeto de
+  conexão, nada em env/argv) e devolve as saídas sem senha, usuário, host nem banco.
+- Produção (`env` contendo `prod`, `prd` ou `live`, ou `production: true`) não é selecionável sem
+  `allow_production: true` na entrada (`--allow-production`). O nome do banco não decide — `--env` decide.
+- Sem aprovador cadastrado o dashboard recusa toda ação privilegiada (403).
 
 ### Fluxo
 
 1. **Pedido** — o agente roda `node "$PRISMA_ROOT/scripts/lib/authorization.js" request memory/runs/<task-id> --input=<pedido.json>` (esqueleto: `template`). O run vai para `authorization-pending` com o sha256 do `.sql`, o `verify_sql` (só leitura), o esperado, o `then` (`handback_qa` ou `resume:<nó>`) e, no máximo, um `target_hint` — o agente **sugere**, não escolhe o banco. O watcher pula a task (`status_authorization_pending`), **não** passa mensagem livre pelo intérprete e comenta no Redmine uma vez.
 2. **Decisão** — no detalhe do run, caixa "🔐 Autorização": informe aprovador + senha de aprovação e clique **Carregar bancos** (a lista só aparece autenticado: alias, rótulo, ambiente, host/banco mascarados — `"display": "visible"` na entrada mostra). Confira o SQL e o hash e:
-   - **Aprovar e executar** (escolhendo o banco): o Prisma confere o sha256 (mudou → aborta), roda o `verify_sql` antes, aplica o artefato em **uma** transação (`SET LOCAL lock_timeout='5s'`, `statement_timeout='60s'`, `ON_ERROR_STOP`), roda o `verify_sql` depois e grava as saídas em `memory/runs/<task-id>/authorization/<AUTH-NNN>/` (`pre.txt`, `apply.txt`, `post.txt`, `result.json`). Cada execução é um Attempt DOM06 `db-effect` em `dom06/attempts/`.
+   - A caixa mostra o ticket (derivado do task-id, não do `state.json`), o SQL **integral** (sem redação; acima de 200 KB bloqueia em vez de truncar), as checagens que recusaram algo, a nota da devolução ao QA (quando `then` é `handback_qa`) e o **hash do pedido** para o banco escolhido.
+   - **Aprovar e executar** (escolhendo o banco): o servidor recalcula o hash do pedido (ticket, artefato + sha256, `verify_sql`, `expected_contains`, `then`, banco) e recusa com `REQUEST_CHANGED` se algo mudou desde a tela; congela a cópia aprovada (com o SQL) em `~/.config/prisma/approved/` e executa **essa** cópia: `verify_sql` antes numa conexão `default_transaction_read_only=on`, o artefato em **uma** transação aberta pelo Node (um comando por mensagem do protocolo estendido; `statement_timeout=60s`/`lock_timeout=5s` fixos na conexão), `verify_sql` depois. Saídas em `memory/runs/<task-id>/authorization/<AUTH-NNN>/` (`pre.txt`, `apply.txt`, `post.txt`, `result.json`). Cada execução é um Attempt DOM06 `db-effect` em `dom06/attempts/`.
+   - O artefato é conferido por um tokenizer SQL (strings, `E'…'`, `$tag$…$tag$`, `"…"`, comentários aninhados): recusa `\` fora de literal, `BEGIN/COMMIT/ROLLBACK/END/SAVEPOINT/RELEASE/ABORT/PREPARE TRANSACTION`, `SET/RESET` de `*_timeout`/`ROLE`/`SESSION AUTHORIZATION`, `set_config`, `CONCURRENTLY`, `VACUUM`, `COPY` e afins. O `verify_sql` precisa ser **um** comando só leitura.
    - **Recusar**: volta para `blocked` com o motivo; "Responder ao agente" segue valendo.
    - **Já apliquei manualmente**: registra quem; com banco escolhido, roda só o `verify_sql` para conferir; depois segue o mesmo `then`.
    - `authorization_history` (append-only) registra o aprovador autenticado, o alias escolhido e o horário — nunca o segredo. O alvo executado é o aprovado: trocar o alias depois exige nova aprovação (`TARGET_CHANGED`).
@@ -831,9 +843,13 @@ JSON
 STATE_EXECUTION_ID= node "$PRISMA_ROOT/scripts/lib/authorization.js" request memory/runs/<task-id> --input=/tmp/pedido.json   # exit 4 = registrado
 ```
 
-**Limite conhecido:** o dashboard continua sem login (só localhost); a senha de aprovação impede
-visitante da página e aprovação por texto. Um processo do **mesmo usuário do SO** com shell livre
-poderia editar `~/.config/prisma` — mantenha os agentes sem permissão de escrita ali e sem `security`.
+**Limite que sobra:** o dashboard continua sem login (só localhost). A senha de aprovação impede
+visitante da página e aprovação por texto; a config fora do repo impede quem só escreve no
+worktree/`state.json`/`.env`; o Keychain com ACL vazia impede leitura silenciosa da senha. Mas, sem
+sandbox ou usuário do SO separado para os agentes, um processo do **mesmo usuário** com shell livre
+continua podendo escrever em `~/.config/prisma` (cadastrar aprovador/alvo) e falar com o dashboard.
+**Proteção definitiva recomendada:** rodar o dashboard (e `~/.config/prisma`, o Keychain) com **outro
+usuário do macOS**, ou os agentes num sandbox sem acesso a `~/.config/prisma` e sem `security`.
 
 **NÃO faça:** gravar `pending_authorization`/`authorization_history` à mão; aprovar por mensagem ("aprovado" no chat ou no Redmine não aprova nada); colocar senha na allowlist, no pedido ou em argv; dar `allow_production: true` "para testar".
 
