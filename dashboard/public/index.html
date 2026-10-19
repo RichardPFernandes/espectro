@@ -80,9 +80,13 @@
 
   /* ------------------------------------------------------------ Top bar */
   .topbar {
-    display: flex; align-items: center; gap: 20px; padding: 12px 24px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding: 12px 24px;
     background: var(--surface); border-bottom: 1px solid var(--line);
   }
+  /* As 12 abas não cabem na mesma linha da busca e dos controles em nenhuma
+     largura comum: ficam por último no header, em linha própria, e quebram linha
+     em vez de rolar escondidas (a ordem do Tab segue a visual). */
+  .topbar .tabs { flex: 1 1 100%; }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: -.01em; white-space: nowrap; }
   .brand svg { color: var(--signal); }
   .search { position: relative; flex: 0 1 300px; }
@@ -935,7 +939,7 @@
   .help tr:last-child td { border-bottom: 0; }
 
   /* ------------------------------------------------------------ Abas / visões */
-  .tabs { display: flex; gap: 2px; background: var(--sunken); border: 1px solid var(--line); border-radius: 9px; padding: 3px; overflow-x: auto; scrollbar-width: none; }
+  .tabs { display: flex; gap: 2px; background: var(--sunken); border: 1px solid var(--line); border-radius: 9px; padding: 3px; flex-wrap: wrap; }
   .tabs button { border: 0; background: none; padding: 5px 11px; border-radius: 6px; font-size: 13.5px; font-weight: 500; color: var(--muted); cursor: pointer; white-space: nowrap; }
   .tabs button:hover { color: var(--ink); }
   .tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
@@ -1127,7 +1131,6 @@
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12h18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="5" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="3" fill="var(--surface)" stroke="currentColor" stroke-width="2.4"/><circle cx="19" cy="12" r="3" fill="var(--surface)" stroke="currentColor" stroke-width="2.4"/></svg>
     Graph Dashboard
   </div>
-  <nav id="tabs" class="tabs" role="tablist" aria-label="Visões"></nav>
   <label class="search">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     <input id="q" type="search" placeholder="Buscar por ticket ou assunto" aria-label="Buscar runs" autocomplete="off">
@@ -1140,6 +1143,7 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
     </button>
   </div>
+  <nav id="tabs" class="tabs" role="tablist" aria-label="Visões"></nav>
 </header>
 
 <div class="layout">
