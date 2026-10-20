@@ -1,6 +1,12 @@
 [
   {
     "suite": "scripts",
+    "node": "22",
+    "test": "consumeQaRetrySignals: zera o churn do ciclo anterior (refs e campos do state)",
+    "issue": "PRI-212"
+  },
+  {
+    "suite": "scripts",
     "node": "24",
     "test": "consumeQaRetrySignals: zera o churn do ciclo anterior (refs e campos do state)",
     "issue": "PRI-212"
