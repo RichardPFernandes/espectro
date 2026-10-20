@@ -1,0 +1,70 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      # v7.0.1 left origin/main~1 unavailable to dashboard/version-api.test.js in PR runs.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            scripts/package-lock.json
+            dashboard/package-lock.json
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix scripts
+          npm ci --prefix dashboard
+      - name: Run official test recipe
+        env:
+          CI_EVIDENCE: ${{ runner.temp }}/pri-213-node-${{ matrix.node }}
+        shell: bash
+        run: |
+          CK="$PWD"; EV="$CI_EVIDENCE"
+          mkdir -p "$EV/home" "$EV/tmp"
+          NODEBIN="$(dirname "$(command -v node)")"
+          run_suite() {
+            env -i PATH="$NODEBIN:/usr/bin:/bin:/usr/sbin:/sbin" \
+              HOME="$EV/home" TMPDIR="$EV/tmp" \
+              NODE_OPTIONS="--require=$CK/harness/loopback-only.cjs" \
+              PRISMA_ROOT="$CK" REPO_PATH="$CK" \
+              npm --prefix "$CK/$1" test > "$EV/$1.tap" 2>&1
+          }
+          set +e
+          run_suite scripts; scripts_exit=$?
+          run_suite dashboard; dashboard_exit=$?
+          set -e
+          printf 'scripts exit=%s; dashboard exit=%s\n' "$scripts_exit" "$dashboard_exit"
+          sha256sum "$EV/scripts.tap" "$EV/dashboard.tap"
+          if (( scripts_exit != 0 || dashboard_exit != 0 )); then
+            exit 1
+          fi
+      - name: Preserve TAP
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tap-node-${{ matrix.node }}
+          path: ${{ runner.temp }}/pri-213-node-${{ matrix.node }}/*.tap
+          if-no-files-found: error
