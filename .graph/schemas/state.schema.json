@@ -1579,6 +1579,44 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "cache_read_input_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "cache_creation_input_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "cost_usd": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "runs_without_cost": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "attempts": {
+                "type": "array",
+                "description": "Registros observacionais ligados à identidade admitida; append por despacho, sem alterar Attempts DOM06.",
+                "items": {
+                  "$ref": "#/definitions/costAttempt"
+                }
               }
             }
           }
@@ -1605,8 +1643,18 @@
             "loop_count": {
               "type": "integer",
               "minimum": 0
+            },
+            "cost_usd": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
             }
           }
+        },
+        "pricing_source": {
+          "type": "string"
         }
       }
     },
@@ -2233,6 +2281,401 @@
   },
   "description": "Validado em runtime pelo watcher (scripts/validate-state.js) a cada leitura/escrita de state.json. Campos fora deste schema são permitidos (additionalProperties aberto) — só tipos/enums dos campos listados e os obrigatórios são checados. Enums e obrigatórios foram calibrados contra os state.json reais existentes (2026-09-22) pra não marcar como corrompida nenhuma task que já funcionava.",
   "definitions": {
+    "costUsage": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "price_tier": {
+          "type": "string"
+        },
+        "pricing_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "role": {
+          "enum": [
+            "main",
+            "subagent"
+          ]
+        },
+        "speed": {
+          "enum": [
+            "standard",
+            "fast",
+            "UNKNOWN"
+          ]
+        },
+        "messages": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "input_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "cache_read_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "cache_write_5m_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "cache_write_1h_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "cache_write_ttl_unknown_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "role_conflicted_messages": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "role_provenance": {
+          "enum": [
+            "SELF_REPORTED",
+            "CONFLICTED",
+            "UNKNOWN"
+          ]
+        }
+      }
+    },
+    "costAttempt": {
+      "type": "object",
+      "properties": {
+        "admission": {
+          "type": "object",
+          "properties": {
+            "attempt_id": {
+              "type": "string"
+            },
+            "admitted_node": {
+              "type": "string"
+            },
+            "attempt_ref": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "UNKNOWN"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "runs_root": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string",
+                      "pattern": "^(?!\\.\\.)(?!/).+"
+                    }
+                  }
+                }
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        "attributed_node": {
+          "type": "string"
+        },
+        "also_covers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cause": {
+          "type": "string"
+        },
+        "parent_attempt_id": {
+          "enum": [
+            "UNKNOWN"
+          ]
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "anthropic",
+            "openai",
+            "UNKNOWN"
+          ]
+        },
+        "account": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "enum": [
+                "dashboard",
+                "env",
+                "default",
+                "UNKNOWN"
+              ]
+            },
+            "label": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+            }
+          }
+        },
+        "requested": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "enum": [
+                "UNAVAILABLE"
+              ]
+            },
+            "effort": {
+              "enum": [
+                "UNAVAILABLE"
+              ]
+            }
+          }
+        },
+        "effort_router_plugin": {
+          "enum": [
+            "NOT_LOADED",
+            "LOADED",
+            "UNKNOWN"
+          ]
+        },
+        "first_turn": {
+          "type": "object",
+          "properties": {
+            "cache_read_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "cache_write_5m_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "cache_write_1h_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        },
+        "selection_source": {
+          "enum": [
+            "DEFAULT_INHERITED"
+          ]
+        },
+        "routing_decision": {
+          "enum": [
+            "UNAVAILABLE"
+          ]
+        },
+        "subtask": {
+          "enum": [
+            "UNAVAILABLE"
+          ]
+        },
+        "workspace": {
+          "enum": [
+            "UNAVAILABLE"
+          ]
+        },
+        "observed": {
+          "type": "object",
+          "properties": {
+            "usage": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/costUsage"
+              }
+            },
+            "effort": {
+              "enum": [
+                "UNKNOWN"
+              ]
+            }
+          }
+        },
+        "usage_provenance": {
+          "enum": [
+            "SELF_REPORTED"
+          ]
+        },
+        "read_order": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "enum": [
+                  "main",
+                  "subagent"
+                ]
+              },
+              "file_ref": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "dedup_conflicts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "message_id_hash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "files_seen": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "roles_seen": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "main",
+                    "subagent"
+                  ]
+                }
+              },
+              "winner_role": {
+                "enum": [
+                  "main",
+                  "subagent"
+                ]
+              },
+              "usage_diverged": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "role_attribution": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "enum": [
+                "COMPLETE",
+                "PARTIAL",
+                "UNKNOWN"
+              ]
+            },
+            "conflicted_messages": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "usd": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "unpriced_models": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pricing_source": {
+              "type": "string"
+            },
+            "pricing_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "estimated": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "enum": [
+                    "UNKNOWN"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "wait_ms": {
+          "enum": [
+            "UNAVAILABLE"
+          ]
+        },
+        "exit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            }
+          ]
+        },
+        "result": {
+          "type": "string"
+        }
+      }
+    },
     "validity": {
       "type": "object",
       "description": "Validade de um artefato derivado da spec (scripts/invalidate.js — o único que decide; as fases só leem). VALID: spec_hash do artefato == spec_hash atual. STALE: produzido contra outra versão ou invalidado por SPEC_CHANGE aprovada — só um artefato novo (stampProduced) volta a VALID. UNKNOWN: legado sem spec_hash — nunca VALID, nunca falha de teste; o dashboard mostra 'legado sem versão'. Mesmo formato em acceptance-evidence.json.",

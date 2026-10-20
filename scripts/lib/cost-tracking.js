@@ -23,58 +23,135 @@ const METRIC_FIELDS = [...TOKEN_FIELDS, 'cost_usd'];
 // MENSAGEM com o modelo daquela mensagem (uma sessão mistura modelos: subagente em
 // outro modelo, /model no meio). Em assinatura (Pro/Max) não é o valor cobrado — é o
 // equivalente em preço de API, útil pra comparar tickets/etapas entre si.
-// Fonte: skill claude-api (tabela "Current Models", cache de 2026-06-24) + multiplicadores
-// de cache de shared/prompt-caching.md: escrita 5 min = 1,25× entrada, escrita 1 h =
-// 2× entrada, leitura = cache_read abaixo (0,1× entrada, exceto onde a tabela diz outro).
-// Atualize aqui quando o preço mudar; runs já fechados mantêm o valor calculado na época.
-const PRICING_SOURCE = 'Preço de API Anthropic (skill claude-api, tabela de 2026-06-24)';
-const PRICES_USD_PER_MTOK = {
-    'claude-fable-5-1': { input: 10, output: 50, cache_read: 0.25 },
-    // Mythos 5.1: leitura de cache 0,025× ainda "em aberto" no lançamento — usa 0,1×
-    // (conservador: nunca subestima).
-    'claude-mythos-5-1': { input: 10, output: 50, cache_read: 1 },
-    'claude-fable-5': { input: 10, output: 50, cache_read: 1 },
-    'claude-mythos-5': { input: 10, output: 50, cache_read: 1 },
-    'claude-opus-5-5': { input: 4, output: 20, cache_read: 0.2 },
-    'claude-opus-5': { input: 5, output: 25, cache_read: 0.5 },
-    'claude-opus-4-8': { input: 5, output: 25, cache_read: 0.5 },
-    'claude-opus-4-7': { input: 5, output: 25, cache_read: 0.5 },
-    'claude-opus-4-6': { input: 5, output: 25, cache_read: 0.5 },
-    'claude-sonnet-5': { input: 2, output: 10, cache_read: 0.2 },
-    'claude-sonnet-4-6': { input: 3, output: 15, cache_read: 0.3 },
-    'claude-haiku-4-5': { input: 1, output: 5, cache_read: 0.1 },
-};
-const CACHE_WRITE_5M = 1.25;
-const CACHE_WRITE_1H = 2;
-// Fast mode (usage.speed === 'fast'): tabela dá 2× em entrada/saída (Opus 5 $10/$50,
-// Opus 5.5 $8/$40); aplica o mesmo 2× aos componentes de cache — estimativa.
-const FAST_MULTIPLIER = 2;
+// Tabela versionada: preços legados preservados; D11 acrescenta Sonnet/Haiku 5.5.
+// O digest identifica os bytes da tabela (inclusive limites), não só a página fonte.
+const crypto = require('crypto');
+const { isDeepStrictEqual } = require('util');
+const RATE_FIELDS = ['input', 'output', 'cache_read', 'cache_write_5m', 'cache_write_1h'];
+const TIER_BASIS_FIELDS = new Set(['input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens']);
+const EMPTY_PRICING = { version: 'UNKNOWN', source: {}, legacy_source: {}, fast_multiplier: 1, models: {} };
+const validRate = price => RATE_FIELDS.every(field =>
+    Object.hasOwn(price, field) && Number.isFinite(price[field]) && price[field] >= 0);
+function validModelPrice(price) {
+    if (!price || typeof price !== 'object' || Array.isArray(price)) return false;
+    if (!Object.hasOwn(price, 'tiers')) return validRate(price);
+    if (!Array.isArray(price.tier_basis) || !price.tier_basis.length ||
+        price.tier_basis.some(field => !TIER_BASIS_FIELDS.has(field)) ||
+        !Array.isArray(price.tiers) || !price.tiers.length) return false;
+    const ids = new Set();
+    let previousMax = -1;
+    for (const [index, tier] of price.tiers.entries()) {
+        if (!tier || typeof tier !== 'object' || Array.isArray(tier) || !validRate(tier) ||
+            typeof tier.id !== 'string' || !tier.id || ids.has(tier.id)) return false;
+        ids.add(tier.id);
+        if (index === price.tiers.length - 1) {
+            if (tier.max_prompt_tokens !== null) return false;
+        } else if (!Number.isSafeInteger(tier.max_prompt_tokens) || tier.max_prompt_tokens <= previousMax) return false;
+        previousMax = tier.max_prompt_tokens;
+    }
+    return true;
+}
+function validatedPricing(table) {
+    if (!table || typeof table !== 'object' || Array.isArray(table) ||
+        !Number.isFinite(table.fast_multiplier) || table.fast_multiplier <= 0 ||
+        !table.models || typeof table.models !== 'object' || Array.isArray(table.models)) return EMPTY_PRICING;
+    const models = {};
+    for (const [id, price] of Object.entries(table.models)) if (validModelPrice(price)) models[id] = price;
+    return { ...table, models };
+}
+// Custo é observação secundária: arquivo ausente/JSON inválido não impede o watcher
+// de subir. Sem tabela verificável, nenhum modelo recebe preço.
+let PRICING_BYTES, PRICING;
+try {
+    PRICING_BYTES = fs.readFileSync(path.join(__dirname, 'model-pricing.json'));
+    PRICING = validatedPricing(JSON.parse(PRICING_BYTES));
+} catch {
+    PRICING = EMPTY_PRICING;
+    PRICING_BYTES = Buffer.from(JSON.stringify(EMPTY_PRICING));
+    console.warn('[custo] tabela de preços indisponível; custo fica UNKNOWN');
+}
+const PRICING_SHA256 = crypto.createHash('sha256').update(PRICING_BYTES).digest('hex');
+const PRICES_USD_PER_MTOK = PRICING.models;
+// Continua string para os leitores legados do dashboard. Cada Attempt guarda sua fonte.
+function pricingSource(table, sha256) {
+    return `Anthropic ${table.source?.url || 'UNKNOWN'}, captura ${table.source?.captured_at || 'UNKNOWN'}, ` +
+        `source_sha256=${table.source?.sha256 || 'UNKNOWN'}; tabela=${table.version || 'UNKNOWN'}, sha256=${sha256}; ` +
+        `demais modelos: ${table.legacy_source?.description || 'UNKNOWN'}`;
+}
+const PRICING_SOURCE = pricingSource(PRICING, PRICING_SHA256);
 
-// "claude-opus-5-5[1m]" / "claude-sonnet-4-6-20260101" -> id da tabela. Modelo fora da
-// tabela => null (custo não calculado, nunca chutado).
-function priceFor(model) {
-    if (!model) return null;
-    const id = String(model).replace(/\[[^\]]*\]$/, '').replace(/-\d{8}$/, '').trim();
-    return PRICES_USD_PER_MTOK[id] ? { id, ...PRICES_USD_PER_MTOK[id] } : null;
+// O ledger existente guarda o pin do despacho. Não há registry paralelo: retomar
+// um pendente com outra versão do watcher ainda usa os mesmos bytes e limites.
+function pricingSnapshot() {
+    return { json: PRICING_BYTES.toString('utf8'), sha256: PRICING_SHA256 };
+}
+function readPricing(snapshot) {
+    if (!snapshot) return { table: PRICING, sha256: PRICING_SHA256, source: PRICING_SOURCE };
+    const sha256 = crypto.createHash('sha256').update(snapshot.json).digest('hex');
+    if (sha256 !== snapshot.sha256) throw new Error('PRICING_SNAPSHOT_HASH_MISMATCH');
+    const table = validatedPricing(JSON.parse(snapshot.json));
+    return { table, sha256, source: pricingSource(table, sha256) };
 }
 
-// US$ de UMA mensagem da API (objeto usage do transcript). null = modelo sem preço.
-function messageCostUsd(model, u) {
-    const p = priceFor(model);
+function modelId(model) {
+    return String(model || '').replace(/\[[^\]]*\]$/, '').replace(/-\d{8}$/, '').trim();
+}
+
+function priceFor(model, usage = {}, pricing = readPricing()) {
+    const id = modelId(model);
+    const p = Object.hasOwn(pricing.table.models, id) ? pricing.table.models[id] : null;
     if (!p) return null;
-    const m = u.speed === 'fast' ? FAST_MULTIPLIER : 1;
+    if (!p.tiers) return { id, price_tier: 'flat', ...p };
+    const total = p.tier_basis.reduce((sum, field) => sum + (usage[field] || 0), 0);
+    const tier = p.tiers.find(t => t.max_prompt_tokens == null || total <= t.max_prompt_tokens);
+    return tier ? { ...tier, id, price_tier: tier.id } : null;
+}
+
+// Mesma aritmética legada de TTL: sem quebra, a projeção assume 5 min e é estimada.
+function cacheWrites(u) {
     const creation = u.cache_creation_input_tokens || 0;
-    // Quebra por TTL quando existe; sem ela, assume 5 min (padrão da API).
-    const w1h = u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
-    const w5m = u.cache_creation ? (u.cache_creation.ephemeral_5m_input_tokens ?? Math.max(creation - w1h, 0)) : creation;
-    const usd = (
-        (u.input_tokens || 0) * p.input +
-        (u.output_tokens || 0) * p.output +
-        (u.cache_read_input_tokens || 0) * p.cache_read +
-        w5m * p.input * CACHE_WRITE_5M +
-        w1h * p.input * CACHE_WRITE_1H
-    ) * m / 1e6;
-    return usd;
+    const h = u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+    const known5m = u.cache_creation?.ephemeral_5m_input_tokens;
+    return {
+        cache_write_5m_tokens: known5m ?? 0,
+        cache_write_1h_tokens: h,
+        cache_write_ttl_unknown_tokens: known5m == null ? Math.max(creation - h, 0) : 0,
+    };
+}
+
+function pricedComponents(p, row, pricing = readPricing()) {
+    if (!p) return null;
+    return ((row.input_tokens || 0) * p.input + (row.output_tokens || 0) * p.output +
+        (row.cache_read_tokens || 0) * p.cache_read +
+        ((row.cache_write_5m_tokens || 0) + (row.cache_write_ttl_unknown_tokens || 0)) * p.cache_write_5m +
+        (row.cache_write_1h_tokens || 0) * p.cache_write_1h) *
+        (row.speed === 'fast' ? pricing.table.fast_multiplier : 1) / 1e6;
+}
+
+// Sem arredondamento por linha: o AS-IS arredonda apenas o total do despacho.
+// A soma da projeção agrupada pode mudar a ordem das parcelas em ponto flutuante.
+// Compare seu valor bruto ao agregado legado arredondado com tolerância de meio
+// microdólar mais 1e-12; em empate, arredondá-la pode diferir em 1 microdólar.
+// Nunca ajuste cost_usd legado para casar com a projeção.
+function projectUsageCost(row, snapshot = null) {
+    const pricing = readPricing(snapshot);
+    if (row.pricing_sha256 !== pricing.sha256) return null; // nunca reinterpretar histórico por latest
+    // Mensagem local sem tokens faturáveis não precisa de preço. Preserva a regra
+    // legada billable > 0 sem converter preço ausente de uso real em zero.
+    if (['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_5m_tokens',
+        'cache_write_1h_tokens', 'cache_write_ttl_unknown_tokens'].every(field => row[field] === 0)) return 0;
+    const id = modelId(row.model);
+    const model = Object.hasOwn(pricing.table.models, id) ? pricing.table.models[id] : null;
+    const p = model?.tiers ? model.tiers.find(t => t.id === row.price_tier)
+        : row.price_tier === 'flat' ? model : null;
+    return pricedComponents(p, row, pricing);
+}
+
+function messageCostUsd(model, u, pricing = readPricing()) {
+    return pricedComponents(priceFor(model, u, pricing), {
+        input_tokens: u.input_tokens, output_tokens: u.output_tokens,
+        cache_read_tokens: u.cache_read_input_tokens, ...cacheWrites(u), speed: u.speed,
+    }, pricing);
 }
 
 // Arredonda pra 6 casas (micro-dólar) — soma de float acumula ruído.
@@ -112,7 +189,7 @@ function recomputeTotals(ct) {
 // alsoCovers: outros nós cobertos pelo mesmo despacho (hoje só fetch_ticket, que roda
 // junto com plan num único `claude -p` — não dá pra separar o custo de cada um, então
 // vai tudo em plan e fica registrado que incluiu fetch_ticket).
-function mergeRun(ct, { node, agent, alsoCovers = [], metrics }) {
+function mergeRun(ct, { node, agent, alsoCovers = [], metrics, run = {}, outcome = {} }) {
     const base = ct && ct.nodes ? ct : emptyCostTracking();
     const prev = base.nodes[node];
     const entry = prev
@@ -137,6 +214,7 @@ function mergeRun(ct, { node, agent, alsoCovers = [], metrics }) {
         entry.runs_without_tokens = (entry.runs_without_tokens || 0) + 1;
     }
     if (alsoCovers.length) entry.also_covers = [...new Set([...(entry.also_covers || []), ...alsoCovers])];
+    entry.attempts = [...(prev?.attempts || []), attemptRecord({ ...run, agent }, node, alsoCovers, metrics, outcome)];
     return recomputeTotals({ ...base, nodes: { ...base.nodes, [node]: entry } });
 }
 
@@ -165,10 +243,14 @@ function findClaudeTranscripts(sessionId, projectsDir) {
 // uma vez só, com o usage da última linha. Sem nenhuma mensagem com usage => tokens
 // null. last_timestamp_ms = último evento registrado (fim real da sessão, usado quando
 // o watcher não acompanhou o processo até o exit).
-function sumClaudeUsage(contents) {
-    const byMessage = new Map();
-    let lastTs = null;
-    for (const content of contents) {
+function sumClaudeUsage(contents, snapshot = null) {
+    const pricing = readPricing(snapshot);
+    const byMessage = new Map(), seen = new Map();
+    const readOrder = [];
+    let lastTs = null, firstMain = null;
+    for (const [fileIndex, source] of contents.entries()) {
+        const { content, role = 'main', file_ref = role } = typeof source === 'string' ? { content: source } : source;
+        readOrder.push({ role, file_ref });
         for (const line of content.split('\n')) {
             if (!line.trim()) continue;
             let entry;
@@ -177,21 +259,48 @@ function sumClaudeUsage(contents) {
             if (!Number.isNaN(ts) && (lastTs === null || ts > lastTs)) lastTs = ts;
             const usage = entry.type === 'assistant' && entry.message?.usage;
             if (!usage) continue;
-            byMessage.set(entry.message.id || `${entry.uuid}`, { usage, model: entry.message.model });
+            const key = entry.message.id || `${entry.uuid}`;
+            const model = entry.message.model;
+            const prev = seen.get(key);
+            if (prev) {
+                prev.files.add(fileIndex);
+                prev.roles.add(role);
+                if (!isDeepStrictEqual(prev.usage, usage) || prev.model !== model) prev.diverged = true;
+            } else seen.set(key, { files: new Set([fileIndex]), roles: new Set([role]), usage, model, diverged: false });
+            // Map.set e ordem de leitura preservados: última ocorrência vence.
+            byMessage.set(key, { usage, model, role });
+            if (role === 'main' && (!firstMain || firstMain.key === key)) firstMain = { key, usage };
         }
     }
     const result = {
         input_tokens: null, output_tokens: null, cache_read_input_tokens: null, cache_creation_input_tokens: null,
         cost_usd: null, models: [], unpriced_models: [], last_timestamp_ms: lastTs,
+        usage: [], read_order: readOrder, dedup_conflicts: [],
+        role_attribution: { status: 'COMPLETE', conflicted_messages: 0 },
+        first_turn: { cache_read_tokens: null, cache_write_5m_tokens: null, cache_write_1h_tokens: null },
+        cost_estimated: false, pricing_sha256: pricing.sha256, pricing_source: pricing.source,
     };
-    const models = new Set(), unpriced = new Set();
+    if (firstMain) {
+        const u = firstMain.usage;
+        result.first_turn = { cache_read_tokens: u.cache_read_input_tokens ?? null,
+            cache_write_5m_tokens: u.cache_creation?.ephemeral_5m_input_tokens ?? null,
+            cache_write_1h_tokens: u.cache_creation?.ephemeral_1h_input_tokens ?? null };
+    }
+    const models = new Set(), unpriced = new Set(), groups = new Map();
     let anyUnpriced = false;
-    for (const { usage: u, model } of byMessage.values()) {
+    for (const [key, { usage: u, model, role }] of byMessage) {
+        const observation = seen.get(key);
+        const conflicted = observation.files.size > 1 && observation.roles.size > 1;
+        if (observation.files.size > 1) result.dedup_conflicts.push({
+            message_id_hash: crypto.createHash('sha256').update(String(key)).digest('hex'),
+            files_seen: observation.files.size, roles_seen: [...observation.roles],
+            winner_role: role, usage_diverged: observation.diverged,
+        });
+        if (conflicted) result.role_attribution.conflicted_messages++;
         const billable = (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
-        // "<synthetic>" = mensagem gerada localmente pelo Claude Code (sem chamada à API).
         if (model && model !== '<synthetic>') models.add(model);
         if (billable > 0) {
-            const usd = messageCostUsd(model, u);
+            const usd = messageCostUsd(model, u, pricing);
             if (usd == null) { anyUnpriced = true; unpriced.add(model || '(sem modelo)'); }
             else result.cost_usd = addNullable(result.cost_usd, usd);
         }
@@ -201,14 +310,75 @@ function sumClaudeUsage(contents) {
         result.output_tokens = addNullable(result.output_tokens, u.output_tokens || 0);
         result.cache_read_input_tokens = addNullable(result.cache_read_input_tokens, cacheRead);
         result.cache_creation_input_tokens = addNullable(result.cache_creation_input_tokens, cacheCreation);
+        const speed = u.speed === 'fast' ? 'fast' : 'standard';
+        const price_tier = priceFor(model, u, pricing)?.price_tier || 'UNKNOWN';
+        const groupKey = JSON.stringify([model || 'UNKNOWN', role, speed, price_tier]);
+        const row = groups.get(groupKey) || {
+            model: model || 'UNKNOWN', role, speed, price_tier, pricing_sha256: pricing.sha256,
+            messages: 0, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0,
+            cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_write_ttl_unknown_tokens: 0,
+            role_provenance: 'SELF_REPORTED', role_conflicted_messages: 0,
+        };
+        row.messages++;
+        row.input_tokens += u.input_tokens || 0;
+        row.output_tokens += u.output_tokens || 0;
+        row.cache_read_tokens += cacheRead;
+        const writes = cacheWrites(u);
+        for (const field of Object.keys(writes)) row[field] += writes[field];
+        if (writes.cache_write_ttl_unknown_tokens > 0) result.cost_estimated = true;
+        if (conflicted) { row.role_provenance = 'CONFLICTED'; row.role_conflicted_messages++; }
+        groups.set(groupKey, row);
     }
-    // Algum modelo sem preço => custo do run inteiro fica null (parcial seria enganoso
-    // no nível do run; no nó, runs_without_cost sinaliza).
     if (anyUnpriced) result.cost_usd = null;
     result.cost_usd = roundUsd(result.cost_usd);
     result.models = [...models];
     result.unpriced_models = [...unpriced];
+    result.usage = [...groups.values()];
+    if (result.role_attribution.conflicted_messages) result.role_attribution.status = 'PARTIAL';
+    if (!byMessage.size) result.role_attribution.status = 'UNKNOWN';
     return result;
+}
+
+// Identidade apenas da admissão; não usa o lease (Commit não tem aquele vínculo).
+function admissionForCost(decision, ticketId, runsRoot) {
+    const attempt = decision?.attempt;
+    const unknown = { attempt_id: 'UNKNOWN', admitted_node: 'UNKNOWN', attempt_ref: 'UNKNOWN' };
+    if (!attempt?.started || !attempt.attempt_id || !decision.attemptFile || !fs.existsSync(decision.attemptFile)) {
+        return { admission: { ...unknown, reason: 'NO_REAL_ATTEMPT' }, cause: attempt?.cause || 'UNKNOWN' };
+    }
+    const relative = path.relative(runsRoot, decision.attemptFile);
+    const valid = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+    return { admission: {
+        attempt_id: attempt.attempt_id, admitted_node: attempt.node,
+        attempt_ref: valid ? { runs_root: `worktree:${ticketId}/memory/runs`, path: relative } : 'UNKNOWN',
+        ...(valid ? {} : { reason: 'INVALID_ATTEMPT_REF' }),
+    }, cause: attempt.cause || 'UNKNOWN' };
+}
+
+function attemptRecord(run, node, alsoCovers, metrics, outcome) {
+    const codexUsage = [{ model: 'UNKNOWN', role: 'main', speed: 'UNKNOWN', price_tier: 'UNKNOWN',
+        pricing_sha256: PRICING_SHA256, messages: null, input_tokens: metrics.input_tokens ?? null,
+        output_tokens: metrics.output_tokens ?? null, cache_read_tokens: null, cache_write_5m_tokens: null,
+        cache_write_1h_tokens: null, cache_write_ttl_unknown_tokens: null, role_provenance: 'UNKNOWN', role_conflicted_messages: 0 }];
+    return {
+        admission: run.admission || { attempt_id: 'UNKNOWN', admitted_node: 'UNKNOWN', attempt_ref: 'UNKNOWN', reason: 'NO_REAL_ATTEMPT' },
+        attributed_node: node, also_covers: alsoCovers, cause: run.cause || 'UNKNOWN', parent_attempt_id: 'UNKNOWN',
+        session_id: run.session_id || 'UNKNOWN', runtime: run.agent,
+        provider: run.agent === 'claude' ? 'anthropic' : run.agent === 'codex' ? 'openai' : 'UNKNOWN',
+        account: run.account || { source: 'UNKNOWN', label: 'UNKNOWN' },
+        requested: { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' },
+        effort_router_plugin: run.effort_router_plugin || 'UNKNOWN',
+        first_turn: metrics.first_turn || { cache_read_tokens: null, cache_write_5m_tokens: null, cache_write_1h_tokens: null },
+        selection_source: 'DEFAULT_INHERITED', routing_decision: 'UNAVAILABLE', subtask: 'UNAVAILABLE', workspace: 'UNAVAILABLE',
+        observed: { usage: run.agent === 'codex' ? codexUsage : metrics.usage || [], effort: 'UNKNOWN' },
+        usage_provenance: 'SELF_REPORTED',
+        read_order: metrics.read_order || [], dedup_conflicts: metrics.dedup_conflicts || [],
+        role_attribution: metrics.role_attribution || { status: 'UNKNOWN', conflicted_messages: 0 },
+        cost: { usd: metrics.cost_usd ?? null, unpriced_models: metrics.unpriced_models || [],
+            pricing_source: metrics.pricing_source || PRICING_SOURCE, pricing_sha256: metrics.pricing_sha256 || PRICING_SHA256, estimated: metrics.cost_estimated ?? 'UNKNOWN' },
+        duration_ms: Math.max(0, Math.round(metrics.duration_ms || 0)), wait_ms: 'UNAVAILABLE',
+        exit: Number.isInteger(outcome.exitCode) ? outcome.exitCode : 'UNKNOWN', result: outcome.attemptResult || 'UNKNOWN',
+    };
 }
 
 // Seção "## Tokens" de memory/runs/<task>/codex-result-<node>.md (formato em
@@ -229,6 +399,6 @@ function parseCodexResultTokens(markdown) {
 }
 
 module.exports = {
-    TOKEN_FIELDS, METRIC_FIELDS, PRICES_USD_PER_MTOK, PRICING_SOURCE, priceFor, messageCostUsd, addNullable, emptyCostTracking, recomputeTotals, mergeRun,
+    TOKEN_FIELDS, METRIC_FIELDS, PRICES_USD_PER_MTOK, PRICING_SOURCE, PRICING_SHA256, pricingSnapshot, priceFor, projectUsageCost, admissionForCost, messageCostUsd, addNullable, emptyCostTracking, recomputeTotals, mergeRun,
     findClaudeTranscripts, sumClaudeUsage, parseCodexResultTokens,
 };
