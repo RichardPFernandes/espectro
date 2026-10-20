@@ -11,8 +11,9 @@
 //   refs/churn/<taskId>/rounds  — 1 commit por rodada que mudou algo (pai = rodada anterior)
 // Os snapshots usam um índice temporário (GIT_INDEX_FILE) e commit-tree: não mexem
 // na branch, no índice nem no working tree do agente, e refs/churn/* nunca vão pro
-// remoto (push de branch/--tags não as leva). Cada ciclo novo (Recusa QA) tem task-id
-// novo, então a âncora é por ciclo sem precisar limpar nada.
+// remoto (push de branch/--tags não as leva). O retry de Recusa QA reabre o MESMO
+// task-id, então o watcher chama resetCycle ao reabrir: senão as rodadas do ciclo
+// aprovado (e a diferença do /commit, ex. a anotação @spec) contam como churn do novo.
 //
 // detectChurn roda `git log --name-only <anchor>..<head>` e conta em quantos commits
 // cada arquivo aparece. Arquivo de teste tem threshold dobrado (churn em teste é mais
@@ -165,10 +166,23 @@ function recordRound(worktreePath, taskId, message) {
     return sha;
 }
 
+// Começa um ciclo novo pra task: apaga âncora e rodadas. O próximo portão grava a
+// âncora a partir do worktree atual. Devolve quantas refs apagou.
+function resetCycle(worktreePath, taskId) {
+    if (!isGitWorktree(worktreePath)) return 0;
+    let removed = 0;
+    for (const ref of [anchorRef(taskId), roundsRef(taskId)]) {
+        if (!resolveRef(worktreePath, ref)) continue;
+        git(worktreePath, ['update-ref', '-d', ref]);
+        removed++;
+    }
+    return removed;
+}
+
 module.exports = {
     DEFAULT_THRESHOLD, resolveThreshold, isTestFile, thresholdFor,
     anchorRef, roundsRef, resolveRef, isGitWorktree,
-    parseLog, detectChurn, ensureAnchor, recordRound,
+    parseLog, detectChurn, ensureAnchor, recordRound, resetCycle,
 };
 
 if (require.main === module) {

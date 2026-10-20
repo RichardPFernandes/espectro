@@ -537,10 +537,25 @@ async function consumeQaRetrySignal(dir) {
     // Não consome o sinal nem reabre o implement se a spec sumir entre a
     // importação e o baseline, ou se não for possível registrar sua versão/hash.
     if (!rebaselineSpecForQaRetry(target, taskId)) return null;
+    // Churn é por ciclo: as rodadas do ciclo aprovado não contam no retry (mesmo task-id).
+    const churnWorktree = worktreePathFor(REPO_PATH, ticketId);
+    try {
+        if (fs.existsSync(churnWorktree) && churnDetector.resetCycle(churnWorktree, taskId)) {
+            console.log(`[qa-retry] ${taskId}: contagem de churn do ciclo anterior zerada.`);
+        }
+    } catch (e) {
+        console.error(`[qa-retry] ${taskId}: falha zerando o churn do ciclo anterior:`, e.message);
+    }
     const fresh = readStateJson(target) || state;
-    // Carimbo da limpeza pós-PR é do ciclo anterior: o próximo /commit tem que limpar de novo.
-    if (fresh.node !== 'implement' || fresh.status !== 'in_progress' || fresh.worktrees_removed_on_pr_open_at) {
-        const { worktrees_removed_on_pr_open_at: _cleaned, ...reopened } = fresh;
+    // Carimbo da limpeza pós-PR e churn são do ciclo anterior: o próximo /commit tem que
+    // limpar de novo e o portão de churn recomeça a contagem.
+    const staleChurn = ['churnReport', 'churnAccepted', 'churnEscalationNotifiedAt'].some(k => fresh[k] !== undefined);
+    if (fresh.node !== 'implement' || fresh.status !== 'in_progress' || fresh.worktrees_removed_on_pr_open_at || staleChurn) {
+        const {
+            worktrees_removed_on_pr_open_at: _cleaned,
+            churnReport: _churnReport, churnAccepted: _churnAccepted, churnEscalationNotifiedAt: _churnNotified,
+            ...reopened
+        } = fresh;
         stateWriter.write(target, { ...reopened, node: 'implement', status: 'in_progress' }, { operation: 'qa_retry_reopen', actor: 'watcher', base: baseOf(fresh) });
         checkWrittenState(target);
     }

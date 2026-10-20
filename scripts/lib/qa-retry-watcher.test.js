@@ -115,6 +115,34 @@ test('consumeQaRetrySignals: destino ocupado mantém o sinal e não sobrescreve'
     assert.ok(fs.existsSync(path.join(target, 'marker')));
 });
 
+test('consumeQaRetrySignals: zera o churn do ciclo anterior (refs e campos do state)', async () => {
+    const churn = require('./churn-detector');
+    const { execFileSync: run } = require('child_process');
+    const wt = path.join(repo, '.claude', 'worktrees', '92005');
+    fs.mkdirSync(wt, { recursive: true });
+    const g = (...a) => run('git', ['-C', wt, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { stdio: 'pipe' });
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(wt, 'A.java'), 'v0\n');
+    g('add', '.'); g('commit', '-q', '-m', 'base');
+    const { taskId, dir } = archived(92005, {
+        node: 'implement', status: 'churn-escalation', qa_retry_count: 1,
+        churnReport: { detectedAt: UPDATED, threshold: 3, files: [{ path: 'A.java', modificationCount: 3 }] },
+        churnAccepted: { at: UPDATED, by: 'x', counts: { 'A.java': 3 } }, churnEscalationNotifiedAt: UPDATED,
+    });
+    churn.ensureAnchor(wt, taskId);
+    fs.writeFileSync(path.join(wt, 'A.java'), 'v1\n');
+    assert.ok(churn.recordRound(wt, taskId, 'rodada 1'));
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), '{"node":"implement"}');
+
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), [92005]);
+    assert.strictEqual(churn.resolveRef(wt, churn.anchorRef(taskId)), null, 'âncora do ciclo anterior apagada');
+    assert.strictEqual(churn.resolveRef(wt, churn.roundsRef(taskId)), null, 'rodadas do ciclo anterior apagadas');
+    const st = read(path.join(wt, 'memory', 'runs', taskId));
+    assert.strictEqual(st.status, 'in_progress');
+    assert.strictEqual(st.node, 'implement');
+    for (const k of ['churnReport', 'churnAccepted', 'churnEscalationNotifiedAt']) assert.ok(!(k in st), `${k} limpo`);
+});
+
 function specBody(text) {
     return `# Spec\n\n## Objetivo\n\n${text}\n`;
 }

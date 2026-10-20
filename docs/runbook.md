@@ -67,7 +67,7 @@ Status do Redmine que o sistema mexe:
 | `session_limit` | Sessão do agente estourou contexto/tokens | Não — retome pelo dashboard (até 3×) |
 | `state_corrupted` | `state.json` falhou na validação | Não — ver cenário 7 |
 | `spec-invalid`, `spec-pending-approval` | Spec do ticket incompleta | Espera "aceito"/"aprovado" no Redmine |
-| `plan-escalation`, `churn-escalation`, `pre-build-failed` | Portões de qualidade | Espera "aceito" no Redmine ou flag `--aceitar-*` |
+| `plan-escalation`, `churn-escalation`, `pre-build-failed` | Portões de qualidade | Espera "aceito" no Redmine ou flag `--aceitar-*` (churn: também o botão "Aceitar churn" no detalhe do run) |
 | `spec-drift` | Spec mudou depois do /plan sem aprovação, ou a spec sumiu | Espera `spec_change_approved` + `spec_change_hash`, spec revertida, `node="plan"`, ou a mesma spec no checkout principal (o portão restaura e grava `spec_restored`) |
 | `spec-change-pending-approval` | O /implement propôs uma SPEC_CHANGE (ver `spec_change_pending` e `spec-change-audit.json`) | Espera "aprovado" (volta pro /plan) ou "rejeitado" no Redmine/dashboard. Sem Redmine: `node "$PRISMA_ROOT/scripts/lib/spec-change.js" approve\|reject memory/runs/<task-id> --by="<nome>"` |
 | `spec-change-rejected` | SPEC_CHANGE rejeitada, spec intacta | Sim, por mensagem no dashboard (Responder ao agente), interpretada como em `blocked` — ou grave `node="implement"`, `status="in_progress"` para implementar a spec como está |
@@ -375,7 +375,7 @@ ticket não está na lista, é D. Se está na lista com `action: "skip"`, é F.
   | `status_authorization_pending` | Pedido de autorização esperando decisão no dashboard — seção "Autorização humana" |
   | `handback_nao_arquivada` | `handed_back_qa` fora do `_archive` (devolução morreu no meio): confira o ticket e arquive pelo dashboard |
   | `status_session_limit` | Botão de retomada no dashboard (`POST /api/runs/<task-id>/resume-session`, máx. 3×) |
-  | `plan_escalation` / `churn_escalation` / `pre-build-failed` | Responda **aceito** no Redmine ou rode com `--aceitar-plano=<id>` / `--aceitar-churn=<id>` / `--aceitar-build=<id>` |
+  | `plan_escalation` / `churn_escalation` / `pre-build-failed` | Responda **aceito** no Redmine ou rode com `--aceitar-plano=<id>` / `--aceitar-churn=<id>` / `--aceitar-build=<id>`. Churn: antes de aceitar, veja o que cada rodada mudou com `git log -p refs/churn/<task>/start..refs/churn/<task>/rounds -- <arquivo>` no worktree do ticket; o botão "Aceitar churn" do dashboard faz o mesmo que o "aceito" |
   | `committed_nao_arquivada` | `/commit` não terminou o arquivamento — cenário 4 |
   | `claude_indisponivel` | Causa E |
   | `erro_inesperado` | Exceção só neste ticket; o `error` vem junto — leia o log-stream |

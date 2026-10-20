@@ -1077,3 +1077,44 @@ test('nodes: run commitado marca todas as etapas; node_end dos events conta como
     assert.deepStrictEqual(body.find(r => r.taskId === '96001-commitado').nodes, all);
     assert.deepStrictEqual(body.find(r => r.taskId === '96002-verificando').nodes, { ...all, verify: 'running', commit: 'pending' });
 });
+
+test('POST /churn/accept: churn-escalation volta pra in_progress com as contagens atuais como baseline', async () => {
+    const churn = require('../scripts/lib/churn-detector');
+    const { execFileSync } = require('child_process');
+    const r5 = path.join(fs.mkdtempSync(path.join(tmpBase, 'dashboard-churn-')), 'app-back');
+    const runs5 = path.join(r5, 'memory', 'runs');
+    fs.mkdirSync(runs5, { recursive: true });
+    const wt = path.join(r5, '.claude', 'worktrees', '98001');
+    fs.mkdirSync(wt, { recursive: true });
+    const g = (...a) => execFileSync('git', ['-C', wt, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { stdio: 'pipe' });
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(wt, 'A.java'), 'v0\n');
+    g('add', '.'); g('commit', '-q', '-m', 'base');
+    churn.ensureAnchor(wt, '98001-churn');
+    for (const v of ['v1', 'v2', 'v3']) {
+        fs.writeFileSync(path.join(wt, 'A.java'), `${v}\n`);
+        churn.recordRound(wt, '98001-churn', `rodada ${v}`);
+    }
+    const escalated = { node: 'implement', status: 'churn-escalation', history: ['plan', 'implement', 'review', 'implement'],
+        churnReport: { detectedAt: t1, threshold: 3, files: [{ path: 'A.java', modificationCount: 3, commits: [], threshold: 3 }] } };
+    const dChurn = seed(path.join(wt, 'memory', 'runs'), '98001-churn', escalated);
+    seed(path.join(r5, '.claude', 'worktrees', '98002', 'memory', 'runs'), '98002-andando', { node: 'review', status: 'in_progress' });
+    const d5 = createDashboard({ memoryDir: runs5 });
+    await new Promise(r => d5.server.listen(0, '127.0.0.1', r));
+    await d5.ready;
+    const b5 = `http://localhost:${d5.server.address().port}`;
+    const post5 = p => fetch(b5 + p, { method: 'POST' }).then(async r => ({ status: r.status, body: await r.json() }));
+    try {
+        assert.strictEqual((await post5('/api/runs/98002-andando/churn/accept')).status, 409, 'sem churn');
+        assert.strictEqual((await post5('/api/runs/nao-existe/churn/accept')).status, 404);
+        assert.strictEqual((await post5('/api/runs/98001-churn/churn/accept')).status, 200);
+        const st = JSON.parse(fs.readFileSync(path.join(dChurn, 'state.json'), 'utf8'));
+        assert.strictEqual(st.status, 'in_progress');
+        assert.strictEqual(st.churnAccepted.by, 'dashboard');
+        assert.deepStrictEqual(st.churnAccepted.counts, { 'A.java': 3 });
+        assert.ok(st.churnReport, 'relatório mantido pro histórico');
+        assert.strictEqual((await post5('/api/runs/98001-churn/churn/accept')).status, 409, 'clique duplo');
+    } finally {
+        await d5.close();
+    }
+});

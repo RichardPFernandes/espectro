@@ -23,6 +23,7 @@ const { createLocalCheckout } = require('../scripts/local-checkout');
 // Checklist de migração que o watcher põe no context.md (bloco entre marcadores).
 const schemaWatcher = require('../scripts/lib/schema-watcher');
 const buildValidator = require('../scripts/lib/build-validator');
+const churnDetector = require('../scripts/lib/churn-detector');
 // "✨ Corrigir com IA" do portão de build (POST /api/runs/:taskId/pre-build/ai-fix).
 const preBuildAiFix = require('../scripts/lib/pre-build-ai-fix');
 // Conta do Claude dos agentes + uso/limite dela (painel Watcher > Configurações).
@@ -1300,6 +1301,51 @@ function createDashboard(options = {}) {
             }, { operation: 'pre_build_retry', actor: 'dashboard' });
         })().catch(e => console.error(`[dashboard] pré-build de ${run.taskId}: ${redact(e.message)}`))
             .finally(() => { preBuildRetrying.delete(run.taskId); pushState(); });
+    });
+
+    // "Aceitar churn" do detalhe: mesmo efeito de responder "aceito" no Redmine (watcher,
+    // runChurnGate). As contagens atuais viram baseline (churnAccepted.counts): o arquivo
+    // só escala de novo se acumular mais CHURN_THRESHOLD rodadas. O watcher despacha o
+    // implement no próximo tick.
+    app.post('/api/runs/:taskId/churn/accept', async (req, res) => {
+        const run = withRun(req, res);
+        if (!run) return;
+        if (run.archived || run.pretask) return res.status(409).json({ error: 'run arquivado ou ainda sem task' });
+        const statePath = path.join(run.dir, 'state.json');
+        const state = readJson(statePath);
+        if (state?.status !== 'churn-escalation') return res.status(409).json({ error: 'o run não está parado por churn' });
+        const ticket = (run.root.label.match(/^worktree:(\d+)$/) || [])[1];
+        if (!ticket) return res.status(409).json({ error: 'run fora do worktree do ticket: não há rodadas pra contar' });
+        const worktree = path.join(worktreesDir, ticket);
+        const taskId = run.taskId;
+        let counts = {};
+        try {
+            if (churnDetector.resolveRef(worktree, churnDetector.roundsRef(taskId))) {
+                counts = (await churnDetector.detectChurn(worktree, churnDetector.resolveThreshold(consumerEnv), {
+                    anchor: churnDetector.anchorRef(taskId), head: churnDetector.roundsRef(taskId),
+                })).counts;
+            }
+        } catch (e) {
+            return res.status(500).json({ error: redact(`falha contando as rodadas: ${e.message}`) });
+        }
+        const at = new Date().toISOString();
+        let applied = false;
+        try {
+            stateWriter.update(statePath, fresh => {
+                if (fresh.status !== 'churn-escalation') return cas.SKIP;
+                applied = true;
+                Object.assign(fresh, { status: 'in_progress', churnAccepted: { at, by: 'dashboard', counts }, updated_at: at });
+                fresh.events = [...(Array.isArray(fresh.events) ? fresh.events : []),
+                    { type: 'churn_accepted', node: 'implement', ts: at, at, detail: 'aceito pelo dashboard' }];
+            }, { operation: 'churn_accept', actor: 'dashboard', expect: humanExpect(req, state) });
+        } catch (e) {
+            if (sendConflict(res, e)) return;
+            throw e;
+        }
+        if (!applied) return res.status(409).json({ error: 'o run saiu do churn enquanto aceitava' });
+        const summary = summarize(resolveRun(taskId));
+        if (summary?.state) broadcast({ type: 'state_update', taskId, state: summary.state, run: summary });
+        res.json({ ok: true, taskId });
     });
 
     // "✨ Corrigir com IA" do portão de build pré-implement: despacha um `claude -p`
