@@ -90,6 +90,36 @@ test('fetchLastRejectionNote: 2ª recusa sem comentário não herda a nota da 1�
     assert.strictEqual(await qa.fetchLastRejectionNote(1, base(fn)), null);
 });
 
+test('fetchLastRejectionNote: QA devolve pra Em Desenvolvimento com nota e o ticket vai pra Recusa QA em saltos sem nota (#43819)', async () => {
+    const { fn } = stub(() => json(200, { issue: { journals: [
+        { id: 1, created_on: 'T1', notes: null, details: [{ name: 'status_id', old_value: '20', new_value: '8' }] },
+        { id: 2, created_on: 'T2', notes: '1° Não deixa criar a DT', user: { name: 'QA' }, details: [{ name: 'status_id', old_value: '8', new_value: '2' }] },
+        { id: 3, created_on: 'T3', notes: '', details: [{ name: 'status_id', old_value: '2', new_value: '8' }] },
+        { id: 4, created_on: 'T4', notes: '', details: [{ name: 'status_id', old_value: '8', new_value: '19' }] },
+        { id: 5, created_on: 'T5', notes: '', details: [{ name: 'status_id', old_value: '19', new_value: '13' }] },
+    ] } }));
+    assert.deepStrictEqual(await qa.fetchLastRejectionNote(1, base(fn)), { note: '1° Não deixa criar a DT', journal_id: 2, created_on: 'T2', author: 'QA', rejected_at: 'T2' });
+});
+
+test('fetchLastRejectionNote: nota de quem mandou pro teste (saída de Em Desenvolvimento) não vira nota da recusa', async () => {
+    const { fn } = stub(() => json(200, { issue: { journals: [
+        { id: 1, created_on: 'T1', notes: 'pronto pra teste', details: [{ name: 'status_id', old_value: '2', new_value: '8' }] },
+        { id: 2, created_on: 'T2', notes: '', details: [{ name: 'status_id', old_value: '8', new_value: '13' }] },
+    ] } }));
+    assert.strictEqual(await qa.fetchLastRejectionNote(1, base(fn)), null);
+});
+
+test('fetchLastRejectionNote: devolução com nota de uma recusa anterior não é herdada', async () => {
+    const { fn } = stub(() => json(200, { issue: { journals: [
+        { id: 1, created_on: 'T1', notes: 'nota da 1ª devolução', details: [{ name: 'status_id', old_value: '8', new_value: '2' }] },
+        { id: 2, created_on: 'T2', notes: '', details: [{ name: 'status_id', old_value: '2', new_value: '13' }] },
+        { id: 3, created_on: 'T3', notes: '', details: [{ name: 'status_id', old_value: '13', new_value: '2' }] },
+        { id: 4, created_on: 'T4', notes: '', details: [{ name: 'status_id', old_value: '2', new_value: '8' }] },
+        { id: 5, created_on: 'T5', notes: '', details: [{ name: 'status_id', old_value: '8', new_value: '13' }] },
+    ] } }));
+    assert.strictEqual(await qa.fetchLastRejectionNote(1, base(fn)), null);
+});
+
 test('fetchLastRejectionNote: nota no próprio journal da recusa vence comentário posterior', async () => {
     const { fn } = stub(() => json(200, { issue: { journals: [
         { id: 1, created_on: 'T1', notes: '', details: [{ name: 'status_id', new_value: '9' }] },
