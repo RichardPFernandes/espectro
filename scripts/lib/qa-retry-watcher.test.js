@@ -126,7 +126,10 @@ test('consumeQaRetrySignals: zera o churn do ciclo anterior (refs e campos do st
     g('add', '.'); g('commit', '-q', '-m', 'base');
     const { taskId, dir } = archived(92005, {
         node: 'implement', status: 'churn-escalation', qa_retry_count: 1,
-        churnReport: { detectedAt: UPDATED, threshold: 3, files: [{ path: 'A.java', modificationCount: 3 }] },
+        churnReport: { detectedAt: UPDATED, threshold: 3, files: [{
+            path: 'A.java', modificationCount: 3,
+            commits: ['abc1234 rodada 3', 'def5678 rodada 2', 'fed9012 rodada 1'],
+        }] },
         churnAccepted: { at: UPDATED, by: 'x', counts: { 'A.java': 3 } }, churnEscalationNotifiedAt: UPDATED,
     });
     churn.ensureAnchor(wt, taskId);
