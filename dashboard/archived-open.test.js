@@ -91,6 +91,18 @@ test('arquivado aberto: detalhe e log funcionam, mensagem e arquivar são recusa
     assert.strictEqual(d.body.archived, true);
     assert.match(d.body.context, /feito/);
     assert.match((await get('/api/runs/94001-ciclo-novo/log')).body.log, /Plano/);
+    // Preview do context.md (PRI-211): arquivado lê o arquivo; sem ele, estado vazio sem erro.
+    const ctx = await get('/api/runs/94001-ciclo-novo/context');
+    assert.strictEqual(ctx.status, 200);
+    assert.deepStrictEqual([ctx.body.archived, ctx.body.exists], [true, true]);
+    assert.match(ctx.body.markdown, /## Plano/);
+    const ctxFile = path.join(wt('94001'), '_archive', '94001-ciclo-novo', 'context.md');
+    fs.renameSync(ctxFile, `${ctxFile}.bak`);
+    try {
+        const none = await get('/api/runs/94001-ciclo-novo/context');
+        assert.strictEqual(none.status, 200);
+        assert.deepStrictEqual([none.body.archived, none.body.exists, none.body.markdown], [true, false, null]);
+    } finally { fs.renameSync(`${ctxFile}.bak`, ctxFile); }
     assert.strictEqual((await post('/api/runs/94001-ciclo-novo/message', { message: 'oi' })).status, 409);
     assert.ok(!fs.existsSync(path.join(wt('94001'), '_archive', '94001-ciclo-novo', 'human-input.md')));
     assert.strictEqual((await post('/api/runs/94001-ciclo-novo/archive', { force: true })).status, 409);
