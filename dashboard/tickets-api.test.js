@@ -34,6 +34,7 @@ const fakeDispatchNode = async (args) => {
 const REDMINE_KEY = 'chave-super-secreta-xyz';
 
 let dash, base;
+const watcherEvents = [];
 test.before(async () => {
     // redact() (server.js) só escrutina valores presentes em process.env no momento
     // do createDashboard — precisa estar setada antes, como qa-retry-api.test.js faz.
@@ -45,6 +46,7 @@ test.before(async () => {
         fetchAssignedTickets: fakeFetchAssignedTickets,
         dispatchNode: fakeDispatchNode,
     });
+    dash.watcher.on('all', (event, file) => watcherEvents.push([event, path.relative(tmp, file)]));
     await new Promise(r => dash.server.listen(0, '127.0.0.1', r));
     base = `http://localhost:${dash.server.address().port}`;
     await dash.ready;
@@ -85,10 +87,12 @@ test('POST /api/runs/start: ticketId inválido => 400', async () => {
 });
 
 test('POST /api/runs/start: run ativa para o ticket => 409 com runId, sem chamar dispatchNode', async () => {
+    const rootExistedBeforeWrite = fs.existsSync(runs);
+    const watchedBeforeWrite = dash.watcher.getWatched();
     writeRun('43590-em-andamento', { redmine_ticket: { id: 43590 } });
     dispatchCalls = [];
-    assert.ok(await eventually(async () => (await get('/api/runs')).body.some(run => run.taskId === '43590-em-andamento')),
-        'chokidar não publicou a run ativa em 3s');
+    const published = await eventually(async () => (await get('/api/runs')).body.some(run => run.taskId === '43590-em-andamento'));
+    assert.ok(published, `chokidar não publicou a run ativa em 3s; diagnóstico=${JSON.stringify({ rootExistedBeforeWrite, watchedBeforeWrite, watchedAfterWait: dash.watcher.getWatched(), watcherEvents })}`);
     const r = await post('/api/runs/start', { ticketId: '43590' });
     assert.strictEqual(r.status, 409);
     assert.strictEqual(r.body.runId, '43590-em-andamento');
