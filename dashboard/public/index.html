@@ -2536,6 +2536,13 @@ function churnHtml(r) {
           ? `Churn aceito por ${esc(s.churnAccepted.by || '?')}: o ciclo seguiu com mais rodadas de implement.`
           : `Modificados em ${esc(String(s.churnReport.threshold ?? 3))}+ rodadas de implement deste ciclo (testes: o dobro). Mensagens das rodadas, mais recente primeiro:`}</p>
         <ul class="churn-files">${rows}</ul>
+        ${isChurn(r) && !s.churnAccepted ? `<p class="fold-msg">Para ver o que cada rodada mudou, no worktree do ticket:
+          <code>git log -p refs/churn/${esc(r.taskId)}/start..refs/churn/${esc(r.taskId)}/rounds -- &lt;arquivo&gt;</code>.
+          Mudança que vai e volta no mesmo trecho é loop (ajuste a spec ou o plano); mudanças diferentes que avançam são evolução normal (aceite).</p>
+        <div class="build-actions">
+          <button type="button" class="retry-btn" id="churnAccept">✓ Aceitar churn</button>
+          <span class="hint">Mesmo efeito de responder “aceito” no Redmine: o watcher despacha o implement no próximo tick.</span>
+        </div>` : ''}
       </div>
     </details>
   </div>`;
@@ -2791,6 +2798,22 @@ function wireFolds(r) {
     cb.disabled = true; cb.textContent = 'Parando…';
     try { await fetch(`/api/runs/${encodeURIComponent(r.taskId)}/pre-build/ai-fix/cancel`, { method: 'POST' }); }
     catch { cb.disabled = false; cb.textContent = '■ Parar'; }
+  });
+  const ca = $('churnAccept');
+  if (ca) ca.addEventListener('click', async () => {
+    ca.disabled = true; ca.textContent = 'Aceitando…';
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(r.taskId)}/churn/accept`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        ca.disabled = false; ca.textContent = '✓ Aceitar churn';
+        ca.nextElementSibling.textContent = `Não deu para aceitar: ${body.error || `HTTP ${res.status}`}`;
+      }
+      // Sucesso: o state_update do WebSocket re-renderiza o painel já como "aceito".
+    } catch (e) {
+      ca.disabled = false; ca.textContent = '✓ Aceitar churn';
+      ca.nextElementSibling.textContent = `Não deu para aceitar: ${e.message}`;
+    }
   });
   const rb = $('preBuildRetry');
   if (rb) rb.addEventListener('click', async () => {
