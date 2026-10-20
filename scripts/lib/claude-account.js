@@ -50,4 +50,31 @@ function listClaudeAccounts(home = os.homedir()) {
     return accounts;
 }
 
-module.exports = { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, expandHome, DEFAULT_ACCOUNT, DEFAULT_PREFS_FILE };
+// Metadados observacionais. Mapa explícito em dashboard-prefs.json:
+// claude_account_labels: { "~/.claude-personal": "personal" }. Sem inferir rótulo
+// pelo basename: só rótulos simples e sem caminho podem sair na trilha de custo.
+function accountCostMetadata(account, { prefsFile = process.env.DASHBOARD_PREFS_FILE || DEFAULT_PREFS_FILE, home = os.homedir() } = {}) {
+    let label = 'UNKNOWN';
+    try {
+        const labels = JSON.parse(fs.readFileSync(prefsFile, 'utf8')).claude_account_labels || {};
+        const selected = path.resolve(account.dir || path.join(home, '.claude'));
+        for (const [dir, value] of Object.entries(labels)) {
+            const mapped = dir === DEFAULT_ACCOUNT ? path.join(home, '.claude') : expandHome(dir, home);
+            if (path.isAbsolute(mapped) && path.resolve(mapped) === selected && typeof value === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(value)) {
+                label = value;
+                break;
+            }
+        }
+    } catch { /* sem mapa observável: UNKNOWN */ }
+    let plugin = 'UNKNOWN';
+    try {
+        const settings = JSON.parse(fs.readFileSync(path.join(account.dir || path.join(home, '.claude'), 'settings.json'), 'utf8'));
+        const flags = Object.entries(settings.enabledPlugins || {}).filter(([key]) => /^jev-model-router(?:@|$)/.test(key));
+        if (flags.some(([, enabled]) => enabled === true)) plugin = 'LOADED';
+        else if (flags.length && flags.every(([, enabled]) => enabled === false)) plugin = 'NOT_LOADED';
+        // Ausência de uma chave não comprova que o plugin não foi carregado.
+    } catch { /* sem observação suficiente: UNKNOWN */ }
+    return { account: { source: account.source, label }, effort_router_plugin: plugin };
+}
+
+module.exports = { accountCostMetadata, withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, expandHome, DEFAULT_ACCOUNT, DEFAULT_PREFS_FILE };

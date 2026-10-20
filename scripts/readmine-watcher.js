@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const { execSync, execFileSync, spawn } = require('child_process');
 const specValidator = require('./lib/spec-validator');
 const specRepairer = require('./lib/spec-repairer');
-const { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts } = require('./lib/claude-account');
+const { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, accountCostMetadata } = require('./lib/claude-account');
 const nodeLease = require('./lib/node-lease');
 const invalidate = require('./invalidate');
 const nodeEvents = require('./lib/node-events');
@@ -3062,11 +3062,16 @@ function writeCostLedger(ticketId, ledger) {
     fs.writeFileSync(costLedgerPath(ticketId), JSON.stringify(ledger, null, 2));
 }
 
-function startCostRun(ticketId, { agent, nodes, sessionId }) {
+function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null }) {
     if (DRY_RUN) return null;
     try {
-        const account = agent === 'claude' ? resolveClaudeAccount().dir : null;
-        const run = { session_id: sessionId, agent, nodes, started_at_ms: Date.now(), pid: null, ...(account ? { claude_config_dir: account } : {}) };
+        const selected = agent === 'claude' ? resolveClaudeAccount() : null;
+        const metadata = selected ? accountCostMetadata(selected)
+            : { account: { source: 'UNKNOWN', label: 'UNKNOWN' }, effort_router_plugin: 'UNKNOWN' };
+        const run = { session_id: sessionId, agent, nodes, started_at_ms: Date.now(), pid: null,
+            ...costTracking.admissionForCost(admissionDecision, ticketId, taskRunsDir(ticketId)), ...metadata,
+            pricing_snapshot: costTracking.pricingSnapshot(),
+            ...(selected?.dir ? { claude_config_dir: selected.dir } : {}) };
         const ledger = readCostLedger(ticketId);
         ledger.pending.push(run);
         writeCostLedger(ticketId, ledger);
@@ -3127,7 +3132,11 @@ function collectRunMetrics(run, target, endMs) {
     let observedEnd = null;
     if (run.agent === 'claude') {
         const files = findRunTranscripts(run);
-        const usage = costTracking.sumClaudeUsage(files.map(f => fs.readFileSync(f, 'utf8')));
+        const usage = costTracking.sumClaudeUsage(files.map(f => ({
+            role: f.includes(`${path.sep}subagents${path.sep}`) ? 'subagent' : 'main',
+            file_ref: f.includes(`${path.sep}subagents${path.sep}`) ? path.basename(f) : 'main',
+            content: fs.readFileSync(f, 'utf8'),
+        })), run.pricing_snapshot);
         tokens = usage;
         observedEnd = usage.last_timestamp_ms
             ?? (files.length ? Math.max(...files.map(f => fs.statSync(f).mtimeMs)) : null);
@@ -3142,6 +3151,9 @@ function collectRunMetrics(run, target, endMs) {
     const metrics = { duration_ms: end - run.started_at_ms };
     for (const field of costTracking.METRIC_FIELDS) metrics[field] = tokens[field] ?? null;
     if (tokens.models?.length) metrics.models = tokens.models;
+    for (const field of ['usage', 'unpriced_models', 'read_order', 'dedup_conflicts', 'role_attribution', 'first_turn', 'cost_estimated', 'pricing_sha256', 'pricing_source']) {
+        if (tokens[field] !== undefined) metrics[field] = tokens[field];
+    }
     return { node, metrics };
 }
 
@@ -3149,6 +3161,7 @@ function collectRunMetrics(run, target, endMs) {
 // Nunca toca state.updated_at — ele decide findActiveTask e o "já tratado neste ciclo"
 // de mostRecentArchivedCommit; métrica não pode mexer nisso.
 function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
+    if (DRY_RUN) return;
     try {
         const ledger = readCostLedger(ticketId);
         const idx = ledger.pending.findIndex(r => r.session_id === sessionId);
@@ -3156,6 +3169,18 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
         const run = ledger.pending[idx];
         const target = findCostTargetTask(ticketId, run.nodes[run.nodes.length - 1]);
         const { node, metrics } = collectRunMetrics(run, target, endMs);
+        // Só leitura do arquivo admitido; nunca deriva identidade do lease ou latest.
+        let attemptResult = 'UNKNOWN';
+        const ref = run.admission?.attempt_ref;
+        if (ref && typeof ref === 'object' && typeof ref.path === 'string' &&
+            !path.isAbsolute(ref.path) && !ref.path.startsWith('..') &&
+            ref.runs_root === `worktree:${ticketId}/memory/runs`) {
+            try {
+                const attempt = JSON.parse(fs.readFileSync(path.join(taskRunsDir(ticketId), ref.path), 'utf8'));
+                if (attempt.attempt_id === run.admission.attempt_id) attemptResult = attempt.result || 'UNKNOWN';
+            } catch { /* arquivo não observável (ex.: arquivamento): UNKNOWN */ }
+        }
+        const observedOutcome = { ...outcome, attemptResult };
         ledger.pending.splice(idx, 1);
 
         if (!target) {
@@ -3170,7 +3195,7 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
         const state = readStateJson(target.dir) || {};
         const current = ledger.tasks[target.taskId] || state.cost_tracking || costTracking.emptyCostTracking();
         const updated = costTracking.mergeRun(current, {
-            node, agent: run.agent, alsoCovers: run.nodes.slice(0, -1), metrics,
+            node, agent: run.agent, alsoCovers: run.nodes.slice(0, -1), metrics, run, outcome: observedOutcome,
         });
         ledger.tasks[target.taskId] = updated;
         writeCostLedger(ticketId, ledger);
@@ -3383,7 +3408,7 @@ const NO_SUBAGENT_NODES = new Set(['plan']);
 // e um único comando (`/plan`, `/review` ou `/verify`) pra resumir uma task ativa —
 // nunca encadeia através de um nó com veredito (review/test/verify), porque o
 // resultado desses só se sabe depois de rodar.
-async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {} }) {
+async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null }) {
     const qaSection = isRecusaQA
         ? `\n\nEste ticket voltou como Recusa QA — é retrabalho, não trabalho novo. ` +
           `Motivo(s) da recusa (comentários do QA, mais recente primeiro):\n${qaFeedback.join('\n')}\n` +
@@ -3430,7 +3455,7 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     ];
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
-    const costRun = startCostRun(ticket.id, { agent: 'claude', nodes, sessionId });
+    const costRun = startCostRun(ticket.id, { agent: 'claude', nodes, sessionId, admissionDecision });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);
     if (costRun) {
         if (FOLLOW) finishCostRun(ticket.id, sessionId, Date.now(), { exitCode: result.code, output: result.stderr });
@@ -3815,7 +3840,7 @@ async function dispatchTicket(ticket) {
         try {
         fetchResult = await dispatchClaudeSegment({
             ticket, isRecusaQA, qaFeedback, worktreePath, lease: newTaskLease,
-            extraEnv: dom06AttemptEnv(fetchAdmission),
+            extraEnv: dom06AttemptEnv(fetchAdmission), admissionDecision: fetchAdmission,
             commands: [`/fetch-ticket ${id}`, '/plan (use o task-id que acabou de gerar)'],
             nodes: ['fetch_ticket', 'plan'],
             contextBlock: nodeContextBlock('plan', { ticket, worktreePath }),
@@ -4118,7 +4143,7 @@ async function dispatchTicket(ticket) {
     const schemaResult = stampSchemaChecklist(taskId, dir, worktreePath, base);
 
     segment = await dispatchClaudeSegment({
-        ticket, isRecusaQA, qaFeedback, worktreePath, lease,
+        ticket, isRecusaQA, qaFeedback, worktreePath, lease, admissionDecision: nodeAdmission,
         commands: [`/${node} ${taskId}`],
         nodes: [node],
         contextBlock: nodeContextBlock(node, { ticket, dir, worktreePath }),
