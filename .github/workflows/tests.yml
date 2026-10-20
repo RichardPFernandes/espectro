@@ -1,0 +1,61 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            scripts/package-lock.json
+            dashboard/package-lock.json
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix scripts
+          npm ci --prefix dashboard
+      - name: Run official recipe and compare TAP
+        env:
+          CI_EVIDENCE: ${{ runner.temp }}/pri-213-node-${{ matrix.node }}
+          NODE_MAJOR: ${{ matrix.node }}
+        shell: bash
+        run: |
+          CK="$PWD"; EV="$CI_EVIDENCE"
+          mkdir -p "$EV/home" "$EV/tmp"
+          NODEBIN="$(dirname "$(command -v node)")"
+          run_suite() {
+            env -i PATH="$NODEBIN:/usr/bin:/bin:/usr/sbin:/sbin" \
+              HOME="$EV/home" TMPDIR="$EV/tmp" \
+              NODE_OPTIONS="--require=$CK/harness/loopback-only.cjs" \
+              PRISMA_ROOT="$CK" REPO_PATH="$CK" \
+              npm --prefix "$CK/$1" test > "$EV/$1.tap" 2>&1
+          }
+          set +e
+          run_suite scripts; scripts_exit=$?
+          run_suite dashboard; dashboard_exit=$?
+          set -e
+          printf 'scripts exit=%s; dashboard exit=%s\n' "$scripts_exit" "$dashboard_exit"
+          sha256sum "$EV/scripts.tap" "$EV/dashboard.tap"
+          node scripts/ci/check-tap.js "$EV" "$NODE_MAJOR" "$scripts_exit" "$dashboard_exit"
+      - name: Preserve TAP
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tap-node-${{ matrix.node }}
+          path: ${{ runner.temp }}/pri-213-node-${{ matrix.node }}/*.tap
+          if-no-files-found: error
