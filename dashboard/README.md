@@ -136,6 +136,16 @@ arquivos soltos (`*.log`, `watcher-state.json`) ficam de fora.
   cronológica. Cada mensagem sua mostra **Na fila** até o watcher consumir e depois
   **Lida pelo agente há X min** (casada com `state.json.human_inputs`). Rascunhos não
   enviados ficam salvos por run. ⌘/Ctrl+Enter envia.
+- **Ver context.md** (botão no topo do run): gaveta com o `context.md` inteiro
+  (`GET /api/runs/:taskId/context`), em **Renderizado** (Markdown: títulos, listas,
+  tabelas, código, links) ou **Texto**; o formato fica salvo no navegador. O conteúdo vem
+  de agentes, então `public/markdown.js` escapa todo o texto (HTML cru aparece como
+  texto), só gera links http(s)/mailto, sempre com `target="_blank" rel="noopener
+  noreferrer"`, e imagem vira link. O `context_update` do WebSocket relê o arquivo sem
+  perder a posição de leitura (quem está no fim continua no fim). A rota só lê o
+  `context.md` da pasta do run: task-id inválido ou traversal dá 404 e symlink para
+  fora da pasta conta como ausente. Run sem o arquivo (inclusive arquivado) mostra
+  estado vazio.
 - **Ticket Redmine** (seção recolhida no painel do run): ao expandir, busca
   `GET /api/runs/:taskId/ticket` uma vez por sessão e mostra título, status, responsável,
   estimativa, % concluído e o link para o ticket.

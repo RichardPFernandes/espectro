@@ -1182,6 +1182,22 @@ function createDashboard(options = {}) {
         res.json({ taskId: run.taskId, lines, log: redact(tail(readContext(run.dir), lines)) });
     });
 
+    // context.md inteiro pro preview em Markdown (public/context-md.js). Só o arquivo da
+    // pasta do run: task-id inválido ou traversal cai no 404 do withRun, e symlink que
+    // aponta pra fora da pasta conta como ausente.
+    app.get('/api/runs/:taskId/context', (req, res) => {
+        const run = withRun(req, res);
+        if (!run) return;
+        let markdown = null;
+        if (!run.pretask) {
+            try {
+                const real = fs.realpathSync(path.join(run.dir, 'context.md'));
+                if (path.dirname(real) === fs.realpathSync(run.dir) && fs.statSync(real).isFile()) markdown = fs.readFileSync(real, 'utf8');
+            } catch { /* sem context.md */ }
+        }
+        res.json({ taskId: run.taskId, archived: !!run.archived, exists: markdown != null, markdown: markdown == null ? null : redact(markdown) });
+    });
+
     // Histórico completo do log do agente (distinto do /log acima, que é o fim de
     // context.md) — linhas [watcher]/[claude] já timestampadas na escrita, ver
     // ticketLogPath. Usado pelo botão "Ver log" quando o run já terminou.
