@@ -11,6 +11,7 @@ const { createDashboard } = require('./server');
 const tmpBase = process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp') : os.tmpdir();
 const tmp = fs.mkdtempSync(path.join(tmpBase, 'tickets-api-'));
 const runs = path.join(tmp, 'memory', 'runs');
+fs.mkdirSync(runs, { recursive: true });
 
 function writeRun(taskId, state) {
     fs.mkdirSync(path.join(runs, taskId), { recursive: true });
