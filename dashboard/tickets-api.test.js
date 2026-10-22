@@ -11,12 +11,11 @@ const { createDashboard } = require('./server');
 const tmpBase = process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp') : os.tmpdir();
 const tmp = fs.mkdtempSync(path.join(tmpBase, 'tickets-api-'));
 const runs = path.join(tmp, 'memory', 'runs');
-fs.mkdirSync(runs, { recursive: true });
 
-function writeRun(taskId, state) {
-    fs.mkdirSync(path.join(runs, taskId), { recursive: true });
-    fs.writeFileSync(path.join(runs, taskId, 'state.json'), JSON.stringify({ task_id: taskId, node: 'implement', history: ['plan'], status: 'in_progress', ...state }, null, 2));
-    fs.writeFileSync(path.join(runs, taskId, 'context.md'), '# Contexto\n');
+function writeRun(taskId, state, root = runs) {
+    fs.mkdirSync(path.join(root, taskId), { recursive: true });
+    fs.writeFileSync(path.join(root, taskId, 'state.json'), JSON.stringify({ task_id: taskId, node: 'implement', history: ['plan'], status: 'in_progress', ...state }, null, 2));
+    fs.writeFileSync(path.join(root, taskId, 'context.md'), '# Contexto\n');
 }
 
 let fetchCalls = 0;
@@ -94,6 +93,42 @@ test('POST /api/runs/start: run ativa para o ticket => 409 com runId, sem chamar
     assert.strictEqual(r.status, 409);
     assert.strictEqual(r.body.runId, '43590-em-andamento');
     assert.strictEqual(dispatchCalls.length, 0);
+});
+
+// Checkout novo sem memory/runs: o root só entra no cache quando existe, então a run
+// criada depois do start aparece já no primeiro GET — sem esperar evento do chokidar.
+test('GET /api/runs: memory/runs criado depois do start => run aparece no primeiro GET', async () => {
+    const lateTmp = fs.mkdtempSync(path.join(tmpBase, 'tickets-api-late-'));
+    const lateRuns = path.join(lateTmp, 'memory', 'runs');
+    const late = createDashboard({ memoryDir: lateRuns, worktreesDir: path.join(lateTmp, 'wt'), prefsFile: path.join(lateTmp, 'prefs.json') });
+    try {
+        await new Promise(r => late.server.listen(0, '127.0.0.1', r));
+        await late.ready;
+        assert.ok(!fs.existsSync(lateRuns));
+        writeRun('43592-raiz-nova', { redmine_ticket: { id: 43592 } }, lateRuns);
+        const res = await fetch(`http://localhost:${late.server.address().port}/api/runs`);
+        assert.ok((await res.json()).some(run => run.taskId === '43592-raiz-nova'));
+    } finally {
+        await late.close();
+        fs.rmSync(lateTmp, { recursive: true, force: true });
+    }
+});
+
+// Run no disco que o chokidar ainda não reportou (aqui: root fora do watcher) não está
+// no cache da lista — a guarda do start relê o disco e recusa do mesmo jeito.
+test('POST /api/runs/start: run ativa no disco fora do cache => 409 com runId, sem chamar dispatchNode', async () => {
+    dash.watcher.unwatch(runs);
+    try {
+        writeRun('43591-fora-do-cache', { redmine_ticket: { id: 43591 } });
+        dispatchCalls = [];
+        assert.ok(!(await get('/api/runs')).body.some(run => run.taskId === '43591-fora-do-cache'), 'pré-condição: run fora do cache');
+        const r = await post('/api/runs/start', { ticketId: '43591' });
+        assert.strictEqual(r.status, 409);
+        assert.strictEqual(r.body.runId, '43591-fora-do-cache');
+        assert.strictEqual(dispatchCalls.length, 0);
+    } finally {
+        dash.watcher.add(runs);
+    }
 });
 
 test('POST /api/runs/start: sem run ativa => dispara e devolve pending (sem runId ainda)', async () => {

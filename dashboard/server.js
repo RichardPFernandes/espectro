@@ -972,6 +972,9 @@ function createDashboard(options = {}) {
         if (!/^\d+$/.test(ticketId)) return res.status(400).json({ error: 'ticketId inválido' });
         const id = Number(ticketId);
 
+        // POST raro: relê os roots do disco antes da guarda — run que o chokidar ainda
+        // não reportou ficaria fora do cache e um segundo agente subiria pro mesmo ticket.
+        for (const { root } of [...runsCache.values()]) cacheRoot(root);
         const active = listRuns().find(r => r.ticketId === id && r.kind !== 'completed');
         if (active) return res.status(409).json({ error: 'run já ativa para este ticket', runId: active.taskId });
 
@@ -3235,11 +3238,14 @@ function createDashboard(options = {}) {
     // um run criado antes do próximo tick deste timer ficava fora da tela aberta até
     // recarregar. Caso real: #43584, worktree recriada pelo watcher e run criado pelo
     // /fetch-ticket segundos depois.
+    // Root que ainda não existe (checkout novo sem memory/runs) não entra: o chokidar não
+    // passa a observá-lo quando é criado e o cache vazio nunca seria relido. Entra no
+    // primeiro sync depois de criado (request ou rootsTimer), como as worktrees.
     let rootsReady = false;
     function syncWatchedRoots() {
         let added = false;
         for (const root of runRoots()) {
-            if (watchedRoots.has(root.dir)) continue;
+            if (watchedRoots.has(root.dir) || !fs.existsSync(root.dir)) continue;
             watchedRoots.add(root.dir);
             cacheRoot(root);
             watcher.add(root.dir);
@@ -3307,7 +3313,8 @@ function createDashboard(options = {}) {
         app, server, wss, watcher, memoryDir, worktreesDir, watcherManager, readPrefs,
         get previewManager() { return previewManager; },
         coordinationStatusPath: coordination.statusPath,
-        ready: Promise.all([new Promise(resolve => watcher.on('ready', resolve)), coordination.ready]),
+        // Sem root nenhum no disco o chokidar não tem o que observar e nunca emite 'ready'.
+        ready: Promise.all([watchedRoots.size ? new Promise(resolve => watcher.on('ready', resolve)) : null, coordination.ready]),
         close: async () => {
             await watcherManager.stop?.();
             for (const c of [...sseClients]) { c.cleanup(); c.res.end(); }
