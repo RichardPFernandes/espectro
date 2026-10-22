@@ -22,9 +22,10 @@ jobs:
       matrix:
         node: ['22', '24']
     steps:
-      # v7.0.1 left origin/main~1 unavailable to dashboard/version-api.test.js in PR runs.
+      # Version API tests resolve origin/main and its parent in this checkout.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
