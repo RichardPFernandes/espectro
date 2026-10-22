@@ -120,7 +120,10 @@ const s = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8
     : { task_id: path.basename(path.dirname(stateFile)), node: 'plan', history: ['fetch_ticket'], status: 'in_progress', started_at: now };
 delete s.cost_tracking; // agente que regrava state.json sem o campo — watcher tem que restaurar
 s.node = process.env.FAKE_NEXT_NODE;
-fs.writeFileSync(stateFile, JSON.stringify(s));
+// Publica de uma vez: o teste e o watcher podem ler durante a escrita do agente.
+const staged = stateFile + '.' + process.pid + '.' + sid + '.tmp';
+fs.writeFileSync(staged, JSON.stringify(s));
+fs.renameSync(staged, stateFile);
 `, { mode: 0o755 });
 
 process.env.REPO_PATH = repo;
@@ -622,4 +625,22 @@ test('PRI-210 v9: pin de preços preserva limites do despacho após mudança de 
     assert.equal(micro(ct.projectUsageCost(m.usage[0], pinned)), m.cost_usd);
     assert.equal(ct.sumClaudeUsage(input).usage[0].price_tier, 'prompt_gt_100000');
     assert.throws(() => ct.sumClaudeUsage(input, { ...pinned, sha256: snapshot.sha256 }), /PRICING_SNAPSHOT_HASH_MISMATCH/);
+});
+
+
+test('state-writer: leitura parcial de agente externo é repetida antes de concluir o estado', t => {
+    const writer = require('../state-writer');
+    const dir = path.join(repo, 'memory', 'runs', '90016-torn-read');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'state.json');
+    const state = { task_id: '90016-torn-read', node: 'review', status: 'in_progress' };
+    fs.writeFileSync(file, JSON.stringify(state));
+    const read = fs.readFileSync;
+    let attempts = 0;
+    t.mock.method(fs, 'readFileSync', function(candidate, ...args) {
+        if (candidate === file && ++attempts <= 2) return '{"task_id":';
+        return read.call(this, candidate, ...args);
+    });
+    assert.deepStrictEqual(writer.read(dir), state);
+    assert.strictEqual(attempts, 3, 'não retorna null nem aceita JSON truncado nas duas primeiras leituras');
 });

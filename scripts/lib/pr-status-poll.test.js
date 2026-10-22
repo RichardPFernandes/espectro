@@ -298,16 +298,29 @@ test('startPrStatusPolling: sem token desliga; marcador recente segura; force e 
     p3.stop();
 });
 
-test('startPrStatusPolling: setInterval dispara ciclos periódicos sem empilhar', async () => {
+test('startPrStatusPolling: setInterval dispara ciclos periódicos sem empilhar', async t => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
     const r = freshRepo();
     seed(r.wt(93012), '93012-tick', { pull_request: { 'app-back': url('app-back', 7012) } });
     let calls = 0;
-    const getStatus = async () => { calls++; await new Promise(res => setTimeout(res, 5)); return { status: 'OPEN' }; };
+    let release;
+    const getStatus = () => {
+        calls++;
+        return new Promise(resolve => { release = () => resolve({ status: 'OPEN' }); });
+    };
     const p = poll.startPrStatusPolling({ token: 't', intervalMs: 20, roots: r.roots, getStatus, log: capture() });
-    await new Promise(res => setTimeout(res, 110));
-    p.stop();
-    await p.settle();
-    assert.ok(calls >= 3, `esperava ≥3 ciclos, veio ${calls}`);
+    try {
+        for (let expected = 1; expected <= 3; expected++) {
+            assert.strictEqual(calls, expected, 'um ciclo inicial e novos ciclos pelo intervalo');
+            t.mock.timers.tick(100);
+            assert.strictEqual(calls, expected, 'intervalos não empilham consultas enquanto o ciclo está pendente');
+            release();
+            await p.settle();
+            if (expected < 3) t.mock.timers.tick(20);
+        }
+    } finally { p.stop(); }
+    t.mock.timers.tick(100);
+    assert.strictEqual(calls, 3, 'stop cancela os ciclos periódicos');
 });
 
 test('getPRStatus: Bearer no header, devolve state + link html; erro HTTP lança com status', async () => {

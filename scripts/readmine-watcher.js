@@ -2934,6 +2934,15 @@ function spawnAgent(bin, args, cwd, logPath, lease = null, extraEnv = {}) {
     if (lease?.executionId) env.STATE_EXECUTION_ID = lease.executionId;
     if (FOLLOW) {
         const logFile = fs.createWriteStream(logPath, { flags: 'a' });
+        const logClosed = new Promise(resolve => logFile.once('close', resolve));
+        let stdoutForFile, stderrForFile;
+        logFile.on('error', error => {
+            console.warn(`[log] falha gravando log do agente: ${sanitizeAgentOutput(error.message)}`);
+            // O pipe se desconecta no erro do destino. Consome o restante para
+            // não bloquear o agente; a falha do log não altera seu exit code.
+            stdoutForFile?.resume();
+            stderrForFile?.resume();
+        });
         // stdin='ignore': evita que o processo fique esperando um EOF que nunca
         // chega. `claude -p` é tolerante (timeout de 3s e segue em frente), mas
         // ignorar stdin não tem custo nenhum já que nunca escrevemos nele.
@@ -2954,20 +2963,39 @@ function spawnAgent(bin, args, cwd, logPath, lease = null, extraEnv = {}) {
         // prefixo [claude] (scripts/sanitize-log.js) só vai pro arquivo — output/
         // stderrBuffer (usados por looksUnavailable/looksLikeSessionLimit) continuam
         // exatamente como antes, sem prefixo.
-        const stdoutForFile = stdout.pipe(sanitizeLog.createLinePrefixStream('[claude]'));
-        const stderrForFile = stderr.pipe(sanitizeLog.createLinePrefixStream('[claude]'));
+        stdoutForFile = stdout.pipe(sanitizeLog.createLinePrefixStream('[claude]'));
+        stderrForFile = stderr.pipe(sanitizeLog.createLinePrefixStream('[claude]'));
         stdoutForFile.pipe(logFile, { end: false });
         stderrForFile.pipe(logFile, { end: false });
         stdout.pipe(process.stdout);
         stderr.pipe(process.stderr);
-        // Espera o fim dos streams QUE ESCREVEM NO ARQUIVO (não stdout/stderr direto):
-        // com o prefixo no meio do pipe, 'end' em stdout/stderr não garante mais que a
-        // última linha já foi escrita em logFile — só o 'end' do stream final garante.
-        const drained = Promise.all([stdoutForFile, stderrForFile].map(s => new Promise(r => { s.on('end', r); s.on('error', r); })))
-            .then(() => logFile.end());
+        // O fim do readable só entrega os buffers ao writable. Espera também
+        // o fechamento do arquivo (inclusive após erro) antes do appendFileSync
+        // que registra a finalização do nó.
+        const drained = Promise.all([stdoutForFile, stderrForFile].map(s => new Promise(resolve => {
+            s.once('end', resolve);
+            s.once('close', resolve);
+            s.once('error', resolve);
+        }))).then(async () => {
+            if (!logFile.destroyed) logFile.end();
+            await logClosed;
+        });
         return new Promise(resolve => {
-            child.on('exit', code => { releaseLease(lease, code); drained.then(() => resolve({ code, output, stderr: stderrBuffer })); });
-            child.on('error', () => { releaseLease(lease, null); resolve({ code: null, output, stderr: stderrBuffer }); });
+            let completed = false;
+            const complete = code => {
+                if (completed) return;
+                completed = true;
+                releaseLease(lease, code);
+                drained.then(() => resolve({ code, output, stderr: stderrBuffer }));
+            };
+            child.once('exit', complete);
+            child.once('error', () => {
+                // Spawn sem processo: não haverá saída a preservar. Fecha os
+                // prefixadores e passa pelo mesmo fechamento do arquivo.
+                stdoutForFile.destroy();
+                stderrForFile.destroy();
+                complete(null);
+            });
         });
     }
     const logFd = fs.openSync(logPath, 'a');
