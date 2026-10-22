@@ -2898,8 +2898,10 @@ function createDashboard(options = {}) {
     app.get('/api/watcher/status', (req, res) => res.json(watcherManager.status()));
     // Painel Versão (version.js): pin do Prisma vs origin/main; troca só com o loop parado.
     const watcherLock = require('../scripts/lib/watcher-lock');
+    const versionPrismaRoot = path.resolve(options.versionPrismaRoot || prismaRoot);
     const version = createVersion({
-        prismaRoot, repoRoot, env: consumerEnv, redact: redactDeep,
+        prismaRoot: versionPrismaRoot, repoRoot,
+        env: { ...consumerEnv, PRISMA_ROOT: versionPrismaRoot }, redact: redactDeep,
         watcherStatus: () => watcherManager.status(),
         lockStatus: options.versionLockStatus || (() => watcherLock.status(repoRoot)),
         requestExit: options.requestExit || null,

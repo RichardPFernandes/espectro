@@ -208,21 +208,44 @@ test('AC-05: bump que sai 0 sem mover PRISMA_ROOT é falha e não reinicia', asy
     assert.equal(spawned.length, 0);
 });
 
+test('dashboard: raiz de versão padrão permanece a plataforma quando não há override', async () => {
+    const { createDashboard } = require('./server');
+    const seen = [];
+    const dash = createDashboard({
+        repoRoot: consumer,
+        env: { ...gitEnv, PRISMA_BUMP_COMMAND: '' },
+        watcherManager: { status: () => ({ running: false, state: 'stopped' }), stop: async () => {} },
+        versionExec: async (file, args, options) => {
+            seen.push({ file, args, env: options.env });
+            return { code: 0, stdout: `${shas[0]}\t2026-10-22T00:00:00Z\tfixture`, stderr: '' };
+        },
+    });
+    try {
+        assert.equal(seen.length, 1, 'boot consulta HEAD pelo executor existente');
+        assert.equal(seen[0].file, 'git');
+        assert.deepEqual(seen[0].args, ['-C', path.resolve(__dirname, '..'), 'log', '-1', '--format=%H%x09%cI%x09%s', 'HEAD']);
+        assert.equal(seen[0].env.PRISMA_ROOT, path.resolve(__dirname, '..'));
+    } finally { await dash.close(); }
+});
+
 test('rotas montadas no dashboard: GET /api/version e POST /api/version/update', async () => {
     reset();
+    for (const name of ['dash', 'dash2']) fs.mkdirSync(path.join(tmp, name, 'memory', 'runs'), { recursive: true });
     const { createDashboard } = require('./server');
     const dash = createDashboard({
         memoryDir: path.join(tmp, 'dash', 'memory', 'runs'),
         env: { ...gitEnv, PRISMA_BUMP_COMMAND: '' },
         watcherManager: { status: () => ({ running: false, state: 'stopped' }), stop: async () => {} },
+        versionPrismaRoot: prisma,
         versionLockStatus: () => ({ lock_state: 'free', agents: [] }),
     });
     const slow = path.join(tmp, 'slow.sh');
-    fs.writeFileSync(slow, '#!/bin/sh\nsleep 2\nexit 3\n'); fs.chmodSync(slow, 0o755);
+    fs.writeFileSync(slow, `#!/bin/sh\n[ "$PRISMA_ROOT" = ${JSON.stringify(prisma)} ] || exit 8\nsleep 2\nexit 3\n`); fs.chmodSync(slow, 0o755);
     const busyDash = createDashboard({
         memoryDir: path.join(tmp, 'dash2', 'memory', 'runs'),
         env: { ...gitEnv, PRISMA_BUMP_COMMAND: slow },
         watcherManager: { status: () => ({ running: false, state: 'stopped' }), start: async () => ({ started: true }), stop: async () => {} },
+        versionPrismaRoot: prisma,
         versionLockStatus: () => ({ lock_state: 'free', agents: [] }),
     });
     try {
@@ -230,12 +253,13 @@ test('rotas montadas no dashboard: GET /api/version e POST /api/version/update',
         const base = `http://localhost:${dash.server.address().port}`;
         const r = await (await fetch(`${base}/api/version`)).json();
         assert.equal(r.status, 'ok'); assert.equal(r.update.configured, false);
+        assert.equal(r.current.sha, shas[0]); assert.equal(r.latest.sha, shas[2]);
         const u = await fetch(`${base}/api/version/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: shas[2] }) });
         assert.equal(u.status, 409);
         // Bump lento de verdade (alvo na origin/main, ≠ HEAD): Start do watcher recusa até terminar.
         await new Promise(resolve => busyDash.server.listen(0, '127.0.0.1', resolve));
         const b = `http://localhost:${busyDash.server.address().port}`;
-        const target = git(path.resolve(__dirname, '..'), 'rev-parse', 'origin/main~1');
+        const target = shas[2];
         const pending = fetch(`${b}/api/version/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target }) });
         let start;
         for (let i = 0; i < 40; i++) {
@@ -246,6 +270,7 @@ test('rotas montadas no dashboard: GET /api/version e POST /api/version/update',
         assert.equal(start.status, 409); assert.match((await start.json()).error, /Atualização de versão/);
         const done = await pending;
         assert.equal(done.status, 500, 'slow.sh sai 3');
+        assert.match((await done.json()).error, /exit 3/, 'bump recebeu o mesmo PRISMA_ROOT sintético usado pelo Git');
         assert.equal((await fetch(`${b}/api/watcher/start`, { method: 'POST' })).status, 200, 'liberado depois do bump');
     } finally { await dash.close(); await busyDash.close(); }
 });
@@ -277,6 +302,7 @@ test('corrida Start/Atualizar com watcher órfão: update recusa enquanto o Star
             memoryDir: path.join(dir, 'memory', 'runs'),
             env: { ...process.env, PRISMA_BUMP_COMMAND: bump },
             watcherManager,
+            versionPrismaRoot: prisma,
             versionLockStatus: () => ({ lock_state: 'free', agents: [] }),
         });
         assert.equal(watcherManager.status().orphan_pid, orphan.pid);
