@@ -88,9 +88,11 @@ function acquireNode(dir, { node, timeoutMs, now = new Date(), extra = null }) {
 // também roda o release): agent_pid + agent_started_at (início do processo, lido logo
 // depois do spawn) — usada por agentAlive pra nunca declarar órfão um nó cujo agente
 // ainda está vivo, mesmo passado o timeout, sem depender de qual binário roda.
+// Task nova (sem state.json ainda): a identidade vai pro marcador fetch_dispatch do gate.
 function recordAgentPid(lease, pid, { startOf = processIdentity.processStartIso } = {}) {
     if (!lease || !pid) return;
     const startedAt = startOf(pid);
+    if (!lease.dir) return stampFetchDispatchPid(lease.gatePath, lease.startedAt, pid, startedAt);
     stateWriter.update(lease.dir, s => {
         if (s.node_started_at !== lease.startedAt) return cas.SKIP;
         s.agent_pid = pid;
@@ -168,6 +170,34 @@ function clearFetchDispatch(gatePath, startedAt) {
     delete gate.fetch_dispatch;
     fs.writeFileSync(gatePath, JSON.stringify(gate, null, 2));
     return true;
+}
+
+function stampFetchDispatchPid(gatePath, startedAt, pid, agentStartedAt) {
+    if (!gatePath) return false;
+    let gate;
+    try { gate = JSON.parse(fs.readFileSync(gatePath, 'utf8')); } catch { return false; }
+    if (!gate?.fetch_dispatch || gate.fetch_dispatch.started_at !== startedAt) return false;
+    gate.fetch_dispatch.agent_pid = pid;
+    if (agentStartedAt) gate.fetch_dispatch.agent_started_at = agentStartedAt;
+    fs.writeFileSync(gatePath, JSON.stringify(gate, null, 2));
+    return true;
+}
+
+// O marcador fetch_dispatch ainda é um despacho vivo (PRI-218)? Só faz sentido para quem
+// segura a reserva de despacho do ticket (scripts/lib/dispatch-reservation.js), porque o
+// spawn carimba o pid antes de a reserva sair:
+//   - com agent_pid: vivo enquanto o agente (wrapper sh ou claude) estiver vivo;
+//   - com dispatch_id e sem agent_pid: o despachante morreu antes do spawn — órfão;
+//   - legado (sem dispatch_id): vale o prazo, como no dashboard.
+function fetchDispatchLive(gate, { now = Date.now(), defaultTimeoutMs = DEFAULT_NODE_TIMEOUT_MS, isAlive = agentAlive } = {}) {
+    const d = gate?.fetch_dispatch;
+    if (!d) return null;
+    if (d.agent_pid) return isAlive(d.agent_pid, { agent_started_at: d.agent_started_at, node_started_at: d.started_at }) ? d : null;
+    if (d.dispatch_id) return null;
+    const at = Date.parse(d.started_at);
+    if (!Number.isFinite(at)) return null;
+    const timeout = Number(d.timeout_ms) > 0 ? Number(d.timeout_ms) : defaultTimeoutMs;
+    return now - at <= timeout ? d : null;
 }
 
 // Lease legado (agent_pid sem agent_started_at): o agente nasce logo depois de
@@ -307,7 +337,7 @@ function recoveryNote(state) {
 
 module.exports = {
     DEFAULT_NODE_TIMEOUT_MS, LEGACY_SPAWN_WINDOW_MS, resolveNodeTimeoutMs,
-    acquireNode, recordAgentPid, releaseNode, stampNewTask, clearFetchDispatch,
+    acquireNode, recordAgentPid, releaseNode, stampNewTask, clearFetchDispatch, fetchDispatchLive,
     agentAlive, orphanReason, isOrphan, describeRunning, recoverOrphans, recoveryNote,
 };
 

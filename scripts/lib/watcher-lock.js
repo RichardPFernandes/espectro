@@ -40,14 +40,16 @@ function realRepoPath(repoPath) {
     try { return fs.realpathSync(abs); } catch { return abs; }
 }
 
-function lockPathFor(repoPath) {
+// `name` muda só o arquivo (a reserva de despacho por ticket usa o mesmo lugar e a
+// mesma regra de .git/ ou /tmp — scripts/lib/dispatch-reservation.js).
+function lockPathFor(repoPath, name = LOCK_NAME) {
     const real = realRepoPath(repoPath);
     const gitDir = path.join(real, '.git');
     try {
-        if (fs.statSync(gitDir).isDirectory()) return path.join(gitDir, LOCK_NAME);
+        if (fs.statSync(gitDir).isDirectory()) return path.join(gitDir, name);
     } catch { /* sem .git: cai no /tmp */ }
     const hash = crypto.createHash('sha256').update(real).digest('hex').slice(0, 16);
-    return path.join('/tmp', `prisma-watcher-${hash}.lock`);
+    return path.join('/tmp', `${name.replace(/\.lock$/, '')}-${hash}.lock`);
 }
 
 function readLock(lockPath) {
@@ -134,8 +136,8 @@ function newHolder({ role, repoPath, pid, startOf }) {
 //   { acquired: true, path, holder, nested, takeover, release() }  ou
 //   { acquired: false, path, holder, reason, message }.
 // opts.env[WATCHER_LOCK_TOKEN] igual ao token da trava viva = tick filho do laço (nested).
-function acquire({ repoPath, role = 'watcher', env = process.env, pid = process.pid, startOf, startOfMs } = {}) {
-    const lockPath = lockPathFor(repoPath);
+// opts.lockPath: outra trava com a mesma criação/retomada (ver lockPathFor).
+function acquire({ repoPath, role = 'watcher', env = process.env, pid = process.pid, startOf, startOfMs, lockPath = lockPathFor(repoPath) } = {}) {
     const aliveOpts = startOfMs ? { startOf: startOfMs } : {};
     const token = env?.[TOKEN_ENV];
 

@@ -46,6 +46,7 @@ const qaJournal = require('./lib/redmine-journal-fetcher');
 const qaCycles = require('./lib/qa-cycles');
 const { GracefulShutdown } = require('./lib/graceful-shutdown');
 const watcherLock = require('./lib/watcher-lock');
+const dispatchReservation = require('./lib/dispatch-reservation');
 const watcherHealth = require('./lib/watcher-health');
 const promptContext = require('./lib/prompt-context');
 const { redmineFetch: realRedmineFetch } = require('./lib/redmine-fetch');
@@ -3715,7 +3716,35 @@ async function handleCorruptedState(ticket, active) {
     return result;
 }
 
+// Ponto comum de despacho do watcher (tick) e do dashboard (node-dispatcher.dispatchNode):
+// tudo roda sob a reserva do ticket (scripts/lib/dispatch-reservation.js), da leitura
+// de state.json/marcador até o despacho ficar visível em disco. Quem chega com a
+// reserva tomada pula, sem ler nada. --dry-run não grava nada, nem a reserva.
 async function dispatchTicket(ticket) {
+    if (DRY_RUN) return dispatchTicketReserved(ticket);
+    const reservation = dispatchReservation.reserve({ repoPath: REPO_PATH, ticketId: ticket.id });
+    if (!reservation.acquired) {
+        console.log(`[reserva] ${reservation.message} — não despacho.`);
+        return { action: 'skip', reason: 'despacho_reservado', holderPid: reservation.holder?.pid ?? null };
+    }
+    if (reservation.takeover) console.warn(`[reserva] ticket #${ticket.id}: reserva de despachante morto retomada (${watcherLock.describeHolder(reservation.previous)}).`);
+    try {
+        return await dispatchTicketReserved(ticket);
+    } finally {
+        reservation.release();
+    }
+}
+
+// Despacho do fetch_ticket+plan que não chegou ao spawn (admissão recusada, erro antes
+// do agente): o marcador sai na hora — senão o dashboard mostraria "rodando
+// fetch_ticket" e recusaria o ▶ Disparar até o prazo. Com agent_pid o agente existe e
+// o marcador fica (sai no release do lease).
+function dropUnspawnedFetchDispatch(id, lease) {
+    const d = readSpecGate(id)?.fetch_dispatch;
+    if (d && d.started_at === lease.startedAt && !d.agent_pid) nodeLease.clearFetchDispatch(lease.gatePath, lease.startedAt);
+}
+
+async function dispatchTicketReserved(ticket) {
     const id = ticket.id;
     const isRecusaQA = ticket.status?.name === 'Recusa QA';
     const liberacao = branchLiberacao(ticket);
@@ -3729,6 +3758,15 @@ async function dispatchTicket(ticket) {
     const active = findActiveTask(id);
 
     if (active?.corrupted) return handleCorruptedState(ticket, active);
+
+    // Agente do fetch_ticket+plan ainda vivo (gate.fetch_dispatch): ele cria o state.json
+    // no meio do segmento e segue no /plan com a task em in_progress. Despachar aqui —
+    // task nova ou o nó do state.json recém-criado — seria um segundo agente no ticket.
+    const liveFetch = nodeLease.fetchDispatchLive(readSpecGate(id));
+    if (liveFetch) {
+        console.log(`Ticket #${id}: fetch_ticket+plan em execução desde ${liveFetch.started_at}${liveFetch.agent_pid ? ` (pid ${liveFetch.agent_pid})` : ''} — não redespacho.`);
+        return { action: 'skip', reason: 'fetch_em_execucao', taskId: active?.taskId ?? null, agentPid: liveFetch.agent_pid ?? null, since: liveFetch.started_at };
+    }
 
     // O dashboard já pode ter marcado implement/in_progress antes de o watcher
     // consumir o sinal. Um retry pendente não pode contornar a falha de preparação
@@ -3844,20 +3882,27 @@ async function dispatchTicket(ticket) {
             writeSpecGate(id, {
                 ...(readSpecGate(id) || { ticket_id: id }),
                 subject: ticket.subject,
-                fetch_dispatch: { started_at: newTaskLease.startedAt, timeout_ms: NODE_TIMEOUT_MS },
+                fetch_dispatch: { started_at: newTaskLease.startedAt, timeout_ms: NODE_TIMEOUT_MS, dispatch_id: crypto.randomUUID() },
             });
         } catch (e) {
             console.error(`Ticket #${id}: falha gravando marcador de despacho no gate file:`, e.message);
         }
-        const fetchAdmission = dom06.prepareDispatch({
-            runDir: path.join(taskRunsDir(id), '_dom06'),
-            node: 'fetch_ticket',
-            ticketId: id,
-            baseBranch: base,
-            specHash: null,
-            cause: 'dispatch',
-        });
+        let fetchAdmission;
+        try {
+            fetchAdmission = dom06.prepareDispatch({
+                runDir: path.join(taskRunsDir(id), '_dom06'),
+                node: 'fetch_ticket',
+                ticketId: id,
+                baseBranch: base,
+                specHash: null,
+                cause: 'dispatch',
+            });
+        } catch (e) {
+            dropUnspawnedFetchDispatch(id, newTaskLease);
+            throw e;
+        }
         if (!fetchAdmission.dispatch) {
+            dropUnspawnedFetchDispatch(id, newTaskLease);
             console.warn(`Ticket #${id}: admissão DOM06 ${fetchAdmission.attempt.result} — fetch_ticket não despachado e não conta como PASS.`);
             return { action: 'skip', reason: `dom06_${String(fetchAdmission.attempt.result).toLowerCase()}`, node: 'fetch_ticket' };
         }
@@ -3904,6 +3949,9 @@ async function dispatchTicket(ticket) {
                           { sourceLabel: specCheck.sourceLabel, accepted: specCheck.accepted }) + '\n'
                     : ''),
         });
+        } catch (e) {
+            dropUnspawnedFetchDispatch(id, newTaskLease);
+            throw e;
         } finally {
             endCycle(cycleOutcome(fetchResult));
         }

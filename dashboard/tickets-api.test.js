@@ -156,6 +156,15 @@ test('POST /api/runs/start: skip de recusa QA com run anterior => 409 reaproveit
     assert.strictEqual(r.body.runId, '22222-antigo');
 });
 
+test('POST /api/runs/start: outro processo despachando o ticket (reserva ou fetch_ticket vivo) => 409 (PRI-218)', async () => {
+    for (const reason of ['despacho_reservado', 'fetch_em_execucao']) {
+        dispatchResult = { action: 'skip', reason };
+        const r = await post('/api/runs/start', { ticketId: '44444' });
+        assert.strictEqual(r.status, 409, reason);
+        assert.strictEqual(r.body.error, 'disparo já em andamento para este ticket');
+    }
+});
+
 test('POST /api/runs/start: dispatchNode lança (Redmine fora do ar) => 502, sem vazar a key na mensagem', async () => {
     dispatchError = new Error(`fetch falhou usando ${REDMINE_KEY}`);
     try {
