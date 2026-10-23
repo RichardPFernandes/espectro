@@ -184,7 +184,10 @@ profundidade do diagnóstico (arquivos a tocar, dependências, riscos) não muda
     — e feche com
     `## Cobertura dos ACs` (uma linha por AC ativo: `- AC-01 → passos 1, 3 — <como>`;
     seta, não ":" — o "como" é HOW, o "o quê" é o texto da spec, que não se repete)
-    e `## Riscos técnicos`. Formato: lista numerada de **3 a 10 passos**, cada passo
+    e `## Riscos técnicos`, cuja primeira linha é
+    `- Perfil: G<n> — <sinal>; capabilities afetadas: <lista em texto | nenhuma>`
+    (perfil G0–G3 conforme `docs/handoff-contract.md`; ambíguo sobe). Formato:
+    lista numerada de **3 a 10 passos**, cada passo
     com o arquivo afetado (caminho real), os Critérios de Aceite que atende e como
     verificar que ficou certo:
 
