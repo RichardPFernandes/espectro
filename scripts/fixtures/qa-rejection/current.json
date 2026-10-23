@@ -1,0 +1,51 @@
+{
+  "provenance": "PRI-221 C0; valores inventados; baseline fd9f08ed017194642525c87a1aede11e5985cc48",
+  "base_state": {
+    "node": "commit", "status": "committed", "history": ["plan", "implement", "review", "test", "verify", "commit"],
+    "started_at": "2026-01-01T08:00:00.000Z", "updated_at": "2026-01-01T09:00:00.000Z", "execution_id": "synthetic-execution-0"
+  },
+  "poll_updated_on": "2026-01-02T12:00:00Z",
+  "journals": {
+    "own": [
+      { "id": 101, "created_on": "2026-01-02T10:00:00Z", "notes": "", "details": [{ "name": "status_id", "old_value": "2", "new_value": "8" }] },
+      { "id": 102, "created_on": "2026-01-02T11:00:00Z", "notes": "  O cubo violeta deve girar duas vezes.  ", "user": { "name": "Pessoa Sintética A" }, "details": [{ "name": "status_id", "old_value": "8", "new_value": "13" }] },
+      { "id": 103, "created_on": "2026-01-02T11:05:00Z", "notes": "Comentário sintético posterior, sem precedência.", "details": [] }
+    ],
+    "none": [
+      { "id": 201, "created_on": "2026-01-02T10:00:00Z", "notes": "", "details": [{ "name": "status_id", "old_value": "2", "new_value": "8" }] },
+      { "id": 202, "created_on": "2026-01-02T11:00:00Z", "notes": "  ", "details": [{ "name": "status_id", "old_value": "8", "new_value": "13" }] },
+      { "id": 203, "created_on": "2026-01-02T11:05:00Z", "notes": "[Watcher] Marcador sintético sem feedback.", "details": [] }
+    ],
+    "bounce": [
+      { "id": 301, "created_on": "2026-01-02T09:00:00Z", "notes": "", "details": [{ "name": "status_id", "old_value": "20", "new_value": "8" }] },
+      { "id": 302, "created_on": "2026-01-02T10:00:00Z", "notes": "A esfera laranja deve saltar três vezes.", "user": { "name": "Pessoa Sintética B" }, "details": [{ "name": "status_id", "old_value": "8", "new_value": "2" }] },
+      { "id": 303, "created_on": "2026-01-02T10:10:00Z", "notes": "", "details": [{ "name": "status_id", "old_value": "2", "new_value": "8" }] },
+      { "id": 304, "created_on": "2026-01-02T10:20:00Z", "notes": "", "details": [{ "name": "status_id", "old_value": "8", "new_value": "19" }] },
+      { "id": 305, "created_on": "2026-01-02T11:00:00Z", "notes": "", "details": [{ "name": "status_id", "old_value": "19", "new_value": "13" }] }
+    ],
+    "between_polls": [
+      { "id": 102, "created_on": "2026-01-02T11:00:00Z", "notes": "O cubo violeta deve girar duas vezes.", "user": { "name": "Pessoa Sintética A" }, "details": [{ "name": "status_id", "old_value": "8", "new_value": "13" }] },
+      { "id": 401, "created_on": "2026-01-02T11:10:00Z", "notes": "", "details": [{ "name": "status_id", "old_value": "13", "new_value": "2" }] },
+      { "id": 402, "created_on": "2026-01-02T11:20:00Z", "notes": "O cone azul deve piscar.", "details": [{ "name": "status_id", "old_value": "2", "new_value": "13" }] },
+      { "id": 403, "created_on": "2026-01-02T11:30:00Z", "notes": "", "details": [{ "name": "status_id", "old_value": "13", "new_value": "2" }] },
+      { "id": 404, "created_on": "2026-01-02T11:40:00Z", "notes": "O cilindro verde deve parar.", "details": [{ "name": "status_id", "old_value": "2", "new_value": "13" }] }
+    ],
+    "legacy_unique": [
+      { "id": 501, "created_on": "2026-01-02T11:00:00Z", "notes": "A estrela sintética deve acender.", "details": [{ "name": "status_id", "old_value": "8", "new_value": "13" }] }
+    ],
+    "legacy_ambiguous": [
+      { "id": 601, "created_on": "2026-01-02T11:00:00Z", "notes": "Primeira estrela sintética.", "details": [{ "name": "status_id", "old_value": "8", "new_value": "13" }] },
+      { "id": 602, "created_on": "2026-01-02T11:00:00Z", "notes": "", "details": [{ "name": "status_id", "old_value": "13", "new_value": "2" }] },
+      { "id": 603, "created_on": "2026-01-02T11:00:00Z", "notes": "Segunda estrela sintética.", "details": [{ "name": "status_id", "old_value": "2", "new_value": "13" }] }
+    ]
+  },
+  "states": {
+    "legacy": { "ticket_status": "Recusa QA", "qa_retry_count": 1, "qa_rejection": { "note": "Relato legado sintético.", "rejected_at": "2026-01-02T11:00:00Z", "journal_id": null, "retry_requested_at": "2026-01-02T12:00:00Z" } },
+    "retry": { "node": "commit", "status": "committed", "qa_retry_count": 1, "worktrees_removed_on_pr_open_at": "2026-01-01T09:00:00Z", "churnReport": { "detectedAt": "2026-01-01T09:00:00Z", "files": [] }, "churnAccepted": { "synthetic": true }, "churnEscalationNotifiedAt": "2026-01-01T09:00:00Z" }
+  },
+  "transport": {
+    "unavailable": { "error": "Fonte sintética indisponível", "name": "Error" },
+    "unauthorized": { "status": 401 },
+    "timeout": { "error": "Prazo sintético esgotado", "name": "TimeoutError" }
+  }
+}
