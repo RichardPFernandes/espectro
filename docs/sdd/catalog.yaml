@@ -1,0 +1,34 @@
+# NÃO AUTORITATIVO — ensaio P1; formato documental candidato.
+# Índice derivado. Não determina versão vigente, aprovação ou estado ativo.
+catalog_format: "p1-example-v1"
+project: prisma
+capabilities:
+  - id: "cap:prisma:spec-change"
+    title: "Governança de SPEC_CHANGE e rastreabilidade do contrato"
+    slug: spec-change
+    status: Candidate
+    path: capabilities/spec-change/spec.md
+    aliases: [task-65, task-73, task-74, task-75]
+    owner: Richard
+    source_commit: "862981516c639d12811b308673165746472aef9b"
+    source_refs:
+      - kind: roadmap_card
+        id: task-65
+        project: prisma
+        version: "1791252575-7603"
+        locator: "task-65"
+      - kind: roadmap_card
+        id: task-73
+        project: prisma
+        version: "1791252575-7603"
+        locator: "task-73"
+      - kind: roadmap_card
+        id: task-74
+        project: prisma
+        version: "1791252575-7603"
+        locator: "task-74"
+      - kind: roadmap_card
+        id: task-75
+        project: prisma
+        version: "1791252575-7603"
+        locator: "task-75"
