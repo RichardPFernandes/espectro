@@ -254,6 +254,8 @@ alteradas (item 4).
    do `plan.md` (`## Riscos técnicos`); e
    `Pertinência spec/RN/ADR: sim | não — <motivo>`. Se o sinal não se sustenta no
    diff, escreva `Perfil: sobe para G<n> — <motivo>` e não confirme; nunca rebaixe.
+   Sem linha de perfil no `plan.md`, classifique pelo diff, nunca presuma G0, e
+   registre `Perfil: sobe para G<n> — perfil não declarado no plan.md`.
 
 
    Item que falha leva um achado em `engineering.findings[]` com `item`, `file`

@@ -254,7 +254,7 @@ escolher.
 | `task_type` | O que a checagem faz |
 | -- | -- |
 | Planejamento/documental — planejamento Prisma | Recusa quando falta Approved Document, Evidence, Handoff FINAL ou Planning Ledger; quando o valor é `UNKNOWN`; quando o caminho está em `/tmp` ou `/private/tmp`; quando Evidence não é o diretório existente `~/Workspace/prisma-evidence/<data>-<frente>/`; quando um arquivo local citado está fora desse diretório; quando o Handoff FINAL é o próprio handoff temporário de transferência. |
-| Demais tipos da tabela | Não aplica critério automático. A saída registra que os critérios adicionais seguem a definir pelo Richard. |
+| Demais tipos da tabela | Não aplica critério automático (exit 3); os critérios adicionais por perfil da tabela são conferidos manualmente. |
 
 `<data>` é uma data de calendário `AAAA-MM-DD`. `<frente>` é o sufixo do diretório,
 como em `2026-10-12-gov-3`. URL de documento é `https://linear.app/<caminho>`; a
