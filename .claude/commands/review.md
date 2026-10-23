@@ -246,6 +246,15 @@ alteradas (item 4).
      `regras_invioláveis` do `project.yaml`. Nunca `general-purpose`/`Explore`,
      nunca o diff inteiro, no máximo um subagente por domínio.
 
+   **Perfil e pertinência** (espelho de `docs/handoff-contract.md`, "Confirmação do
+   perfil e pertinência"; fora dos 8 itens, sem `item` no JSON): registre sempre
+   duas linhas em `observations[]`, que vão para o `review-result.md` —
+   `Perfil: G0 — sem mudança de comportamento` (só em G0) ou
+   `Perfil: G<n> — <sinal confirmado>` (G1–G3, nunca "sem mudança"), com o perfil
+   do `plan.md` (`## Riscos técnicos`); e
+   `Pertinência spec/RN/ADR: sim | não — <motivo>`. Se o sinal não se sustenta no
+   diff, escreva `Perfil: sobe para G<n> — <motivo>` e não confirme; nunca rebaixe.
+
 
    Item que falha leva um achado em `engineering.findings[]` com `item`, `file`
    (+ `line` quando der), `expected`, `found` e `action` específica. Nunca reprove

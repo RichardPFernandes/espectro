@@ -140,11 +140,73 @@ evidências e registra as transições, sem substituir a decisão humana.
 | Tipo de tarefa | Evidências mínimas para Done | Quem confirma |
 | -- | -- | -- |
 | Planejamento/documental — planejamento Prisma | Approved Document + Evidence + Handoff FINAL + Planning Ledger atualizado; após a confirmação, issue em Done. Preservar os gates aplicáveis à baseline da tarefa. | Richard confirma a aprovação humana; o coordenador confere a persistência das evidências e registra a transição. |
-| Planejamento/documental — demais entregas documentais | Handoff com fatos verificáveis e referências aos artefatos, conforme este contrato; critérios adicionais de encerramento: a definir pelo Richard. | Conferência do handoff pelo coordenador; confirmação de Done: a definir pelo Richard. |
-| Implementação (feature/refactor) | Handoff com artefatos, revisão independente, testes/Verify aplicáveis e evidências atribuíveis à versão, conforme o ciclo vigente. Critérios adicionais de Done e relação entre merge e encerramento: a definir pelo Richard. | Revisor/QA confirmam somente os resultados técnicos do seu escopo; confirmação de Done: a definir pelo Richard. Merge exclusivo do Richard. |
-| Correção de bug | Handoff com evidências exigidas pelos critérios de aceite da issue, revisão independente e testes/Verify aplicáveis, atribuíveis à versão. Não presumir reprodução, cobertura ou teste não executado. Critérios adicionais de Done: a definir pelo Richard. | Revisor/QA confirmam somente os resultados técnicos do seu escopo; confirmação de Done: a definir pelo Richard. Merge exclusivo do Richard. |
-| Investigação/discovery (só leitura) | Handoff com fontes/versões, escopo observado, resultados e limites verificáveis; distinguir fatos, hipóteses e UNKNOWN. Critérios adicionais de Done: a definir pelo Richard. | Conferência do handoff pelo coordenador; confirmação de Done: a definir pelo Richard. |
-| Revisão/QA | Handoff com escopo/versão revisados, achados e evidências das verificações efetivamente executadas, separadas das não executadas. Critérios adicionais de Done: a definir pelo Richard. | Revisor/QA confirmam o resultado técnico da própria etapa; confirmação de Done: a definir pelo Richard. |
+| Planejamento/documental — demais entregas documentais | Handoff FINAL com fatos verificáveis e referências aos artefatos, conforme este contrato, e evidência persistida (abaixo). Critérios adicionais por perfil: G0 — só a confirmação do perfil; G1 — aceite do owner registrado na issue; G2 — G1 + duplicações e impactos explicitados no Handoff FINAL; G3 — G2 + candidato de reconciliação registrado, sem alterar o Roadmap, e revisão Claude **e** Codex. | Revisor confirma o perfil (abaixo); o coordenador confere o handoff e a persistência das evidências (`--pre-done`: exit 3); Richard confirma o Done com aceite explícito. |
+| Implementação (feature/refactor) | Handoff com artefatos, revisão independente, testes/Verify aplicáveis e evidências atribuíveis à versão, conforme o ciclo vigente; estado de cada AC pela regra por AC (abaixo). Critérios adicionais por perfil: G0 — testes existentes executados; G1 — G0 + cada AC ativo verificado ou com exceção humana própria, aceite dos ACs pelo owner e spec/RN só se pertinente; G2 — G1 + achados da revisão de outro runtime resolvidos, delta por capability atualizado como `Candidate` e aprovação do Richard; `INC`/Decision, quando não houver, declarado "N/A — operação protegida não liberada", o que não autoriza incorporação nem torna o `Candidate` vigente; G3 — G2 + revisão Claude **e** Codex, `risk.level` HIGH/MAX com `signals` e PR Draft. Relação entre merge e encerramento: a definir pelo Richard. | Revisor/QA confirmam somente os resultados técnicos do seu escopo e o perfil (abaixo); o coordenador confere (`--pre-done`: exit 3); Richard confirma o Done. Merge exclusivo do Richard. |
+| Correção de bug | Handoff com evidências exigidas pelos critérios de aceite da issue, revisão independente e testes/Verify aplicáveis, atribuíveis à versão. Não presumir reprodução, cobertura ou teste não executado. Estado de cada AC pela regra por AC (abaixo). Critérios adicionais por perfil: os mesmos de Implementação (feature/refactor). | Revisor/QA confirmam somente os resultados técnicos do seu escopo e o perfil (abaixo); o coordenador confere (`--pre-done`: exit 3); Richard confirma o Done. Merge exclusivo do Richard. |
+| Investigação/discovery (só leitura) | Handoff com fontes/versões, escopo observado, resultados e limites verificáveis; distinguir fatos, hipóteses e UNKNOWN. Critérios adicionais por perfil: G0 — fatos, hipóteses e UNKNOWN separados, e executado separado de não executado (`not_executed`); G1 — G0 + recibos de leitura das fontes; G2/G3 — G1 + revisão independente da auditoria por outro runtime antes de ela virar insumo de decisão. | Revisor confirma o perfil (abaixo); o coordenador confere o handoff, inclusive a presença de `not_executed` e as separações (`--pre-done`: exit 3); Richard confirma o Done. |
+| Revisão/QA | Handoff com escopo/versão revisados, achados e evidências das verificações efetivamente executadas, separadas das não executadas. Critérios adicionais por perfil: os mesmos de Investigação/discovery. QA de uma implementação ainda não aceita herda o perfil dela. | Revisor/QA confirmam o resultado técnico da própria etapa e o perfil (abaixo); o coordenador confere (`--pre-done`: exit 3); Richard confirma o Done. |
+
+Os critérios adicionais por perfil usam o perfil G0–G3 (DS-06) declarado no Ready
+com o sinal, conforme a
+[política Work Type](https://linear.app/prisma-app/document/prisma-politica-de-classificacao-e-modelos-de-issue-work-type-cycle-e033efdc5090),
+que também traz o Ready por tipo e perfil. Done = linha da tabela para o tipo +
+critérios adicionais acumulados de G0 até o perfil da issue + confirmação do
+perfil. "G<n> +" soma os critérios de G<n>, nunca o sinal que classifica G<n>.
+O perfil só acrescenta: não dispensa nada da linha, e a linha de planejamento
+Prisma vale inteira em qualquer perfil. No handoff, o primeiro item de
+`risk.signals` é `G<n>: <sinal>`; o validador não confere esse texto. Ambíguo
+sobe; ninguém rebaixa o perfil sozinho.
+
+**Linha de encerramento.** Cada issue do Prisma cai em exatamente uma linha,
+registrada no Ready como
+`Encerramento: :14x — Work Type <X>; T142 = sim/não, porque <artefato ou "nenhum da lista">`.
+O coordenador classifica; o revisor confirma ou sobe.
+
+- Teste T142, com lista fechada: a entrega cria ou altera (1) o Planning Ledger
+  da trilha, (2) o plano da trilha registrado como Document da trilha, (3) um
+  Approved Document da trilha ou (4) uma baseline de planejamento (Roadmap,
+  Freeze, matriz de disposições ou reconciliation candidate). Documento de
+  processo da plataforma (este contrato, comandos, política Work Type) não entra
+  na lista.
+- No Ready, o T142 é decidido pela intenção de produzir ou aprovar um Document
+  da trilha. A citação efetiva e o Planning Ledger atualizado são provas do Done
+  na linha de planejamento Prisma, não condição do T142.
+- Planning cai sempre em planejamento Prisma. Architecture e Governance caem em
+  planejamento Prisma se T142 = sim; senão, em demais entregas documentais.
+  Implementation, Audit e Validation caem nas linhas próprias; T142 = sim nelas
+  significa classificação errada: a parte de planejamento vira issue Planning
+  própria, ou o Work Type sobe.
+- Quando tipo e produto apontam linhas diferentes, vale a mais exigente. A
+  classificação só sobe, inclusive na reavaliação antes do Done se o produto
+  mudar.
+- Falta de Planning Ledger citável nunca reclassifica: impede o Done da issue
+  classificada em planejamento Prisma. Nas demais linhas, o `--pre-done` dá
+  exit 3 e a conferência é manual (coordenador e Richard).
+
+**Confirmação do perfil e pertinência.** O handoff de revisão, nos dois canais
+(handoff do revisor no Maestri; registro do `/review` no grafo), traz duas
+linhas do revisor, nas três famílias, inclusive no documental G0:
+
+- perfil: em G0, "sem mudança de comportamento" (implementação), "sem mudança
+  de regra, decisão, escopo ou critério" (planejamento) ou "só leitura, sem
+  decisão derivada" (auditoria); em G1–G3, o sinal do perfil, como
+  `G2: altera <RN/contrato/schema>`, nunca "sem mudança". Se o sinal não se
+  sustenta, o revisor sobe o perfil e não confirma;
+- pertinência de spec/RN/ADR: sim ou não, com o motivo. Só é pertinente quando
+  a mudança altera requisito, RN, contrato ou decisão de arquitetura.
+
+Em G0 isso não cria arquivo nem aprovação humana adicional.
+
+**Estado de AC (implementação e bug).** A regra é por AC, sem enum novo: valem
+os resultados do schema de evidência (`.graph/schemas/acceptance-evidence.schema.json`)
+e do `/verify` (`.claude/commands/verify.md`). Conta para o Done só o AC
+verificado (PASS automatizado sem WARN para ele, sob Verify PASS da versão
+vigente; ou evidência conferida pelo revisor de outro runtime, no interativo) ou
+com exceção humana própria (ID do AC, motivo, alcance, aprovador e link). Verify
+PASS não promove `NOT_AUTOMATED` com "Validação humana pendente": a prova manual
+exige registro (quem, quando, versão, resultado, link). `BLOCKED` por ambiente
+é inconclusivo, não falha de código, e não contorna `AC_BLOCKED`; a exceção
+também não contorna o gate que reprovou.
 
 A aprovação técnica de Revisor/QA não substitui a decisão humana. Não inferir
 autorização de merge nem encerramento da issue a partir de parecer técnico,
