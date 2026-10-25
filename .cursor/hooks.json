@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [{ "command": "node .cursor/hooks/guard.mjs", "matcher": "Write|Edit|StrReplace|MultiEdit|Delete", "timeout": 10 }],
+    "beforeShellExecution": [{ "command": "node .cursor/hooks/guard.mjs", "timeout": 10 }]
+  }
+}
