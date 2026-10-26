@@ -29,6 +29,7 @@ global.fetch = async () => ({ ok: true, status: 204, json: async () => ({}) });
 
 const lease = require('./node-lease');
 const watcher = require('../readmine-watcher');
+const stateWriter = require('../state-writer');
 const { validateState } = require('../validate-state');
 
 const HOUR = 60 * 60 * 1000;
@@ -142,6 +143,36 @@ test('acquire/release: running com node_started_at, release volta pra in_progres
     assert.strictEqual(s.status, 'in_progress');
     assert.strictEqual(s.node_started_at, l.startedAt, 'node_started_at fica pra auditoria');
     assert.strictEqual(s.agent_pid, undefined);
+});
+
+test('recordAgentPid tardio após release não restaura a identidade do agente', () => {
+    const { dir } = seed(92011, 'implement');
+    const l = lease.acquireNode(dir, { node: 'implement', timeoutMs: HOUR });
+    assert.strictEqual(lease.releaseNode(l), true);
+
+    lease.recordAgentPid(l, 4242, { startOf: () => '2026-10-26T20:00:00.000Z' });
+
+    const s = read(dir);
+    assert.strictEqual(s.status, 'in_progress');
+    assert.strictEqual(s.agent_pid, undefined);
+    assert.strictEqual(s.agent_started_at, undefined);
+});
+
+test('recordAgentPid de uma execução antiga não grava na execução atual', () => {
+    const { dir } = seed(92012, 'implement');
+    const l = lease.acquireNode(dir, { node: 'implement', timeoutMs: HOUR });
+    const currentExecutionId = stateWriter.newExecutionId();
+    stateWriter.update(dir, s => { s.execution_id = currentExecutionId; }, {
+        operation: 'test_execution_takeover', actor: 'test',
+    });
+
+    lease.recordAgentPid(l, 4242, { startOf: () => '2026-10-26T20:00:00.000Z' });
+
+    const s = read(dir);
+    assert.strictEqual(s.status, 'running');
+    assert.strictEqual(s.execution_id, currentExecutionId);
+    assert.strictEqual(s.agent_pid, undefined);
+    assert.strictEqual(s.agent_started_at, undefined);
 });
 
 test('release não sobrescreve status gravado pelo comando nem lease de outro despacho', () => {

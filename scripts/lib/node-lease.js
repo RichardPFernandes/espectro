@@ -93,12 +93,20 @@ function recordAgentPid(lease, pid, { startOf = processIdentity.processStartIso 
     if (!lease || !pid) return;
     const startedAt = startOf(pid);
     if (!lease.dir) return stampFetchDispatchPid(lease.gatePath, lease.startedAt, pid, startedAt);
-    stateWriter.update(lease.dir, s => {
-        if (s.node_started_at !== lease.startedAt) return cas.SKIP;
-        s.agent_pid = pid;
-        if (startedAt) s.agent_started_at = startedAt;
-        else delete s.agent_started_at;
-    }, { operation: 'lease_pid', actor: 'watcher' });
+    try {
+        stateWriter.update(lease.dir, s => {
+            if (s.status !== 'running' || s.node_started_at !== lease.startedAt) return cas.SKIP;
+            s.agent_pid = pid;
+            if (startedAt) s.agent_started_at = startedAt;
+            else delete s.agent_started_at;
+        }, {
+            operation: 'lease_pid', actor: 'watcher',
+            expect: lease.executionId ? { execution_id: lease.executionId } : null,
+        });
+    } catch (e) {
+        if (!cas.isConflict(e)) throw e;
+        console.warn(`[recovery] ${path.basename(lease.dir)}: ${e.message} — registro de PID ignorado.`);
+    }
 }
 
 // acquire/release não tocam updated_at: é o carimbo do que o AGENTE gravou (lido por
