@@ -493,6 +493,26 @@ test('PRI-210 DV02: vencedor subagent, input 100 e USD 0,0004; atribuição parc
     assert.ok(!JSON.stringify(m).includes('same-id'), 'id de mensagem só sai como hash');
 });
 
+test('PRI-214 MINOR-3: CONFLICTED não contamina grupo limpo do mesmo modelo/papel', () => {
+    const clean = usageLine('clean-only', 'claude-opus-5-5', { input_tokens: 50, output_tokens: 2 });
+    const conflictMain = usageLine('shared', 'claude-opus-5-5', { input_tokens: 10 });
+    const conflictSub = usageLine('shared', 'claude-opus-5-5', { input_tokens: 100 });
+    const m = ct.sumClaudeUsage([
+        { role: 'main', content: [clean, conflictMain].join('\n') },
+        { role: 'subagent', content: conflictSub },
+    ]);
+    const byProvenance = Object.fromEntries(m.usage.map(r => [r.role_provenance, r]));
+    assert.ok(byProvenance.SELF_REPORTED, 'mensagem limpa permanece SELF_REPORTED');
+    assert.ok(byProvenance.CONFLICTED, 'mensagem conflitante fica em grupo CONFLICTED');
+    assert.strictEqual(byProvenance.SELF_REPORTED.role, 'main');
+    assert.strictEqual(byProvenance.SELF_REPORTED.input_tokens, 50);
+    assert.strictEqual(byProvenance.SELF_REPORTED.role_conflicted_messages, 0);
+    assert.strictEqual(byProvenance.CONFLICTED.role, 'subagent');
+    assert.strictEqual(byProvenance.CONFLICTED.role_conflicted_messages, 1);
+    assert.deepStrictEqual(m.role_attribution, { status: 'PARTIAL', conflicted_messages: 1 });
+    assertProjection(m);
+});
+
 test('PRI-210: modelo sem preço mantém fato bruto e cost.usd null, nunca zero', () => {
     const m = ct.sumClaudeUsage([usageLine('missing', 'claude-unknown', { input_tokens: 10 })]);
     const a = ct.mergeRun(null, { node: 'test', agent: 'claude', metrics: m }).nodes.test.attempts[0];
