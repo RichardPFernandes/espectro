@@ -72,7 +72,7 @@ O endpoint de versão do dashboard usa a mesma versão efetiva.
 | Aprovação/rejeição de SPEC_CHANGE | `spec-change.js approve/reject` (watcher, CLI) | versão + `expected_spec_hash`, com lock até o fim | — | change_id `SC-NNN@<task>` | 2ª vez: `already_processed` |
 | Replay (início) | `cycle-replayer.replayFrom` (dashboard/CLI) | versão + nó + execution_id **do run original** (tela ou leitura), lock até criar o run novo | sim | — | 409 (`ReplayError` com code do CAS) |
 | Replay (persistência) | agente do run de replay | versão + nó | sim: o run de replay nasce com `init`, ou seja, execution_id próprio | — | agente: re-tenta 1x |
-| Resume-session | `POST /api/runs/:id/resume-session` | versão da tela | sim (o da tela); **gira** o execution_id | — | 409 |
+| Resume-session | `POST /api/runs/:id/resume-session` | versão da tela | sim (o da tela); **gira** o execution_id | — | 409; contenção de despacho (`despacho_reservado` / `fetch_em_execucao`) → **202** (state já retomado) |
 | QA retry | `POST /api/runs/:id/retry-qa-rejection` | versão da tela, conferida **antes** do Redmine | **gira** | UUID do clique | 409 / `already_processed` |
 | Pedido de autorização | agente: `authorization.js request` | versão lida (ou `--expected-version`) + `$STATE_EXECUTION_ID` | sim, se houver | — | um pedido em aberto por vez; exit 3 em conflito |
 | Aprovar / Recusar / Já apliquei (autorização) | `POST /api/runs/:id/authorization/{approve,reject,manual}` (aprovador autenticado) | versão da tela (+ hash confirmado e alias escolhido no approve) | — | UUID do clique (`AUTHORIZATION_DECISION`) | 409 / `already_processed`; a execução (db-effect) é escrita de sistema depois da decisão |
@@ -98,6 +98,10 @@ e do dashboard, que rodam em processos diferentes. Ele roda inteiro sob a reserv
   visível: state.json `running` ou `gate.fetch_dispatch` com o `agent_pid` do agente.
 - Quem chega com a reserva tomada pula com `despacho_reservado`.
 - Se o dono crashar, a reserva é retomada no próximo despacho e não fica órfã. Em erro, ela sai no `finally`.
+- Falha ao gravar o marcador `fetch_dispatch` aborta o spawn (falha fechada): sem marcador
+  visível a corrida original voltaria.
+- Hostname diferente na reserva (mesma regra da trava do watcher) conta como dono vivo —
+  tipicamente disco compartilhado entre máquinas; remoção manual se tiver certeza.
 
 O marcador `fetch_dispatch` passa a valer também para o watcher (`nodeLease.fetchDispatchLive`).
 Enquanto o agente do fetch_ticket+plan vive, nada é redespachado no ticket (`fetch_em_execucao`),
@@ -106,6 +110,8 @@ nem o nó do state.json que ele acabou de criar. As regras de validade do marcad
 - Marcador com `dispatch_id` e sem `agent_pid` é de um despacho que não chegou ao spawn, e conta como morto.
 - Marcador legado (sem `dispatch_id`) vence no prazo, como antes.
 - Despacho que falha antes do agente remove o marcador na hora.
+- `POST /api/runs/:id/resume-session` com contenção de despacho responde **202** (adiado):
+  o state já girou; o próximo tick/despachante cobre o agente.
 
 ### execution_id
 

@@ -145,13 +145,40 @@ test('dispatchNode não conseguiu redespachar (gate/skip): 502, mas o state já 
     assert.match(r.body.error, /pre-build-failed/);
 });
 
+test('contenção de despacho (despacho_reservado): 202 adiado — state já retomado (PRI-218 A-03)', async () => {
+    dispatchQueue.push({ action: 'skip', reason: 'despacho_reservado', holderPid: 4242 });
+    writeRun('60008-reserva', { redmine_ticket: { id: 60008 }, resume_count: 0 });
+    const r = await post('/api/runs/60008-reserva/resume-session');
+    assert.strictEqual(r.status, 202, r.text);
+    assert.deepStrictEqual(
+        { ok: r.body.ok, deferred: r.body.deferred, reason: r.body.reason, resumeCount: r.body.resumeCount },
+        { ok: true, deferred: true, reason: 'despacho_reservado', resumeCount: 1 },
+    );
+    const st = readRun('60008-reserva');
+    assert.strictEqual(st.session_interrupted, false);
+    assert.strictEqual(st.status, 'in_progress');
+    assert.strictEqual(st.resume_count, 1);
+});
+
+test('contenção de despacho (fetch_em_execucao): 202 adiado — state já retomado (PRI-218 A-03)', async () => {
+    dispatchQueue.push({ action: 'skip', reason: 'fetch_em_execucao', agentPid: 99 });
+    writeRun('60009-fetch', { redmine_ticket: { id: 60009 } });
+    const r = await post('/api/runs/60009-fetch/resume-session');
+    assert.strictEqual(r.status, 202, r.text);
+    assert.strictEqual(r.body.deferred, true);
+    assert.strictEqual(r.body.reason, 'fetch_em_execucao');
+    assert.strictEqual(readRun('60009-fetch').session_interrupted, false);
+});
+
 test('REDMINE_API_KEY nunca aparece em resposta, state, context ou log mesmo quando o dispatchNode falha', async () => {
     dispatchQueue.push({ throw: new Error(`Redmine: ${SECRET} inválida`) });
     writeRun('60007-segredo', { redmine_ticket: { id: 60007 } });
     const r = await post('/api/runs/60007-segredo/resume-session');
     assert.strictEqual(r.status, 502);
     const everything = [r.text, JSON.stringify(await (await fetch(`${base}/api/runs`)).json()),
-        ...['60003-retoma', '60006-gate', '60007-segredo'].flatMap(t => [readCtx(t), JSON.stringify(readRun(t))]),
+        ...['60003-retoma', '60006-gate', '60007-segredo', '60008-reserva', '60009-fetch'].flatMap(t => {
+            try { return [readCtx(t), JSON.stringify(readRun(t))]; } catch { return [JSON.stringify(readRun(t))]; }
+        }),
         ...logs].join('\n');
     assert.ok(!everything.includes(SECRET));
 });
