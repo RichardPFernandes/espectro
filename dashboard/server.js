@@ -57,6 +57,7 @@ const redmineTicketList = require('../scripts/lib/redmine-ticket-list');
 // mesmo dispatchTicket do watcher — carregado sob demanda dentro do dispatcher
 // (custo de .env/schema/módulos só quando alguém realmente dispara).
 const { dispatchNode } = require('../scripts/lib/node-dispatcher');
+const nodeLease = require('../scripts/lib/node-lease');
 // Export agregado de memory/runs/ como relatório JSON (botão "⬇ Exportar Relatório").
 const runsExporter = require('../scripts/lib/runs-exporter');
 // Transcrições por nó (post-mortem) — leitura de memory/runs/<task>/transcripts/.
@@ -726,14 +727,12 @@ function createDashboard(options = {}) {
         }
         return out;
     }
-    // Marcador gravado pelo watcher ao despachar o /fetch-ticket (gate.fetch_dispatch);
-    // vencido o timeout do nó conta como agente morto sem ter criado a task.
+    // Marcador gravado pelo watcher ao despachar o /fetch-ticket (gate.fetch_dispatch).
+    // Mesma regra do watcher (nodeLease.fetchDispatchLive): com agent_pid, vivo enquanto
+    // o agente vive; sem pid, o despacho não chegou ao agente (o ▶ Disparar cai na
+    // reserva do ticket se ainda estiver em curso); marcador legado vence no timeout.
     function fetchDispatchOf(gate) {
-        const d = gate?.fetch_dispatch;
-        const at = Date.parse(d?.started_at);
-        if (!Number.isFinite(at)) return null;
-        const timeout = Number(d.timeout_ms) > 0 ? Number(d.timeout_ms) : 60 * 60 * 1000;
-        return Date.now() - at <= timeout ? d : null;
+        return nodeLease.fetchDispatchLive(gate);
     }
     function pretaskRun(taskId) {
         if (typeof taskId !== 'string' || !taskId.endsWith(PRETASK_SUFFIX)) return null;
@@ -987,6 +986,11 @@ function createDashboard(options = {}) {
             }
             if (result.action === 'skip' && result.reason === 'recusa_qa_aguardando_retry') {
                 return res.status(409).json({ error: 'run já ativa para este ticket', runId: result.taskId });
+            }
+            // Outro processo (watcher, outra aba/retomada) está despachando este ticket
+            // agora, ou o fetch_ticket+plan dele ainda roda (PRI-218).
+            if (result.action === 'skip' && ['despacho_reservado', 'fetch_em_execucao'].includes(result.reason)) {
+                return res.status(409).json({ error: 'disparo já em andamento para este ticket', runId: result.taskId || null });
             }
             if (result.action === 'skip') {
                 const messages = {
@@ -1749,6 +1753,15 @@ function createDashboard(options = {}) {
 
             const result = await dispatchTicketNode({ ticketId, fallbackState: next, follow: false })
                 .catch(e => ({ action: 'error', error: e.message }));
+            // Contenção normal do despacho (PRI-218): o state já girou (retomada aceita);
+            // outro despachante segura a reserva ou o marcador. 202 = adiado, não falha.
+            if (result.action === 'skip' && ['despacho_reservado', 'fetch_em_execucao'].includes(result.reason)) {
+                console.warn(`[dashboard] resume-session de ${run.taskId}: despacho adiado (${result.reason}) — state já retomado`);
+                return res.status(202).json({
+                    ok: true, deferred: true, reason: result.reason,
+                    taskId: run.taskId, node: interruptedNode, resumeCount: next.resume_count,
+                });
+            }
             if (result.action !== 'dispatched' && result.action !== 'dry-run') {
                 console.error(`[dashboard] resume-session de ${run.taskId}: dispatchNode não disparou (${result.reason || result.action || 'erro desconhecido'})`);
                 return res.status(502).json({ error: redact(`não foi possível redespachar (${result.reason || result.action || 'erro desconhecido'})`) });

@@ -72,18 +72,46 @@ O endpoint de versão do dashboard usa a mesma versão efetiva.
 | Aprovação/rejeição de SPEC_CHANGE | `spec-change.js approve/reject` (watcher, CLI) | versão + `expected_spec_hash`, com lock até o fim | — | change_id `SC-NNN@<task>` | 2ª vez: `already_processed` |
 | Replay (início) | `cycle-replayer.replayFrom` (dashboard/CLI) | versão + nó + execution_id **do run original** (tela ou leitura), lock até criar o run novo | sim | — | 409 (`ReplayError` com code do CAS) |
 | Replay (persistência) | agente do run de replay | versão + nó | sim: o run de replay nasce com `init`, ou seja, execution_id próprio | — | agente: re-tenta 1x |
-| Resume-session | `POST /api/runs/:id/resume-session` | versão da tela | sim (o da tela); **gira** o execution_id | — | 409 |
+| Resume-session | `POST /api/runs/:id/resume-session` | versão da tela | sim (o da tela); **gira** o execution_id | — | 409; contenção de despacho (`despacho_reservado` / `fetch_em_execucao`) → **202** (state já retomado) |
 | QA retry | `POST /api/runs/:id/retry-qa-rejection` | versão da tela, conferida **antes** do Redmine | **gira** | UUID do clique | 409 / `already_processed` |
 | Pedido de autorização | agente: `authorization.js request` | versão lida (ou `--expected-version`) + `$STATE_EXECUTION_ID` | sim, se houver | — | um pedido em aberto por vez; exit 3 em conflito |
 | Aprovar / Recusar / Já apliquei (autorização) | `POST /api/runs/:id/authorization/{approve,reject,manual}` (aprovador autenticado) | versão da tela (+ hash confirmado e alias escolhido no approve) | — | UUID do clique (`AUTHORIZATION_DECISION`) | 409 / `already_processed`; a execução (db-effect) é escrita de sistema depois da decisão |
 | Devolver ao QA | `POST /api/runs/:id/handback-qa` (ou `then: handback_qa`) | versão da tela, na **reserva** antes do Redmine | — | UUID do clique (`QA_HANDBACK`), mesmo id na retomada de resultado incerto | 409 / `already_processed`; arquiva com lock até o rename |
 | Commit | agente: `transition --operation=commit` | versão + nó (`commit`) | sim (obrigatório) | — | agente: re-tenta 1x |
 | Archive | agente: `state-writer.js archive`; dashboard: `POST /api/runs/:id/archive` | versão + nó, lock até o `rename` da pasta | sim (obrigatório) | — | agente: aborta; dashboard: 409 |
+| Despacho de um ticket (check-then-act) | watcher (tick) e dashboard (`dispatchNode`: ▶ Disparar, retomadas, replay) → `dispatchTicket` | — (reserva por ticket entre processos, ver "Despacho por ticket") | — | — | pula com `despacho_reservado` / `fetch_em_execucao`; dashboard: 409 |
 | Release do lease | watcher/wrapper: `node-lease releaseNode` | — | sim (o do lease) | — | `SESSION_CONFLICT`: release ignorado |
 | Escritas de sistema (eventos, custo, transcrições, PR poll, gates) | watcher, libs | merge de 3 vias com a leitura-base, ou mutator sobre o disco fresco | — | — | só recusa se outro processo mudou o mesmo campo crítico |
 
 Campos obrigatórios por operação: `cas.REQUIRED` em `scripts/cas.js`. Faltar um deles é
 erro de programação (`TypeError`), nunca passa em silêncio.
+
+### Despacho por ticket (PRI-218)
+
+`dispatchTicket` (`scripts/readmine-watcher.js`) é o ponto comum de despacho do watcher
+e do dashboard, que rodam em processos diferentes. Ele roda inteiro sob a reserva do ticket,
+`scripts/lib/dispatch-reservation.js`:
+
+- A primitiva é a da trava do watcher: link() exclusivo, dono `(pid, início)` e retomada sob guarda quando o dono morre.
+- O arquivo fica ao lado da trava, em `.git/prisma-dispatch-<ticket>.lock` ou `/tmp`.
+- A reserva cobre o caminho da primeira leitura (state.json, marcador) até o despacho ficar
+  visível: state.json `running` ou `gate.fetch_dispatch` com o `agent_pid` do agente.
+- Quem chega com a reserva tomada pula com `despacho_reservado`.
+- Se o dono crashar, a reserva é retomada no próximo despacho e não fica órfã. Em erro, ela sai no `finally`.
+- Falha ao gravar o marcador `fetch_dispatch` aborta o spawn (falha fechada): sem marcador
+  visível a corrida original voltaria.
+- Hostname diferente na reserva (mesma regra da trava do watcher) conta como dono vivo —
+  tipicamente disco compartilhado entre máquinas; remoção manual se tiver certeza.
+
+O marcador `fetch_dispatch` passa a valer também para o watcher (`nodeLease.fetchDispatchLive`).
+Enquanto o agente do fetch_ticket+plan vive, nada é redespachado no ticket (`fetch_em_execucao`),
+nem o nó do state.json que ele acabou de criar. As regras de validade do marcador:
+
+- Marcador com `dispatch_id` e sem `agent_pid` é de um despacho que não chegou ao spawn, e conta como morto.
+- Marcador legado (sem `dispatch_id`) vence no prazo, como antes.
+- Despacho que falha antes do agente remove o marcador na hora.
+- `POST /api/runs/:id/resume-session` com contenção de despacho responde **202** (adiado):
+  o state já girou; o próximo tick/despachante cobre o agente.
 
 ### execution_id
 
