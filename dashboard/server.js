@@ -1753,6 +1753,15 @@ function createDashboard(options = {}) {
 
             const result = await dispatchTicketNode({ ticketId, fallbackState: next, follow: false })
                 .catch(e => ({ action: 'error', error: e.message }));
+            // Contenção normal do despacho (PRI-218): o state já girou (retomada aceita);
+            // outro despachante segura a reserva ou o marcador. 202 = adiado, não falha.
+            if (result.action === 'skip' && ['despacho_reservado', 'fetch_em_execucao'].includes(result.reason)) {
+                console.warn(`[dashboard] resume-session de ${run.taskId}: despacho adiado (${result.reason}) — state já retomado`);
+                return res.status(202).json({
+                    ok: true, deferred: true, reason: result.reason,
+                    taskId: run.taskId, node: interruptedNode, resumeCount: next.resume_count,
+                });
+            }
             if (result.action !== 'dispatched' && result.action !== 'dry-run') {
                 console.error(`[dashboard] resume-session de ${run.taskId}: dispatchNode não disparou (${result.reason || result.action || 'erro desconhecido'})`);
                 return res.status(502).json({ error: redact(`não foi possível redespachar (${result.reason || result.action || 'erro desconhecido'})`) });

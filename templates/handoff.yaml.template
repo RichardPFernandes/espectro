@@ -18,7 +18,7 @@ routing:
 
 risk:
   level: ""              # LOW | MEDIUM | HIGH | MAX
-  signals: []            # obrigatório em HIGH/MAX
+  signals: []            # obrigatório em HIGH/MAX; 1º item = "G<n>: <sinal>" (perfil G0–G3)
   classified_by: ""
 
 execution:

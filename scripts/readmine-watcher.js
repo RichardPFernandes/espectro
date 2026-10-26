@@ -3878,6 +3878,9 @@ async function dispatchTicketReserved(ticket) {
         // Sem state.json o dashboard não teria o que mostrar até o /fetch-ticket criá-lo
         // (~minutos): o marcador no gate file vira um run sintético "rodando fetch_ticket".
         // Sai no release do lease; o dashboard também o ignora passado o timeout.
+        // Sem marcador visível o próximo despachante pode passar pelo check-then-act
+        // enquanto este ainda sobe o agente (PRI-218 A-01 / concurrency-map). Falha na
+        // gravação do fetch_dispatch = falha fechada: não spawna.
         try {
             writeSpecGate(id, {
                 ...(readSpecGate(id) || { ticket_id: id }),
@@ -3885,7 +3888,22 @@ async function dispatchTicketReserved(ticket) {
                 fetch_dispatch: { started_at: newTaskLease.startedAt, timeout_ms: NODE_TIMEOUT_MS, dispatch_id: crypto.randomUUID() },
             });
         } catch (e) {
-            console.error(`Ticket #${id}: falha gravando marcador de despacho no gate file:`, e.message);
+            console.error(`Ticket #${id}: falha gravando marcador de despacho no gate file — abortando spawn:`, e.message);
+            throw e;
+        }
+        let fetchAdmission;
+        try {
+            fetchAdmission = dom06.prepareDispatch({
+                runDir: path.join(taskRunsDir(id), '_dom06'),
+                node: 'fetch_ticket',
+                ticketId: id,
+                baseBranch: base,
+                specHash: null,
+                cause: 'dispatch',
+            });
+        } catch (e) {
+            dropUnspawnedFetchDispatch(id, newTaskLease);
+            throw e;
         }
         let fetchAdmission;
         try {

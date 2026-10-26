@@ -66,15 +66,44 @@ function accountCostMetadata(account, { prefsFile = process.env.DASHBOARD_PREFS_
             }
         }
     } catch { /* sem mapa observável: UNKNOWN */ }
+    const configDir = account.dir || path.join(home, '.claude');
     let plugin = 'UNKNOWN';
     try {
-        const settings = JSON.parse(fs.readFileSync(path.join(account.dir || path.join(home, '.claude'), 'settings.json'), 'utf8'));
-        const flags = Object.entries(settings.enabledPlugins || {}).filter(([key]) => /^jev-model-router(?:@|$)/.test(key));
-        if (flags.some(([, enabled]) => enabled === true)) plugin = 'LOADED';
-        else if (flags.length && flags.every(([, enabled]) => enabled === false)) plugin = 'NOT_LOADED';
-        // Ausência de uma chave não comprova que o plugin não foi carregado.
+        const settings = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'));
+        plugin = detectEffortRouterPlugin(settings, configDir);
     } catch { /* sem observação suficiente: UNKNOWN */ }
     return { account: { source: account.source, label }, effort_router_plugin: plugin };
 }
 
-module.exports = { accountCostMetadata, withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, expandHome, DEFAULT_ACCOUNT, DEFAULT_PREFS_FILE };
+// Três fontes observáveis do perfil (plugin marketplace, skills-dir e árvore skills/).
+// Ausência total continua UNKNOWN: não prova NOT_LOADED.
+function detectEffortRouterPlugin(settings, configDir) {
+    const isRouterKey = (key) => typeof key === 'string' && /^jev-model-router(?:@|$)/.test(key);
+    const flags = Object.entries(settings.enabledPlugins || {}).filter(([key]) => isRouterKey(key));
+    if (flags.some(([, enabled]) => enabled === true)) return 'LOADED';
+
+    const configs = settings.pluginConfigs || {};
+    const configEntries = Object.entries(configs).filter(([key]) => isRouterKey(key));
+    if (configEntries.some(([, value]) => value && typeof value === 'object' && value.enabled === true)) return 'LOADED';
+    if (configEntries.some(([, value]) => value && typeof value === 'object' && value.enabled !== false)) return 'LOADED';
+    if (configEntries.some(([, value]) => value === true)) return 'LOADED';
+
+    try {
+        const skillDir = path.join(configDir, 'skills', 'jev-model-router');
+        if (fs.existsSync(skillDir) && fs.statSync(skillDir).isDirectory()) return 'LOADED';
+    } catch { /* ignore FS transitório */ }
+
+    if (flags.length && flags.every(([, enabled]) => enabled === false) &&
+        configEntries.every(([, value]) => value === false || (value && typeof value === 'object' && value.enabled === false))) {
+        return 'NOT_LOADED';
+    }
+    if (flags.length && flags.every(([, enabled]) => enabled === false) && configEntries.length === 0) {
+        return 'NOT_LOADED';
+    }
+    return 'UNKNOWN';
+}
+
+module.exports = {
+    accountCostMetadata, detectEffortRouterPlugin, withClaudeAccount, resolveClaudeAccount,
+    listClaudeAccounts, expandHome, DEFAULT_ACCOUNT, DEFAULT_PREFS_FILE,
+};

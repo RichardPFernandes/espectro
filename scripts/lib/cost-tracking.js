@@ -312,12 +312,15 @@ function sumClaudeUsage(contents, snapshot = null) {
         result.cache_creation_input_tokens = addNullable(result.cache_creation_input_tokens, cacheCreation);
         const speed = u.speed === 'fast' ? 'fast' : 'standard';
         const price_tier = priceFor(model, u, pricing)?.price_tier || 'UNKNOWN';
-        const groupKey = JSON.stringify([model || 'UNKNOWN', role, speed, price_tier]);
+        // role_provenance na chave: CONFLICTED não contamina mensagens limpas do mesmo
+        // modelo/papel/velocidade/tier (PRI-214 MINOR-3).
+        const role_provenance = conflicted ? 'CONFLICTED' : 'SELF_REPORTED';
+        const groupKey = JSON.stringify([model || 'UNKNOWN', role, speed, price_tier, role_provenance]);
         const row = groups.get(groupKey) || {
             model: model || 'UNKNOWN', role, speed, price_tier, pricing_sha256: pricing.sha256,
             messages: 0, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0,
             cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_write_ttl_unknown_tokens: 0,
-            role_provenance: 'SELF_REPORTED', role_conflicted_messages: 0,
+            role_provenance, role_conflicted_messages: 0,
         };
         row.messages++;
         row.input_tokens += u.input_tokens || 0;
@@ -326,7 +329,7 @@ function sumClaudeUsage(contents, snapshot = null) {
         const writes = cacheWrites(u);
         for (const field of Object.keys(writes)) row[field] += writes[field];
         if (writes.cache_write_ttl_unknown_tokens > 0) result.cost_estimated = true;
-        if (conflicted) { row.role_provenance = 'CONFLICTED'; row.role_conflicted_messages++; }
+        if (conflicted) row.role_conflicted_messages++;
         groups.set(groupKey, row);
     }
     if (anyUnpriced) result.cost_usd = null;

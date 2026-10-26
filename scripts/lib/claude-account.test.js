@@ -41,3 +41,26 @@ test('PRI-210: estado do plugin somente quando observado; ausência não prova N
     fs.writeFileSync(settings, '{');
     assert.equal(accountCostMetadata(account, { prefsFile, home }).effort_router_plugin, 'UNKNOWN');
 });
+
+test('PRI-214 MINOR-1: perfil pessoal — pluginConfigs skills-dir e skills/ também contam', () => {
+    const account = { dir, source: 'dashboard' };
+    const settings = path.join(dir, 'settings.json');
+    const skillDir = path.join(dir, 'skills', 'jev-model-router');
+
+    fs.writeFileSync(settings, JSON.stringify({
+        pluginConfigs: { 'jev-model-router@skills-dir': { enabled: true } },
+    }));
+    assert.equal(accountCostMetadata(account, { prefsFile, home }).effort_router_plugin, 'LOADED');
+
+    fs.writeFileSync(settings, JSON.stringify({
+        enabledPlugins: { 'jev-model-router@typesafe': false },
+        pluginConfigs: { 'jev-model-router@skills-dir': { enabled: false } },
+    }));
+    assert.equal(accountCostMetadata(account, { prefsFile, home }).effort_router_plugin, 'NOT_LOADED');
+
+    fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: {} }));
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# stub\n');
+    assert.equal(accountCostMetadata(account, { prefsFile, home }).effort_router_plugin, 'LOADED');
+    fs.rmSync(path.join(dir, 'skills'), { recursive: true, force: true });
+});

@@ -204,6 +204,15 @@ dispatchNode({ ticketId: ${id}, follow: false, repoPath: process.env.REPO_PATH }
     });
 }
 
+// Em falha de assert o watcher parado (park.cjs) e o claude falso não podem ficar
+// vivos: libera o park, mata o filho e sinaliza o finish do agente (PRI-218 A-04).
+function cleanupE2e(sb, rm, w) {
+    try { w?.go?.(); } catch { /* go já feito */ }
+    try { w?.child?.kill('SIGKILL'); } catch { /* já saiu */ }
+    try { fs.writeFileSync(sb.finish, ''); } catch { /* tmp sumiu */ }
+    try { rm.server.close(); } catch { /* já fechado */ }
+}
+
 test('e2e: watcher e dashboard em processos distintos — um só agente; o segundo pula pela reserva e depois pelo marcador', async () => {
     const id = 92181;
     const sb = sandbox(id);
@@ -238,8 +247,7 @@ test('e2e: watcher e dashboard em processos distintos — um só agente; o segun
         fs.writeFileSync(sb.finish, '');
         await waitFor(() => sb.gate() && !sb.gate().fetch_dispatch, 10000, 'release do lease limpar o marcador');
     } finally {
-        fs.writeFileSync(sb.finish, '');
-        rm.server.close();
+        cleanupE2e(sb, rm, w);
     }
 });
 
@@ -261,8 +269,7 @@ test('e2e: crash do watcher com a reserva na mão — o dashboard retoma e despa
         await waitFor(() => sb.claudeCalls() === 1, 10000, 'agente do dashboard');
         assert.ok(!fs.existsSync(lockPath));
     } finally {
-        fs.writeFileSync(sb.finish, '');
-        rm.server.close();
+        cleanupE2e(sb, rm, w);
     }
 });
 
@@ -285,7 +292,38 @@ test('e2e: erro depois do marcador — reserva e marcador liberados; o próximo 
         assert.strictEqual(ok.result?.action, 'dispatched', ok.out);
         await waitFor(() => sb.claudeCalls() === 1, 10000, 'agente');
     } finally {
-        fs.writeFileSync(sb.finish, '');
-        rm.server.close();
+        
+  (sb, rm, null);
+    }
+});
+
+test('e2e: falha ao gravar fetch_dispatch — spawn abortado (falha fechada A-01)', async () => {
+    const id = 92184;
+    const sb = sandbox(id);
+    const rm = await fakeRedmine([issue(id)]);
+    const failing = path.join(sb.tmp, 'gate-write-falha.cjs');
+    fs.writeFileSync(failing, `
+const fs = require('node:fs');
+const write = fs.writeFileSync;
+fs.writeFileSync = function (file, data, ...rest) {
+    if (String(file).endsWith(${JSON.stringify(`${id}-spec-gate.json`)}) && String(data).includes('"fetch_dispatch"')) {
+        throw new Error('falha sintética gravação fetch_dispatch PRI-218');
+    }
+    return write.call(this, file, data, ...rest);
+};
+`);
+    try {
+        const bad = await dashboardDispatch(sb, rm.url, id, failing);
+        assert.strictEqual(bad.code, 1, bad.out);
+        assert.match(bad.error || bad.out, /falha sintética gravação fetch_dispatch PRI-218/);
+        assert.ok(!fs.existsSync(reservation.reservationPath(sb.repo, id)), 'reserva liberada sem spawn');
+        assert.strictEqual(sb.claudeCalls(), 0, 'nenhum agente: falha fechada antes do spawn');
+        assert.ok(!sb.gate()?.fetch_dispatch, 'marcador não ficou gravado');
+
+        const ok = await dashboardDispatch(sb, rm.url, id);
+        assert.strictEqual(ok.result?.action, 'dispatched', ok.out);
+        await waitFor(() => sb.claudeCalls() === 1, 10000, 'agente após falha do marcador');
+    } finally {
+        cleanupE2e(sb, rm, null);
     }
 });
