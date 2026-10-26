@@ -29,6 +29,12 @@ Ponto de partida de uma sessão **interativa** no Prisma. Só lê e planeja; nã
 7. Sugira a branch no padrão do projeto (ex.: `fernandesrichard312/pri-NNN-<slug>` ou `cursor/<slug>-…`) a partir de `main`, conforme o fluxo da sessão.
 8. Pare e espere aprovação do plano antes de editar.
 
+## Execução após aprovação
+
+Para uma implementação aprovada, conclua o ciclo aplicável — Implement → Review independente → Test → Verify → Commit. A aprovação do plano autoriza os commits e o push necessários para abrir ou atualizar um PR da tarefa; faça isso quando o repositório e o fluxo da tarefa suportarem PR. Se não houver mudança ou PR aplicável, registre o motivo no resultado.
+
+Não faça merge, deploy nem avance o status da issue no Linear sem pedido explícito. Se o trabalho sair do escopo aprovado, pare e apresente o novo escopo antes de continuar.
+
 ## Links canônicos (Linear)
 
 - Política Work Type / Cycle: https://linear.app/prisma-app/document/prisma-politica-de-classificacao-e-modelos-de-issue-work-type-cycle-e033efdc5090
@@ -38,6 +44,6 @@ Ponto de partida de uma sessão **interativa** no Prisma. Só lê e planeja; nã
 
 - Avançar nó do grafo, gravar `state.json`, `spec_hash`, aprovação, invalidação, lock ou handoff oficial do ciclo.
 - Rodar `scripts/state-writer.js` ou `scripts/invalidate.js` contra um consumidor.
-- Commit, push ou PR sem pedido explícito.
+- Merge, deploy ou mudança de status da issue no Linear sem pedido explícito.
 - Duplicar esta skill em `.cursor/rules/linear-workflow.mdc` (já rejeitado).
 - Substituir gates, Freeze, RRC, Active ou H4.
