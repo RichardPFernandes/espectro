@@ -628,6 +628,25 @@
   .cost-table small { color: var(--muted); font-weight: 400; }
   .cost-wrap { overflow-x: auto; }
   .cost-note { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
+  .cost-attempts { margin-top: 24px; }
+  #foldCost, .cost-attempts, .cost-attempt { min-width: 0; }
+  #foldCost .cost-note { overflow-wrap: anywhere; }
+  .cost-source { margin-top: 8px; font-size: 12.5px; }
+  .cost-source > summary { cursor: pointer; color: var(--muted); }
+  .cost-attempts h4 { margin: 20px 0 8px; }
+  .cost-attempt { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .cost-attempt > summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; }
+  .cost-attempt > summary::before { content: '▸'; }
+  .cost-attempt[open] > summary::before { content: '▾'; }
+  .cost-attempt > summary > span:first-of-type { flex: 1 1 220px; min-width: 0; }
+  .cost-attempt > summary > span:last-of-type { margin-left: auto; }
+  .cost-attempt code, .cost-pricing { overflow-wrap: anywhere; }
+  .cost-attempt-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
+  .cost-attempt-meta dt { color: var(--muted); font-size: 12px; }
+  .cost-attempt-meta dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+  .cost-usage { margin-top: 12px; }
+  .cost-usage caption { text-align: left; color: var(--muted); padding: 4px 0 8px; }
+  .cost-usage td.n { white-space: nowrap; }
   /* Recusas QA separadas do ciclo principal (run.qaCycles — scripts/lib/qa-cycles.js). */
   .qa-cycles { display: grid; gap: 10px; }
   .qa-cycle { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
@@ -1189,6 +1208,7 @@
 
 <!-- Antes do script inline: ele usa window.StateVersion no topo (stalePoller). -->
 <script src="state-version.js"></script>
+<script src="cost-attempts.js"></script>
 <script>
 const NODES = [
   ['fetch_ticket', 'Ticket'], ['plan', 'Plano'], ['implement', 'Implementação'], ['review', 'Revisão'],
@@ -2297,6 +2317,8 @@ function costFoldHtml(r) {
   if (!c) return '';
   const open = openFolds.has(`${r.taskId}:cost`);
   const tt = c.totals;
+  const costMoney = window.CostAttempts.money;
+  const costTokens = window.CostAttempts.tokens;
   const tokSum = tt.input_tokens == null && tt.output_tokens == null ? null : (tt.input_tokens || 0) + (tt.output_tokens || 0);
   const rows = NODES.filter(([k]) => c.nodes[k]).map(([k, label]) => {
     const n = c.nodes[k];
@@ -2309,24 +2331,26 @@ function costFoldHtml(r) {
       <td>${esc(n.agent || '—')}</td>
       <td class="n">${n.runs ?? 1}${n.retries ? ` <small>(${n.retries} retry)</small>` : ''}</td>
       <td class="n">${esc(fmtMs(n.duration_ms))}</td>
-      <td class="n" title="${n.cache_read_input_tokens != null ? esc(`cache lido: ${fmtTok(n.cache_read_input_tokens)} · cache gravado: ${fmtTok(n.cache_creation_input_tokens)}`) : ''}">${esc(fmtTok(n.input_tokens))}${partial ? ' <small title="Algum run deste nó não reportou tokens — soma parcial">*</small>' : ''}</td>
-      <td class="n">${esc(fmtTok(n.output_tokens))}</td>
-      <td class="n" title="${esc(models ? `Modelos: ${models}` : '')}">${esc(fmtUsd(n.cost_usd ?? null))}${costPartial ? ' <small title="Algum run deste nó ficou sem custo calculável — soma parcial">*</small>' : ''}${n.cost_usd != null && fx?.rate ? `<br><small>${esc(fmtBrl(n.cost_usd))}</small>` : ''}</td>
+      <td class="n" title="${n.cache_read_input_tokens != null ? esc(`cache lido: ${costTokens(n.cache_read_input_tokens)} · cache gravado: ${costTokens(n.cache_creation_input_tokens)}`) : ''}">${esc(costTokens(n.input_tokens))}${partial ? ' <small title="Algum run deste nó não reportou tokens — soma parcial">*</small>' : ''}</td>
+      <td class="n">${esc(costTokens(n.output_tokens))}</td>
+      <td class="n" title="${esc(models ? `Modelos: ${models}` : '')}">${esc(costMoney(n.cost_usd ?? null))}${costPartial ? ' <small title="Algum run deste nó ficou sem custo calculável — soma parcial">*</small>' : ''}${n.cost_usd != null && fx?.rate ? `<br><small>${esc(fmtBrl(n.cost_usd))}</small>` : ''}</td>
     </tr>`;
   }).join('');
   const anyPartial = Object.values(c.nodes).some(n => n.runs_without_tokens > 0 || n.runs_without_cost > 0);
   const usd = tt.cost_usd ?? null;
-  const moneySum = usd != null ? ` · ${fmtUsd(usd)}${fx?.rate ? ` (${fmtBrl(usd)})` : ''}` : '';
+  const moneySum = ` · ${costMoney(usd)}${usd != null && fx?.rate ? ` (${fmtBrl(usd)})` : ''}`;
   return `<div class="folds"><details class="fold" id="foldCost" ${open ? 'open' : ''}>
-    <summary>${ICON.chev} Custo <span class="sum-right">${esc(fmtMs(tt.duration_ms))} · ${esc(fmtTok(tokSum))} tokens${esc(moneySum)}${tt.loop_count ? ` · ${tt.loop_count} reexecuç${tt.loop_count > 1 ? 'ões' : 'ão'}` : ''}</span></summary>
+    <summary>${ICON.chev} Custo <span class="sum-right">${esc(fmtMs(tt.duration_ms))} · ${esc(costTokens(tokSum))} tokens${esc(moneySum)}${tt.loop_count ? ` · ${tt.loop_count} reexecuç${tt.loop_count > 1 ? 'ões' : 'ão'}` : ''}</span></summary>
     <div class="fold-body">
       <div class="cost-wrap"><table class="cost-table">
         <thead><tr><th>Etapa</th><th>Agente</th><th class="n">Execuções</th><th class="n">Tempo</th><th class="n">Tokens entrada</th><th class="n">Tokens saída</th><th class="n">Custo</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td>Total</td><td></td><td class="n">${tt.loop_count ? `<small>${tt.loop_count} reexec.</small>` : ''}</td><td class="n">${esc(fmtMs(tt.duration_ms))}</td><td class="n">${esc(fmtTok(tt.input_tokens))}</td><td class="n">${esc(fmtTok(tt.output_tokens))}</td><td class="n">${esc(fmtUsd(usd))}${usd != null && fx?.rate ? `<br><small>${esc(fmtBrl(usd))}</small>` : ''}</td></tr></tfoot>
+        <tfoot><tr><td>Total</td><td></td><td class="n">${tt.loop_count ? `<small>${tt.loop_count} reexec.</small>` : ''}</td><td class="n">${esc(fmtMs(tt.duration_ms))}</td><td class="n">${esc(costTokens(tt.input_tokens))}</td><td class="n">${esc(costTokens(tt.output_tokens))}</td><td class="n">${esc(costMoney(usd))}${usd != null && fx?.rate ? `<br><small>${esc(fmtBrl(usd))}</small>` : ''}</td></tr></tfoot>
       </table></div>
-      <p class="cost-note">Medido pelo watcher a cada despacho. Tokens de entrada incluem cache (passe o mouse para ver a quebra). “—” = o agente não reportou tokens.${anyPartial ? ' * = soma parcial.' : ''}</p>
-      <p class="cost-note">Custo estimado pelo preço de API de cada modelo (fonte: ${esc(c.pricing_source || 'tabela do watcher')}). Em assinatura (Pro/Max) é o equivalente, não o valor cobrado. Codex e modelos fora da tabela ficam sem custo. ${esc(fxNote())}</p>
+      <p class="cost-note">Medido pelo watcher a cada despacho. Tokens de entrada incluem cache (passe o mouse para ver a quebra). Contadores ausentes = “não observado”; custo ausente = “sem preço”.${anyPartial ? ' * = soma parcial.' : ''}</p>
+      <p class="cost-note">Custo estimado pelo preço de API de cada modelo. Em assinatura (Pro/Max) é o equivalente, não o valor cobrado. Codex e modelos fora da tabela ficam sem custo. ${esc(fxNote())}</p>
+      <details class="cost-source"><summary>Fonte de preços do agregado</summary><p class="cost-note">${esc(c.pricing_source || 'UNKNOWN')}</p></details>
+      ${window.CostAttempts.render(c, NODE_LABEL)}
     </div>
   </details></div>`;
 }

@@ -41,6 +41,7 @@ const acIdsLib = require('../scripts/lib/ac-ids');
 // Replay de ciclo a partir de um nó ("↩ Retomar a partir de" no detalhe do run).
 const cycleReplayer = require('../scripts/lib/cycle-replayer');
 const runComparator = require('../scripts/lib/run-comparator');
+const { projectCostTracking } = require('./cost-projection');
 // Tira PR de Draft ("Marcar como pronto" no painel de preview).
 const { markPrReady } = require('../scripts/check-pr-status');
 // Lista/detalha/aprova PRs do Bitbucket, pra aba "PRs" (GET/POST /api/prs*).
@@ -522,7 +523,14 @@ function createDashboard(options = {}) {
             // Cada recusa separada do ciclo principal (scripts/lib/qa-cycles.js); null = run
             // sem recusa. Só lê o context.md (blocos de recusa) de run que já teve alguma.
             qaCycles: run.pretask || !hasQaHistory(state) ? null : redactDeep(qaCycles.buildQaCycles(state, readContext(run.dir))),
-            state: state ? redactDeep(state) : null,
+            // Project the cost subtree before every API/WS summary. Internal
+            // attempt refs/read order must never travel with this read model.
+            state: state ? redactDeep({ ...state, ...(state.cost_tracking ? {
+                cost_tracking: projectCostTracking(state.cost_tracking, {
+                    run,
+                    ticketId: ticketIdOf(run.taskId, state),
+                }),
+            } : {}) }) : null,
         };
     }
 
