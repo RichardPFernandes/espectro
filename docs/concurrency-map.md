@@ -80,6 +80,7 @@ O endpoint de versão do dashboard usa a mesma versão efetiva.
 | Commit | agente: `transition --operation=commit` | versão + nó (`commit`) | sim (obrigatório) | — | agente: re-tenta 1x |
 | Archive | agente: `state-writer.js archive`; dashboard: `POST /api/runs/:id/archive` | versão + nó, lock até o `rename` da pasta | sim (obrigatório) | — | agente: aborta; dashboard: 409 |
 | Despacho de um ticket (check-then-act) | watcher (tick) e dashboard (`dispatchNode`: ▶ Disparar, retomadas, replay) → `dispatchTicket` | — (reserva por ticket entre processos, ver "Despacho por ticket") | — | — | pula com `despacho_reservado` / `fetch_em_execucao`; dashboard: 409 |
+| Carimbo de PID do lease | watcher: `node-lease.recordAgentPid` | estado `running` e `node_started_at` sob lock; `execution_id` validado em `scripts/cas.js` | sim | — | lease liberado ou takeover: gravação tardia ignorada |
 | Release do lease | watcher/wrapper: `node-lease releaseNode` | — | sim (o do lease) | — | `SESSION_CONFLICT`: release ignorado |
 | Escritas de sistema (eventos, custo, transcrições, PR poll, gates) | watcher, libs | merge de 3 vias com a leitura-base, ou mutator sobre o disco fresco | — | — | só recusa se outro processo mudou o mesmo campo crítico |
 
