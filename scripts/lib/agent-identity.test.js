@@ -119,7 +119,9 @@ test('agente codex sob o wrapper sh: vivo enquanto roda (o comando não tem "cla
     const s = read(dir);
     assert.strictEqual(s.agent_pid, child.pid);
     assert.ok(s.agent_started_at, 'identidade gravada junto do pid');
-    assert.doesNotMatch(require('child_process').execFileSync('ps', ['-p', String(child.pid), '-o', 'command='], { encoding: 'utf8' }), /claude/,
+    const command = require('child_process').execFileSync('ps', ['-p', String(child.pid), '-o', 'command='], { encoding: 'utf8' });
+    const agentCommand = command.replace(NODE_LEASE_SCRIPT, '<node-lease>').replace(JSON.stringify(l), '<lease>');
+    assert.doesNotMatch(agentCommand, /claude/,
         'pré-condição: a regra antiga (texto claude) daria falso negativo aqui');
     assert.strictEqual(lease.agentAlive(child.pid, s), true);
     assert.strictEqual(lease.orphanReason(s), null, 'vivo: não é órfão');
