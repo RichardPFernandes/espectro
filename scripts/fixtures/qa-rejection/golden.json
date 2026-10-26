@@ -1,0 +1,21 @@
+{
+  "fetch": {
+    "own": { "note": "O cubo violeta deve girar duas vezes.", "journal_id": 102, "created_on": "2026-01-02T11:00:00Z", "author": "Pessoa Sintética A", "rejected_at": "2026-01-02T11:00:00Z" },
+    "none": null,
+    "bounce": { "note": "A esfera laranja deve saltar três vezes.", "journal_id": 302, "created_on": "2026-01-02T10:00:00Z", "author": "Pessoa Sintética B", "rejected_at": "2026-01-02T10:00:00Z" },
+    "between_polls": { "note": "O cilindro verde deve parar.", "journal_id": 404, "created_on": "2026-01-02T11:40:00Z", "author": null, "rejected_at": "2026-01-02T11:40:00Z" },
+    "legacy_unique": { "note": "A estrela sintética deve acender.", "journal_id": 501, "created_on": "2026-01-02T11:00:00Z", "author": null, "rejected_at": "2026-01-02T11:00:00Z" },
+    "legacy_ambiguous": { "note": "Segunda estrela sintética.", "journal_id": 603, "created_on": "2026-01-02T11:00:00Z", "author": null, "rejected_at": "2026-01-02T11:00:00Z" },
+    "unavailable": null, "unauthorized": null, "timeout": null
+  },
+  "sync": {
+    "own": { "note": "O cubo violeta deve girar duas vezes.", "rejected_at": "2026-01-02T11:00:00Z", "journal_id": 102 },
+    "none": { "note": null, "rejected_at": "2026-01-02T12:00:00Z", "journal_id": null },
+    "bounce": { "note": "A esfera laranja deve saltar três vezes.", "rejected_at": "2026-01-02T10:00:00Z", "journal_id": 302 },
+    "unavailable": { "note": null, "rejected_at": "2026-01-02T12:00:00Z", "journal_id": null },
+    "unauthorized": { "note": null, "rejected_at": "2026-01-02T12:00:00Z", "journal_id": null },
+    "timeout": { "note": null, "rejected_at": "2026-01-02T12:00:00Z", "journal_id": null }
+  },
+  "legacy_record": [{ "n": 1, "note": "Relato legado sintético.", "rejected_at": "2026-01-02T11:00:00Z", "journal_id": null, "retry_requested_at": "2026-01-02T12:00:00Z", "cost_baseline_usd": null, "tokens_baseline": null }],
+  "retry": { "node": "implement", "status": "in_progress", "qa_retry_count": 1, "execution_id": "synthetic-execution-0", "signal_exists": false, "source_exists": false, "second_poll": [], "note_once": true, "note_twice": "" }
+}
