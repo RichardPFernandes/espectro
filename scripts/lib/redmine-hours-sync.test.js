@@ -66,6 +66,7 @@ test('hoursFromDurationMs sobe para o próximo meio-hora / hora (ceil 0,5)', () 
     assert.strictEqual(hoursFromDurationMs(3_636_000), 1.5);     // 1.01h → 1.5
     assert.strictEqual(hoursFromDurationMs(1_000), 0.5);         // residual → 0.5
     assert.strictEqual(hoursFromDurationMs(1_800_001), 1);       // 0.5h+ε → 1.0
+    assert.strictEqual(hoursFromDurationMs(3_600_001), 1.5);     // 1h+ε → 1.5
     assert.strictEqual(hoursFromDurationMs(0), null);
     assert.strictEqual(hoursFromDurationMs(null), null);
 });
@@ -131,6 +132,7 @@ test('buildCandidate usa state.cost_tracking e cai pro cost.json', () => {
     assert.strictEqual(byId['43704-so-ledger'].hours, 2);
     assert.strictEqual(byId['43704-so-ledger'].source, 'cost.json');
     // Sem duration → presumed_complexity (piso 0,5; só no_ticket skipa)
+    // (#67 presumed_min supersedido)
     assert.ok(byId['43705-sem-horas']);
     assert.strictEqual(byId['43705-sem-horas'].source, 'presumed_complexity');
     assert.strictEqual(byId['43705-sem-horas'].reason, 'presumed_complexity');
@@ -516,8 +518,7 @@ test('runBackfill presumed_complexity enriquece com journals; duration real não
     writeRun(archive, '43771-real-curto', {
         status: 'committed',
         redmine_ticket: { id: 43771 },
-        // 0.1h real → ceil 0.5; presumido alto não substitui pra cima nem pra baixo aqui
-        // (duration real prevalece)
+        // 0.1h real → ceil 0.5; duration real prevalece (não sobe pelos 3 PRs)
         cost_tracking: { totals: { duration_ms: 360_000 } },
         pull_request: {
             a: { pr_id: 10 },
@@ -549,6 +550,96 @@ test('runBackfill presumed_complexity enriquece com journals; duration real não
     assert.strictEqual(presume.hours, 1.5); // alto por moves≥9
     assert.strictEqual(real.source, 'state.cost_tracking');
     assert.strictEqual(real.hours, 0.5); // ceil(0.1)=0.5 — não sobe pelos 3 PRs
+});
+
+// MAJOR-1 / MAJOR-2 (#64/#65): horas soft-fail — attemptFile não injeta obrigação
+// redmine_hours nem revoga o Attempt em 401; already_synced não depende de effect.
+test('syncRunHoursLive com attemptFile: POST direto; Attempt intacto em create/skip/401', async t => {
+    const dom06 = require('./dom06-attempt');
+    const { archive } = tmpRuns();
+    const runDir = writeRun(archive, '43730-attempt', {
+        status: 'committed',
+        updated_at: '2026-10-28T12:00:00.000Z',
+        redmine_ticket: { id: 43730 },
+        cost_tracking: { totals: { duration_ms: 3_600_000 } },
+    });
+
+    const attemptRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'horas-attempt-'));
+    t.after(() => fs.rmSync(attemptRoot, { recursive: true, force: true }));
+    const decision = dom06.beginAttempt(attemptRoot, {
+        node: 'commit',
+        admission: {
+            status: 'ADMITTED',
+            owner: 'dom06',
+            snapshot: { ticket_id: 43730, node: 'commit', base_branch: 'main', spec_hash: 'h1' },
+        },
+        obligations: dom06.obligationsFor('commit'),
+    });
+    for (const id of ['push', 'pull_request', 'redmine_status', 'redmine_notes']) {
+        dom06.recordEffect(decision.attemptFile, {
+            obligation_id: id,
+            idempotency_key: `${id}:1`,
+            status: 'fulfilled',
+        });
+    }
+    assert.strictEqual(dom06.summarize(dom06.readAttempt(decision.attemptFile)).verdict, 'PASS');
+    const obligationIdsBefore = dom06.readAttempt(decision.attemptFile).obligations.map(o => o.id).sort();
+
+    const rmOk = await fakeRedmine({ entriesByIssue: { 43730: [] } });
+    t.after(rmOk.close);
+    const created = await syncRunHoursLive(runDir, {
+        dryRun: false,
+        redmineFetch: rmOk.fetch,
+        baseUrl: rmOk.baseUrl,
+        apiKey: 'k',
+        attemptFile: decision.attemptFile,
+    });
+    assert.strictEqual(created.action, 'created');
+    assert.strictEqual(rmOk.posts.length, 1);
+    assert.notStrictEqual(created.via, 'dom06_redmine_effect');
+
+    let after = dom06.readAttempt(decision.attemptFile);
+    assert.strictEqual(after.authority, 'valid');
+    assert.strictEqual(dom06.summarize(after).verdict, 'PASS');
+    assert.deepStrictEqual(after.obligations.map(o => o.id).sort(), obligationIdsBefore);
+    assert.ok(!after.obligations.some(o => o.id === 'redmine_hours'));
+
+    const rmSkip = await fakeRedmine({
+        entriesByIssue: {
+            43730: [{ id: 99, hours: 1, comments: `x ${hoursMarker('43730-attempt')}` }],
+        },
+    });
+    t.after(rmSkip.close);
+    const skipped = await syncRunHoursLive(runDir, {
+        dryRun: false,
+        redmineFetch: rmSkip.fetch,
+        baseUrl: rmSkip.baseUrl,
+        apiKey: 'k',
+        attemptFile: decision.attemptFile,
+    });
+    assert.strictEqual(skipped.action, 'skip');
+    assert.strictEqual(skipped.reason, 'already_synced');
+    after = dom06.readAttempt(decision.attemptFile);
+    assert.strictEqual(dom06.summarize(after).verdict, 'PASS');
+    assert.ok(!after.obligations.some(o => o.id === 'redmine_hours'));
+
+    const rm401 = await fakeRedmine({ entriesByIssue: { 43730: [] }, postStatus: 401 });
+    t.after(rm401.close);
+    const failed = await syncRunHoursLive(runDir, {
+        dryRun: false,
+        redmineFetch: rm401.fetch,
+        baseUrl: rm401.baseUrl,
+        apiKey: 'k',
+        attemptFile: decision.attemptFile,
+    });
+    assert.strictEqual(failed.action, 'error');
+    assert.strictEqual(failed.statusCode, 401);
+    assert.ok(String(failed.reason).includes('create_failed'));
+    assert.ok(!String(failed.reason).includes('AUTHORITY'));
+    after = dom06.readAttempt(decision.attemptFile);
+    assert.strictEqual(after.authority, 'valid', '401 de horas não revoga Attempt');
+    assert.strictEqual(dom06.summarize(after).verdict, 'PASS');
+    assert.ok(!after.obligations.some(o => o.id === 'redmine_hours'));
 });
 
 test('runBackfill integra coleta + dry-run', async t => {
