@@ -25,7 +25,7 @@
 //   --ticket=<id>          pode repetir; filtra tickets
 //   --since=YYYY-MM-DD     só runs com updated_at/started_at >= data
 //   --limit=N              máximo de candidatos *com horas* a processar
-//   --min-hours=0.01       piso após arredondar duration_ms → horas
+//   --min-hours=0.5        piso após ceil duration_ms → degraus de 0,5 h
 //   --activity-id=9        atividade Redmine (9 = Desenvolvimento no M&O)
 //   --include-active       também varre memory/runs/ ativos
 //                          (padrão: _archive + memory/archive/<YYYY-MM>/)
@@ -158,7 +158,7 @@ function parseArgs(argv) {
 }
 
 const USAGE = `uso: node scripts/backfill-redmine-hours.js [--dry-run|--apply]
-       [--ticket=ID]... [--since=YYYY-MM-DD] [--limit=N] [--min-hours=0.01]
+       [--ticket=ID]... [--since=YYYY-MM-DD] [--limit=N] [--min-hours=0.5]
        [--activity-id=9] [--include-active] [--fill-even-if-spent]
        [--runs-dir=path] [--report=path.json]
 

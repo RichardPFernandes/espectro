@@ -15,7 +15,7 @@
 //   node scripts/sync-redmine-hours-live.js memory/runs/<task-id>   # dry-run
 //
 // Env: REDMINE_URL, REDMINE_API_KEY (carrega .env do REPO_PATH ou cwd).
-// Flags: --apply | --dry-run · --attempt=<file> · --activity-id=9 · --min-hours=0.01
+// Flags: --apply | --dry-run · --attempt=<file> · --activity-id=9 · --min-hours=0.5
 //        --no-fill-if-spent · --help
 
 'use strict';
@@ -86,7 +86,7 @@ function parseArgs(argv) {
 const USAGE = `uso: node scripts/sync-redmine-hours-live.js <runDir> [--dry-run|--apply]
   --attempt=<file>     POST via DOM06 redmine-effect (obrigação redmine_hours)
   --activity-id=9      atividade Redmine (Desenvolvimento no M&O)
-  --min-hours=0.01     piso após arredondar duration_ms → horas
+  --min-hours=0.5      piso após ceil duration_ms → degraus de 0,5 h
   --no-fill-if-spent   pula se o ticket já tiver qualquer spent (padrão: cria)
   --help`;
 

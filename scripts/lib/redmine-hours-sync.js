@@ -15,7 +15,11 @@ const path = require('path');
 
 const MARKER_PREFIX = '[prisma-hours:';
 const DEFAULT_ACTIVITY_ID = 9; // "Desenvolvimento" no Redmine M&O
-const DEFAULT_MIN_HOURS = 0.01;
+// Regra de negócio (Richard): duration → horas Redmine sempre sobe para o
+// próximo múltiplo de 0,5 h (meio-hora / hora cheia). Qualquer duração > 0
+// vira no mínimo 0,5 h.
+const HOURS_STEP = 0.5;
+const DEFAULT_MIN_HOURS = HOURS_STEP;
 
 function hoursMarker(taskId) {
     return `${MARKER_PREFIX}${taskId}]`;
@@ -27,13 +31,19 @@ function markerOfComments(comments) {
     return m ? m[1] : null;
 }
 
-function hoursFromDurationMs(durationMs, { minHours = DEFAULT_MIN_HOURS, decimals = 2 } = {}) {
+// Ceil para o próximo múltiplo de `step` (padrão 0,5 h). Ex.: 0.1→0.5,
+// 0.6→1.0, 1.01→1.5; valores já no degrau ficam iguais (0.5→0.5, 1→1).
+function hoursFromDurationMs(durationMs, { minHours = DEFAULT_MIN_HOURS, step = HOURS_STEP } = {}) {
     if (durationMs == null || !Number.isFinite(durationMs) || durationMs <= 0) return null;
+    if (!Number.isFinite(step) || step <= 0) step = HOURS_STEP;
     const raw = durationMs / 3_600_000;
-    const factor = 10 ** decimals;
-    const rounded = Math.round(raw * factor) / factor;
-    if (rounded <= 0) return minHours;
-    return Math.max(rounded, minHours);
+    // Epsilon evita que múltiplo exato (ex. 1.0h) suba um degrau por float.
+    const units = raw / step;
+    const ceiled = Math.ceil(units - 1e-9) * step;
+    // Duas casas bastam para degraus de 0,5 (evita 1.5000000002 no JSON).
+    const normalized = Math.round(ceiled * 100) / 100;
+    if (normalized <= 0) return minHours;
+    return Math.max(normalized, minHours);
 }
 
 function ticketIdOf(taskId) {
@@ -52,24 +62,273 @@ function readJsonSafe(file) {
     }
 }
 
-function durationFromState(state) {
-    const totals = state?.cost_tracking?.totals;
-    const ms = totals?.duration_ms;
-    return Number.isFinite(ms) && ms > 0 ? ms : null;
+// Soma duration_ms de um bloco cost_tracking / task do ledger (totals → nodes
+// → attempts). Nunca inventa: só agrega o que já está gravado.
+function durationMsFromCostBlock(block) {
+    if (!block || typeof block !== 'object') return null;
+    const total = block.totals?.duration_ms;
+    if (Number.isFinite(total) && total > 0) return total;
+    let sum = 0;
+    for (const n of Object.values(block.nodes || {})) {
+        if (!n || typeof n !== 'object') continue;
+        if (Number.isFinite(n.duration_ms) && n.duration_ms > 0) {
+            sum += n.duration_ms;
+            continue;
+        }
+        for (const a of n.attempts || []) {
+            const ms = Number(a?.duration_ms);
+            if (Number.isFinite(ms) && ms > 0) sum += ms;
+        }
+    }
+    return sum > 0 ? sum : null;
 }
 
-function durationFromCostLedger(runsDir, ticketId, taskId) {
-    if (!ticketId || !taskId) return null;
-    const costPath = path.join(runsDir, `${ticketId}-cost.json`);
-    const read = readJsonSafe(costPath);
-    if (!read.ok) return null;
-    const task = read.value?.tasks?.[taskId];
-    const ms = task?.totals?.duration_ms;
-    if (Number.isFinite(ms) && ms > 0) return ms;
-    const nodes = task?.nodes || {};
-    let sum = 0;
-    for (const n of Object.values(nodes)) sum += Number(n?.duration_ms) || 0;
-    return sum > 0 ? sum : null;
+function durationFromState(state) {
+    return durationMsFromCostBlock(state?.cost_tracking);
+}
+
+function readCostLedger(runsDir, ticketId) {
+    if (!ticketId) return null;
+    const read = readJsonSafe(path.join(runsDir, `${ticketId}-cost.json`));
+    return read.ok ? read.value : null;
+}
+
+// Resolve a task no ledger sem inventar chave: exact → state.task_id → strip
+// sufixo de colisão `__checkout` → maior prefixo com separador `-`/`__`
+// (cópias timestampadas tipo task-2026-09-29T…). Não usa unattributed.
+function findLedgerTask(ledger, taskId, stateTaskId = null) {
+    const tasks = ledger?.tasks;
+    if (!tasks || typeof tasks !== 'object') return null;
+
+    const ids = [];
+    for (const id of [taskId, stateTaskId]) {
+        if (id && !ids.includes(String(id))) ids.push(String(id));
+    }
+    for (const id of ids) {
+        if (tasks[id]) return { key: id, task: tasks[id] };
+    }
+    for (const id of ids) {
+        const cut = id.indexOf('__');
+        if (cut > 0) {
+            const base = id.slice(0, cut);
+            if (tasks[base]) return { key: base, task: tasks[base] };
+        }
+    }
+    let best = null;
+    for (const id of ids) {
+        for (const key of Object.keys(tasks)) {
+            if (!(id.startsWith(`${key}-`) || id.startsWith(`${key}__`))) continue;
+            if (!best || key.length > best.key.length) best = { key, task: tasks[key] };
+        }
+    }
+    return best;
+}
+
+function durationFromCostLedger(runsDir, ticketId, taskId, stateTaskId = null) {
+    const ledger = readCostLedger(runsDir, ticketId);
+    if (!ledger) return null;
+    const hit = findLedgerTask(ledger, taskId, stateTaskId);
+    if (!hit) return null;
+    const ms = durationMsFromCostBlock(hit.task);
+    if (ms == null) return null;
+    return { ms, ledgerKey: hit.key };
+}
+
+// Wall-clock atribuível pelo agent_log (mesmo critério grosso do dashboard:
+// started_at/primeiro at → último at). Sem Date.now — backfill não inventa
+// "ainda rodando".
+function durationFromAgentLog(state) {
+    const log = (state?.agent_log || [])
+        .map(a => ({ at: Date.parse(a?.at) }))
+        .filter(a => !Number.isNaN(a.at))
+        .sort((a, b) => a.at - b.at);
+    if (!log.length) return null;
+    const start = Date.parse(state?.started_at);
+    const from = !Number.isNaN(start) ? start : log[0].at;
+    const to = log[log.length - 1].at;
+    if (!(to > from)) return null;
+    return to - from;
+}
+
+// Último recurso: started_at → committed_at|updated_at (espelha runs-exporter).
+function durationFromStateWallclock(state) {
+    const start = Date.parse(state?.started_at);
+    if (Number.isNaN(start)) return null;
+    for (const raw of [state?.committed_at, state?.updated_at]) {
+        const end = Date.parse(raw);
+        if (!Number.isNaN(end) && end > start) return end - start;
+    }
+    return null;
+}
+
+// Cascata de fontes atribuíveis (sem inventar ticket nem duration).
+// Devolve { ms, source } ou null — ausência cai pra presumed_complexity.
+function resolveDurationMs(state, runsDir, ticketId, taskId) {
+    const fromState = durationFromState(state);
+    if (fromState != null) {
+        return { ms: fromState, source: 'state.cost_tracking' };
+    }
+
+    const fromLedger = durationFromCostLedger(
+        runsDir,
+        ticketId,
+        taskId,
+        state?.task_id || null,
+    );
+    if (fromLedger != null) {
+        const src = fromLedger.ledgerKey === String(taskId)
+            ? 'cost.json'
+            : `cost.json#${fromLedger.ledgerKey}`;
+        return { ms: fromLedger.ms, source: src };
+    }
+
+    const fromLog = durationFromAgentLog(state);
+    if (fromLog != null) {
+        return { ms: fromLog, source: 'state.agent_log' };
+    }
+
+    const fromWall = durationFromStateWallclock(state);
+    if (fromWall != null) {
+        return { ms: fromWall, source: 'state.wallclock' };
+    }
+
+    return null;
+}
+
+// ---- Presunção por complexidade (Richard) ---------------------------------
+// Sinais atribuíveis: journals/movimentos Redmine + PRs ligados no state.
+// Escala (limiares documentados; ajustáveis com evidência de dry-run):
+//   baixo  — moves ≤ 2 e prs = 0              → 0,5 h
+//   médio  — prs = 1 ou 3 ≤ moves ≤ 8         → 1,0 h
+//   alto   — prs ≥ 2 ou moves ≥ 9             → 1,5 h
+//            +0,5 h por PR além do 2º
+//            +0,5 h a cada bloco de 5 moves além de 9
+// Sempre em degraus de 0,5. Duration real + ceil 0,5 prevalece (nunca
+// substituir por presumido menor — na verdade duration real não passa por aqui).
+
+function countPrsFromState(state) {
+    const ids = new Set();
+    const add = (v) => {
+        if (v == null || v === '') return;
+        if (typeof v === 'number' && Number.isFinite(v)) ids.add(String(v));
+        else if (typeof v === 'string' && v.trim()) ids.add(v.trim());
+    };
+    if (state?.pr_id != null && state.pr_id !== '') add(state.pr_id);
+
+    for (const bag of [state?.pull_request, state?.pull_requests]) {
+        if (!bag || typeof bag !== 'object') continue;
+        for (const v of Object.values(bag)) {
+            if (typeof v === 'string') add(v);
+            else if (v && typeof v === 'object') {
+                add(v.pr_id ?? v.id ?? v.url ?? null);
+            }
+        }
+    }
+    // URL/branch GitHub no state (quando presente) conta como sinal de PR.
+    const gh = state?.github_pr || state?.github?.pr || state?.github_pull_request;
+    if (gh) {
+        if (typeof gh === 'string') add(gh);
+        else if (typeof gh === 'object') add(gh.url || gh.number || gh.id);
+    }
+    return ids.size;
+}
+
+// Journal "movimento": tem notes OU details (status/campos). Contagem bruta
+// atribuível ao ticket — não filtra watcher (movimentos também são sinal).
+function countJournalMoves(journals) {
+    if (!Array.isArray(journals)) return 0;
+    let n = 0;
+    for (const j of journals) {
+        const hasNotes = Boolean(j?.notes && String(j.notes).trim());
+        const hasDetails = Array.isArray(j?.details) && j.details.length > 0;
+        if (hasNotes || hasDetails) n += 1;
+    }
+    return n;
+}
+
+function presumedHoursFromComplexity({ moves = 0, prs = 0, step = HOURS_STEP } = {}) {
+    const m = Math.max(0, Number(moves) || 0);
+    const p = Math.max(0, Number(prs) || 0);
+    let hours;
+    if (p >= 2 || m >= 9) {
+        hours = 1.5;
+        if (p > 2) hours += step * (p - 2);
+        if (m > 9) hours += step * Math.floor((m - 9) / 5);
+    } else if (p === 1 || m >= 3) {
+        hours = 1.0;
+    } else {
+        hours = 0.5;
+    }
+    const factor = 1 / step;
+    return Math.round(hours * factor) / factor;
+}
+
+async function fetchIssueJournals(redmineFetch, { baseUrl, apiKey, issueId }) {
+    const url = new URL(`/issues/${Number(issueId)}.json`, baseUrl);
+    url.searchParams.set('include', 'journals');
+    const res = await redmineFetch(url, {
+        headers: { 'X-Redmine-API-Key': apiKey, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        const err = new Error(`GET issue #${issueId} journals: HTTP ${res.status}`);
+        err.statusCode = res.status;
+        err.body = body;
+        throw err;
+    }
+    const json = await res.json();
+    return json.issue?.journals || [];
+}
+
+// Recalcula hours de um candidato presumed_complexity com journals (cache por ticket).
+async function enrichPresumedComplexity(candidate, {
+    redmineFetch,
+    baseUrl,
+    apiKey,
+    journalCache = null,
+} = {}) {
+    if (!candidate?.ok || candidate.source !== 'presumed_complexity') return candidate;
+    if (!redmineFetch || !baseUrl || !apiKey) return candidate;
+
+    const tid = Number(candidate.ticketId);
+    let moves = candidate.complexity?.moves ?? 0;
+    try {
+        let journals;
+        if (journalCache && journalCache.has(tid)) {
+            journals = journalCache.get(tid);
+        } else {
+            journals = await fetchIssueJournals(redmineFetch, { baseUrl, apiKey, issueId: tid });
+            if (journalCache) journalCache.set(tid, journals);
+        }
+        moves = countJournalMoves(journals);
+    } catch {
+        // Sem journals: mantém presunção só com PRs do state (já no candidate).
+        return candidate;
+    }
+
+    const prs = candidate.complexity?.prs ?? 0;
+    const hours = presumedHoursFromComplexity({ moves, prs });
+    const spentOn = candidate.spentOn;
+    const comments = [
+        `Horas presumidas por complexidade (ceil 0,5h).`,
+        `Sinais: moves=${moves}, prs=${prs} → ${hours}h.`,
+        candidate.marker,
+    ].join(' ');
+    const payload = buildTimeEntryPayload({
+        issueId: tid,
+        hours,
+        spentOn,
+        comments,
+    });
+    return {
+        ...candidate,
+        hours,
+        durationMs: hours * 3_600_000,
+        reason: 'presumed_complexity',
+        complexity: { moves, prs, hours },
+        comments,
+        payload,
+    };
 }
 
 function spentOnFromState(state) {
@@ -192,39 +451,64 @@ function buildCandidate(entry, runsDir, { minHours = DEFAULT_MIN_HOURS, since = 
         }
     }
 
-    let source = 'state.cost_tracking';
-    let durationMs = durationFromState(state);
-    if (durationMs == null) {
-        durationMs = durationFromCostLedger(runsDir, ticketId, entry.taskId);
-        source = 'cost.json';
-    }
-    if (durationMs == null) {
-        return { ok: false, taskId: entry.taskId, ticketId, action: 'skip', reason: 'no_duration' };
-    }
-
-    const hours = hoursFromDurationMs(durationMs, { minHours });
-    if (hours == null) {
-        return { ok: false, taskId: entry.taskId, ticketId, action: 'skip', reason: 'hours_zero' };
-    }
-
+    const resolved = resolveDurationMs(state, runsDir, ticketId, entry.taskId);
     const marker = hoursMarker(entry.taskId);
     const spentOn = spentOnFromState(state);
+
+    // Duration real → ceil 0,5h. Nunca substitui por presumido menor.
+    if (resolved) {
+        const hours = hoursFromDurationMs(resolved.ms, { minHours });
+        if (hours == null) {
+            return { ok: false, taskId: entry.taskId, ticketId, action: 'skip', reason: 'hours_zero' };
+        }
+        const comments = [
+            `Horas do ciclo Prisma (wall-clock; ceil 0,5h).`,
+            `Fonte: ${resolved.source}; duration_ms=${resolved.ms}.`,
+            marker,
+        ].join(' ');
+        return {
+            ok: true,
+            taskId: entry.taskId,
+            ticketId: Number(ticketId),
+            archived: entry.archived,
+            status: state.status || null,
+            durationMs: resolved.ms,
+            hours,
+            spentOn,
+            source: resolved.source,
+            marker,
+            comments,
+            payload: buildTimeEntryPayload({
+                issueId: ticketId,
+                hours,
+                spentOn,
+                comments,
+            }),
+        };
+    }
+
+    // Sem duration: presume por complexidade (PRs no state; journals no enrich).
+    // Só skip se sem ticket (já tratado acima).
+    const prs = countPrsFromState(state);
+    const hours = presumedHoursFromComplexity({ moves: 0, prs });
+    const complexity = { moves: 0, prs, hours };
     const comments = [
-        `Horas do ciclo Prisma (wall-clock cost_tracking).`,
-        `Fonte: ${source}; duration_ms=${durationMs}.`,
+        `Horas presumidas por complexidade (ceil 0,5h).`,
+        `Sinais: moves=0 (journals pending), prs=${prs} → ${hours}h.`,
         marker,
     ].join(' ');
-
     return {
         ok: true,
         taskId: entry.taskId,
         ticketId: Number(ticketId),
         archived: entry.archived,
         status: state.status || null,
-        durationMs,
+        durationMs: hours * 3_600_000,
         hours,
         spentOn,
-        source,
+        source: 'presumed_complexity',
+        reason: 'presumed_complexity',
+        complexity,
         marker,
         comments,
         payload: buildTimeEntryPayload({
@@ -341,18 +625,28 @@ async function syncCandidateHours(candidate, {
     // Dry-run não POSTa; sem isto o 2º run do mesmo ticket também seria
     // would_create, enquanto o apply grava 1 e skipa o resto via spent.
     batchSpentByIssue = null,
+    journalCache = null,
 } = {}) {
     if (!candidate?.ok) {
         return { ...candidate, dryRun };
     }
 
+    // Enriquece presumidos com journals Redmine (moves) antes do GET spent/POST.
+    const enriched = await enrichPresumedComplexity(candidate, {
+        redmineFetch,
+        baseUrl,
+        apiKey,
+        journalCache,
+    });
+
     const payload = {
-        ...candidate.payload,
+        ...enriched.payload,
         time_entry: {
-            ...candidate.payload.time_entry,
+            ...enriched.payload.time_entry,
             activity_id: Number(activityId),
         },
     };
+    candidate = enriched;
 
     let existing = [];
     try {
@@ -413,6 +707,8 @@ async function syncCandidateHours(candidate, {
             hours: candidate.hours,
             spentOn: candidate.spentOn,
             source: candidate.source,
+            reason: candidate.reason || null,
+            complexity: candidate.complexity || null,
             action: 'would_create',
             payload,
             dryRun: true,
@@ -432,6 +728,8 @@ async function syncCandidateHours(candidate, {
             hours: candidate.hours,
             spentOn: candidate.spentOn,
             source: candidate.source,
+            reason: candidate.reason || null,
+            complexity: candidate.complexity || null,
             action: 'created',
             entryId: created?.time_entry?.id ?? null,
             dryRun: false,
@@ -680,6 +978,8 @@ async function runBackfill({
     // Acumula spent que este batch criaria/criou — dry-run e apply com o
     // mesmo critério "uma entry por ticket" (sem --fill-even-if-spent).
     const batchSpentByIssue = new Map();
+    // Cache de journals por ticket (vários runs do mesmo # não re-GETam).
+    const journalCache = new Map();
 
     const results = [];
     let i = 0;
@@ -699,6 +999,7 @@ async function runBackfill({
             fillEvenIfSpent,
             activityId,
             batchSpentByIssue,
+            journalCache,
         });
         const row = { ...r, phase: 'sync', index: i, total: candidates.length };
         results.push(row);
@@ -726,12 +1027,24 @@ module.exports = {
     MARKER_PREFIX,
     DEFAULT_ACTIVITY_ID,
     DEFAULT_MIN_HOURS,
+    HOURS_STEP,
     hoursMarker,
     markerOfComments,
     hoursFromDurationMs,
     ticketIdOf,
+    durationMsFromCostBlock,
     durationFromState,
+    readCostLedger,
+    findLedgerTask,
     durationFromCostLedger,
+    durationFromAgentLog,
+    durationFromStateWallclock,
+    resolveDurationMs,
+    countPrsFromState,
+    countJournalMoves,
+    presumedHoursFromComplexity,
+    fetchIssueJournals,
+    enrichPresumedComplexity,
     spentOnFromState,
     buildTimeEntryPayload,
     listRunDirs,
