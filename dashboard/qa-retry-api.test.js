@@ -194,3 +194,30 @@ test('REDMINE_API_KEY nunca aparece em resposta, state, context ou log', async (
         ...logs].join('\n');
     assert.ok(!everything.includes(KEY));
 });
+
+test('PRI-184: summarize expõe qaRetryBlocked quando o sinal está parado', async () => {
+    const at = '2026-10-29T12:00:00.000Z';
+    writeRun('50007-blocked', {
+        redmine_ticket: { id: 50007 },
+        ticket_status: 'Em Desenvolvimento',
+        node: 'implement',
+        status: 'in_progress',
+        qa_retry_count: 1,
+        qa_retry_blocked: { reason: 'destino_ocupado', at },
+    });
+    fs.writeFileSync(signalOf('50007-blocked'), JSON.stringify({ node: 'implement' }));
+    const listedRun = await listed('50007-blocked');
+    assert.strictEqual(listedRun.qaRetryPending, true);
+    assert.deepStrictEqual(listedRun.qaRetryBlocked, { reason: 'destino_ocupado', at });
+
+    writeRun('50008-limpo', {
+        redmine_ticket: { id: 50008 },
+        ticket_status: 'Em Desenvolvimento',
+        node: 'implement',
+        status: 'in_progress',
+        qa_retry_count: 1,
+    });
+    const clean = await listed('50008-limpo');
+    assert.strictEqual(clean.qaRetryBlocked, null);
+    assert.strictEqual(clean.qaRetryPending, false);
+});

@@ -177,9 +177,15 @@ test('C0 golden consumeQaRetrySignals: destino ocupado mantém fonte, destino e 
     fs.mkdirSync(target, { recursive: true });
     fs.writeFileSync(path.join(target, 'sentinel.txt'), 'destino sintético intocado');
     fs.writeFileSync(path.join(dir, 'retry-signal.json'), '{"node":"implement"}');
-    const before = fs.readFileSync(path.join(dir, 'state.json'), 'utf8');
+    const before = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
     assert.deepEqual(await watcher.consumeQaRetrySignals(), []);
-    assert.equal(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'), before);
+    const after = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
+    // PRI-184: grava qa_retry_blocked (campo + evento) sem alterar node/status/histórico do run.
+    assert.equal(after.node, before.node);
+    assert.equal(after.status, before.status);
+    assert.deepEqual(after.history, before.history);
+    assert.equal(after.qa_retry_blocked.reason, 'destino_ocupado');
+    assert.equal((after.events || []).filter(e => e.type === 'qa_retry_blocked').length, 1);
     assert.equal(fs.readFileSync(path.join(target, 'sentinel.txt'), 'utf8'), 'destino sintético intocado');
     assert.ok(fs.existsSync(path.join(dir, 'retry-signal.json')));
 });

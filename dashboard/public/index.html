@@ -740,6 +740,13 @@
     background: var(--risk); color: var(--surface); font-size: 11px; font-weight: 700;
     letter-spacing: .03em; line-height: 1.6; white-space: nowrap;
   }
+  /* PRI-184: retry-signal.json parado (qaRetryBlocked) — distinto de Recusa QA e de “em andamento”. */
+  .qa-blocked-badge {
+    display: inline-block; vertical-align: 1px; margin-left: 6px; padding: 0 7px; border-radius: 4px;
+    background: var(--attention); color: var(--surface); font-size: 11px; font-weight: 700;
+    letter-spacing: .03em; line-height: 1.6; white-space: nowrap;
+  }
+  .qa-blocked-msg { color: var(--attention); font-size: 12.5px; font-weight: 600; }
   .qa-count { color: var(--risk); font-size: 12px; font-weight: 700; white-space: nowrap; }
   .qa-actions { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; min-width: 0; }
   .qa-retry-btn {
@@ -1869,7 +1876,7 @@ function runRow(r) {
       ${selecting
         ? `<span class="check ${picked.has(r.taskId) ? 'on' : ''}">${ICON.box}</span>`
         : `<span class="lamp ${esc(r.status)}" title="${esc(STATUS[r.status] || r.status)}"></span>`}
-      <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}${highlight(t.text, q)}${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
+      <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}${highlight(t.text, q)}${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${qaRetryBlockedBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
       <span class="when" title="${esc(when(r.updatedAt))}">${esc(ago(r.updatedAt))}</span>
       ${svcChips(r) ? `<span class="svcs" aria-label="Serviços afetados">${svcChips(r, { max: 3 })}</span>` : ''}
       <span class="sub">${miniRail(r)}${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}<span>${esc(where)}</span>${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}</span>
@@ -1878,13 +1885,42 @@ function runRow(r) {
     </div>`;
 }
 
-// Recusa QA (server.js > summarize: qaRejected/qaRetryCount/qaRetryPending). O botão só
-// existe com o ticket em Recusa QA; busy/erro ficam aqui porque a lista re-renderiza a
-// cada state_update do WebSocket.
+// Recusa QA (server.js > summarize: qaRejected/qaRetryCount/qaRetryPending/qaRetryBlocked).
+// O botão só existe com o ticket em Recusa QA; busy/erro ficam aqui porque a lista
+// re-renderiza a cada state_update do WebSocket. PRI-184: qaRetryBlocked torna visível
+// o sinal parado (não confundir com implement saudável).
 const qaRetry = new Map(); // taskId -> { busy, error }
+const QA_RETRY_BLOCKED_LABEL = {
+  destino_ocupado: 'Destino do run ocupado',
+  spec_ausente: 'Spec ausente ou ilegível',
+  changelog_invalido: 'Changelog / Branch Liberação inválida',
+  state_fora_schema: 'State fora do schema',
+  ticket_ausente: 'Ticket Redmine ausente',
+  worktree_ausente: 'Worktree indisponível',
+};
+function qaRetryBlockedInfo(r) {
+  const b = r.qaRetryBlocked;
+  if (!b || typeof b.reason !== 'string') return null;
+  // Só enquanto o sinal ainda está no disco (retry parado de verdade).
+  if (!r.qaRetryPending) return null;
+  return b;
+}
 function qaBadge(r) {
   const tip = r.state?.qa_rejection?.note ? `Nota do QA: ${r.state.qa_rejection.note}` : 'Ticket recusado pelo QA no Redmine';
   return (r.qaRejected ? `<span class="qa-badge" title="${esc(tip)}">⊘ RECUSADA QA</span>` : '');
+}
+function qaRetryBlockedBadge(r) {
+  const b = qaRetryBlockedInfo(r);
+  if (!b) return '';
+  const label = QA_RETRY_BLOCKED_LABEL[b.reason] || b.reason;
+  const tip = `Retry QA bloqueado: ${label}${b.at ? ` · ${b.at}` : ''}`;
+  return `<span class="qa-blocked-badge" title="${esc(tip)}">⚠ RETRY BLOQUEADO</span>`;
+}
+function qaRetryBlockedMsg(r) {
+  const b = qaRetryBlockedInfo(r);
+  if (!b) return '';
+  const label = QA_RETRY_BLOCKED_LABEL[b.reason] || b.reason;
+  return `<span class="qa-blocked-msg" role="status">Retry bloqueado: ${esc(label)}${b.at ? ` · ${esc(when(b.at))}` : ''}</span>`;
 }
 // Total de recusas do run (retries + a pendente); sem qaCycles, cai no contador de retries.
 function qaRejectionCount(r) {
@@ -1894,13 +1930,18 @@ function qaRejectionCount(r) {
 function qaActions(r) {
   const n = qaRejectionCount(r);
   const count = n ? `<span class="qa-count" title="Detalhes no painel Recusas QA do run">${n} recusa${n > 1 ? 's' : ''} QA</span>` : '';
-  if (!r.qaRejected) return count ? `<span class="qa-actions">${count}</span>` : '';
+  const blocked = qaRetryBlockedMsg(r);
+  if (!r.qaRejected) {
+    if (!count && !blocked) return '';
+    return `<span class="qa-actions">${blocked || ''}${count}</span>`;
+  }
   const st = qaRetry.get(r.taskId) || {};
-  const busy = st.busy || r.qaRetryPending;
+  const blockedInfo = qaRetryBlockedInfo(r);
+  const busy = st.busy || (r.qaRetryPending && !blockedInfo);
   return `<span class="qa-actions">
-      <button type="button" class="qa-retry-btn" data-qa-retry="${esc(r.taskId)}" ${busy ? 'disabled aria-busy="true"' : ''}>
-        ${busy ? '<span class="qa-spinner" aria-hidden="true"></span> Iniciando retry…' : '🔄 Corrigir recusa QA'}</button>
-      ${count}${st.error ? `<span class="qa-err" role="alert">${esc(st.error)}</span>` : ''}
+      <button type="button" class="qa-retry-btn" data-qa-retry="${esc(r.taskId)}" ${busy || blockedInfo ? 'disabled aria-busy="true"' : ''}>
+        ${blockedInfo ? '⚠ Retry bloqueado' : busy ? '<span class="qa-spinner" aria-hidden="true"></span> Iniciando retry…' : '🔄 Corrigir recusa QA'}</button>
+      ${blocked}${count}${st.error ? `<span class="qa-err" role="alert">${esc(st.error)}</span>` : ''}
     </span>`;
 }
 async function retryQaRejection(taskId) {
@@ -2145,7 +2186,7 @@ function renderDetail() {
     <section class="hero" aria-labelledby="runTitle">
       <div class="hero-top">
         <div>
-          <h1 id="runTitle">${t.num ? `<span class="num">${esc(t.num)}</span> ` : ''}${esc(t.text)}${churnBadge(r)}${schemaBadge(r)}${specBadge(r)}</h1>
+          <h1 id="runTitle">${t.num ? `<span class="num">${esc(t.num)}</span> ` : ''}${esc(t.text)}${churnBadge(r)}${schemaBadge(r)}${specBadge(r)}${qaRetryBlockedBadge(r)}</h1>
           <div class="hero-meta">
             ${r.ticket?.tracker ? `<span>${esc(r.ticket.tracker)}</span>` : ''}
             ${r.ticket?.base_branch ? `<span>Base ${esc(r.ticket.base_branch)}</span>` : ''}
@@ -2176,6 +2217,7 @@ function renderDetail() {
       ${window.Authorization ? Authorization.html(r) : ''}
       <div id="intBanner">${interruptedHtml(s)}</div>
       <div id="prAlert">${prAlertHtml(prRows(r))}</div>
+      ${qaRetryBlockedInfo(r) ? `<div class="risk-box" role="status"><h4>⚠ Retry QA bloqueado</h4><p>${esc(QA_RETRY_BLOCKED_LABEL[qaRetryBlockedInfo(r).reason] || qaRetryBlockedInfo(r).reason)}</p><small>O sinal retry-signal.json permanece; o watcher não despacha em duplicata. Resolva a causa — o próximo tick tenta de novo.${qaRetryBlockedInfo(r).at ? ` Registrado em ${esc(when(qaRetryBlockedInfo(r).at))}.` : ''}</small></div>` : ''}
       <div class="facts">
         <span>Lido de <b>${esc(r.pretask ? `memory/runs/${r.ticket?.id}-spec-gate.json (ainda sem task)` : r.location === 'main' ? 'checkout principal' : r.location.replace('worktree:', 'worktree '))}</b>${r.copies > 1 ? ` (${r.copies} cópias; esta é a que o watcher usa)` : ''}</span>
         ${s.started_at ? `<span>Iniciado <b>${esc(when(s.started_at))}</b></span>` : ''}
@@ -2412,17 +2454,22 @@ function qaFoldHtml(r) {
   }).join('');
   const p = q.pending;
   const st = qaRetry.get(r.taskId) || {};
-  const busy = st.busy || r.qaRetryPending;
+  const blockedInfo = qaRetryBlockedInfo(r);
+  const busy = st.busy || (r.qaRetryPending && !blockedInfo);
+  const sitLabel = blockedInfo
+    ? `Retry bloqueado — ${QA_RETRY_BLOCKED_LABEL[blockedInfo.reason] || blockedInfo.reason}`
+    : (busy ? 'Retry solicitado — aguardando o watcher' : 'Aguardando correção');
   const pendingHtml = p ? `<div class="qa-cycle pending">
-    <div class="qa-cycle-head"><strong>Recusa #${q.cycles.length + 1}${p.rejected_at ? ` <small>de ${esc(qaDay(p.rejected_at))}</small>` : ''}</strong><span class="sit blocked">${busy ? 'Retry solicitado — aguardando o watcher' : 'Aguardando correção'}</span></div>
-    <div class="qa-cycle-meta">${p.rejected_at ? `<span>Recusada <b>${esc(when(p.rejected_at))}</b></span>` : ''}${p.journal_id ? `<span>Journal <b>#${esc(p.journal_id)}</b></span>` : ''}</div>
+    <div class="qa-cycle-head"><strong>Recusa #${q.cycles.length + 1}${p.rejected_at ? ` <small>de ${esc(qaDay(p.rejected_at))}</small>` : ''}</strong><span class="sit blocked">${esc(sitLabel)}</span></div>
+    <div class="qa-cycle-meta">${p.rejected_at ? `<span>Recusada <b>${esc(when(p.rejected_at))}</b></span>` : ''}${p.journal_id ? `<span>Journal <b>#${esc(p.journal_id)}</b></span>` : ''}${blockedInfo?.at ? `<span>Bloqueado <b>${esc(when(blockedInfo.at))}</b></span>` : ''}</div>
     ${qaNoteText(p.note) ? `<div class="qa-note">${esc(qaNoteText(p.note))}</div>` : '<p class="cost-note">O QA não deixou comentário nesta recusa — o retry segue com "(sem nota registrada)".</p>'}
+    ${blockedInfo ? `<p class="qa-blocked-msg" role="status">O watcher manteve o sinal: ${esc(QA_RETRY_BLOCKED_LABEL[blockedInfo.reason] || blockedInfo.reason)}. Não há despacho duplicado — resolva a causa e o próximo tick tenta de novo.</p>` : ''}
     ${r.qaRejected ? `<div class="qa-pending-actions">
-      <button type="button" class="qa-retry-btn" data-qa-retry-detail="${esc(r.taskId)}" ${busy ? 'disabled aria-busy="true"' : ''}>
-        ${busy ? '<span class="qa-spinner" aria-hidden="true"></span> Iniciando retry…' : '🔄 Corrigir recusa QA'}</button>
+      <button type="button" class="qa-retry-btn" data-qa-retry-detail="${esc(r.taskId)}" ${busy || blockedInfo ? 'disabled aria-busy="true"' : ''}>
+        ${blockedInfo ? '⚠ Retry bloqueado' : busy ? '<span class="qa-spinner" aria-hidden="true"></span> Iniciando retry…' : '🔄 Corrigir recusa QA'}</button>
       <small>Move o ticket para Em Desenvolvimento, anexa esta nota ao context.md e retoma <b>este mesmo run</b> no Implement — as recusas anteriores continuam no histórico acima.</small>
       ${st.error ? `<span class="qa-err" role="alert">${esc(st.error)}</span>` : ''}
-    </div>` : ''}
+    </div>` : (!r.qaRejected && blockedInfo ? `<div class="qa-pending-actions">${qaRetryBlockedMsg(r)}</div>` : '')}
   </div>` : '';
   const n = q.cycles.length + (p ? 1 : 0);
   const last = q.cycles[q.cycles.length - 1];
