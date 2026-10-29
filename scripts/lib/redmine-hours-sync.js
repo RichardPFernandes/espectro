@@ -190,8 +190,15 @@ function buildCandidate(entry, runsDir, { minHours = DEFAULT_MIN_HOURS, since = 
         durationMs = durationFromCostLedger(runsDir, ticketId, entry.taskId);
         source = 'cost.json';
     }
+    // Ticket atribuível sem duration: presume minHours (DEFAULT 0.5h) —
+    // ceil no convert sozinho não impede o skip no_duration em buildCandidate/live.
     if (durationMs == null) {
-        return { ok: false, taskId: entry.taskId, ticketId, action: 'skip', reason: 'no_duration' };
+        const presumedHours = Number(minHours);
+        if (!Number.isFinite(presumedHours) || presumedHours <= 0) {
+            return { ok: false, taskId: entry.taskId, ticketId, action: 'skip', reason: 'no_duration' };
+        }
+        durationMs = presumedHours * 3_600_000;
+        source = 'presumed_min';
     }
 
     const hours = hoursFromDurationMs(durationMs, { minHours });
@@ -202,7 +209,9 @@ function buildCandidate(entry, runsDir, { minHours = DEFAULT_MIN_HOURS, since = 
     const marker = hoursMarker(entry.taskId);
     const spentOn = spentOnFromState(state);
     const comments = [
-        `Horas do ciclo Prisma (wall-clock cost_tracking).`,
+        source === 'presumed_min'
+            ? `Horas do ciclo Prisma (presumidas: sem duration_ms; piso ${hours}h).`
+            : `Horas do ciclo Prisma (wall-clock cost_tracking).`,
         `Fonte: ${source}; duration_ms=${durationMs}.`,
         marker,
     ].join(' ');
