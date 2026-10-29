@@ -302,11 +302,12 @@ permanente em `memory/`.
    ```
    node "$PRISMA_ROOT/scripts/sync-redmine-hours-live.js" memory/runs/<task-id> --apply
    ```
-   Sem ticket / sem `duration_ms` / `already_synced` / Redmine não configurado =
-   skip (exit 0) — avise em uma linha e siga. Exit 1 (erro operacional, incl.
-   HTTP 401/403 no POST): avise e **não** bloqueie o archive. Não invente
-   horas: a lib só usa wall-clock do cost_tracking. Não rode o backfill
-   one-shot daqui.
+   Sem ticket / `already_synced` / Redmine não configurado = skip (exit 0) —
+   avise em uma linha e siga. Ticket atribuível **sem** `duration_ms`: a lib
+   presume **0.5h** (`DEFAULT_MIN_HOURS` / fonte `presumed_min`) — não é skip.
+   Exit 1 (erro operacional, incl. HTTP 401/403 no POST): avise e **não**
+   bloqueie o archive. Com duration, a lib usa wall-clock do cost_tracking
+   (ceil em 0.5h). Não rode o backfill one-shot daqui.
 9. Marque `status = "committed"` e mova `memory/runs/<task-id>/` pra
    `memory/runs/_archive/<task-id>/` numa operação só, com CAS + `execution_id`:
    `node "$PRISMA_ROOT/scripts/state-writer.js" archive memory/runs/<task-id> --to=memory/runs/_archive/<task-id> --status=committed --expected-node=commit`

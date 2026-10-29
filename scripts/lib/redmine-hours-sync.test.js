@@ -110,7 +110,8 @@ test('buildCandidate usa state.cost_tracking e cai pro cost.json', () => {
     assert.strictEqual(byId['43703-com-state'].source, 'state.cost_tracking');
     assert.strictEqual(byId['43704-so-ledger'].hours, 2);
     assert.strictEqual(byId['43704-so-ledger'].source, 'cost.json');
-    assert.ok(list.some(c => c.taskId === '43705-sem-horas' && c.reason === 'no_duration'));
+    assert.strictEqual(byId['43705-sem-horas'].hours, 0.5);
+    assert.strictEqual(byId['43705-sem-horas'].source, 'presumed_min');
     assert.ok(list.some(c => c.taskId === '2026-09-21-sdd-docs-por-classe' && c.reason === 'no_ticket'));
 });
 
@@ -273,7 +274,7 @@ test('syncCandidateHours pula ticket que já tem spent (sem --fill-even-if-spent
     assert.strictEqual(rm.posts.length, 0);
 });
 
-test('syncRunHoursLive (hot path): cria mesmo com spent prévio; skip sem duração', async t => {
+test('syncRunHoursLive (hot path): cria com spent prévio; sem duration presume 0.5h', async t => {
     const { runs, archive } = tmpRuns();
     const withHours = writeRun(archive, '43720-live', {
         status: 'committed',
@@ -306,14 +307,16 @@ test('syncRunHoursLive (hot path): cria mesmo com spent prévio; skip sem duraç
     assert.strictEqual(created.hours, 1);
     assert.strictEqual(rm.posts.length, 1);
 
-    const skipped = await syncRunHoursLive(noHours, {
+    const presumed = await syncRunHoursLive(noHours, {
         dryRun: false,
         redmineFetch: rm.fetch,
         baseUrl: rm.baseUrl,
         apiKey: 'k',
     });
-    assert.strictEqual(skipped.action, 'skip');
-    assert.strictEqual(skipped.reason, 'no_duration');
+    assert.strictEqual(presumed.action, 'created');
+    assert.strictEqual(presumed.hours, 0.5);
+    assert.strictEqual(presumed.source, 'presumed_min');
+    assert.strictEqual(rm.posts.length, 2);
 });
 
 // MAJOR-1 / MAJOR-2 (#64): horas soft-fail — attemptFile não injeta obrigação
