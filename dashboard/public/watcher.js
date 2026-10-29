@@ -101,6 +101,26 @@
             <button type="button" class="ghost-btn" id="wctlNotifyTest" disabled>Testar Notificação</button>
             <span class="wctl-notify-result" id="wctlNotifyResult" role="status" aria-live="polite"></span>
           </div>
+          <div class="wctl-hours" aria-labelledby="wctlHoursTitle">
+            <span class="wctl-settings-title" id="wctlHoursTitle">Horas Redmine (backfill)</span>
+            <p class="wctl-hours-help">Reprocessa runs arquivados e sincroniza time entries a partir do cost_tracking. Dry-run não grava.</p>
+            <div class="wctl-hours-row">
+              <label class="wctl-hours-field">Limit <input type="number" id="wctlHoursLimit" min="1" step="1" placeholder="todos" inputmode="numeric"></label>
+              <label class="wctl-hours-field">Ticket <input type="number" id="wctlHoursTicket" min="1" step="1" placeholder="opcional" inputmode="numeric"></label>
+              <label class="wctl-auto"><input type="checkbox" id="wctlHoursConfirmApply"> Confirmar apply (grava no Redmine)</label>
+            </div>
+            <div class="wctl-hours-row">
+              <button type="button" class="ghost-btn" id="wctlHoursDry">Dry-run</button>
+              <button type="button" class="ghost-btn" id="wctlHoursApply" disabled>Apply</button>
+              <button type="button" class="ghost-btn" id="wctlHoursCancel" disabled>Cancelar</button>
+            </div>
+            <div class="wctl-hours-progress" id="wctlHoursProgress" aria-live="polite">
+              <div class="wctl-hours-bar" aria-hidden="true"><i id="wctlHoursBar"></i></div>
+              <p class="wctl-hours-msg" id="wctlHoursMsg">Nenhum backfill ainda.</p>
+              <p class="wctl-hours-meta" id="wctlHoursMeta"></p>
+              <pre class="wctl-hours-log" id="wctlHoursLog" tabindex="0" aria-label="Progresso do backfill de horas"></pre>
+            </div>
+          </div>
         </div>
         <div class="wctl-loghead">
           <span>Log em tempo real</span>
@@ -312,7 +332,8 @@
   function setOpen(open) {
     panel.hidden = !open;
     chip.setAttribute('aria-expanded', open);
-    if (open) { renderLog(); poll(); loadNotify(); loadAccounts(); if (!usage && !usageBusy) loadUsage(false); }
+    if (open) { renderLog(); poll(); loadNotify(); loadAccounts(); if (!usage && !usageBusy) loadUsage(false); refreshHours(); }
+    else stopHoursPoll();
   }
   chip.addEventListener('click', () => setOpen(panel.hidden));
   document.addEventListener('click', e => { if (!panel.hidden && !$('wctl').contains(e.target)) setOpen(false); });
@@ -326,6 +347,95 @@
   $('wctlClear').addEventListener('click', () => { clearedSeq = lastSeq; renderLog(); });
   $('wctlNotifyTest').addEventListener('click', testNotify);
   $('wctlUsageRefresh').addEventListener('click', () => loadUsage(true));
+
+  // Backfill de horas Redmine (GET/POST /api/redmine-hours-backfill/*)
+  let hoursJob = null, hoursPollTimer = null;
+  function hoursBody(dryRun) {
+    const body = { dryRun: !!dryRun };
+    const lim = $('wctlHoursLimit').value.trim();
+    const ticket = $('wctlHoursTicket').value.trim();
+    if (lim) body.limit = Number(lim);
+    if (ticket) body.ticket = Number(ticket);
+    if (!dryRun) body.confirmApply = true;
+    return body;
+  }
+  function paintHours() {
+    const j = hoursJob;
+    const running = j?.state === 'running';
+    $('wctlHoursDry').disabled = running;
+    $('wctlHoursApply').disabled = running || !$('wctlHoursConfirmApply').checked;
+    $('wctlHoursCancel').disabled = !running;
+    const msg = $('wctlHoursMsg');
+    msg.textContent = j?.message || 'Nenhum backfill ainda.';
+    msg.dataset.tone = j?.state === 'error' ? 'err' : j?.state === 'done' ? 'ok' : j?.state === 'cancelled' ? 'warn' : '';
+    const pct = j?.total ? Math.min(100, Math.round((j.index || 0) / j.total * 100)) : (j?.state === 'done' ? 100 : 0);
+    $('wctlHoursBar').style.width = `${running || j?.state === 'done' ? pct : 0}%`;
+    const bits = [];
+    if (j?.id) bits.push(j.dryRun === false ? 'APPLY' : 'dry-run');
+    if (j?.state) bits.push(j.state);
+    if (j?.total) bits.push(`${j.index || 0}/${j.total}`);
+    if (j?.counts) {
+      const c = j.counts;
+      bits.push(`criar:${c.would_create || c.created || 0}`);
+      bits.push(`skip:${c.skip || 0}`);
+      if (c.error) bits.push(`err:${c.error}`);
+    }
+    if (j?.hoursWouldSync) bits.push(`${j.hoursWouldSync}h`);
+    $('wctlHoursMeta').textContent = bits.join(' · ');
+    const log = $('wctlHoursLog');
+    const evs = (j?.events || []).slice(-40);
+    log.textContent = evs.length
+      ? evs.map(e => {
+          const t = (e.ts || '').slice(11, 19);
+          return [t, e.action || e.phase || '', e.taskId || '', e.ticketId != null ? `#${e.ticketId}` : '', e.hours != null ? `${e.hours}h` : '', e.reason || e.message || ''].filter(Boolean).join(' ');
+        }).join('\n')
+      : '';
+    if (running) log.scrollTop = log.scrollHeight;
+  }
+  function stopHoursPoll() {
+    if (hoursPollTimer) { clearInterval(hoursPollTimer); hoursPollTimer = null; }
+  }
+  async function refreshHours() {
+    try { hoursJob = await api('/api/redmine-hours-backfill/status'); } catch { /* keep last */ }
+    paintHours();
+    if (hoursJob?.state === 'running' && !hoursPollTimer) {
+      hoursPollTimer = setInterval(refreshHours, 800);
+    }
+    if (hoursJob && hoursJob.state !== 'running') stopHoursPoll();
+  }
+  async function startHours(dryRun) {
+    paintHours();
+    try {
+      hoursJob = await api('/api/redmine-hours-backfill/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(hoursBody(dryRun)),
+      });
+      toast(dryRun ? 'Dry-run de horas iniciado.' : 'Apply de horas iniciado.');
+      stopHoursPoll();
+      hoursPollTimer = setInterval(refreshHours, 800);
+      paintHours();
+    } catch (e) {
+      toast(`Backfill horas: ${e.message}`);
+      refreshHours();
+    }
+  }
+  async function cancelHours() {
+    try {
+      hoursJob = await api('/api/redmine-hours-backfill/cancel', { method: 'POST' });
+      toast('Cancelamento pedido.');
+      paintHours();
+    } catch (e) { toast(`Cancelar: ${e.message}`); }
+  }
+  $('wctlHoursDry').addEventListener('click', () => startHours(true));
+  $('wctlHoursApply').addEventListener('click', () => {
+    if (!$('wctlHoursConfirmApply').checked) return toast('Marque “Confirmar apply” antes.');
+    if (!confirm('Isso cria time entries reais no Redmine M&O. Continuar?')) return;
+    startHours(false);
+  });
+  $('wctlHoursCancel').addEventListener('click', cancelHours);
+  $('wctlHoursConfirmApply').addEventListener('change', paintHours);
+
   panel.addEventListener('change', async e => {
     if (e.target.dataset.wlevel) {
       prefs.watcherLevels[e.target.dataset.wlevel] = e.target.checked; persist(); renderLog();
@@ -377,6 +487,20 @@
     .wctl-notify-result { font: 12.5px var(--mono); font-variant-numeric: tabular-nums; }
     .wctl-notify-result[data-tone="ok"] { color: var(--clear); }
     .wctl-notify-result[data-tone="err"] { color: var(--stop); }
+    .wctl-hours { display: grid; gap: 8px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+    .wctl-hours-help { margin: 0; font-size: 12.5px; color: var(--muted); }
+    .wctl-hours-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+    .wctl-hours-field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+    .wctl-hours-field input { width: 88px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); font: 12.5px var(--mono); }
+    .wctl-hours-progress { display: grid; gap: 6px; }
+    .wctl-hours-bar { height: 6px; border-radius: 999px; background: var(--sunken); overflow: hidden; border: 1px solid var(--line-soft); }
+    .wctl-hours-bar > i { display: block; height: 100%; width: 0; background: var(--signal); transition: width .25s ease; }
+    .wctl-hours-msg { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink-2); overflow-wrap: anywhere; }
+    .wctl-hours-msg[data-tone="ok"] { color: var(--clear); }
+    .wctl-hours-msg[data-tone="err"] { color: var(--stop); }
+    .wctl-hours-msg[data-tone="warn"] { color: var(--attention); }
+    .wctl-hours-meta { margin: 0; font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+    .wctl-hours-log { margin: 0; max-height: 140px; overflow: auto; padding: 8px 10px; border-radius: 8px; background: var(--sunken); border: 1px solid var(--line-soft); font: 11.5px/1.45 var(--mono); color: var(--ink-2); white-space: pre-wrap; }
     .wctl-notify select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; max-width: 100%; }
     .wctl-notify-state[data-tone="err"] { color: var(--stop); }
     .wctl-usage { display: grid; gap: 6px; }

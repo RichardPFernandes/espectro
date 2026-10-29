@@ -413,6 +413,8 @@ async function runBackfill({
     activityId = DEFAULT_ACTIVITY_ID,
     onProgress = null,
 } = {}) {
+    if (onProgress) onProgress({ phase: 'scan', action: 'scanning', message: 'Coletando runs…' });
+
     const candidates = collectCandidates(runsDir, {
         includeArchive,
         includeActive,
@@ -422,11 +424,25 @@ async function runBackfill({
         limit,
     });
 
+    const actionable = candidates.filter(c => c.ok);
+    if (onProgress) {
+        onProgress({
+            phase: 'scan_done',
+            action: 'scan_done',
+            message: `${candidates.length} runs lidos · ${actionable.length} com horas`,
+            total: candidates.length,
+            actionable: actionable.length,
+        });
+    }
+
     const results = [];
+    let i = 0;
     for (const c of candidates) {
+        i += 1;
         if (!c.ok) {
-            results.push({ ...c, dryRun });
-            if (onProgress) onProgress(results[results.length - 1]);
+            const skip = { ...c, dryRun, phase: 'sync', index: i, total: candidates.length };
+            results.push(skip);
+            if (onProgress) onProgress(skip);
             continue;
         }
         const r = await syncCandidateHours(c, {
@@ -437,8 +453,9 @@ async function runBackfill({
             fillEvenIfSpent,
             activityId,
         });
-        results.push(r);
-        if (onProgress) onProgress(r);
+        const row = { ...r, phase: 'sync', index: i, total: candidates.length };
+        results.push(row);
+        if (onProgress) onProgress(row);
     }
 
     const summary = {
