@@ -12,6 +12,8 @@ const {
     collectCandidates,
     findExistingMarker,
     syncCandidateHours,
+    syncRunHoursLive,
+    runsDirOf,
     runBackfill,
 } = require('./redmine-hours-sync');
 const { createRedmineFetch } = require('./redmine-fetch');
@@ -267,6 +269,49 @@ test('syncCandidateHours pula ticket que já tem spent (sem --fill-even-if-spent
     assert.strictEqual(r.action, 'skip');
     assert.strictEqual(r.reason, 'issue_already_has_spent');
     assert.strictEqual(rm.posts.length, 0);
+});
+
+test('syncRunHoursLive (hot path): cria mesmo com spent prévio; skip sem duração', async t => {
+    const { runs, archive } = tmpRuns();
+    const withHours = writeRun(archive, '43720-live', {
+        status: 'committed',
+        updated_at: '2026-10-20T12:00:00.000Z',
+        redmine_ticket: { id: 43720 },
+        cost_tracking: { totals: { duration_ms: 3_600_000 } },
+    });
+    const noHours = writeRun(archive, '43721-live-sem', {
+        status: 'committed',
+        redmine_ticket: { id: 43721 },
+    });
+    assert.strictEqual(runsDirOf(withHours), runs);
+
+    const rm = await fakeRedmine({
+        entriesByIssue: {
+            43720: [{ id: 1, hours: 2, comments: 'apontamento manual' }],
+            43721: [],
+        },
+    });
+    t.after(rm.close);
+
+    const created = await syncRunHoursLive(withHours, {
+        dryRun: false,
+        redmineFetch: rm.fetch,
+        baseUrl: rm.baseUrl,
+        apiKey: 'k',
+        // default fillEvenIfSpent=true no live
+    });
+    assert.strictEqual(created.action, 'created');
+    assert.strictEqual(created.hours, 1);
+    assert.strictEqual(rm.posts.length, 1);
+
+    const skipped = await syncRunHoursLive(noHours, {
+        dryRun: false,
+        redmineFetch: rm.fetch,
+        baseUrl: rm.baseUrl,
+        apiKey: 'k',
+    });
+    assert.strictEqual(skipped.action, 'skip');
+    assert.strictEqual(skipped.reason, 'no_duration');
 });
 
 test('runBackfill integra coleta + dry-run', async t => {

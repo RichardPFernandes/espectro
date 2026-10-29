@@ -292,6 +292,20 @@ permanente em `memory/`.
    Se `memory/runs/<task-id>/context.md` não tiver informação suficiente pra
    alguma seção (ex: "como chegar na tela"), diga isso explicitamente no
    campo em vez de inventar.
+8.1. **Propague horas (time entry) no ticket Redmine** a partir do
+   `cost_tracking` / `*-cost.json` do run — mesma lib e marcador
+   `[prisma-hours:<taskId>]` do backfill (`scripts/lib/redmine-hours-sync.js`).
+   Rode **antes** do archive (passo 9), com o run ainda em `memory/runs/<task-id>/`:
+   ```
+   node "$PRISMA_ROOT/scripts/sync-redmine-hours-live.js" memory/runs/<task-id> \
+     --apply --attempt "$DOM06_ATTEMPT_FILE"
+   ```
+   Sem `DOM06_ATTEMPT_FILE`, rode sem `--attempt` (POST direto via a lib). Sem
+   ticket / sem `duration_ms` / `already_synced` / Redmine não configurado =
+   skip (exit 0) — avise em uma linha e siga. Exit 3 (autoridade DOM06
+   recusada) ou exit 1 (erro operacional): avise e **não** bloqueie o archive.
+   Não invente horas: a lib só usa wall-clock do cost_tracking. Não rode o
+   backfill one-shot daqui.
 9. Marque `status = "committed"` e mova `memory/runs/<task-id>/` pra
    `memory/runs/_archive/<task-id>/` numa operação só, com CAS + `execution_id`:
    `node "$PRISMA_ROOT/scripts/state-writer.js" archive memory/runs/<task-id> --to=memory/runs/_archive/<task-id> --status=committed --expected-node=commit`
