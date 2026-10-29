@@ -1,0 +1,1298 @@
+[
+  {
+    "type": "cycle",
+    "from": "scripts/cas.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "./state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/state-writer.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/cas.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/invalidate.js",
+    "to": "scripts/lib/spec-authority.js",
+    "unresolvedTo": "./lib/spec-authority",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/lib/spec-authority.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/invalidate.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/invalidate.js",
+    "to": "scripts/lib/spec-version.js",
+    "unresolvedTo": "./lib/spec-version",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/lib/spec-version.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/invalidate.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/lib/ac-ids.js",
+    "to": "scripts/lib/spec-validator.js",
+    "unresolvedTo": "./spec-validator",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/lib/spec-validator.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/ac-ids.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/lib/acceptance-evidence.js",
+    "to": "scripts/invalidate.js",
+    "unresolvedTo": "../invalidate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/invalidate.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/spec-authority.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/acceptance-evidence.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/lib/acceptance-evidence.js",
+    "to": "scripts/lib/spec-authority.js",
+    "unresolvedTo": "./spec-authority",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/lib/spec-authority.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/acceptance-evidence.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/lib/acceptance-evidence.js",
+    "to": "scripts/lib/spec-version.js",
+    "unresolvedTo": "./spec-version",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/lib/spec-version.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/invalidate.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/spec-authority.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/acceptance-evidence.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/lib/spec-authority.js",
+    "to": "scripts/lib/spec-change.js",
+    "unresolvedTo": "./spec-change",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/lib/spec-change.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/spec-authority.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/lib/spec-authority.js",
+    "to": "scripts/lib/spec-version.js",
+    "unresolvedTo": "./spec-version",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/lib/spec-version.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/spec-authority.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/lib/spec-change.js",
+    "to": "scripts/invalidate.js",
+    "unresolvedTo": "../invalidate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/invalidate.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/spec-authority.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/spec-change.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "scripts/lib/spec-change.js",
+    "to": "scripts/lib/spec-version.js",
+    "unresolvedTo": "./spec-version",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "scripts/lib/spec-version.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/invalidate.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/spec-authority.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      },
+      {
+        "name": "scripts/lib/spec-change.js",
+        "dependencyTypes": [
+          "local",
+          "require"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/cost-projection.js",
+    "to": "scripts/lib/cost-tracking.js",
+    "unresolvedTo": "../scripts/lib/cost-tracking",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/cas.js",
+    "unresolvedTo": "../scripts/cas",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/invalidate.js",
+    "unresolvedTo": "../scripts/invalidate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/ac-ids.js",
+    "unresolvedTo": "../scripts/lib/ac-ids",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/ac-provenance.js",
+    "unresolvedTo": "../scripts/lib/ac-provenance",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/ac-registry.js",
+    "unresolvedTo": "../scripts/lib/ac-registry",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/approvers.js",
+    "unresolvedTo": "../scripts/lib/approvers",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/authorization.js",
+    "unresolvedTo": "../scripts/lib/authorization",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/bitbucket-pr.js",
+    "unresolvedTo": "../scripts/lib/bitbucket-pr",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/build-validator.js",
+    "unresolvedTo": "../scripts/lib/build-validator",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/churn-detector.js",
+    "unresolvedTo": "../scripts/lib/churn-detector",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/claude-account.js",
+    "unresolvedTo": "../scripts/lib/claude-account",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/claude-usage.js",
+    "unresolvedTo": "../scripts/lib/claude-usage",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/cycle-replayer.js",
+    "unresolvedTo": "../scripts/lib/cycle-replayer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/db-effect.js",
+    "unresolvedTo": "../scripts/lib/db-effect",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/knowledge-graph.js",
+    "unresolvedTo": "../scripts/lib/knowledge-graph",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/node-dispatcher.js",
+    "unresolvedTo": "../scripts/lib/node-dispatcher",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/node-lease.js",
+    "unresolvedTo": "../scripts/lib/node-lease",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/pr-conflicts.js",
+    "unresolvedTo": "../scripts/lib/pr-conflicts",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/pre-build-ai-fix.js",
+    "unresolvedTo": "../scripts/lib/pre-build-ai-fix",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/qa-cycles.js",
+    "unresolvedTo": "../scripts/lib/qa-cycles",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/qa-handback.js",
+    "unresolvedTo": "../scripts/lib/qa-handback",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/redmine-journal-fetcher.js",
+    "unresolvedTo": "../scripts/lib/redmine-journal-fetcher",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/redmine-ticket-list.js",
+    "unresolvedTo": "../scripts/lib/redmine-ticket-list",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/run-comparator.js",
+    "unresolvedTo": "../scripts/lib/run-comparator",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/runs-exporter.js",
+    "unresolvedTo": "../scripts/lib/runs-exporter",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/schema-watcher.js",
+    "unresolvedTo": "../scripts/lib/schema-watcher",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/transcript-writer.js",
+    "unresolvedTo": "../scripts/lib/transcript-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/watcher-lock.js",
+    "unresolvedTo": "../scripts/lib/watcher-lock",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/notify.js",
+    "unresolvedTo": "../scripts/notify",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../scripts/state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/acceptance-evidence.js",
+    "to": "scripts/invalidate.js",
+    "unresolvedTo": "../invalidate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/acceptance-evidence.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/attachment-downloader.js",
+    "to": "scripts/sanitize-log.js",
+    "unresolvedTo": "../sanitize-log",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/authorization.js",
+    "to": "scripts/cas.js",
+    "unresolvedTo": "../cas",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/authorization.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/config-validator.js",
+    "to": "scripts/validate-state.js",
+    "unresolvedTo": "../validate-state",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/cycle-notifications.js",
+    "to": "scripts/notify.js",
+    "unresolvedTo": "../notify",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/cycle-replayer.js",
+    "to": "scripts/cas.js",
+    "unresolvedTo": "../cas",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/cycle-replayer.js",
+    "to": "scripts/invalidate.js",
+    "unresolvedTo": "../invalidate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/cycle-replayer.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/cycle-replayer.js",
+    "to": "scripts/validate-state.js",
+    "unresolvedTo": "../validate-state",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/dry-run.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/graceful-shutdown.js",
+    "to": "scripts/cas.js",
+    "unresolvedTo": "../cas",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/graceful-shutdown.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/node-dispatcher.js",
+    "to": "scripts/readmine-watcher.js",
+    "unresolvedTo": "../readmine-watcher",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/node-events.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/node-lease.js",
+    "to": "scripts/cas.js",
+    "unresolvedTo": "../cas",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/node-lease.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/pr-status-poll.js",
+    "to": "scripts/retry.js",
+    "unresolvedTo": "../retry",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/pr-status-poll.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/qa-handback.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/redmine-fetch.js",
+    "to": "scripts/retry.js",
+    "unresolvedTo": "../retry",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/review-result.js",
+    "to": "scripts/invalidate.js",
+    "unresolvedTo": "../invalidate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/review-result.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-authority.js",
+    "to": "scripts/invalidate.js",
+    "unresolvedTo": "../invalidate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-authority.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-change.js",
+    "to": "scripts/cas.js",
+    "unresolvedTo": "../cas",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-change.js",
+    "to": "scripts/invalidate.js",
+    "unresolvedTo": "../invalidate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-change.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-repairer.js",
+    "to": "scripts/sanitize-log.js",
+    "unresolvedTo": "../sanitize-log",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-template.js",
+    "to": "scripts/cas.js",
+    "unresolvedTo": "../cas",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-template.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-version.js",
+    "to": "scripts/invalidate.js",
+    "unresolvedTo": "../invalidate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/spec-version.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "scripts/lib/transcript-writer.js",
+    "to": "scripts/state-writer.js",
+    "unresolvedTo": "../state-writer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-lib-upward"
+    }
+  }
+]
