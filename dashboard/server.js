@@ -6,6 +6,7 @@ const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
 const { createCoordination, applyCoordinationDefault } = require('./coordination');
 const { createVersion } = require('./version');
+const { createHoursBackfillJob } = require('./redmine-hours-backfill');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -3034,6 +3035,17 @@ function createDashboard(options = {}) {
         }));
         res.json({ configured: true, host: notifyHost(), sent: !!r?.sent, status: r?.status ?? null, error: r?.error || null });
     });
+
+    // Backfill de horas Redmine M&O (scripts/backfill-redmine-hours.js / lib/redmine-hours-sync.js).
+    // Dry-run por padrão; apply exige confirmApply. Progresso via GET status (polling).
+    const hoursBackfill = options.hoursBackfillJob || createHoursBackfillJob({
+        runsDir: memoryDir,
+        env: consumerEnv,
+        persistPath: path.join(memoryDir, '.redmine-hours-backfill-last.json'),
+        runBackfillFn: options.runHoursBackfill,
+        redmineFetch: options.hoursBackfillFetch,
+    });
+    hoursBackfill.mount(app);
     app.put('/api/watcher/prefs', (req, res) => {
         const body = req.body || {};
         const patch = {};
