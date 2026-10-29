@@ -86,7 +86,7 @@ function parseArgs(argv) {
 
 const USAGE = `uso: node scripts/sync-redmine-hours-live.js <runDir> [--dry-run|--apply]
   --activity-id=9      atividade Redmine (Desenvolvimento no M&O)
-  --min-hours=0.5      piso após ceil duration_ms → múltiplos de 0.5h
+  --min-hours=0.5      piso após ceil duration_ms → degraus de 0,5 h
   --no-fill-if-spent   pula se o ticket já tiver qualquer spent (padrão: cria)
   --attempt=<file>     ignorado (compat; horas não entram no Attempt do commit)
   --help`;
