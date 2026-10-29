@@ -4,19 +4,19 @@
 // [prisma-hours:<taskId>] — idempotente com o backfill one-shot.
 //
 // Chamado pelo /commit (passo após "Apontamentos Desenvolvedor"). Não altera
-// o backfill. Falha de sync NÃO deve derrubar o archive do commit: exit 0 em
-// skip; exit 1 só em erro operacional duro; exit 3 = DOM06 autoridade
-// recusada (o /commit avisa e segue).
+// o backfill. Soft-fail: NÃO passa pelo Attempt DOM06 do commit (sem
+// redmineEffect / obrigação redmine_hours) — POST direto via a lib. Falha de
+// sync NÃO derruba o archive nem revoga o Attempt: exit 0 em skip; exit 1
+// só em erro operacional duro (o /commit avisa e segue).
 //
 // Uso:
 //   node scripts/sync-redmine-hours-live.js memory/runs/<task-id> --apply
-//   node scripts/sync-redmine-hours-live.js memory/runs/<task-id> \
-//     --apply --attempt "$DOM06_ATTEMPT_FILE"
 //   node scripts/sync-redmine-hours-live.js memory/runs/<task-id>   # dry-run
 //
 // Env: REDMINE_URL, REDMINE_API_KEY (carrega .env do REPO_PATH ou cwd).
-// Flags: --apply | --dry-run · --attempt=<file> · --activity-id=9 · --min-hours=0.01
+// Flags: --apply | --dry-run · --activity-id=9 · --min-hours=0.01
 //        --no-fill-if-spent · --help
+// Compat: --attempt=<file> é aceito e IGNORADO (aviso em stderr).
 
 'use strict';
 
@@ -84,10 +84,10 @@ function parseArgs(argv) {
 }
 
 const USAGE = `uso: node scripts/sync-redmine-hours-live.js <runDir> [--dry-run|--apply]
-  --attempt=<file>     POST via DOM06 redmine-effect (obrigação redmine_hours)
   --activity-id=9      atividade Redmine (Desenvolvimento no M&O)
   --min-hours=0.01     piso após arredondar duration_ms → horas
   --no-fill-if-spent   pula se o ticket já tiver qualquer spent (padrão: cria)
+  --attempt=<file>     ignorado (compat; horas não entram no Attempt do commit)
   --help`;
 
 async function main() {
@@ -113,9 +113,11 @@ async function main() {
         process.exit(0);
     }
 
-    if (args.attempt && !fs.existsSync(args.attempt)) {
-        console.error(`[sync-redmine-hours-live] attempt não encontrado: ${args.attempt}`);
-        process.exit(2);
+    if (args.attempt) {
+        console.error(
+            '[sync-redmine-hours-live] --attempt ignorado: horas são soft-fail e '
+            + 'não usam redmineEffect / Attempt do commit',
+        );
     }
 
     const result = await syncRunHoursLive(args.runDir, {
@@ -126,15 +128,10 @@ async function main() {
         fillEvenIfSpent: args.fillEvenIfSpent,
         activityId: args.activityId,
         minHours: args.minHours,
-        attemptFile: args.attempt,
-        env: process.env,
     });
 
     process.stdout.write(`${JSON.stringify(result)}\n`);
 
-    if (result.action === 'error' && String(result.reason || '').includes('AUTHORITY')) {
-        process.exit(3);
-    }
     if (result.action === 'error') process.exit(1);
     process.exit(0);
 }
