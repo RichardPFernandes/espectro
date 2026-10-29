@@ -520,6 +520,13 @@ function createDashboard(options = {}) {
             qaRejected: !run.pretask && !!state && qaJournal.isQaRejectedStatus(run.demand?.status || state.ticket_status),
             qaRetryCount: Number.isInteger(state?.qa_retry_count) ? state.qa_retry_count : 0,
             qaRetryPending: !run.pretask && fs.existsSync(path.join(run.dir, 'retry-signal.json')),
+            // PRI-184: motivo do sinal parado (watcher gravou qa_retry_blocked); null se limpo/ausente.
+            qaRetryBlocked: (!run.pretask && state?.qa_retry_blocked
+                && typeof state.qa_retry_blocked === 'object'
+                && typeof state.qa_retry_blocked.reason === 'string'
+                && typeof state.qa_retry_blocked.at === 'string')
+                ? { reason: state.qa_retry_blocked.reason, at: state.qa_retry_blocked.at }
+                : null,
             // Cada recusa separada do ciclo principal (scripts/lib/qa-cycles.js); null = run
             // sem recusa. Só lê o context.md (blocos de recusa) de run que já teve alguma.
             qaCycles: run.pretask || !hasQaHistory(state) ? null : redactDeep(qaCycles.buildQaCycles(state, readContext(run.dir))),

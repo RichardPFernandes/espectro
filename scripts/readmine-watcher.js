@@ -377,6 +377,52 @@ async function fetchQaFeedback(id) {
 const QA_AUTO_NEW_CYCLE = /^(1|true|sim)$/i.test(process.env.WATCHER_RECUSA_QA_NOVO_CICLO || '');
 const QA_RETRY_SIGNAL = 'retry-signal.json';
 const qaRetryTasks = new Set(); // task-ids cujo sinal foi consumido neste processo (nota no prompt)
+// Motivos estáveis de qa_retry_blocked (PRI-184) — alinhados a .graph/schemas/state.schema.json.
+const QA_RETRY_BLOCKED_REASONS = new Set([
+    'destino_ocupado', 'spec_ausente', 'changelog_invalido',
+    'state_fora_schema', 'ticket_ausente', 'worktree_ausente',
+]);
+
+// Persiste bloqueio do sinal de retry: campo atual + evento append-only uma vez por motivo.
+// Não mexe em updated_at (mesmo critério de syncQaRejection). DRY_RUN/SIMULATE: no-op.
+function recordQaRetryBlocked(dir, reason) {
+    if (!QA_RETRY_BLOCKED_REASONS.has(reason)) {
+        console.warn(`[qa-retry] ${path.basename(dir)}: motivo de bloqueio não catalogado (${reason}) — não gravado.`);
+        return;
+    }
+    if (DRY_RUN || SIMULATE) return;
+    const check = readStateChecked(dir);
+    const state = check.state || check.raw;
+    if (!state || typeof state !== 'object') {
+        console.warn(`[qa-retry] ${path.basename(dir)}: não dá para gravar qa_retry_blocked (${reason}) — state ilegível.`);
+        return;
+    }
+    const events = Array.isArray(state.events) ? state.events : [];
+    const already = events.some(e => e && e.type === 'qa_retry_blocked' && e.detail === reason);
+    const current = state.qa_retry_blocked;
+    if (already && current && current.reason === reason) return;
+    const ts = new Date().toISOString();
+    const next = { ...state, qa_retry_blocked: { reason, at: ts } };
+    if (!already) {
+        next.events = [...events, {
+            type: 'qa_retry_blocked', node: state.node || 'implement', ts, at: ts, detail: reason,
+        }];
+    }
+    stateWriter.write(dir, next, { operation: 'qa_retry_blocked', actor: 'watcher', base: baseOf(state) });
+    if (check.valid) checkWrittenState(dir);
+}
+
+function clearQaRetryBlocked(state) {
+    if (!state || state.qa_retry_blocked === undefined) return state;
+    const { qa_retry_blocked: _blocked, ...rest } = state;
+    return rest;
+}
+
+function mapSpecBlockReason(message) {
+    const text = String(message || '');
+    if (/changelog|JSON inválido|versão .*changelog|Branch Liberação/i.test(text)) return 'changelog_invalido';
+    return 'spec_ausente';
+}
 
 // Diretórios onde um run do ticket pode estar: ativo/arquivado no worktree, e o
 // checkout principal (runs/ e _archive/). A rotação (memory/archive/) fica de fora de
@@ -483,6 +529,11 @@ async function consumeQaRetrySignal(dir) {
     const taskId = path.basename(dir);
     const check = readStateChecked(dir);
     const state = check.state || check.raw;
+    if (state && typeof state === 'object' && check.valid === false && check.reason === 'schema') {
+        console.warn(`[qa-retry] ${taskId}: state fora do schema — sinal mantido, implement não despachado.`);
+        recordQaRetryBlocked(dir, 'state_fora_schema');
+        return null;
+    }
     const ticketId = Number(ticketIdOfTask(taskId, state));
     if (!ticketId) {
         console.warn(`[qa-retry] ${taskId}: sinal de retry em run sem ticket numérico — ignorado.`);
@@ -497,14 +548,23 @@ async function consumeQaRetrySignal(dir) {
     const preview = specArtifacts.assess({ mainRoot: REPO_PATH, workRoot: existingWorktree, state, taskId });
     if (preview.blocked) {
         console.warn(`[qa-retry] ${taskId}: ${preview.reason} — sinal mantido, implement não despachado.`);
+        recordQaRetryBlocked(dir, mapSpecBlockReason(preview.reason));
         return null;
     }
     const target = `${taskRunsDir(ticketId)}/${taskId}`;
     if (path.resolve(dir) !== path.resolve(target)) {
         const ticket = await fetchTicketById(ticketId);
-        if (!ticket) { console.warn(`[qa-retry] ${taskId}: ticket #${ticketId} não encontrado no Redmine — sinal mantido.`); return null; }
+        if (!ticket) {
+            console.warn(`[qa-retry] ${taskId}: ticket #${ticketId} não encontrado no Redmine — sinal mantido.`);
+            recordQaRetryBlocked(dir, 'ticket_ausente');
+            return null;
+        }
         const base = BASE_BY_LIBERACAO[branchLiberacao(ticket)];
-        if (!base) { console.warn(`[qa-retry] ${taskId}: "Branch Liberação" do #${ticketId} ausente/não reconhecida — sinal mantido.`); return null; }
+        if (!base) {
+            console.warn(`[qa-retry] ${taskId}: "Branch Liberação" do #${ticketId} ausente/não reconhecida — sinal mantido.`);
+            recordQaRetryBlocked(dir, 'changelog_invalido');
+            return null;
+        }
         for (const repo of SIBLING_REPOS) {
             const repoPath = `${WORKSPACE}/${repo}`;
             if (!fs.existsSync(repoPath)) continue;
@@ -512,10 +572,12 @@ async function consumeQaRetrySignal(dir) {
         }
         if (!ensureTicketWorktree(REPO_PATH, ticketId, base)) {
             console.warn(`[qa-retry] ${taskId}: sem worktree do #${ticketId} — sinal mantido.`);
+            recordQaRetryBlocked(dir, 'worktree_ausente');
             return null;
         }
         if (fs.existsSync(target)) {
             console.error(`[qa-retry] ${taskId}: já existe ${target} — não sobrescrevo; resolva manualmente (sinal mantido em ${dir}).`);
+            recordQaRetryBlocked(dir, 'destino_ocupado');
             return null;
         }
         fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -533,6 +595,7 @@ async function consumeQaRetrySignal(dir) {
     });
     if (imported.blocked) {
         console.warn(`[qa-retry] ${taskId}: ${imported.reason} — sinal mantido, implement não despachado.`);
+        recordQaRetryBlocked(target, mapSpecBlockReason(imported.reason));
         return null;
     }
     // Não consome o sinal nem reabre o implement se a spec sumir entre a
@@ -549,12 +612,16 @@ async function consumeQaRetrySignal(dir) {
     }
     const fresh = readStateJson(target) || state;
     // Carimbo da limpeza pós-PR e churn são do ciclo anterior: o próximo /commit tem que
-    // limpar de novo e o portão de churn recomeça a contagem.
+    // limpar de novo e o portão de churn recomeça a contagem. Limpa também qa_retry_blocked
+    // (campo atual; events append-only permanecem).
     const staleChurn = ['churnReport', 'churnAccepted', 'churnEscalationNotifiedAt'].some(k => fresh[k] !== undefined);
-    if (fresh.node !== 'implement' || fresh.status !== 'in_progress' || fresh.worktrees_removed_on_pr_open_at || staleChurn) {
+    const needsReopen = fresh.node !== 'implement' || fresh.status !== 'in_progress'
+        || fresh.worktrees_removed_on_pr_open_at || staleChurn || fresh.qa_retry_blocked;
+    if (needsReopen) {
         const {
             worktrees_removed_on_pr_open_at: _cleaned,
             churnReport: _churnReport, churnAccepted: _churnAccepted, churnEscalationNotifiedAt: _churnNotified,
+            qa_retry_blocked: _blocked,
             ...reopened
         } = fresh;
         stateWriter.write(target, { ...reopened, node: 'implement', status: 'in_progress' }, { operation: 'qa_retry_reopen', actor: 'watcher', base: baseOf(fresh) });
@@ -568,13 +635,13 @@ async function consumeQaRetrySignal(dir) {
                 type: 'spec_imported', node: 'implement', ts: at, at,
                 detail: `retry de Recusa QA: artefatos copiados do checkout principal sem sobrescrever: ${imported.copied.join(', ')}`,
             }];
-            stateWriter.write(target, current, { operation: 'qa_retry_spec_import', actor: 'watcher', base: baseOf(current) });
+            stateWriter.write(target, clearQaRetryBlocked(current), { operation: 'qa_retry_spec_import', actor: 'watcher', base: baseOf(current) });
             checkWrittenState(target);
         }
     }
     fs.rmSync(`${target}/${QA_RETRY_SIGNAL}`, { force: true });
     qaRetryTasks.add(taskId);
-    console.log(`[qa-retry] ${taskId}: retry de Recusa QA #${fresh.qa_retry_count || 1} — run em ${path.relative(REPO_PATH, target)}, implement a despachar.`);
+    console.log(`[qa-retry] ${taskId}: retry de Recusa QA #${(readStateJson(target) || fresh).qa_retry_count || 1} — run em ${path.relative(REPO_PATH, target)}, implement a despachar.`);
     return ticketId;
 }
 
@@ -591,6 +658,7 @@ function rebaselineSpecForQaRetry(dir, taskId) {
         if (!probe) {
             if (!s.spec_hash) return true; // run legado sem spec/sem baseline
             console.warn(`[qa-retry] ${taskId}: spec ${rel} ausente ou ilegível no rebaseline — sinal mantido, implement não despachado.`);
+            recordQaRetryBlocked(dir, 'spec_ausente');
             return false;
         }
         if (probe.spec_hash === s.spec_hash) return true;
@@ -608,11 +676,12 @@ function rebaselineSpecForQaRetry(dir, taskId) {
             type: 'spec_baseline', node: 'implement', ts: at, at,
             detail: `retry de Recusa QA: spec_hash ${fields.spec_hash.slice(0, 12)} de ${fields.spec_path} (spec pós-/commit) vira o baseline`,
         }];
-        stateWriter.write(dir, { ...next, updated_at: at }, { operation: 'qa_retry_rebaseline', actor: 'watcher', base: baseOf(s) });
+        stateWriter.write(dir, { ...clearQaRetryBlocked(next), updated_at: at }, { operation: 'qa_retry_rebaseline', actor: 'watcher', base: baseOf(s) });
         checkWrittenState(dir);
         return true;
     } catch (e) {
         console.error(`[qa-retry] ${taskId}: falha regravando spec_hash — sinal mantido, implement não despachado:`, e.message);
+        recordQaRetryBlocked(dir, mapSpecBlockReason(e.message));
         return false;
     }
 }
