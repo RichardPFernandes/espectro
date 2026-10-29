@@ -15,7 +15,10 @@ const path = require('path');
 
 const MARKER_PREFIX = '[prisma-hours:';
 const DEFAULT_ACTIVITY_ID = 9; // "Desenvolvimento" no Redmine M&O
-const DEFAULT_MIN_HOURS = 0.01;
+// Piso / passo de apontamento: múltiplos de 0.5h (30 min). Qualquer duration > 0
+// sobe (ceil) pro próximo meio-hora; minHours reforça o piso se o caller pedir mais.
+const DEFAULT_MIN_HOURS = 0.5;
+const DEFAULT_STEP_HOURS = 0.5;
 
 function hoursMarker(taskId) {
     return `${MARKER_PREFIX}${taskId}]`;
@@ -27,13 +30,22 @@ function markerOfComments(comments) {
     return m ? m[1] : null;
 }
 
-function hoursFromDurationMs(durationMs, { minHours = DEFAULT_MIN_HOURS, decimals = 2 } = {}) {
+// duration_ms → horas em múltiplos de stepHours (padrão 0.5), com ceil.
+// Ex.: 1ms → 0.5; 30min → 0.5; 30min+ε → 1; 1h → 1; 1h+ε → 1.5.
+function hoursFromDurationMs(durationMs, {
+    minHours = DEFAULT_MIN_HOURS,
+    stepHours = DEFAULT_STEP_HOURS,
+} = {}) {
     if (durationMs == null || !Number.isFinite(durationMs) || durationMs <= 0) return null;
+    const step = Number(stepHours);
+    if (!Number.isFinite(step) || step <= 0) {
+        throw new TypeError('hoursFromDurationMs: stepHours deve ser > 0');
+    }
     const raw = durationMs / 3_600_000;
-    const factor = 10 ** decimals;
-    const rounded = Math.round(raw * factor) / factor;
-    if (rounded <= 0) return minHours;
-    return Math.max(rounded, minHours);
+    const stepped = Math.ceil(raw / step) * step;
+    // Evita -0 / float residual; reforça piso explícito do caller.
+    const hours = Math.max(stepped, Number(minHours) || 0);
+    return hours > 0 ? hours : minHours;
 }
 
 function ticketIdOf(taskId) {
@@ -419,8 +431,10 @@ function entryFromRunDir(runDir) {
 // Hot path (/commit): sincroniza horas de UM run. fillEvenIfSpent=true por
 // padrão — o marcador [prisma-hours:task] evita duplicata; spent prévio de
 // humanos/outros ciclos não deve silenciar o apontamento deste ciclo.
-// Com attemptFile, o POST passa por DOM06 redmine-effect (obrigação
-// redmine_hours); sem attempt, usa createTimeEntry direto (mesma API).
+// Soft-fail no Attempt do commit: NÃO usa redmineEffect / obrigação
+// redmine_hours (MAJOR review #64). POST sempre via createTimeEntry direto
+// (mesmo caminho do backfill). attemptFile/env são aceitos por compat da CLI
+// e ignorados — 401/403 de horas não revoga o Attempt nem injeta obrigação.
 async function syncRunHoursLive(runDir, {
     dryRun = false,
     redmineFetch,
@@ -429,8 +443,8 @@ async function syncRunHoursLive(runDir, {
     fillEvenIfSpent = true,
     activityId = DEFAULT_ACTIVITY_ID,
     minHours = DEFAULT_MIN_HOURS,
-    attemptFile = null,
-    env = process.env,
+    attemptFile: _attemptFile = null,
+    env: _env = process.env,
 } = {}) {
     if (!runDir) {
         return { ok: false, action: 'skip', reason: 'no_run_dir', dryRun };
@@ -445,144 +459,14 @@ async function syncRunHoursLive(runDir, {
         return { ...candidate, dryRun };
     }
 
-    // Sem Attempt: mesmo caminho do backfill (GET + POST via redmineFetch).
-    if (!attemptFile) {
-        return syncCandidateHours(candidate, {
-            dryRun,
-            redmineFetch,
-            baseUrl,
-            apiKey,
-            fillEvenIfSpent,
-            activityId,
-        });
-    }
-
-    // Com Attempt: idempotência + listagem iguais; create via redmine-effect.
-    const payload = {
-        ...candidate.payload,
-        time_entry: {
-            ...candidate.payload.time_entry,
-            activity_id: Number(activityId),
-        },
-    };
-
-    let existing = [];
-    try {
-        existing = await listTimeEntries(redmineFetch, { baseUrl, apiKey, issueId: candidate.ticketId });
-    } catch (err) {
-        return {
-            ok: false,
-            taskId: candidate.taskId,
-            ticketId: candidate.ticketId,
-            action: 'error',
-            reason: `list_failed:${err.message}`,
-            statusCode: err.statusCode || null,
-            dryRun,
-        };
-    }
-
-    const prior = findExistingMarker(existing, candidate.taskId);
-    if (prior) {
-        return {
-            ok: true,
-            taskId: candidate.taskId,
-            ticketId: candidate.ticketId,
-            hours: candidate.hours,
-            action: 'skip',
-            reason: 'already_synced',
-            existingEntryId: prior.id,
-            dryRun,
-        };
-    }
-
-    const spentSum = existing.reduce((acc, e) => acc + (Number(e.hours) || 0), 0);
-    if (!fillEvenIfSpent && spentSum > 0) {
-        return {
-            ok: true,
-            taskId: candidate.taskId,
-            ticketId: candidate.ticketId,
-            hours: candidate.hours,
-            action: 'skip',
-            reason: 'issue_already_has_spent',
-            spentSum,
-            dryRun,
-        };
-    }
-
-    if (dryRun) {
-        return {
-            ok: true,
-            taskId: candidate.taskId,
-            ticketId: candidate.ticketId,
-            hours: candidate.hours,
-            spentOn: candidate.spentOn,
-            source: candidate.source,
-            action: 'would_create',
-            payload,
-            dryRun: true,
-        };
-    }
-
-    const { redmineEffect } = require('./dom06-attempt');
-    const url = new URL('/time_entries.json', baseUrl).href;
-    // Não passa redmineFetch como fetchImpl: redmineEffect monta o próprio
-    // createRedmineFetch a partir do env (e, em testes, um fetch cru).
-    const effect = await redmineEffect(attemptFile, {
-        url,
-        method: 'POST',
-        body: JSON.stringify(payload),
-        obligationId: 'redmine_hours',
-        // Marcador estável por task — DUPLICATE se o /commit repetir o passo.
-        idempotencyKey: hoursMarker(candidate.taskId),
-        env,
+    return syncCandidateHours(candidate, {
+        dryRun,
+        redmineFetch,
+        baseUrl,
+        apiKey,
+        fillEvenIfSpent,
+        activityId,
     });
-
-    if (effect.error === 'REDMINE_API_KEY_MISSING') {
-        return {
-            ok: false,
-            taskId: candidate.taskId,
-            ticketId: candidate.ticketId,
-            hours: candidate.hours,
-            action: 'error',
-            reason: 'REDMINE_API_KEY_MISSING',
-            dryRun: false,
-        };
-    }
-    if (effect.duplicate) {
-        return {
-            ok: true,
-            taskId: candidate.taskId,
-            ticketId: candidate.ticketId,
-            hours: candidate.hours,
-            action: 'skip',
-            reason: 'already_synced',
-            dryRun: false,
-            via: 'dom06_duplicate',
-        };
-    }
-    if (!effect.ok) {
-        return {
-            ok: false,
-            taskId: candidate.taskId,
-            ticketId: candidate.ticketId,
-            hours: candidate.hours,
-            action: 'error',
-            reason: `dom06:${effect.error}`,
-            statusCode: effect.status || null,
-            dryRun: false,
-        };
-    }
-    return {
-        ok: true,
-        taskId: candidate.taskId,
-        ticketId: candidate.ticketId,
-        hours: candidate.hours,
-        spentOn: candidate.spentOn,
-        source: candidate.source,
-        action: 'created',
-        dryRun: false,
-        via: 'dom06_redmine_effect',
-    };
 }
 
 async function runBackfill({
@@ -667,6 +551,7 @@ module.exports = {
     MARKER_PREFIX,
     DEFAULT_ACTIVITY_ID,
     DEFAULT_MIN_HOURS,
+    DEFAULT_STEP_HOURS,
     hoursMarker,
     markerOfComments,
     hoursFromDurationMs,
