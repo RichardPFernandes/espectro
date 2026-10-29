@@ -40,10 +40,12 @@ function writeRun(archive, taskId, state, { cost = null } = {}) {
     return dir;
 }
 
-test('hoursFromDurationMs arredonda e aplica piso', () => {
-    assert.strictEqual(hoursFromDurationMs(3_600_000), 1);
-    assert.strictEqual(hoursFromDurationMs(1_800_000), 0.5);
-    assert.strictEqual(hoursFromDurationMs(1_000), 0.01); // < 0.01h → piso
+test('hoursFromDurationMs faz ceil em múltiplos de 0.5h', () => {
+    assert.strictEqual(hoursFromDurationMs(3_600_000), 1); // 1h exato
+    assert.strictEqual(hoursFromDurationMs(1_800_000), 0.5); // 30min exato
+    assert.strictEqual(hoursFromDurationMs(1_000), 0.5); // qualquer >0 → 0.5
+    assert.strictEqual(hoursFromDurationMs(1_800_001), 1); // 30min+ε → 1h
+    assert.strictEqual(hoursFromDurationMs(3_600_001), 1.5); // 1h+ε → 1.5h
     assert.strictEqual(hoursFromDurationMs(0), null);
     assert.strictEqual(hoursFromDurationMs(null), null);
 });

@@ -15,7 +15,10 @@ const path = require('path');
 
 const MARKER_PREFIX = '[prisma-hours:';
 const DEFAULT_ACTIVITY_ID = 9; // "Desenvolvimento" no Redmine M&O
-const DEFAULT_MIN_HOURS = 0.01;
+// Piso / passo de apontamento: múltiplos de 0.5h (30 min). Qualquer duration > 0
+// sobe (ceil) pro próximo meio-hora; minHours reforça o piso se o caller pedir mais.
+const DEFAULT_MIN_HOURS = 0.5;
+const DEFAULT_STEP_HOURS = 0.5;
 
 function hoursMarker(taskId) {
     return `${MARKER_PREFIX}${taskId}]`;
@@ -27,13 +30,22 @@ function markerOfComments(comments) {
     return m ? m[1] : null;
 }
 
-function hoursFromDurationMs(durationMs, { minHours = DEFAULT_MIN_HOURS, decimals = 2 } = {}) {
+// duration_ms → horas em múltiplos de stepHours (padrão 0.5), com ceil.
+// Ex.: 1ms → 0.5; 30min → 0.5; 30min+ε → 1; 1h → 1; 1h+ε → 1.5.
+function hoursFromDurationMs(durationMs, {
+    minHours = DEFAULT_MIN_HOURS,
+    stepHours = DEFAULT_STEP_HOURS,
+} = {}) {
     if (durationMs == null || !Number.isFinite(durationMs) || durationMs <= 0) return null;
+    const step = Number(stepHours);
+    if (!Number.isFinite(step) || step <= 0) {
+        throw new TypeError('hoursFromDurationMs: stepHours deve ser > 0');
+    }
     const raw = durationMs / 3_600_000;
-    const factor = 10 ** decimals;
-    const rounded = Math.round(raw * factor) / factor;
-    if (rounded <= 0) return minHours;
-    return Math.max(rounded, minHours);
+    const stepped = Math.ceil(raw / step) * step;
+    // Evita -0 / float residual; reforça piso explícito do caller.
+    const hours = Math.max(stepped, Number(minHours) || 0);
+    return hours > 0 ? hours : minHours;
 }
 
 function ticketIdOf(taskId) {
@@ -539,6 +551,7 @@ module.exports = {
     MARKER_PREFIX,
     DEFAULT_ACTIVITY_ID,
     DEFAULT_MIN_HOURS,
+    DEFAULT_STEP_HOURS,
     hoursMarker,
     markerOfComments,
     hoursFromDurationMs,
