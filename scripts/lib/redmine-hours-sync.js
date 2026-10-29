@@ -106,6 +106,33 @@ function buildTimeEntryPayload({
     return { time_entry: entry };
 }
 
+// YYYY-MM da rotação oficial (scripts/cleanup-runs.js → memory/archive/<mês>/).
+const ROTATED_MONTH_RE = /^\d{4}-\d{2}$/;
+
+function listSubdirs(dir) {
+    let names = [];
+    try {
+        names = fs.readdirSync(dir);
+    } catch {
+        return [];
+    }
+    const out = [];
+    for (const name of names) {
+        if (name.startsWith('.')) continue;
+        const abs = path.join(dir, name);
+        try {
+            if (!fs.statSync(abs).isDirectory()) continue;
+        } catch {
+            continue;
+        }
+        out.push({ name, abs });
+    }
+    return out;
+}
+
+// Varre memory/runs/ (ativos), memory/runs/_archive/ e a rotação
+// memory/archive/<YYYY-MM>/ (irmã de runs/, via cleanup-runs.js). Sem a
+// terceira árvore o one-shot omite ciclos já rotacionados.
 function listRunDirs(runsDir, { includeArchive = true, includeActive = true } = {}) {
     const out = [];
     const pushDir = (abs, archived) => {
@@ -120,29 +147,22 @@ function listRunDirs(runsDir, { includeArchive = true, includeActive = true } = 
     };
 
     if (includeActive) {
-        for (const name of fs.readdirSync(runsDir)) {
-            if (name === '_archive' || name.startsWith('.')) continue;
-            const abs = path.join(runsDir, name);
-            try {
-                if (!fs.statSync(abs).isDirectory()) continue;
-            } catch {
-                continue;
-            }
+        for (const { name, abs } of listSubdirs(runsDir)) {
+            if (name === '_archive') continue;
             pushDir(abs, false);
         }
     }
 
     if (includeArchive) {
-        const archive = path.join(runsDir, '_archive');
-        if (fs.existsSync(archive)) {
-            for (const name of fs.readdirSync(archive)) {
-                if (name.startsWith('.')) continue;
-                const abs = path.join(archive, name);
-                try {
-                    if (!fs.statSync(abs).isDirectory()) continue;
-                } catch {
-                    continue;
-                }
+        for (const { abs } of listSubdirs(path.join(runsDir, '_archive'))) {
+            pushDir(abs, true);
+        }
+        // memory/archive/<YYYY-MM>/<task>/ — mesma política de cleanup-runs /
+        // run-comparator / cleanup-transcripts.
+        const rotatedRoot = path.join(path.dirname(runsDir), 'archive');
+        for (const { name: month, abs: monthDir } of listSubdirs(rotatedRoot)) {
+            if (!ROTATED_MONTH_RE.test(month)) continue;
+            for (const { abs } of listSubdirs(monthDir)) {
                 pushDir(abs, true);
             }
         }
@@ -249,22 +269,40 @@ function findExistingMarker(entries, taskId) {
     return null;
 }
 
-async function listTimeEntries(redmineFetch, { baseUrl, apiKey, issueId }) {
-    const url = new URL('/time_entries.json', baseUrl);
-    url.searchParams.set('issue_id', String(issueId));
-    url.searchParams.set('limit', '100');
-    const res = await redmineFetch(url, {
-        headers: { 'X-Redmine-API-Key': apiKey, Accept: 'application/json' },
-    });
-    if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        const err = new Error(`GET time_entries #${issueId}: HTTP ${res.status}`);
-        err.statusCode = res.status;
-        err.body = body;
-        throw err;
+// Pagina GET /time_entries.json (limit=100) até esgotar total_count /
+// página curta. Sem offset, marcador fora da 1ª página → risco de POST duplicado.
+async function listTimeEntries(redmineFetch, { baseUrl, apiKey, issueId, pageLimit = 100 } = {}) {
+    const all = [];
+    let offset = 0;
+    const limit = Math.max(1, Number(pageLimit) || 100);
+
+    for (;;) {
+        const url = new URL('/time_entries.json', baseUrl);
+        url.searchParams.set('issue_id', String(issueId));
+        url.searchParams.set('limit', String(limit));
+        url.searchParams.set('offset', String(offset));
+        const res = await redmineFetch(url, {
+            headers: { 'X-Redmine-API-Key': apiKey, Accept: 'application/json' },
+        });
+        if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            const err = new Error(`GET time_entries #${issueId}: HTTP ${res.status}`);
+            err.statusCode = res.status;
+            err.body = body;
+            throw err;
+        }
+        const json = await res.json();
+        const page = json.time_entries || [];
+        all.push(...page);
+
+        const total = Number(json.total_count);
+        if (Number.isFinite(total) && all.length >= total) break;
+        if (page.length < limit) break;
+        offset += page.length;
+        // Guarda contra loop se a API ignorar offset e repetir a mesma página.
+        if (page.length === 0) break;
     }
-    const json = await res.json();
-    return json.time_entries || [];
+    return all;
 }
 
 async function createTimeEntry(redmineFetch, { baseUrl, apiKey, payload }) {
@@ -299,6 +337,10 @@ async function syncCandidateHours(candidate, {
     apiKey,
     fillEvenIfSpent = false,
     activityId = DEFAULT_ACTIVITY_ID,
+    // Map issueId → horas já contabilizadas neste batch (would_create/created).
+    // Dry-run não POSTa; sem isto o 2º run do mesmo ticket também seria
+    // would_create, enquanto o apply grava 1 e skipa o resto via spent.
+    batchSpentByIssue = null,
 } = {}) {
     if (!candidate?.ok) {
         return { ...candidate, dryRun };
@@ -341,7 +383,11 @@ async function syncCandidateHours(candidate, {
         };
     }
 
-    const spentSum = existing.reduce((acc, e) => acc + (Number(e.hours) || 0), 0);
+    const remoteSpent = existing.reduce((acc, e) => acc + (Number(e.hours) || 0), 0);
+    const batchSpent = batchSpentByIssue
+        ? Number(batchSpentByIssue.get(Number(candidate.ticketId)) || 0)
+        : 0;
+    const spentSum = remoteSpent + batchSpent;
     if (!fillEvenIfSpent && spentSum > 0) {
         return {
             ok: true,
@@ -356,6 +402,10 @@ async function syncCandidateHours(candidate, {
     }
 
     if (dryRun) {
+        if (batchSpentByIssue) {
+            const tid = Number(candidate.ticketId);
+            batchSpentByIssue.set(tid, batchSpent + (Number(candidate.hours) || 0));
+        }
         return {
             ok: true,
             taskId: candidate.taskId,
@@ -371,6 +421,10 @@ async function syncCandidateHours(candidate, {
 
     try {
         const created = await createTimeEntry(redmineFetch, { baseUrl, apiKey, payload });
+        if (batchSpentByIssue) {
+            const tid = Number(candidate.ticketId);
+            batchSpentByIssue.set(tid, batchSpent + (Number(candidate.hours) || 0));
+        }
         return {
             ok: true,
             taskId: candidate.taskId,
@@ -623,6 +677,10 @@ async function runBackfill({
         });
     }
 
+    // Acumula spent que este batch criaria/criou — dry-run e apply com o
+    // mesmo critério "uma entry por ticket" (sem --fill-even-if-spent).
+    const batchSpentByIssue = new Map();
+
     const results = [];
     let i = 0;
     for (const c of candidates) {
@@ -640,6 +698,7 @@ async function runBackfill({
             apiKey,
             fillEvenIfSpent,
             activityId,
+            batchSpentByIssue,
         });
         const row = { ...r, phase: 'sync', index: i, total: candidates.length };
         results.push(row);

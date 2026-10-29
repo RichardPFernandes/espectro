@@ -11,6 +11,7 @@ const {
     buildTimeEntryPayload,
     collectCandidates,
     findExistingMarker,
+    listTimeEntries,
     syncCandidateHours,
     syncRunHoursLive,
     runsDirOf,
@@ -22,8 +23,10 @@ function tmpRuns() {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'horas-bf-'));
     const runs = path.join(root, 'memory', 'runs');
     const archive = path.join(runs, '_archive');
+    const rotated = path.join(root, 'memory', 'archive');
     fs.mkdirSync(archive, { recursive: true });
-    return { root, runs, archive };
+    fs.mkdirSync(rotated, { recursive: true });
+    return { root, runs, archive, rotated };
 }
 
 function writeRun(archive, taskId, state, { cost = null } = {}) {
@@ -121,24 +124,52 @@ test('findExistingMarker detecta time entry já sincronizada', () => {
     assert.strictEqual(findExistingMarker(entries, 'outro'), null);
 });
 
-async function fakeRedmine({ entriesByIssue = {}, postStatus = 201 } = {}) {
+async function fakeRedmine({ entriesByIssue = {}, postStatus = 201, mutableEntries = false } = {}) {
     const posts = [];
+    const gets = [];
+    // Cópia mutável por issue (apply multi-run precisa ver spent após POST).
+    const store = {};
+    for (const [k, v] of Object.entries(entriesByIssue)) {
+        store[k] = (v || []).map(e => ({ ...e }));
+    }
+    let nextId = 100;
+
     const server = http.createServer((req, res) => {
         const url = new URL(req.url, 'http://127.0.0.1');
         if (req.method === 'GET' && url.pathname === '/time_entries.json') {
             const issueId = url.searchParams.get('issue_id');
-            const list = entriesByIssue[issueId] || [];
+            const limit = Math.max(1, Number(url.searchParams.get('limit') || 100));
+            const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
+            const list = store[issueId] || [];
+            gets.push({ issueId, limit, offset });
+            const page = list.slice(offset, offset + limit);
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ time_entries: list }));
+            res.end(JSON.stringify({
+                time_entries: page,
+                total_count: list.length,
+                offset,
+                limit,
+            }));
             return;
         }
         if (req.method === 'POST' && url.pathname === '/time_entries.json') {
             let body = '';
             req.on('data', c => { body += c; });
             req.on('end', () => {
-                posts.push(JSON.parse(body));
+                const parsed = JSON.parse(body);
+                posts.push(parsed);
+                const entry = { id: nextId++, ...(parsed.time_entry || {}) };
+                if (mutableEntries) {
+                    const issueId = String(entry.issue_id);
+                    if (!store[issueId]) store[issueId] = [];
+                    store[issueId].push({
+                        id: entry.id,
+                        hours: entry.hours,
+                        comments: entry.comments,
+                    });
+                }
                 res.writeHead(postStatus, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ time_entry: { id: 99, ...(JSON.parse(body).time_entry || {}) } }));
+                res.end(JSON.stringify({ time_entry: entry }));
             });
             return;
         }
@@ -154,6 +185,8 @@ async function fakeRedmine({ entriesByIssue = {}, postStatus = 201 } = {}) {
     return {
         baseUrl,
         posts,
+        gets,
+        store,
         fetch: fetchImpl,
         close: () => new Promise(r => server.close(r)),
     };
@@ -336,5 +369,148 @@ test('runBackfill integra coleta + dry-run', async t => {
     assert.strictEqual(summary.dryRun, true);
     assert.strictEqual(summary.actionable, 1);
     assert.strictEqual(results.find(r => r.taskId === '43710-a').action, 'would_create');
+    assert.strictEqual(rm.posts.length, 0);
+});
+
+test('collectCandidates inclui memory/archive/<YYYY-MM>/ (rotação cleanup-runs)', () => {
+    const { runs, archive, rotated } = tmpRuns();
+    writeRun(archive, '43730-ainda-em-_archive', {
+        status: 'fully_merged',
+        updated_at: '2026-09-01T12:00:00.000Z',
+        redmine_ticket: { id: 43730 },
+        cost_tracking: { totals: { duration_ms: 3_600_000 } },
+    });
+    const monthDir = path.join(rotated, '2026-07');
+    writeRun(monthDir, '43731-rotacionado', {
+        status: 'fully_merged',
+        updated_at: '2026-07-15T12:00:00.000Z',
+        redmine_ticket: { id: 43731 },
+        cost_tracking: { totals: { duration_ms: 7_200_000 } },
+    });
+    // Pasta que não casa YYYY-MM — ignorada.
+    writeRun(path.join(rotated, 'not-a-month'), '43732-lixo', {
+        status: 'fully_merged',
+        redmine_ticket: { id: 43732 },
+        cost_tracking: { totals: { duration_ms: 3_600_000 } },
+    });
+
+    const list = collectCandidates(runs, { includeActive: false });
+    const byId = Object.fromEntries(list.filter(c => c.ok).map(c => [c.taskId, c]));
+    assert.ok(byId['43730-ainda-em-_archive'], 'ainda vê _archive');
+    assert.ok(byId['43731-rotacionado'], 'vê memory/archive/YYYY-MM');
+    assert.strictEqual(byId['43731-rotacionado'].hours, 2);
+    assert.ok(!byId['43732-lixo'], 'ignora mês inválido');
+});
+
+test('runBackfill dry-run = apply em vários runs do mesmo ticket (sem fillEvenIfSpent)', async t => {
+    const { runs, archive } = tmpRuns();
+    writeRun(archive, '43740-ciclo-a', {
+        status: 'fully_merged',
+        updated_at: '2026-10-01T12:00:00.000Z',
+        redmine_ticket: { id: 43740 },
+        cost_tracking: { totals: { duration_ms: 3_600_000 } },
+    });
+    writeRun(archive, '43740-ciclo-b', {
+        status: 'fully_merged',
+        updated_at: '2026-10-02T12:00:00.000Z',
+        redmine_ticket: { id: 43740 },
+        cost_tracking: { totals: { duration_ms: 7_200_000 } },
+    });
+
+    const rmDry = await fakeRedmine({ entriesByIssue: { 43740: [] } });
+    t.after(rmDry.close);
+    const dry = await runBackfill({
+        runsDir: runs,
+        dryRun: true,
+        redmineFetch: rmDry.fetch,
+        baseUrl: rmDry.baseUrl,
+        apiKey: 'k',
+        includeActive: false,
+        fillEvenIfSpent: false,
+    });
+
+    const rmApply = await fakeRedmine({ entriesByIssue: { 43740: [] }, mutableEntries: true });
+    t.after(rmApply.close);
+    const apply = await runBackfill({
+        runsDir: runs,
+        dryRun: false,
+        redmineFetch: rmApply.fetch,
+        baseUrl: rmApply.baseUrl,
+        apiKey: 'k',
+        includeActive: false,
+        fillEvenIfSpent: false,
+    });
+
+    const dryActions = dry.results.filter(r => r.ok).map(r => `${r.taskId}:${r.action}:${r.reason || ''}`);
+    const applyActions = apply.results.filter(r => r.ok).map(r => `${r.taskId}:${r.action}:${r.reason || ''}`);
+    // Mesma ordem de candidatos → 1 actionable + 1 skip spent; totais iguais.
+    assert.strictEqual(dry.summary.actionable, 1);
+    assert.strictEqual(apply.summary.actionable, 1);
+    assert.strictEqual(dry.summary.hoursWouldSync, apply.summary.hoursWouldSync);
+    assert.strictEqual(dry.summary.skipped, apply.summary.skipped);
+    assert.ok(dry.results.some(r => r.action === 'would_create'));
+    assert.ok(dry.results.some(r => r.action === 'skip' && r.reason === 'issue_already_has_spent'));
+    assert.ok(apply.results.some(r => r.action === 'created'));
+    assert.ok(apply.results.some(r => r.action === 'skip' && r.reason === 'issue_already_has_spent'));
+    assert.strictEqual(rmApply.posts.length, 1);
+    assert.strictEqual(rmDry.posts.length, 0);
+    // Ações espelhadas (would_create ↔ created).
+    assert.deepStrictEqual(
+        dryActions.map(s => s.replace('would_create', 'created')),
+        applyActions,
+    );
+});
+
+test('listTimeEntries pagina além de limit=100 (marcador na 2ª página)', async t => {
+    const firstPage = [];
+    for (let i = 0; i < 100; i++) {
+        firstPage.push({ id: i + 1, hours: 0.1, comments: `manual-${i}` });
+    }
+    firstPage.push({
+        id: 101,
+        hours: 1.5,
+        comments: `Horas... ${hoursMarker('43750-deep')}`,
+    });
+    const rm = await fakeRedmine({ entriesByIssue: { 43750: firstPage } });
+    t.after(rm.close);
+
+    const entries = await listTimeEntries(rm.fetch, {
+        baseUrl: rm.baseUrl,
+        apiKey: 'k',
+        issueId: 43750,
+        pageLimit: 100,
+    });
+    assert.strictEqual(entries.length, 101);
+    assert.ok(rm.gets.length >= 2, 'fez pelo menos 2 GETs');
+    assert.strictEqual(rm.gets[0].offset, 0);
+    assert.strictEqual(rm.gets[1].offset, 100);
+    assert.ok(findExistingMarker(entries, '43750-deep'));
+
+    // sync também enxerga o marcador fora da 1ª página → already_synced, sem POST.
+    const c = {
+        ok: true,
+        taskId: '43750-deep',
+        ticketId: 43750,
+        hours: 1.5,
+        spentOn: '2026-10-02',
+        source: 'state.cost_tracking',
+        marker: hoursMarker('43750-deep'),
+        comments: `x ${hoursMarker('43750-deep')}`,
+        payload: buildTimeEntryPayload({
+            issueId: 43750,
+            hours: 1.5,
+            spentOn: '2026-10-02',
+            comments: `x ${hoursMarker('43750-deep')}`,
+        }),
+    };
+    const r = await syncCandidateHours(c, {
+        dryRun: false,
+        redmineFetch: rm.fetch,
+        baseUrl: rm.baseUrl,
+        apiKey: 'k',
+        fillEvenIfSpent: true,
+    });
+    assert.strictEqual(r.action, 'skip');
+    assert.strictEqual(r.reason, 'already_synced');
     assert.strictEqual(rm.posts.length, 0);
 });

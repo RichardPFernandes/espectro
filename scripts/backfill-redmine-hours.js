@@ -2,8 +2,9 @@
 // One-shot: reprocessa demandas Redmine M&O já cicladas e sincroniza horas
 // (time entries) a partir do cost_tracking dos runs.
 //
-// NÃO altera o caminho hot do /commit — só lê memory/runs e (com --apply) cria
-// time entries. O fluxo live (PRJ-54) deve reutilizar scripts/lib/redmine-hours-sync.js
+// NÃO altera o caminho hot do /commit — só lê memory/runs, memory/runs/_archive
+// e memory/archive/<YYYY-MM>/ (rotação cleanup-runs) e (com --apply) cria time
+// entries. O fluxo live (PRJ-54) deve reutilizar scripts/lib/redmine-hours-sync.js
 // e o mesmo marcador [prisma-hours:<taskId>] para idempotência cruzada.
 //
 // Uso (no Mac worker, dados do consumidor app-back):
@@ -26,7 +27,8 @@
 //   --limit=N              máximo de candidatos *com horas* a processar
 //   --min-hours=0.01       piso após arredondar duration_ms → horas
 //   --activity-id=9        atividade Redmine (9 = Desenvolvimento no M&O)
-//   --include-active       também varre memory/runs/ ativos (padrão: só _archive)
+//   --include-active       também varre memory/runs/ ativos
+//                          (padrão: _archive + memory/archive/<YYYY-MM>/)
 //   --fill-even-if-spent   cria mesmo se o ticket já tiver spent_hours > 0
 //                          (ainda pula se o marcador [prisma-hours:task] existir)
 //   --runs-dir=<path>      override de memory/runs (default: $REPO_PATH/memory/runs)
