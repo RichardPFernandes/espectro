@@ -1,0 +1,119 @@
+# ownership.yaml — documentação verificável (PRI-104 / D12).
+# Módulo → capacidade → owner lógico (DOMxx/APP-0x).
+# Regra R1: pasta/caminho NÃO atribui owner. Owner não confirmado = UNKNOWN
+# até o Arquiteto confrontar PRI-84/85 e Richard aprovar por lote.
+# Este arquivo não autoriza runtime, binding, gate nem cutover.
+
+version: 1
+issue: PRI-104
+decision: D12
+confirmation:
+  status: PENDING
+  against: [PRI-84, PRI-85]
+  by: Arquiteto
+  final_batch_approval: Richard
+
+modules:
+  # Writers / custódia (candidatos; owner lógico UNKNOWN até PRI-84/85)
+  - path: scripts/state-writer.js
+    capability: state-store-write
+    owner: UNKNOWN
+  - path: scripts/cas.js
+    capability: state-cas
+    owner: UNKNOWN
+  - path: scripts/invalidate.js
+    capability: dependency-invalidation
+    owner: UNKNOWN
+  - path: scripts/lib/dom06-attempt.js
+    capability: attempt-admission
+    owner: UNKNOWN
+  - path: scripts/lib/node-lease.js
+    capability: node-lease
+    owner: UNKNOWN
+  - path: scripts/lib/node-events.js
+    capability: node-events
+    owner: UNKNOWN
+  - path: scripts/lib/node-dispatcher.js
+    capability: dispatch-delegation
+    owner: UNKNOWN
+
+  # SDD / evidence (candidatos)
+  - path: scripts/lib/spec-change.js
+    capability: spec-change
+    owner: UNKNOWN
+  - path: scripts/lib/spec-authority.js
+    capability: spec-authority
+    owner: UNKNOWN
+  - path: scripts/lib/spec-version.js
+    capability: spec-version
+    owner: UNKNOWN
+  - path: scripts/lib/acceptance-evidence.js
+    capability: acceptance-evidence
+    owner: UNKNOWN
+  - path: scripts/lib/review-result.js
+    capability: review-result
+    owner: UNKNOWN
+
+  # Aplicação / orquestração
+  - path: scripts/readmine-watcher.js
+    capability: watcher-orchestration
+    owner: UNKNOWN
+  - path: scripts/lib/cycle-replayer.js
+    capability: cycle-replay
+    owner: UNKNOWN
+  - path: scripts/lib/dry-run.js
+    capability: dry-run
+    owner: UNKNOWN
+  - path: scripts/lib/authorization.js
+    capability: human-authorization
+    owner: UNKNOWN
+
+  # Integrações (adapters concretos atuais)
+  - path: scripts/lib/bitbucket-pr.js
+    capability: bitbucket-pr
+    owner: UNKNOWN
+  - path: scripts/lib/redmine-fetch.js
+    capability: redmine-fetch
+    owner: UNKNOWN
+  - path: scripts/notify.js
+    capability: notifier
+    owner: UNKNOWN
+
+  # Dashboard / projeção (APP-01 candidato)
+  - path: dashboard/server.js
+    capability: dashboard-http
+    owner: UNKNOWN
+  - path: dashboard/coordination.js
+    capability: coordination-api
+    owner: UNKNOWN
+
+  # Fundação TS (PRI-103) — plataforma, sem owner de domínio
+  - path: scripts/src/platform/roots.ts
+    capability: platform-roots
+    owner: UNKNOWN
+  - path: scripts/src/index.ts
+    capability: scripts-public-entrypoint
+    owner: UNKNOWN
+
+  # Esqueleto de camadas (PRI-104) — pastas ainda sem módulos
+  - path: scripts/src/domain/
+    capability: domain-layer
+    owner: UNKNOWN
+  - path: scripts/src/ports/
+    capability: ports-layer
+    owner: UNKNOWN
+  - path: scripts/src/application/
+    capability: application-layer
+    owner: UNKNOWN
+  - path: scripts/src/adapters/
+    capability: adapters-layer
+    owner: UNKNOWN
+  - path: scripts/src/config/
+    capability: config-layer
+    owner: UNKNOWN
+  - path: scripts/src/composition/
+    capability: composition-layer
+    owner: UNKNOWN
+  - path: scripts/src/interface/
+    capability: interface-layer
+    owner: UNKNOWN

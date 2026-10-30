@@ -2,16 +2,24 @@
   "name": "graph-scripts",
   "version": "1.0.0",
   "private": true,
-  "description": "Utilitários de operação do orquestrador (readmine-watcher.js e scripts/lib) — não é código de produto",
+  "description": "Utilit\u00e1rios de opera\u00e7\u00e3o do orquestrador (readmine-watcher.js e scripts/lib) \u2014 n\u00e3o \u00e9 c\u00f3digo de produto",
   "scripts": {
     "build": "tsc -b --pretty false",
     "check:js": "tsc -p tsconfig.checkjs.json --pretty false --noEmit",
-    "test": "node ../harness/run-tests.js scripts lib/*.test.js validate-state.test.js invalidate.test.js invalidate-concurrency.test.js state-concurrency.test.js sanitize-log.test.js retry.test.js notify.test.js memory-consolidator.test.js cleanup-runs.test.js cleanup-transcripts.test.js compare-runs.test.js bitbucket-open-pr.test.js ../harness/run-tests.test.js platform-roots.test.js"
+    "test": "node ../harness/run-tests.js scripts lib/*.test.js validate-state.test.js invalidate.test.js invalidate-concurrency.test.js state-concurrency.test.js sanitize-log.test.js retry.test.js notify.test.js memory-consolidator.test.js cleanup-runs.test.js cleanup-transcripts.test.js compare-runs.test.js bitbucket-open-pr.test.js ../harness/run-tests.test.js platform-roots.test.js architecture-boundaries.test.js",
+    "arch:check": "node run-architecture-cruise.js --check",
+    "arch:baseline": "node run-architecture-cruise.js --baseline",
+    "lint:src": "node ../scripts/run-eslint-src.js"
   },
   "devDependencies": {
+    "@babel/core": "^7.28.6",
+    "@babel/eslint-parser": "^7.28.6",
+    "@babel/preset-typescript": "^7.28.5",
     "@types/node": "20.19.43",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "dependency-cruiser": "^18.7.0",
+    "eslint": "^9.39.2",
     "typescript": "7.0.2"
   },
   "dependencies": {
