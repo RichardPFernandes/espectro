@@ -1,0 +1,33 @@
+{
+  "skill_name": "prisma-docs-humano",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Reescreva a review densa PRI-225 (trecho APPROVE_FOR_HUMAN_DECISION + matriz PHI) em pri-225-humano.md + pri-225-cursor-review-legivel.md: o que foi achado em português antes da matriz, por que importa, glossário inline na 1ª ocorrência; sem inventar Approval/Done/APPLIED.",
+      "expected_output": "Dois artefatos no padrão references/pri-225-humano.md e references/pri-225-cursor-review-legivel-excerpt.md; decisões sim/não; técnico legível sem sigla órfã.",
+      "files": [
+        "evals/01-reescrever-review/prompt.md",
+        "references/pri-225-humano.md",
+        "references/pri-225-cursor-review-legivel-excerpt.md"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Ask de decisões PRI-181: o 'aprovo' genérico não cobre P1. Escreva pri-181-humano.md com veredito, agora, decisões sim/não, e explique P1/C1+/DB-16b/RRC na 1ª ocorrência.",
+      "expected_output": "Doc no padrão references/pri-181-humano.md; sem declarar P1 APPLIED nem Done.",
+      "files": [
+        "evals/02-ask-decisoes/prompt.md",
+        "references/pri-181-humano.md"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Status Linear anti-recusa para Richard: cadeia 181→184→207→86/198 com 225 como suporte. Escreva linear-anti-recusa-humano.md com veredito, ordem, decisões sim/não e o que não faz.",
+      "expected_output": "Doc no padrão references/linear-anti-recusa-humano.md; sem mudar status Linear nem inventar Approval.",
+      "files": [
+        "evals/03-status-linear/prompt.md",
+        "references/linear-anti-recusa-humano.md"
+      ]
+    }
+  ]
+}
