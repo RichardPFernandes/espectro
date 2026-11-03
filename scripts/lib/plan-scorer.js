@@ -109,7 +109,8 @@ function topLevelItems(bodyLines) {
 }
 
 /**
- * @returns {{steps: string[], source: string|null}} source = cabeçalho de onde vieram.
+ * @returns {{steps: string[], source: string|null, block: string}} source = cabeçalho de onde vieram;
+ * block = corpo bruto da seção (base do plan_version, PRI-222).
  */
 function extractSteps(planContent) {
     const all = sectionsOf(planContent);
@@ -119,10 +120,10 @@ function extractSteps(planContent) {
     for (const match of [PLAN_HEADING, FALLBACK_HEADING]) {
         for (const s of sections.filter(x => match.test(x.normalized))) {
             const steps = topLevelItems(s.body);
-            if (steps.length) return { steps, source: s.heading };
+            if (steps.length) return { steps, source: s.heading, block: s.body.join('\n') };
         }
     }
-    return { steps: [], source: null };
+    return { steps: [], source: null, block: '' };
 }
 
 function hasFile(step) {
