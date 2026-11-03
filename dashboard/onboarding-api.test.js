@@ -144,6 +144,22 @@ test('pasta nova vai para o .env do Prisma e pede reinício; travada pelo launch
     assert.equal(fs.existsSync(locked.envFile), false);
 });
 
+test('chave salva não segue para um endereço novo do Redmine nem por redirect', async () => {
+    const calls = [];
+    const { ob } = make({ fetchFn: async (url, opts) => { calls.push({ url, opts }); return { status: 302, json: async () => ({}) }; } });
+    await ob.saveConfig({ redmineUrl: 'https://r.exemplo.com', redmineApiKey: KEY });
+    const moved = await ob.saveConfig({ redmineUrl: 'https://atacante.exemplo.net' });
+    assert.equal(moved.status, 400);
+    assert.match(moved.body.errors.redmineApiKey, /chave de API de novo/);
+    assert.equal(readEnvFile(path.join(active, '.env')).REDMINE_URL, 'https://r.exemplo.com');
+    // Mesma origem com outro caminho continua aceita sem redigitar.
+    assert.equal((await ob.saveConfig({ redmineUrl: 'https://r.exemplo.com/redmine' })).status, 200);
+    const chk = await ob.check();
+    assert.equal(calls[0].opts.redirect, 'manual');
+    assert.match(chk.items.find(i => i.id === 'redmine').detail, /redirecionou \(HTTP 302\)/);
+    fs.rmSync(path.join(active, '.env'), { force: true });
+});
+
 test('verificação: só leitura, cada peça com estado; falha do Redmine não vaza a chave', async () => {
     const calls = [];
     const env = { REDMINE_URL: 'https://r.exemplo.com', REDMINE_API_KEY: KEY };

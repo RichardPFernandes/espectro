@@ -36,6 +36,7 @@ function run(file, args, { cwd, timeout = TOOL_TIMEOUT_MS } = {}) {
 }
 
 const expandHome = p => p.replace(/^~(?=$|\/)/, os.homedir());
+const originOf = u => { try { return new URL(u).origin; } catch { return null; } };
 const realpath = p => { try { return fs.realpathSync(p); } catch { return null; } };
 
 // KEY=valor do arquivo (mesma leitura do loadDotEnv do servidor, sem tocar no process.env).
@@ -210,6 +211,12 @@ function createOnboarding({
             if (v && !SECRET_RE.test(v)) errors[field] = 'Cole a chave inteira, sem espaços nem aspas.';
             else if (v) updates[key] = v;
         }
+        // A chave salva só vai para a origem em que foi salva: endereço novo exige a chave de
+        // novo, senão quem troca o URL recebe a chave sem nunca ter lido o .env.
+        const saved = effectiveValues(repo);
+        if (updates.REDMINE_URL && !updates.REDMINE_API_KEY && saved.REDMINE_API_KEY && originOf(updates.REDMINE_URL) !== originOf(saved.REDMINE_URL)) {
+            errors.redmineApiKey = 'Endereço novo: digite a chave de API de novo.';
+        }
         if (Object.keys(errors).length) return { status: 400, body: { error: 'Revise os campos marcados.', errors } };
 
         if (!repoPathLocked) {
@@ -232,13 +239,15 @@ function createOnboarding({
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
         try {
-            const res = await fetchFn(url, { headers, signal: ctrl.signal });
+            // Sem seguir redirect: o cabeçalho com a chave não vai para outro destino.
+            const res = await fetchFn(url, { headers, signal: ctrl.signal, redirect: 'manual' });
+            if (res.status >= 300 && res.status < 400) return { status: res.status, error: `redirecionou (HTTP ${res.status}); use o endereço final` };
             return { status: res.status, body: await res.json().catch(() => null) };
         } catch (e) {
             return { status: 0, error: e.name === 'AbortError' ? `sem resposta em ${FETCH_TIMEOUT_MS / 1000} s` : 'sem conexão' };
         } finally { clearTimeout(timer); }
     }
-    const httpFail = (r, what) => (r.status === 401 || r.status === 403 ? `${what} recusada (HTTP ${r.status})` : r.status ? `HTTP ${r.status}` : r.error);
+    const httpFail = (r, what) => (r.status === 401 || r.status === 403 ? `${what} recusada (HTTP ${r.status})` : r.error || `HTTP ${r.status}`);
 
     async function checkRepo(repo) {
         const info = await repoInfo(repo);
