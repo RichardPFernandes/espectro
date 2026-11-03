@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "public/screens/runs.css"
+        ],
+        "createdAt": "2026-11-03T14:09:25.021Z",
+        "reason": "coordinator: design artboards Main.dc.html and RunDetail.dc.html themselves use 2-3px left edges (state edge on run rows, accent edge on human messages, quote edge on notes); runs.css mirrors them"
+      }
+    ]
+  }
+}

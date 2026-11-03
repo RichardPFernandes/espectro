@@ -60,70 +60,72 @@
       window.Views?.refresh();
     }
   }
+  // Layout do design Espectro (artboard System · "Versão do Espectro"); CSS em screens/system.css.
   function render() {
     if (!data && !error && !loading) load(false);
-    const root = el('section', null, 'version-view');
-    const head = el('div', null, 'vhead');
-    head.append(el('h2', 'Versão'), el('p', 'Revisão do Prisma em execução comparada com a origin/main.'));
-    const refresh = el('button', loading ? 'Consultando…' : 'Consultar origin', 'ghost-btn');
-    refresh.type = 'button'; refresh.disabled = loading || busy; refresh.addEventListener('click', () => load(true));
-    head.append(refresh); root.append(head);
+    const root = el('section', null, 'version-view sys-page');
+    const head = el('header', null, 'sys-head');
+    head.append(el('span', 'Plataforma · versão', 'label'), el('h2', 'Versão', 't-display'), el('p', 'Revisão do Prisma em execução comparada com a origin/main.'));
+    root.append(head);
     if (notice) {
       const box = el('div', null, `version-notice ${notice.ok ? 'ok' : 'fail'}`);
       box.setAttribute('role', 'status');
-      box.append(el('p', notice.text));
+      const msg = el('p');
+      msg.append(el('span', notice.ok ? '✓' : '✕', 'version-glyph'), ` ${notice.text}`);
+      box.append(msg);
       if (notice.output) { const d = el('details'); d.append(el('summary', 'Saída do bump'), el('pre', notice.output)); box.append(d); }
       root.append(box);
     }
-    if (error || !data) { root.append(el('p', error || 'Carregando…', 'vempty')); return root; }
-    if (data.status !== 'ok') { root.append(el('p', data.message, 'vempty')); return root; }
+    const panel = el('section', null, 'panel sys-panel');
+    panel.setAttribute('aria-labelledby', 'versionPanelTitle');
+    const phead = el('div', null, 'sys-panel-head');
+    const title = el('h3', 'Revisão em uso', 't-heading');
+    title.id = 'versionPanelTitle';
+    const refresh = el('button', loading ? 'Consultando…' : 'Consultar origin', 'btn');
+    refresh.type = 'button'; refresh.disabled = loading || busy; refresh.addEventListener('click', () => load(true));
+    phead.append(title, refresh); panel.append(phead); root.append(panel);
+    if (error || !data) { panel.append(el('p', error || 'Carregando…', 'vempty')); return root; }
+    if (data.status !== 'ok') { panel.append(el('p', data.message, 'vempty')); return root; }
+    const behindN = `${data.behind.length}${data.behind_truncated ? '+' : ''}`;
     const grid = el('dl', null, 'version-grid');
-    const row = (label, c) => { grid.append(el('dt', label)); const dd = el('dd'); if (c) { dd.append(el('code', short(c.sha)), ` ${c.subject}`); dd.title = `${c.sha} · ${new Date(c.date).toLocaleString('pt-BR')}`; } else dd.textContent = 'indisponível'; grid.append(dd); };
+    const row = (label, c, extra) => {
+      const cell = el('div', null, 'version-cell');
+      const dd = el('dd');
+      if (c) {
+        const sha = el('code', short(c.sha), 'version-sha');
+        if (extra) sha.append(el('span', ` · ${extra}`, 'version-ahead'));
+        dd.append(sha, el('span', c.subject, 'version-subject'));
+        dd.title = `${c.sha} · ${new Date(c.date).toLocaleString('pt-BR')}`;
+      } else dd.textContent = 'indisponível';
+      cell.append(el('dt', label), dd); grid.append(cell);
+    };
     row('Em execução', data.current);
     if (data.drift) row('Checkout em disco', data.checkout);
-    row('origin/main', data.latest);
-    root.append(grid);
-    const fetchedAt = `Consultado em ${new Date(data.fetched_at).toLocaleString('pt-BR')}`;
-    root.append(el('p', data.fetch_error ? `${fetchedAt} — ${data.fetch_error}; mostrando a última origin/main conhecida.` : fetchedAt, 'muted'));
+    row('origin/main', data.latest, data.behind.length ? `${behindN} à frente` : null);
+    panel.append(grid);
+    if (data.behind.length) {
+      panel.append(el('h4', `${behindN} commit(s) atrás`, 'label version-list-title'));
+      const list = el('ul', null, 'version-commits');
+      for (const c of data.behind) { const li = el('li'); li.append(el('code', short(c.sha)), el('span', c.subject)); list.append(li); }
+      panel.append(list);
+    }
     const action = el('div', null, 'version-action');
-    const button = el('button', busy ? 'Atualizando…' : `Atualizar para ${short(data.latest?.sha)}`, 'ghost-btn version-go');
+    const button = el('button', busy ? 'Atualizando…' : `Atualizar para ${short(data.latest?.sha)}`, 'btn primary lg version-go');
     button.type = 'button'; button.disabled = busy || !data.update.enabled; button.addEventListener('click', update);
     action.append(button);
-    if (!data.update.enabled && data.update.reason) action.append(el('span', data.update.reason, 'muted'));
-    if (data.behind.length || data.update.configured) root.append(action);
-    else root.append(el('p', data.update.reason, 'muted'));
-    if (data.behind.length) {
-      root.append(el('h3', `${data.behind.length}${data.behind_truncated ? '+' : ''} commit(s) atrás`));
-      const list = el('ul', null, 'version-commits');
-      for (const c of data.behind) { const li = el('li'); li.append(el('code', short(c.sha)), ` ${c.subject}`); list.append(li); }
-      root.append(list);
-    }
+    if (!data.update.enabled && data.update.reason) action.append(el('span', data.update.reason, 'version-why'));
+    if (data.behind.length || data.update.configured) panel.append(action);
+    else panel.append(el('p', data.update.reason, 'version-why version-pad'));
+    const foot = el('div', null, 'version-foot source-note');
+    const fetchedAt = `Consultado em ${new Date(data.fetched_at).toLocaleString('pt-BR')}`;
+    foot.append(el('p', data.fetch_error ? `${fetchedAt} — ${data.fetch_error}; mostrando a última origin/main conhecida.` : fetchedAt, data.fetch_error ? 'version-stale' : null));
     if (data.last_update) {
       const u = data.last_update;
-      root.append(el('p', `Última atualização: ${new Date(u.at).toLocaleString('pt-BR')} · ${short(u.from)} → ${short(u.to)} · ${u.ok ? 'ok' : `falhou (exit ${u.exit_code})`}`, 'muted'));
+      foot.append(el('p', `Última atualização: ${new Date(u.at).toLocaleString('pt-BR')} · ${short(u.from)} → ${short(u.to)} · ${u.ok ? 'ok' : `falhou (exit ${u.exit_code})`}`));
     }
+    panel.append(foot);
     return root;
   }
-  const style = el('style');
-  style.textContent = `
-    .version-view .vhead > button { justify-self:start; }
-    .version-grid { display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:16px 0 4px; }
-    .version-grid dt { color:var(--muted); }
-    .version-grid dd { margin:0; overflow-wrap:anywhere; }
-    .version-action { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin:16px 0; }
-    .version-commits { list-style:none; padding:0; margin:8px 0; display:grid; gap:4px; font-size:13.5px; }
-    .version-commits li { overflow-wrap:anywhere; }
-    .version-view code { font-size:12.5px; color:var(--ink-2); }
-    .version-notice { border-radius:6px; padding:10px 14px; margin:12px 0; }
-    .version-notice p { margin:0; }
-    .version-notice.ok { background:var(--clear-bg); color:var(--clear); }
-    .version-notice.fail { background:var(--stop-bg); color:var(--stop); }
-    .version-notice pre { white-space:pre-wrap; max-height:240px; overflow:auto; color:var(--ink-2); }
-    .version-go:not(:disabled) { background:var(--signal); border-color:var(--signal); color:#fff; }
-    .version-go:disabled { cursor:not-allowed; opacity:.6; }
-    .version-view button:focus-visible { outline:2px solid var(--signal); outline-offset:3px; }
-  `;
-  document.head.append(style);
   window.VersionView = { render, load };
   window.Views?.refresh();
 })();

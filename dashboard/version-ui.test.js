@@ -122,6 +122,7 @@ function boot({ restart }) {
     const window = { addEventListener() {} };
     const context = {
         window, location, prefs: {}, selected: null, runs: new Map(), NODES: [],
+        visibleRuns: () => [], isHidden: () => false, needsYou: () => false,
         history: { replaceState(_s, _t, url) { location.hash = url.startsWith('#') ? url : ''; } },
         document: { head: element('head'), body: { dataset: {}, appendChild() {} }, activeElement: { dataset: {} }, createElement: tag => element(tag) },
         $: dollar, persist() {}, requestAnimationFrame: cb => { setTimeout(cb, 0); }, setTimeout, clearTimeout, Date, URL,

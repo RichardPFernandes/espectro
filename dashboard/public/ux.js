@@ -73,7 +73,7 @@
     const attnHtml = attn.map(r => {
       const note = lastNote(r);
       return `<article class="ov-card">
-        <div class="ov-card-top"><span class="lamp ${esc(r.status)}"></span><span class="ov-stage">${esc(stageText(r))}</span>
+        <div class="ov-card-top">${stateGlyph(r.status)}<span class="ov-stage">${esc(stageText(r))}</span>
           <span class="ov-when" title="${esc(when(r.updatedAt))}">${esc(ago(r.updatedAt))}</span></div>
         <h3>${titleHtml(r)}</h3>
         ${note ? `<p class="ov-note">${esc(note)}</p>` : '<p class="ov-note muted">O agente não deixou nota explicando o bloqueio. Veja o contexto do run.</p>'}
@@ -103,12 +103,13 @@
       <header class="ov-head">
         <h1>Visão geral</h1>
         <p>${esc(headline)}</p>
-        <div class="ov-counts">
-          <span class="${attn.length ? 'attn' : ''}"><b>${attn.length}</b> precisam de você</span>
-          <span><b>${moving.length}</b> em andamento</span>
-          <span><b>${planned}</b> planejados e outros</span>
-          <span><b>${done}</b> concluídos</span>
+        <div class="kpis ov-counts" role="list" aria-label="Runs por estado">
+          <div class="kpi ${attn.length ? 'attn' : ''}" role="listitem"><span class="kpi-label"><span class="g-dot waiting" aria-hidden="true"></span>Precisam de você</span><span class="kpi-value">${attn.length}</span></div>
+          <div class="kpi" role="listitem"><span class="kpi-label"><span class="g-dot running" aria-hidden="true"></span>Em andamento</span><span class="kpi-value">${moving.length}</span></div>
+          <div class="kpi" role="listitem"><span class="kpi-label"><span class="g-dot queued" aria-hidden="true"></span>Planejados e outros</span><span class="kpi-value">${planned}</span></div>
+          <div class="kpi" role="listitem"><span class="kpi-label"><span class="g-dot done" aria-hidden="true"></span>Concluídos</span><span class="kpi-value">${done}</span></div>
         </div>
+        <p class="source-note">Fonte: state.json de cada run em memory/runs, sem os removidos da lista.</p>
       </header>
       ${attn.length ? `<section class="ov-section"><h2>Precisa de você</h2><div class="ov-cards">${attnHtml}</div></section>` : ''}
       <div class="ov-grid">
@@ -206,7 +207,7 @@
     palItems.forEach((it, i) => {
       if (it.group !== group) { group = it.group; html += `<li class="pal-group" role="presentation">${esc(group)}</li>`; }
       html += `<li role="option" data-i="${i}" aria-selected="${i === palIndex}" class="pal-item">
-        ${it.lamp ? `<span class="lamp ${esc(it.lamp)}"></span>` : '<span class="pal-icon"></span>'}
+        ${it.lamp ? stateGlyph(it.lamp) : '<span class="pal-icon"></span>'}
         <span class="pal-label">${esc(it.label)}</span><span class="pal-sub">${esc(it.sub || '')}</span></li>`;
     });
     $('palList').innerHTML = html || '<li class="pal-empty">Nada encontrado. Tente o número do ticket.</li>';

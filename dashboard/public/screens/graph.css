@@ -1,0 +1,136 @@
+/* screens/graph.css — estilos desta tela no design Espectro. Carregado depois do <style> de index.html.
+   Referência: Graph ("Trilha de rastreabilidade": colunas com rótulo mono + contagem, nós com
+   glifo) e KnowledgeGraph (canvas pontilhado, busca com ícone, legenda de tipos de nó).
+   A tela continua uma lista por ticket (GET /api/graph): ticket → spec → arquivos → PRs → runs.
+
+   Identidade do tipo de nó = glifo + cor (§ spec, ◇ arquivo, ⇄ PR, ▶ run); o texto do nó fica
+   sempre em tinta de texto. Cores categóricas validadas (dataviz validate_palette.js, ordem
+   spec → PR → run, pares adjacentes): escuro #E0609A/#8E74F2/#1F9AAE na faixa L 0.48–0.67,
+   CVD ΔE ≥ 11.4; claro #B6457A/#7756C5/#00879F, CVD ΔE ≥ 9.8. Arquivo é neutro (o tipo mais
+   numeroso). Estado de PR usa as cores de estado reservadas, com glifo + rótulo. */
+
+.kg {
+  --kg-spec: #E0609A; --kg-pr: #8E74F2; --kg-run: #1F9AAE;
+  display: flex; flex-direction: column; gap: 16px; max-width: 1400px;
+}
+:root[data-theme="light"] .kg { --kg-spec: #B6457A; --kg-pr: #7756C5; --kg-run: #00879F; }
+
+.kg code { font: 12px/16px var(--mono); background: var(--raised); color: var(--text-secondary); padding: 1px 4px; border-radius: var(--radius-tag); overflow-wrap: anywhere; }
+
+/* Cabeçalho */
+.kg-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; }
+.kg-title { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.kg-title h2 { letter-spacing: -0.015em; }
+.kg-lede { margin: 0; color: var(--text-secondary); max-width: 80ch; }
+.kg-updated { margin: 0; font: 12px/16px var(--mono); color: var(--muted); }
+
+/* Busca e ações */
+.kg-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; }
+.kg-search { position: relative; flex: 1 1 340px; min-width: 0; }
+.kg-search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.kg-tools .kg-q {
+  width: 100%; min-height: var(--target-min); padding: 0 12px 0 38px;
+  border: 1px solid var(--border-control); border-radius: var(--radius-control);
+  background: var(--ground); color: var(--text); font-size: 14px;
+}
+.kg-tools .kg-q::placeholder { color: var(--muted); }
+.kg-tools .kg-q:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+
+/* Recorte + contadores */
+.kg-summary { display: flex; flex-direction: column; gap: 8px; }
+.kg-scope { margin: 0; font-weight: 600; }
+.kg .kg-kpis { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); }
+.kg .kpi { padding: 12px 16px; gap: 4px; }
+.kg .kpi-label { font-size: 12px; line-height: 16px; color: var(--text-secondary); }
+.kg .kg-kpi-value { font-family: var(--mono); font-size: 20px; line-height: 28px; }
+.kg-summary .source-note { margin: 0; }
+
+/* Legenda (identidade nunca só pela cor: glifo + rótulo) */
+.kg-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.kg-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.kg-legend-note { color: var(--muted); }
+.kg-legend-sep { width: 1px; height: 16px; background: var(--border); }
+.kg-swatch.ticket { font: 600 12px/16px var(--mono); color: var(--text); }
+
+/* Glifo do tipo de nó */
+.kg-glyph {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  border: 1px solid currentColor; border-radius: var(--radius-tag); font-size: 11px; line-height: 1; color: var(--muted);
+}
+.kg-glyph-spec { color: var(--kg-spec); }
+.kg-glyph-pr { color: var(--kg-pr); }
+.kg-glyph-run { color: var(--kg-run); }
+.kg-glyph-file { color: var(--muted); border-color: transparent; width: 14px; }
+.kg-arrow { color: var(--muted); font-family: var(--mono); font-size: 14px; }
+
+/* Cartão por ticket */
+.kg-list { display: flex; flex-direction: column; gap: 16px; }
+.kg-card { overflow: hidden; }
+.kg-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.kg-ticket {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 0 12px;
+  border: 1px solid var(--border-control); border-radius: var(--radius-control); background: var(--raised);
+  color: var(--text); font: 600 14px/20px var(--mono); font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.kg-ticket:hover { border-color: var(--link); color: var(--link-hover); }
+.kg-card-title { flex: 1 1 240px; min-width: 0; font-weight: 600; font-size: 15px; line-height: 22px; }
+.kg-ext { display: inline-flex; align-items: center; min-height: 40px; padding: 0 4px; font-size: 13px; font-weight: 500; }
+
+/* Trilha: colunas com rótulo mono + contagem, setas entre elas, fundo de canvas pontilhado */
+.kg-trail {
+  display: grid; align-items: start; gap: 16px 12px; padding: 16px;
+  grid-template-columns: minmax(160px, 1fr) auto minmax(0, 2.2fr) auto minmax(180px, 1.1fr);
+  background-color: var(--c-0e1118);
+  background-image: radial-gradient(var(--c-1f2433) 1px, transparent 1px); background-size: 24px 24px;
+}
+.kg-trail.has-runs { grid-template-columns: minmax(150px, 1fr) auto minmax(0, 2fr) auto minmax(170px, 1.1fr) auto minmax(140px, .9fr); }
+.kg-trail > .kg-arrow { align-self: start; padding-top: 2px; }
+.kg-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.kg-col-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.kg-col-n { color: var(--muted); letter-spacing: 0; }
+.kg-nodes { display: flex; flex-direction: column; gap: 8px; }
+.kg-none { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* Nó: caixa neutra (borda 1px var(--border)); o tipo vem do glifo colorido, nunca de faixa lateral */
+.kg-node {
+  display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 40px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-control);
+  background: var(--surface); color: var(--text); text-align: left; text-decoration: none; font-size: 13px;
+}
+.kg-node-name { flex: 1 1 auto; min-width: 0; font: 500 12px/16px var(--mono); overflow-wrap: anywhere; }
+.kg-pr { flex-wrap: wrap; }
+.kg-run { cursor: pointer; }
+a.kg-node:hover, .kg-run:hover { background: var(--surface-hover); border-color: var(--border-control); color: var(--text); }
+.kg-pr-state { flex: 0 0 auto; font-family: var(--mono); font-size: 11px; letter-spacing: .02em; }
+
+/* Arquivos agrupados por repositório */
+.kg-filebox { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.kg-repo-group { min-width: 0; }
+.kg-repo-head, .kg-repo-group > summary { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.kg-repo-group > summary { cursor: pointer; border-radius: 6px; }
+.kg-repo-group > summary:hover .kg-repo { color: var(--link-hover); }
+.kg-repo { font: 600 12px/16px var(--mono); color: var(--text-secondary); }
+.kg-repo-n { font: 500 11px/18px var(--mono); padding: 0 6px; border-radius: var(--radius-tag); color: var(--muted); background: var(--state-queued-bg); }
+.kg-files { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.kg-file {
+  width: 100%; min-height: 32px; padding: 4px 10px; cursor: pointer; background: transparent;
+}
+.kg-file .kg-node-name { color: var(--muted); font-weight: 400; }
+.kg-file.java .kg-node-name { color: var(--text-secondary); font-weight: 500; }
+.kg-file:hover { background: var(--surface-hover); border-color: var(--border-control); }
+.kg-file:hover .kg-node-name { color: var(--link-hover); }
+
+/* Mensagens */
+.kg .empty code { white-space: nowrap; }
+.kg-msg { margin: 0; padding: 10px 12px; border-radius: var(--radius-control); font-size: 13px; }
+.kg-msg.failed { color: var(--state-failed-fg); background: var(--state-failed-bg); }
+
+/* Estreito: a trilha empilha e a seta aponta para baixo */
+@media (max-width: 1100px) {
+  .kg-trail, .kg-trail.has-runs { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .kg-trail > .kg-arrow { transform: rotate(90deg); justify-self: start; padding: 0 0 0 4px; }
+}
+@media (max-width: 600px) {
+  .kg-tools .btn { flex: 1 1 auto; }
+  .kg-card-head, .kg-trail { padding: 12px; }
+}

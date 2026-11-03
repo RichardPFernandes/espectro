@@ -207,9 +207,9 @@
     const status = server === 'merged' ? 'merged' : local || server;
     if (!['draft', 'ready', 'merged'].includes(status)) return '';
     const badge = {
-      draft: '<span class="pr-badge draft">● Draft</span>',
-      ready: '<span class="pr-badge ready">● Ready for review</span>',
-      merged: '<span class="pr-badge merged">✓ Mergeado</span>',
+      draft: '<span class="pr-badge draft"><span aria-hidden="true">‖</span> Draft</span>',
+      ready: '<span class="pr-badge ready"><span aria-hidden="true">◐</span> Ready for review</span>',
+      merged: '<span class="pr-badge merged"><span aria-hidden="true">✓</span> Mergeado</span>',
     }[status];
     const cleaned = r.state?.worktrees_cleaned_at;
     const extra = status === 'draft'
@@ -420,7 +420,7 @@
     .pv-chip.error { color: var(--stop); border-color: var(--stop); }
     .pv-chip.skipped { color: var(--faint); border-style: dashed; }
     /* ~20 linhas visíveis; o resto do ringbuffer (300) rola. */
-    .pv-log { margin: 0; max-height: calc(20 * 12px * 1.55 + 16px); overflow: auto; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 10px; font: 12px/1.55 var(--mono); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .pv-log { margin: 0; max-height: calc(20 * 12px * 1.55 + 16px); overflow: auto; background: var(--c-0b0d13); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: 12px/1.55 var(--mono); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
     .pv-log .pv-warn { color: var(--attention); }
     .pv-log .pv-error { color: var(--stop); }
     .pv-log .pv-mgr { font-weight: 600; color: var(--signal); }
@@ -428,10 +428,10 @@
     .pv-log .pv-empty { color: var(--faint); }
     .pr-status { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 8px; }
     .pr-status-label { font-size: 13px; color: var(--muted); }
-    .pr-badge { font-size: 13px; font-weight: 600; border-radius: 999px; padding: 1px 9px; border: 1px solid currentColor; }
-    .pr-badge.draft { color: var(--attention); background: var(--attention-bg); }
-    .pr-badge.ready { color: var(--signal); background: var(--signal-soft); }
-    .pr-badge.merged { color: var(--clear); background: var(--clear-bg); }
+    .pr-status .pr-badge { font-size: 12px; font-weight: 600; border-radius: var(--radius-pill); padding: 0 10px; border: 1px solid currentColor; box-shadow: none; }
+    .pr-status .pr-badge.draft { color: var(--state-waiting-fg); background: var(--state-waiting-bg); }
+    .pr-status .pr-badge.ready { color: var(--state-running-fg); background: var(--state-running-bg); }
+    .pr-status .pr-badge.merged { color: var(--state-done-fg); background: var(--state-done-bg); }
     .pr-status .ghost-btn:disabled { opacity: .45; cursor: default; }
     .pv-last > summary { cursor: pointer; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   `;

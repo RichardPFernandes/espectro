@@ -1,22 +1,30 @@
-// Painel "Saúde do Sistema" (🔧 no topo): validação da CONFIGURAÇÃO do fluxo —
+// Painel "Saúde do Sistema" (botão no pé do rail, #navFoot): validação da CONFIGURAÇÃO do fluxo —
 // .claude/, .graph/, .env.example contra .claude/config-contract.json. Dados de
 // GET /api/validate-config (= `scripts/validate-config.js --format json`, só leitura),
 // buscados ao carregar, a cada 5 min e ao abrir o painel. exitCode 1 (há erros) acende
-// o alerta "⚠ Erros de Configuração" no topo, que também abre o painel.
+// o alerta "⚠ Erros de Configuração" no pé do rail, que também abre o painel.
 // Script clássico; usa os globais do script principal (api, esc, $). Reaproveita o
 // visual de .overlay/.help do ux.js, mas com camada própria (a de lá é privada).
 (() => {
   const POLL_MS = 5 * 60 * 1000;
   const GROUPS = [
-    { sev: 'error', title: 'Erros', tone: 'err' },
-    { sev: 'warning', title: 'Avisos', tone: 'warn' },
-    { sev: 'info', title: 'Info', tone: 'info' },
+    { sev: 'error', title: 'Erros', tone: 'err', glyph: '✕' },
+    { sev: 'warning', title: 'Avisos', tone: 'warn', glyph: '⚠' },
+    { sev: 'info', title: 'Info', tone: 'info', glyph: '○' },
   ];
   let report = null, err = null, loading = false;
 
-  $('theme').insertAdjacentHTML('beforebegin', `
-    <button id="cfgAlert" class="cfg-alert" type="button" hidden title="Abrir Saúde do Sistema">⚠ Erros de Configuração</button>
-    <button id="cfgHealthBtn" class="icon-btn" type="button" title="Saúde do Sistema" aria-label="Saúde do Sistema">🔧</button>`);
+  // Fora da topbar (congestionada): linha própria no pé do rail, abaixo do watcher.
+  // CSS em screens/system.css.
+  $('navFoot').insertAdjacentHTML('beforeend', `
+    <div class="cfg-foot-row">
+      <button id="cfgHealthBtn" class="cfg-btn" type="button" title="Saúde do Sistema — validação da configuração do fluxo">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>
+        <span class="cfg-btn-label">Saúde do Sistema</span>
+        <span class="cfg-state" id="cfgState">○ validando</span>
+      </button>
+      <button id="cfgAlert" class="cfg-alert" type="button" hidden title="Abrir Saúde do Sistema">⚠ Erros de Configuração</button>
+    </div>`);
 
   const layer = document.createElement('div');
   layer.className = 'overlay';
@@ -61,11 +69,11 @@
     const groups = GROUPS.map(g => {
       const rs = failed.filter(r => r.severity === g.sev);
       if (!rs.length) return '';
-      return `<section class="cfg-group" data-tone="${g.tone}"><h3>${g.title} <span>${rs.length}</span></h3><ul>${rs.map(item).join('')}</ul></section>`;
+      return `<section class="cfg-group" data-tone="${g.tone}"><h3><span class="cfg-glyph" aria-hidden="true">${g.glyph}</span>${g.title} <span>${rs.length}</span></h3><ul>${rs.map(item).join('')}</ul></section>`;
     }).join('');
     const passed = report.results.filter(r => r.passed);
     const ok = passed.length
-      ? `<section class="cfg-group" data-tone="ok"><details><summary><h3>Regras que passaram <span>${passed.length}</span></h3></summary><ul>${passed.map(item).join('')}</ul></details></section>` : '';
+      ? `<section class="cfg-group" data-tone="ok"><details><summary><h3><span class="cfg-glyph" aria-hidden="true">✓</span>Regras que passaram <span>${passed.length}</span></h3></summary><ul>${passed.map(item).join('')}</ul></details></section>` : '';
     return `${groups}${ok}`;
   }
 
@@ -73,15 +81,20 @@
     if (layer.hidden) return;
     const s = report?.summary;
     const head = report
-      ? `<p class="cfg-head" data-valid="${report.exitCode === 0}">${report.exitCode === 0 ? '✅' : '❌'} ${esc(report.message)}</p>
+      ? `<p class="cfg-head" data-valid="${report.exitCode === 0}"><span class="pill ${report.exitCode === 0 ? 'done' : 'failed'}"><span aria-hidden="true">${report.exitCode === 0 ? '✓' : '✕'}</span> ${report.exitCode === 0 ? 'válida' : 'com erros'}</span> ${esc(report.message)}</p>
+         <div class="cfg-counts">
+           <div><b class="ok">${report.results.filter(r => r.passed).length}</b><span>regras passaram</span></div>
+           <div><b class="${s.warnings ? 'warn' : ''}">${s.warnings}</b><span>aviso(s)</span></div>
+           <div><b class="${s.errors ? 'err' : ''}">${s.errors}</b><span>erro(s)</span></div>
+         </div>
          <p class="cfg-meta">${s.errors} erro(s) · ${s.warnings} aviso(s) · ${s.info} info · contrato v${esc(report.contractVersion)} · ${esc(when(report.generatedAt))}${err ? ` · <span class="cfg-stale">última atualização falhou: ${esc(err)}</span>` : ''}</p>` : '';
     layer.innerHTML = `<div class="ov-backdrop" data-close></div>
       <div class="help cfg-panel" role="dialog" aria-modal="true" aria-labelledby="cfgTitle">
-        <header><h2 id="cfgTitle">🔧 Saúde do Sistema</h2>
-          <div class="cfg-actions"><button type="button" class="ghost-btn cfg-reload"${loading ? ' disabled' : ''}>${loading ? 'Validando…' : 'Revalidar'}</button>
+        <header><h2 id="cfgTitle">Saúde do Sistema</h2>
+          <div class="cfg-actions"><button type="button" class="btn cfg-reload"${loading ? ' disabled' : ''}>${loading ? 'Validando…' : 'Revalidar'}</button>
           <button type="button" class="icon-btn cfg-close" data-close aria-label="Fechar" title="Fechar">✕</button></div></header>
         <div class="cfg-body">${head}${body()}</div>
-        <footer class="cfg-foot">Worktrees de ciclo encerrado ou órfãos: <code>node scripts/validate-config.js --fix</code></footer>
+        <footer class="cfg-foot">Somente leitura: o painel nunca corrige a configuração sozinho. Worktrees de ciclo encerrado ou órfãos: <code>node scripts/validate-config.js --fix</code></footer>
       </div>`;
   }
 
@@ -90,7 +103,12 @@
     const bad = report && report.exitCode !== 0;
     alert.hidden = !bad;
     if (bad) alert.title = `${report.message} — abrir Saúde do Sistema`;
-    $('cfgHealthBtn').dataset.state = !report ? '' : bad ? 'err' : report.summary.warnings ? 'warn' : 'ok';
+    const state = !report ? '' : bad ? 'err' : report.summary.warnings ? 'warn' : 'ok';
+    $('cfgHealthBtn').dataset.state = state;
+    // Estado com glifo + texto (nunca só a cor); sem relatório, "indisponível", nunca "ok".
+    $('cfgState').textContent = state === 'err' ? `✕ ${report.summary.errors} erro(s)`
+      : state === 'warn' ? `⚠ ${report.summary.warnings} aviso(s)`
+      : state === 'ok' ? '✓ ok' : err ? '— indisponível' : '○ validando';
   }
 
   async function load() {
@@ -104,45 +122,4 @@
   setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
   load();
 
-  const style = document.createElement('style');
-  style.textContent = `
-    .cfg-alert { border: 1px solid var(--stop); background: var(--stop-bg); color: var(--stop); font: inherit; font-size: 13px; font-weight: 600;
-      padding: 5px 10px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
-    .cfg-alert[hidden] { display: none; }
-    #cfgHealthBtn { position: relative; font-size: 14px; }
-    #cfgHealthBtn[data-state]:not([data-state=""])::after { content: ""; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; }
-    #cfgHealthBtn[data-state="err"]::after { background: var(--stop); }
-    #cfgHealthBtn[data-state="warn"]::after { background: var(--attention); }
-    #cfgHealthBtn[data-state="ok"]::after { background: var(--clear); }
-    .cfg-panel { width: min(780px, 100%); max-height: 80vh; display: flex; flex-direction: column; }
-    .cfg-actions { display: flex; gap: 8px; align-items: center; }
-    .cfg-body { overflow: auto; padding: 14px 18px 18px; }
-    .cfg-head { margin: 0; font-weight: 600; color: var(--ink); }
-    .cfg-meta { margin: 4px 0 12px; font-size: 12.5px; color: var(--muted); }
-    .cfg-stale { color: var(--attention); }
-    .cfg-empty { color: var(--muted); margin: 8px 0; }
-    .cfg-group { margin-top: 12px; border: 1px solid var(--line-soft); border-left-width: 4px; border-radius: 10px; overflow: hidden; }
-    .cfg-group h3 { margin: 0; padding: 8px 12px; font-size: 13.5px; display: inline-flex; gap: 8px; align-items: center; }
-    .cfg-group h3 span { font-weight: 500; color: var(--muted); }
-    .cfg-group > ul, .cfg-group details > ul { list-style: none; margin: 0; padding: 0; }
-    .cfg-group summary { cursor: pointer; }
-    .cfg-group[data-tone="err"] { border-left-color: var(--stop); } .cfg-group[data-tone="err"] h3 { color: var(--stop); }
-    .cfg-group[data-tone="err"] > h3 { background: var(--stop-bg); display: flex; }
-    .cfg-group[data-tone="warn"] { border-left-color: var(--attention); } .cfg-group[data-tone="warn"] h3 { color: var(--attention); }
-    .cfg-group[data-tone="warn"] > h3 { background: var(--attention-bg); display: flex; }
-    .cfg-group[data-tone="info"] { border-left-color: var(--idle); } .cfg-group[data-tone="info"] h3 { color: var(--muted); }
-    .cfg-group[data-tone="info"] > h3 { background: var(--sunken); display: flex; }
-    .cfg-group[data-tone="ok"] { border-left-color: var(--clear); } .cfg-group[data-tone="ok"] h3 { color: var(--clear); }
-    .cfg-group[data-tone="ok"] summary { padding-left: 12px; }
-    .cfg-item { display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 1fr); gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line-soft); font-size: 13.5px; }
-    .cfg-rule { font-family: var(--mono); font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
-    .cfg-msg { color: var(--ink); min-width: 0; }
-    .cfg-msg details { margin-top: 4px; color: var(--muted); font-size: 12.5px; }
-    .cfg-msg ul { margin: 4px 0 0; padding-left: 18px; }
-    .cfg-msg li { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
-    .cfg-foot { padding: 9px 18px; border-top: 1px solid var(--line-soft); font-size: 12.5px; color: var(--muted); }
-    .cfg-foot code { font-family: var(--mono); }
-    @media (max-width: 640px) { .cfg-item { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
-  `;
-  document.head.appendChild(style);
 })();

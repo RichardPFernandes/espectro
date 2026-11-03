@@ -212,6 +212,7 @@ test('Views.setView reloads Coordination after returning from another tab', asyn
     const document = { body: { dataset: {}, appendChild() {} }, activeElement: { dataset: {} }, createElement: element };
     const context = {
         window, document, location, prefs, selected: null, runs: new Map(), NODES: [], $: dollar,
+        visibleRuns: () => [], isHidden: () => false, needsYou: () => false,
         history: { replaceState(_state, _title, url) { location.hash = url.startsWith('#') ? url : ''; } },
         persist() {}, requestAnimationFrame: callback => callback(),
     };
