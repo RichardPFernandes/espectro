@@ -89,6 +89,22 @@ test('F4: sufixo de posição é aparado; diretório e curinga viram UNKNOWN', (
     assert.strictEqual(first([{ files: tick('a.js', 'backend/svc/') }]).paths_decl, U);
 });
 
+test('R1: lista dentro de uma única crase => UNKNOWN (nunca um caminho fantasma)', () => {
+    for (const f of ['`a.js, b.js`', '`a.js; b.js`', '`a.js e b.js`']) {
+        assert.strictEqual(first([{ files: f }]).paths_decl, U, f);
+    }
+    // migração + código na mesma crase: não pode sair kind=code / schema_decl=false.
+    const s = first([{ files: '`backend/svc-a/src/main/resources/db/migration/V1__x.sql, backend/svc-a/src/a.js`' }]);
+    assert.deepStrictEqual([s.paths_decl, s.kind, s.schema_decl], [U, U, U]);
+    // nome com espaço continua aceito.
+    assert.deepStrictEqual(first([{ files: '`docs/meu arquivo.js`' }]).paths_decl, ['docs/meu arquivo.js']);
+});
+
+test('R2: diretório seguido de parêntese => UNKNOWN', () => {
+    assert.strictEqual(first([{ files: '`backend/svc/ (novo)`' }]).paths_decl, U);
+    assert.strictEqual(first([{ files: 'backend/svc/ (novo)' }]).paths_decl, U);
+});
+
 test('plano sem bloco => status UNKNOWN com causa, sem grupos', () => {
     const r = ps.buildProspective('# nada aqui\n', {});
     assert.deepStrictEqual([r.status, r.cause, r.plan_version, r.groups], ['UNKNOWN', 'PLAN_BLOCK_NOT_FOUND', U, []]);
@@ -96,79 +112,79 @@ test('plano sem bloco => status UNKNOWN com causa, sem grupos', () => {
 
 // --- linhas da tabela do §4.5 (DV03) --------------------------------------------
 
-test('§4.5: 3 arquivos, 1 serviço, 4 ACs => n_files 3, n_acs_step 4, code_local', () => {
+test('§4.5 [classe v9: C4; não computada]: 3 arquivos, 1 serviço, 4 ACs => n_files 3, n_acs_step 4, code_local', () => {
     const s = first([{ files: tick('backend/svc-a/src/a.js', 'backend/svc-a/src/b.js', 'backend/svc-a/src/c.js'), acs: ['AC-01', 'AC-02', 'AC-03', 'AC-04'] }]);
     assert.deepStrictEqual([s.n_files, s.n_acs_step, s.n_services_decl, s.code_local, s.schema_decl, s.sensitive_decl, s.rework_count, s.ticket_rework],
         [3, 4, 1, true, false, false, 0, false]);
 });
 
-test('§4.5: README.md com AC-01 => kind docs, n_services 0', () => {
+test('§4.5 [classe v9: C1; não computada]: README.md com AC-01 => kind docs, n_services 0', () => {
     const s = first([{ files: tick('README.md') }]);
     assert.deepStrictEqual([s.kind, s.n_files, s.n_acs_step, s.n_services_decl, s.code_local], ['docs', 1, 1, 0, false]);
 });
 
-test('§4.5: .claude/commands/plan.md é behavior, nunca docs', () => {
+test('§4.5 [classe v9: C4; não computada]: .claude/commands/plan.md é behavior, nunca docs', () => {
     assert.strictEqual(first([{ files: tick('.claude/commands/plan.md') }]).kind, 'behavior');
     assert.strictEqual(first([{ files: tick('AGENTS.md') }]).kind, 'behavior');
     assert.strictEqual(first([{ files: tick('docs/handoff-contract.md') }]).kind, 'behavior');
     assert.strictEqual(first([{ files: tick('docs/guia.md') }]).kind, 'docs');
 });
 
-test('§4.5: js + teste em 1 serviço, 1 arquivo novo => code, 1 bucket, schema_decl false, n_new_files 1', () => {
+test('§4.5 [classe v9: C2; não computada]: js + teste em 1 serviço, 1 arquivo novo => code, 1 bucket, schema_decl false, n_new_files 1', () => {
     const s = first([{ files: tick('backend/svc-a/src/x.js', 'backend/svc-a/test/x.test.js'), acs: ['AC-01', 'AC-02'] }],
         { fileExists: p => p !== 'backend/svc-a/test/x.test.js' });
     assert.deepStrictEqual([s.kind, s.service_buckets, s.n_services_decl, s.schema_decl, s.code_local, s.n_new_files, s.n_acs_step],
         ['code', ['service:backend/svc-a'], 1, false, true, 1, 2]);
 });
 
-test('§4.5 / D18: .java (inclusive teste) => schema_decl true e kind schema', () => {
+test('§4.5 [classe v9: C4; não computada] / D18: .java (inclusive teste) => schema_decl true e kind schema', () => {
     const s = first([{ files: tick('backend/svc-a/src/main/java/X.java', 'backend/svc-a/src/test/java/XTest.java') }]);
     assert.deepStrictEqual([s.schema_decl, s.kind, s.code_local], [true, 'schema', false]);
 });
 
-test('§4.5: dois serviços => 2 buckets', () => {
+test('§4.5 [classe v9: C4; não computada]: dois serviços => 2 buckets', () => {
     const s = first([{ files: tick('backend/svc-a/src/a.js', 'backend/svc-b/src/b.js') }]);
     assert.deepStrictEqual([s.service_buckets, s.n_services_decl, s.code_local],
         [['service:backend/svc-a', 'service:backend/svc-b'], 2, false]);
 });
 
-test('§4.5: dois serviços + arquivo na raiz => 3 buckets (__root__ conta; não usa analyzeChangedFiles)', () => {
+test('§4.5 [classe v9: C4; não computada]: dois serviços + arquivo na raiz => 3 buckets (__root__ conta; não usa analyzeChangedFiles)', () => {
     const s = first([{ files: tick('backend/svc-a/src/a.js', 'backend/svc-b/src/b.js', 'root.js') }]);
     assert.deepStrictEqual([s.service_buckets, s.n_services_decl], [['__root__', 'service:backend/svc-a', 'service:backend/svc-b'], 3]);
 });
 
-test('§4.5: serviço + scripts/ => 2 buckets (analyzeChangedFiles ignoraria scripts/)', () => {
+test('§4.5 [classe v9: C4; não computada]: serviço + scripts/ => 2 buckets (analyzeChangedFiles ignoraria scripts/)', () => {
     const s = first([{ files: tick('backend/svc-a/src/a.js', 'scripts/x.js') }]);
     assert.deepStrictEqual([s.service_buckets, s.n_services_decl], [['__root__', 'service:backend/svc-a'], 2]);
 });
 
-test('§4.5: docs não conta bucket', () => {
+test('§4.5 [classe v9: C2; não computada]: docs não conta bucket', () => {
     const s = first([{ files: tick('backend/svc-a/src/a.js', 'backend/svc-a/README.md') }]);
     assert.deepStrictEqual([s.service_buckets, s.n_services_decl, s.kind, s.code_local], [['service:backend/svc-a'], 1, 'code', true]);
 });
 
-test('§4.5: topologia não declarada => n_services_decl e code_local UNKNOWN', () => {
+test('§4.5 [classe v9: C4; não computada]: topologia não declarada => n_services_decl e code_local UNKNOWN', () => {
     const s = first([{ files: tick('backend/svc-a/src/a.js') }], { policy: { ...ps.DEFAULT_POLICY, service_roots: [] } });
     assert.deepStrictEqual([s.n_services_decl, s.service_buckets, s.code_local], [U, U, U]);
 });
 
-test('§4.5: application.yml sozinho => config', () => {
+test('§4.5 [classe v9: C4; não computada]: application.yml sozinho => config', () => {
     assert.strictEqual(first([{ files: tick('backend/svc-a/src/main/resources/application.yml') }]).kind, 'config');
 });
 
-test('§4.5: migração Flyway => schema_decl true; persistence.xml também', () => {
+test('§4.5 [classe v9: C4 (C5 com schema_risk_seen=high); não computada]: migração Flyway => schema_decl true; persistence.xml também', () => {
     for (const f of ['backend/svc-a/src/main/resources/db/migration/V12__add_col.sql', 'backend/svc-a/src/main/resources/META-INF/persistence.xml']) {
         const s = first([{ files: tick(f) }]);
         assert.deepStrictEqual([s.schema_decl, s.kind], [true, 'schema'], f);
     }
 });
 
-test('§4.5: schema_risk_seen vem do state (sobe); sem observação é null', () => {
+test('§4.5 [classe v9: C5 quando high; não computada]: schema_risk_seen vem do state (sobe); sem observação é null', () => {
     assert.strictEqual(first([{ files: tick('a.js') }]).schema_risk_seen, null);
     assert.strictEqual(first([{ files: tick('a.js') }], { state: { schema_risk_level: 'high' } }).schema_risk_seen, 'high');
 });
 
-test('§4.5: AC referenciado com "autenticação" => sensitive_decl true', () => {
+test('§4.5 [classe v9: C5; não computada]: AC referenciado com "autenticação" => sensitive_decl true', () => {
     const spec = '## Critérios de Aceite\n- AC-01: exige autenticação do usuário (auth) antes de listar.\n';
     const s = first([{ files: tick('backend/svc-a/src/a.js') }], { specContent: spec });
     assert.strictEqual(s.sensitive_decl, true);
@@ -179,20 +195,20 @@ test('sensitive_decl: caminho em sensitive_globs e termo no texto do passo', () 
     assert.strictEqual(first([{ title: 'Validar o token do usuário', files: tick('backend/svc-a/src/a.js') }]).sensitive_decl, true);
 });
 
-test('§4.5: AC referenciado inexistente na spec => sensitive_decl UNKNOWN (nunca false)', () => {
+test('§4.5 [classe v9: C4; não computada]: AC referenciado inexistente na spec => sensitive_decl UNKNOWN (nunca false)', () => {
     const s = first([{ files: tick('backend/svc-a/src/a.js'), acs: ['AC-99'] }]);
     assert.strictEqual(s.sensitive_decl, U);
     // Sem spec nenhuma: também UNKNOWN.
     assert.strictEqual(first([{ files: tick('a.js'), acs: ['AC-01'] }], { specContent: '' }).sensitive_decl, U);
 });
 
-test('§4.5: passo sem Arquivo => sinais de caminho UNKNOWN (não false/0)', () => {
+test('§4.5 [classe v9: C4; não computada]: passo sem Arquivo => sinais de caminho UNKNOWN (não false/0)', () => {
     const s = first([{ files: null }]);
     assert.deepStrictEqual([s.paths_decl, s.n_files, s.n_new_files, s.kind, s.n_services_decl, s.schema_decl, s.code_local],
         [U, U, U, U, U, U, U]);
 });
 
-test('§4.5: arquivo em **/shared/** não é code_local', () => {
+test('§4.5 [classe v9: C4; não computada]: arquivo em **/shared/** não é code_local', () => {
     const s = first([{ files: tick('backend/svc-a/src/shared/util.js') }]);
     assert.deepStrictEqual([s.kind, s.n_services_decl, s.code_local], ['code', 1, false]);
 });
@@ -243,7 +259,7 @@ test('retrospectivo completo: declarado × tocado, sem violação; artefatos de 
     });
 });
 
-test('§4.5 última linha: diff com arquivo não declarado => scope_violation true (só conta; sem lista de caminhos)', () => {
+test('§4.5 última linha [classe v9: próximo Attempt ≥ C4; não computada]: diff com arquivo não declarado => scope_violation true (só conta; sem lista de caminhos)', () => {
     const r = ps.retrospectiveSignals({ changedFiles: ['a.js', 'extra.js'], diffStat: { added: 1, removed: 0 }, affected: AFF, schema: SCH, declaredPaths: ['a.js'] });
     assert.deepStrictEqual([r.undeclared_files, r.scope_violation], [1, true]);
     assert.ok(!JSON.stringify(r).includes('extra.js'));

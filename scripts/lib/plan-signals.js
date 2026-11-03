@@ -106,7 +106,7 @@ function parsePathsLine(line) {
         const p = normPath(t.replace(/\s*\(.*$/, '').replace(/::.*$/, '').replace(/:\d+(?:[-:]\d+)*$/, ''));
         // Caminho concreto: sem "...", sem curinga, sem espaço (salvo entre crases); com "/" ou extensão.
         // Diretório (termina em "/") não é arquivo: lista incompleta => UNKNOWN.
-        if (!p || /\/$/.test(t.trim()) || /\.\.\./.test(p) || (!ticked.length && /\s/.test(p)) || /[*<>{}]/.test(p) || !/[/.]/.test(p)) return null;
+        if (!p || /\/$/.test(p) || /\.\.\./.test(p) || (ticked.length && /[,;]|\se\s/.test(p)) || (!ticked.length && /\s/.test(p)) || /[*<>{}]/.test(p) || !/[/.]/.test(p)) return null;
         out.push(p);
     }
     return out.length ? [...new Set(out)] : null;
