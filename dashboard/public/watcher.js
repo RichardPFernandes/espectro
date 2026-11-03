@@ -1,5 +1,5 @@
 // Painel de controle do watcher (scripts/watcher-manager.js via /api/watcher/*):
-// indicador no topo, Start/Stop/Restart, log em tempo real (SSE) com filtro por nível,
+// indicador no pé do rail (#navFoot), Start/Stop/Restart, log em tempo real (SSE) com filtro por nível,
 // task em andamento e auto-start. Script clássico carregado por último; usa os globais
 // do script principal (runs, NODE_LABEL, titleOf, esc, api, toast, select, prefs,
 // persist, nearBottom, Views, $).
@@ -59,28 +59,30 @@
   }
 
   // ------------------------------------------------------------------ UI
-  $('live').insertAdjacentHTML('beforebegin', `
-    <div class="wctl" id="wctl">
+  // Cartão "Watcher ativo · tick N · próximo em X s" no pé do rail (AppNav do design);
+  // o painel abre ao lado do rail. CSS em screens/system.css.
+  $('navFoot').insertAdjacentHTML('beforeend', `
+    <div class="wctl" id="wctl" data-tone="idle">
       <button type="button" class="wctl-chip" id="wctlChip" aria-expanded="false" aria-controls="wctlPanel">
-        <i aria-hidden="true"></i><span id="wctlText">Watcher: verificando…</span><span class="wctl-short" id="wctlShort" aria-hidden="true">Watcher</span>
+        <span class="wctl-chip-row"><i aria-hidden="true"></i><span class="wctl-short" id="wctlShort" aria-hidden="true">Watcher</span></span>
+        <span class="sys-sr" id="wctlText">Watcher: verificando…</span>
+        <span class="wctl-sub" id="wctlSub"></span>
       </button>
       <section class="wctl-panel" id="wctlPanel" hidden aria-label="Controle do Watcher">
         <div class="wctl-head">
-          <span class="wctl-title"><i aria-hidden="true"></i>Watcher</span>
+          <span class="wctl-title"><i aria-hidden="true"></i><span class="wctl-title-text"><b>Watcher</b><span class="wctl-state" id="wctlState"></span></span></span>
           <div class="wctl-actions">
-            <button type="button" class="ghost-btn" data-wact="start">Start</button>
-            <button type="button" class="ghost-btn" data-wact="stop">Stop</button>
-            <button type="button" class="ghost-btn" data-wact="restart">Restart</button>
+            <button type="button" class="btn wctl-go" data-wact="start"><span aria-hidden="true">▶</span> Start</button>
+            <button type="button" class="btn wctl-halt" data-wact="stop"><span aria-hidden="true">■</span> Stop</button>
+            <button type="button" class="btn" data-wact="restart"><span aria-hidden="true">↻</span> Restart</button>
           </div>
-          <span class="wctl-pid" id="wctlPid"></span>
         </div>
+        <dl class="wctl-facts" id="wctlFacts"></dl>
         <div class="wctl-alert" id="wctlAlert" hidden></div>
-        <p class="wctl-state" id="wctlState"></p>
-        <p class="wctl-meta" id="wctlMeta"></p>
         <div class="wctl-task" id="wctlTask" hidden></div>
         <p class="wctl-meta wctl-last" id="wctlLast" hidden></p>
         <div class="wctl-settings" aria-labelledby="wctlSettingsTitle">
-          <span class="wctl-settings-title" id="wctlSettingsTitle">Configurações</span>
+          <span class="wctl-settings-title label" id="wctlSettingsTitle">Configurações</span>
           <label class="wctl-auto"><input type="checkbox" id="wctlAuto"> Iniciar automaticamente quando o dashboard subir</label>
           <div class="wctl-notify">
             <label class="wctl-notify-label" for="wctlAccount">Conta do Claude</label>
@@ -91,18 +93,18 @@
             <div class="wctl-notify">
               <span class="wctl-notify-label" id="wctlUsageTitle">Uso da conta</span>
               <span class="wctl-notify-state" id="wctlUsageState"></span>
-              <button type="button" class="ghost-btn" id="wctlUsageRefresh">Atualizar</button>
+              <button type="button" class="btn" id="wctlUsageRefresh">Atualizar</button>
             </div>
             <div id="wctlUsageBars" class="wctl-usage-bars"></div>
           </div>
           <div class="wctl-notify">
             <span class="wctl-notify-label">Notificações</span>
             <span class="wctl-notify-state" id="wctlNotifyState">verificando…</span>
-            <button type="button" class="ghost-btn" id="wctlNotifyTest" disabled>Testar Notificação</button>
+            <button type="button" class="btn" id="wctlNotifyTest" disabled>Testar Notificação</button>
             <span class="wctl-notify-result" id="wctlNotifyResult" role="status" aria-live="polite"></span>
           </div>
           <div class="wctl-hours" aria-labelledby="wctlHoursTitle">
-            <span class="wctl-settings-title" id="wctlHoursTitle">Horas Redmine (backfill)</span>
+            <span class="wctl-settings-title label" id="wctlHoursTitle">Horas Redmine (backfill)</span>
             <p class="wctl-hours-help">Reprocessa runs arquivados e sincroniza time entries a partir do cost_tracking. Dry-run não grava.</p>
             <div class="wctl-hours-row">
               <label class="wctl-hours-field">Limit <input type="number" id="wctlHoursLimit" min="1" step="1" placeholder="todos" inputmode="numeric"></label>
@@ -110,9 +112,9 @@
               <label class="wctl-auto"><input type="checkbox" id="wctlHoursConfirmApply"> Confirmar apply (grava no Redmine)</label>
             </div>
             <div class="wctl-hours-row">
-              <button type="button" class="ghost-btn" id="wctlHoursDry">Dry-run</button>
-              <button type="button" class="ghost-btn" id="wctlHoursApply" disabled>Apply</button>
-              <button type="button" class="ghost-btn" id="wctlHoursCancel" disabled>Cancelar</button>
+              <button type="button" class="btn" id="wctlHoursDry">Dry-run</button>
+              <button type="button" class="btn danger" id="wctlHoursApply" disabled>Apply</button>
+              <button type="button" class="btn" id="wctlHoursCancel" disabled>Cancelar</button>
             </div>
             <div class="wctl-hours-progress" id="wctlHoursProgress" aria-live="polite">
               <div class="wctl-hours-bar" aria-hidden="true"><i id="wctlHoursBar"></i></div>
@@ -123,9 +125,9 @@
           </div>
         </div>
         <div class="wctl-loghead">
-          <span>Log em tempo real</span>
+          <span class="label">Log em tempo real</span>
           <span class="wctl-levels">${LEVELS.map(l => `<label><input type="checkbox" data-wlevel="${l}"${prefs.watcherLevels[l] !== false ? ' checked' : ''}> ${l}</label>`).join('')}</span>
-          <button type="button" class="ghost-btn" id="wctlClear">Limpar</button>
+          <button type="button" class="btn" id="wctlClear">Limpar</button>
         </div>
         <pre class="wctl-log" id="wctlLog" tabindex="0" aria-label="Log do watcher" aria-live="off"></pre>
       </section>
@@ -133,24 +135,42 @@
 
   const chip = $('wctlChip'), panel = $('wctlPanel'), logEl = $('wctlLog');
 
+  // "próximo em 42 s": anda a cada segundo sem refetch (ver ticker abaixo).
+  function untilText(iso) {
+    const sec = Math.round((Date.parse(iso) - Date.now()) / 1000);
+    return sec > 0 ? `em ${sec < 60 ? `${sec} s` : dur(sec * 1000)}` : 'agora';
+  }
+  // Segunda linha do cartão do rail: só dado medido pelo watcher-manager; sem dado, nada.
+  function subText() {
+    if (!reachable || !st || busy) return '';
+    if (st.state === 'restarting') return st.next_tick_at ? `reinício ${untilText(st.next_tick_at)}` : '';
+    if (st.running) {
+      const tick = st.ticks != null ? `tick ${st.ticks}` : '';
+      if (st.phase === 'tick') return [tick, 'em andamento'].filter(Boolean).join(' · ');
+      return [tick, st.next_tick_at ? `próximo ${untilText(st.next_tick_at)}` : ''].filter(Boolean).join(' · ');
+    }
+    return st.last_run?.ended_at ? `parou às ${hhmm(st.last_run.ended_at)}` : '';
+  }
+  function paintSub() { $('wctlSub').textContent = subText(); }
+
   function paint() {
     const t = tone(), text = label();
-    $('wctl').dataset.tone = t;
-    $('wctl').classList.toggle('limit', st?.error === 'restart_limit_reached' && !st.running);
-    $('wctlState').textContent = text;
-    $('wctlText').textContent = (st?.error === 'restart_limit_reached' && !st.running ? '⚠ ' : '') + text;
-    chip.title = text;
     const limit = st?.error === 'restart_limit_reached' && !st.running;
+    $('wctl').dataset.tone = t;
+    $('wctl').classList.toggle('limit', limit);
+    $('wctlState').textContent = text.replace(/^Watcher: /, '');
+    $('wctlText').textContent = (limit ? '⚠ ' : '') + text;
+    chip.title = `${text} — abrir controle do watcher`;
     $('wctlShort').textContent = !reachable || !st || busy || st.state !== 'running' && st.state !== 'stopped' ? text.replace(/^Watcher: /, 'Watcher ')
-      : st.running ? `Watcher · ${dur(st.uptime_ms)}` : `${limit ? '⚠ ' : ''}Watcher parado`;
+      : st.running ? 'Watcher ativo' : `${limit ? '⚠ ' : ''}Watcher parado`;
+    paintSub();
     const running = !!st?.running;
     for (const b of panel.querySelectorAll('[data-wact]')) {
       const a = b.dataset.wact;
       b.disabled = !reachable || !!busy || (a === 'start' ? running || st?.state === 'stopping' : !running && st?.state !== 'stopping');
     }
-    $('wctlPid').textContent = st?.pid ? `PID: ${st.pid}` : '';
     const alert = $('wctlAlert');
-    if (st?.error === 'restart_limit_reached' && !st.running) {
+    if (limit) {
       alert.hidden = false;
       alert.textContent = `⚠ O watcher morreu ${st.max_restarts_per_hour + 1} vezes em menos de 1 hora e não será mais reiniciado sozinho. Verifique o log abaixo e use Start para tentar de novo.`;
     } else if (st?.orphan_pid) {
@@ -158,16 +178,18 @@
       alert.textContent = `Há um watcher órfão (PID ${st.orphan_pid}) de uma execução anterior do dashboard. Ele será encerrado ao clicar Start.`;
     } else alert.hidden = true;
 
-    const meta = [];
-    if (st && running) {
-      meta.push(`Uptime: ${dur(st.uptime_ms)}`);
-      meta.push(`Restarts automáticos: ${st.restarts}`);
-      if (st.phase === 'tick') meta.push('tick em andamento');
-      else if (st.next_tick_at) meta.push(`${st.state === 'restarting' ? 'reinício' : 'próximo tick'} às ${hhmmss(st.next_tick_at)}`);
-    } else if (st?.restarts) {
-      meta.push(`Restarts automáticos: ${st.restarts}`);
-    }
-    $('wctlMeta').textContent = meta.join(' · ');
+    // Fatos do processo (só leitura do /api/watcher/status). Sem medição → "—", nunca 0.
+    let next = '—';
+    if (running && st.phase === 'tick') next = 'em andamento';
+    else if ((running || st?.state === 'restarting') && st.next_tick_at) next = `${st.state === 'restarting' ? 'reinício ' : ''}${hhmmss(st.next_tick_at)}`;
+    const facts = [
+      ['Uptime', running ? dur(st.uptime_ms) || '—' : '—'],
+      ['Ticks', running && st.ticks != null ? String(st.ticks) : '—'],
+      ['Próximo tick', next],
+      ['Restarts automáticos', st && st.restarts != null ? String(st.restarts) : '—'],
+      ['PID', st?.pid ? String(st.pid) : '—'],
+    ];
+    $('wctlFacts').innerHTML = facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
 
     const last = st?.last_run;
     $('wctlLast').hidden = !last;
@@ -180,7 +202,7 @@
       const num = titleOf(cur).num || cur.taskId;
       const node = cur.node || cur.state?.node;
       task.innerHTML = `<span>Processando: <b>${esc(num)}</b>${node ? ` · nó: ${esc(NODE_LABEL[node] || node)}` : ''}</span>
-        <button type="button" class="ghost-btn" data-wopen="${esc(cur.taskId)}">Ver run atual</button>`;
+        <button type="button" class="btn" data-wopen="${esc(cur.taskId)}">Ver run atual</button>`;
     }
     if (autoStart !== null) $('wctlAuto').checked = autoStart;
   }
@@ -449,92 +471,9 @@
     }
   });
 
-  const style = document.createElement('style');
-  style.textContent = `
-    /* Sem isto a linha do grid do body cresce até o min-content do topo e a página
-       ganha rolagem lateral; com ele, as abas encolhem/rolam como já previsto. */
-    .topbar { min-width: 0; }
-    .wctl { position: relative; }
-    .wctl-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 420px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 5px 10px; font-size: 13.5px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
-    .wctl-chip:hover { color: var(--ink); border-color: var(--faint); }
-    .wctl-chip span { overflow: hidden; text-overflow: ellipsis; }
-    .wctl-short { display: none; }
-    .wctl-state { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
-    .wctl.limit .wctl-state { color: var(--stop); }
-    .wctl i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--idle); }
-    .wctl[data-tone="on"] i { background: var(--clear); box-shadow: 0 0 0 3px var(--clear-bg); }
-    .wctl[data-tone="off"] i { background: var(--stop); box-shadow: 0 0 0 3px var(--stop-bg); }
-    .wctl[data-tone="warn"] i { background: var(--attention); box-shadow: 0 0 0 3px var(--attention-bg); }
-    .wctl.limit .wctl-chip { color: var(--stop); border-color: var(--stop); }
-    .wctl-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 45; width: min(680px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.18); padding: 14px 16px 16px; display: grid; gap: 8px; }
-    .wctl-panel[hidden] { display: none; }
-    .wctl-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .wctl-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
-    .wctl-actions { display: flex; gap: 6px; }
-    .wctl-actions .ghost-btn:disabled { opacity: .45; cursor: default; }
-    .wctl-pid { margin-left: auto; font: 12.5px var(--mono); color: var(--muted); }
-    .wctl-meta { margin: 0; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
-    .wctl-alert { background: var(--stop-bg); color: var(--stop); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: 500; }
-    .wctl-alert[hidden], .wctl-task[hidden], .wctl-last[hidden] { display: none; }
-    .wctl-task { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--signal-soft); border-radius: 8px; padding: 6px 6px 6px 10px; font-size: 13.5px; }
-    .wctl-task .ghost-btn { margin-left: auto; }
-    .wctl-settings { display: grid; gap: 8px; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
-    .wctl-settings-title { font-size: 13px; font-weight: 600; color: var(--ink-2); }
-    .wctl-notify { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); }
-    .wctl-notify-label { font-weight: 500; }
-    .wctl-notify-state { color: var(--muted); font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
-    .wctl-notify .ghost-btn:disabled { opacity: .45; cursor: default; }
-    .wctl-notify-result { font: 12.5px var(--mono); font-variant-numeric: tabular-nums; }
-    .wctl-notify-result[data-tone="ok"] { color: var(--clear); }
-    .wctl-notify-result[data-tone="err"] { color: var(--stop); }
-    .wctl-hours { display: grid; gap: 8px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
-    .wctl-hours-help { margin: 0; font-size: 12.5px; color: var(--muted); }
-    .wctl-hours-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
-    .wctl-hours-field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
-    .wctl-hours-field input { width: 88px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); font: 12.5px var(--mono); }
-    .wctl-hours-progress { display: grid; gap: 6px; }
-    .wctl-hours-bar { height: 6px; border-radius: 999px; background: var(--sunken); overflow: hidden; border: 1px solid var(--line-soft); }
-    .wctl-hours-bar > i { display: block; height: 100%; width: 0; background: var(--signal); transition: width .25s ease; }
-    .wctl-hours-msg { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink-2); overflow-wrap: anywhere; }
-    .wctl-hours-msg[data-tone="ok"] { color: var(--clear); }
-    .wctl-hours-msg[data-tone="err"] { color: var(--stop); }
-    .wctl-hours-msg[data-tone="warn"] { color: var(--attention); }
-    .wctl-hours-meta { margin: 0; font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-    .wctl-hours-log { margin: 0; max-height: 140px; overflow: auto; padding: 8px 10px; border-radius: 8px; background: var(--sunken); border: 1px solid var(--line-soft); font: 11.5px/1.45 var(--mono); color: var(--ink-2); white-space: pre-wrap; }
-    .wctl-notify select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; max-width: 100%; }
-    .wctl-notify-state[data-tone="err"] { color: var(--stop); }
-    .wctl-usage { display: grid; gap: 6px; }
-    .wctl-usage-bars { display: grid; gap: 6px; }
-    .wctl-usage-bars:empty { display: none; }
-    .wctl-ubar { display: grid; grid-template-columns: 130px minmax(80px, 1fr) 44px auto; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
-    .wctl-ubar-track { height: 8px; border-radius: 4px; background: var(--sunken); border: 1px solid var(--line-soft); overflow: hidden; }
-    .wctl-ubar-track i { display: block; height: 100%; border-radius: 4px; background: var(--clear); }
-    .wctl-ubar[data-tone="warn"] .wctl-ubar-track i { background: var(--attention); }
-    .wctl-ubar[data-tone="stop"] .wctl-ubar-track i { background: var(--stop); }
-    .wctl-ubar-pct { font: 600 12.5px var(--mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); }
-    .wctl-ubar-reset { font: 12px var(--mono); color: var(--muted); }
-    @media (max-width: 560px) { .wctl-ubar { grid-template-columns: 1fr 44px; } .wctl-ubar-track { grid-column: 1 / -1; grid-row: 2; } .wctl-ubar-reset { grid-column: 1 / -1; } }
-    .wctl-auto { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
-    .wctl-loghead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 13px; font-weight: 600; color: var(--ink-2); }
-    .wctl-levels { display: flex; gap: 10px; margin-left: auto; font-weight: 500; color: var(--muted); }
-    .wctl-levels label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font: 12px var(--mono); }
-    .wctl-log { margin: 0; height: 280px; overflow: auto; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 10px; font: 12px/1.55 var(--mono); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
-    .wctl-log .wl-warn { color: var(--attention); }
-    .wctl-log .wl-error { color: var(--stop); }
-    .wctl-log .wl-mgr { font-weight: 600; }
-    .wctl-log .wl-info.wl-mgr { color: var(--signal); }
-    .wctl-log .wl-empty { color: var(--faint); }
-    @media (max-width: 1800px) { #wctlText { display: none; } .wctl-short { display: inline; } }
-    @media (max-width: 820px) {
-      .topbar-right { flex-wrap: wrap; justify-content: flex-end; min-width: 0; row-gap: 8px; }
-      .wctl-panel { position: fixed; left: 16px; right: 16px; top: 64px; width: auto; max-height: calc(100vh - 80px); overflow: auto; }
-      .wctl-levels { margin-left: 0; }
-    }
-  `;
-  document.head.appendChild(style);
-
   // Tempo relativo e "task em andamento" acompanham os runs, que já chegam por WebSocket.
   setInterval(() => { if (!document.hidden) poll(); }, POLL_MS);
+  setInterval(() => { if (!document.hidden && st?.next_tick_at) paintSub(); }, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
   poll();
   loadPrefs();

@@ -1,0 +1,196 @@
+/* screens/redmine.css — aba "Redmine" (public/redmine.js) no design Espectro
+   (artboard Tickets.dc.html). Carregado depois do <style> de index.html.
+   Tabela de tickets + painel lateral do ticket (reusa .log-drawer, com backdrop próprio).
+   Estado sempre com forma + cor: anel do status do ticket, barras de prioridade,
+   glifo do run (✓ ◐ ‖ ✕ ○). Accent só na ação primária (Salvar / Tentar novamente). */
+
+/* ------------------------------------------------------------ Cabeçalho e filtros */
+.rm-view { display: flex; flex-direction: column; gap: 16px; max-width: 1440px; }
+.rm-head { display: flex; flex-direction: column; gap: 4px; }
+.rm-head p { margin: 0; max-width: 80ch; font-size: 14px; line-height: 20px; color: var(--text-secondary); }
+
+.rm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.rm-filters { flex-wrap: wrap; }
+.rm-sync { margin-left: auto; font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; }
+.rm-toolbar .btn { min-height: 40px; }
+
+/* ------------------------------------------------------------ Estados */
+.rm-loading p { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); }
+.rm-skel { display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+.rm-skel-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 16px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.rm-skel-row i { display: block; height: 12px; border-radius: 4px; background: var(--raised); animation: rm-pulse 1.4s ease-in-out infinite; }
+@keyframes rm-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+.rm-error {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px;
+  border: 1px solid var(--state-failed); border-radius: var(--radius-panel); background: var(--surface);
+}
+.rm-error h3 { display: flex; align-items: center; gap: 8px; }
+.rm-error dl { margin: 0; display: grid; grid-template-columns: minmax(84px, max-content) minmax(0, 1fr); gap: 8px 16px; font-size: 13px; line-height: 20px; }
+.rm-error dt { color: var(--muted); }
+.rm-error dd { margin: 0; overflow-wrap: anywhere; }
+.rm-glyph-failed { color: var(--state-failed-fg); font-weight: 600; }
+.rm-glyph-running { color: var(--state-running-fg); }
+
+.rm-empty {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 24px;
+  border: 1px dashed var(--border-control); border-radius: var(--radius-panel);
+}
+.rm-empty p { margin: 0; max-width: 72ch; font-size: 13px; line-height: 20px; color: var(--text-secondary); }
+.rm-empty-filter p { color: var(--text); font-weight: 600; }
+
+.rm-source { margin: 0; max-width: 80ch; }
+
+/* ------------------------------------------------------------ Tabela */
+.rm-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface); }
+.rm-table { min-width: 720px; }
+.rm-table thead th { background: var(--rail); }
+.rm-table tbody tr:last-child td { border-bottom: 0; }
+.rm-table td { padding: 8px 12px; }
+.rm-table td:first-child, .rm-table th:first-child { padding-left: 14px; }
+.rm-table .c-id { width: 1%; }
+.rm-table .c-upd { white-space: nowrap; color: var(--muted); font-size: 12px; }
+.rm-table .c-act { width: 1%; }
+.rm-subject { max-width: 0; width: 40%; }
+.rm-subject span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Linha aberta no painel: barra lateral em accent + fundo elevado (design: aria-current). */
+.rm-table tbody tr { box-shadow: inset 2px 0 0 transparent; }
+.rm-table tbody tr.rm-current { background: var(--raised); box-shadow: inset 2px 0 0 var(--accent); }
+/* Recusa QA: mesma linguagem de risco da sidebar de runs, com borda além do tom. */
+.rm-table tbody tr.qa-rejected { background: color-mix(in srgb, var(--state-failed) 8%, transparent); box-shadow: inset 2px 0 0 var(--state-failed); }
+.rm-table tbody tr.qa-rejected:hover { background: color-mix(in srgb, var(--state-failed) 13%, transparent); }
+.rm-table tbody tr.qa-rejected.rm-current { box-shadow: inset 2px 0 0 var(--state-failed), inset 0 0 0 1px var(--accent); }
+
+.rm-id {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 0 8px; margin-left: -8px;
+  border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+  font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--link); white-space: nowrap;
+}
+.rm-id:hover { background: var(--surface-hover); color: var(--link-hover); text-decoration: underline; text-underline-offset: 2px; }
+
+.rm-pr {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 8px; margin-left: -8px; border-radius: 6px;
+  font-family: var(--mono); font-size: 12px; white-space: nowrap;
+}
+.rm-pr:hover { background: var(--surface-hover); }
+
+.rm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.rm-actions .btn { min-height: 40px; padding: 0 12px; }
+.rm-actions .qa-retry-btn {
+  min-height: 40px; padding: 0 12px; border-radius: var(--radius-control);
+  border-color: var(--state-failed); color: var(--state-failed-fg); background: transparent; font-size: 13px; white-space: nowrap;
+}
+.rm-actions .qa-retry-btn:hover:not(:disabled) { background: var(--state-failed-bg); }
+
+/* ------------------------------------------------------------ Prioridade (barras) */
+.rm-prio { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.rm-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.rm-bars i { width: 3px; border-radius: 1px; background: var(--state-queued); }
+.rm-bars i:nth-child(1) { height: 6px; } .rm-bars i:nth-child(2) { height: 9px; } .rm-bars i:nth-child(3) { height: 12px; }
+.rm-prio[data-level="1"] .rm-bars i:nth-child(-n+1),
+.rm-prio[data-level="2"] .rm-bars i:nth-child(-n+2),
+.rm-prio[data-level="3"] .rm-bars i { background: var(--text-secondary); }
+.rm-prio-high { color: var(--state-waiting-fg); }
+.rm-prio-high[data-level] .rm-bars i { background: var(--state-waiting-fg); }
+.rm-prio-urgent { color: var(--state-failed-fg); font-weight: 600; }
+.rm-prio-urgent[data-level] .rm-bars i { background: var(--state-failed); }
+
+/* ------------------------------------------------------------ Status do ticket (anel) */
+.rm-status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); white-space: nowrap; }
+.rm-ring { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--muted); background: transparent; box-sizing: border-box; }
+.rm-st-signal .rm-ring { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0); }
+.rm-st-attention .rm-ring { border-color: var(--state-waiting); background: conic-gradient(var(--state-waiting) 0 75%, transparent 0); }
+.rm-st-clear .rm-ring { border-color: var(--state-done); }
+.rm-st-risk .rm-ring { border-color: var(--state-failed); background: var(--state-failed); }
+.rm-st-risk { color: var(--state-failed-fg); }
+.rm-st-idle .rm-ring { border-style: dashed; border-color: var(--muted); }
+
+/* ------------------------------------------------------------ Run vinculado */
+.rm-run {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; max-width: 18ch; padding: 0 10px;
+  border: 0; border-radius: var(--radius-pill); cursor: pointer;
+  font-size: 12px; font-weight: 600; line-height: 16px;
+  color: var(--state-queued-fg); background: var(--state-queued-bg);
+}
+.rm-run-node { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-weight: 500; }
+.rm-run:hover { filter: brightness(1.15); }
+.rm-run-done { color: var(--state-done-fg); background: var(--state-done-bg); }
+.rm-run-running { color: var(--state-running-fg); background: var(--state-running-bg); }
+.rm-run-waiting { color: var(--state-waiting-fg); background: var(--state-waiting-bg); }
+.rm-run-failed { color: var(--state-failed-fg); background: var(--state-failed-bg); }
+.rm-mono { font-family: var(--mono); font-size: 12px; }
+.rm-taskid { color: var(--muted); overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------ Painel lateral */
+.rm-backdrop { position: fixed; inset: 0; z-index: 59; background: rgba(4, 6, 12, .5); }
+.rm-backdrop[hidden] { display: none; }
+.rm-drawer { width: min(480px, 100vw); background: var(--rail); border-left: 1px solid var(--border); box-shadow: var(--shadow-pop); }
+.rm-drawer .log-drawer-head { min-height: 56px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--border); }
+.rm-drawer .log-drawer-head h3 { font-family: var(--mono); font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted); }
+.rm-drawer-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; padding: 0 0 24px; }
+.rm-drawer-body > * { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.rm-drawer-body > .source-note { border-bottom: 0; }
+.rm-dstate { display: flex; align-items: center; justify-content: center; gap: 8px; border-bottom: 0; font-size: 13px; color: var(--text-secondary); }
+.rm-dstate-err { color: var(--text); }
+
+.rm-dhead { display: flex; flex-direction: column; gap: 12px; }
+.rm-dhead h4 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; overflow-wrap: anywhere; }
+.rm-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.rm-links .btn { min-height: 40px; font-size: 13px; }
+
+.rm-facts { margin: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px 12px; align-items: center; font-size: 13px; line-height: 20px; }
+.rm-facts dt { color: var(--muted); }
+.rm-facts dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+
+.rm-sec { display: flex; flex-direction: column; gap: 10px; }
+.rm-sec h5 { display: flex; align-items: baseline; gap: 6px; }
+.rm-count { font-family: var(--mono); letter-spacing: 0; color: var(--muted); }
+.rm-desc, .rm-note { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 20px; color: var(--text-secondary); }
+.rm-sec .link-btn { align-self: flex-start; min-height: 32px; padding: 0; border: 0; background: none; color: var(--link); font-size: 13px; font-weight: 600; cursor: pointer; }
+.rm-sec .link-btn:hover { color: var(--link-hover); text-decoration: underline; }
+.rm-sec > p { margin: 0; font-size: 13px; }
+
+.rm-form { display: flex; flex-direction: column; gap: 12px; }
+.rm-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.rm-form select, .rm-form textarea {
+  font: inherit; font-size: 13px; line-height: 20px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-control); border-radius: var(--radius-control);
+}
+.rm-form select { min-height: 40px; padding: 0 8px; cursor: pointer; }
+.rm-form textarea { min-height: 96px; padding: 8px 10px; resize: vertical; }
+.rm-form select:disabled, .rm-form textarea:disabled { opacity: .6; cursor: not-allowed; }
+.rm-form textarea::placeholder { color: var(--muted); }
+.rm-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* Histórico: avatar com iniciais + quem · quando + mudanças + nota. */
+.rm-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.rm-journal { display: flex; gap: 10px; font-size: 13px; line-height: 18px; }
+.rm-avatar {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+  border-radius: 50%; background: var(--raised); color: var(--text-secondary); font-family: var(--mono); font-size: 10px; font-weight: 600;
+}
+.rm-journal-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rm-journal-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 12px; color: var(--muted); }
+.rm-journal-head b { color: var(--text); font-weight: 600; }
+.rm-changes { margin: 0; padding-left: 16px; color: var(--text-secondary); }
+.rm-changes b { color: var(--text); font-weight: 600; }
+.rm-journal .rm-note { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); }
+.rm-journal-rejected { padding: 8px; margin: 0 -8px; border-radius: var(--radius-control); background: var(--state-failed-bg); }
+.rm-journal-rejected .rm-avatar { background: var(--state-failed); color: var(--on-strong); }
+.rm-change-rejected { color: var(--state-failed-fg); font-weight: 600; }
+.rm-journal .qa-badge { margin-left: 0; background: var(--state-failed); color: var(--on-strong); font-family: var(--mono); font-weight: 600; }
+
+/* ------------------------------------------------------------ Responsivo
+   Colunas escondidas continuam no painel do ticket (Status/Prioridade/Run/Atualizado/PR). */
+@media (max-width: 1100px) {
+  .rm-table .c-upd { display: none; }
+}
+@media (max-width: 760px) {
+  .rm-table { min-width: 0; }
+  .rm-table .c-prio, .rm-table .c-run, .rm-table .c-pr { display: none; }
+  .rm-actions { justify-content: flex-start; }
+  .rm-sync { margin-left: 0; flex: 1 1 100%; }
+  .rm-facts { grid-template-columns: 96px minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .rm-skel-row i { animation: none; } }

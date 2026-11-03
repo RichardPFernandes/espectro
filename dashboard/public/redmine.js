@@ -5,7 +5,7 @@
 // disparar run (POST /api/runs/start, mesma regra de 409 da aba antiga). Mesmo
 // padrão de prs.js: IIFE carregado depois de views.js, plugado em VIEWS/RENDER via
 // window.RedmineView. Usa os globais de index.html/views.js: esc(), ago(), when(),
-// toast(), runs, refreshRuns(), retryQaRejection(), ticketStatusBadge(), prefs,
+// toast(), runs, refreshRuns(), retryQaRejection(), ticketStatusTone(), prefs,
 // persist(), $().
 (() => {
   const st = {
@@ -30,13 +30,39 @@
     ['urgent', 'Urgente', t => isUrgent(t.priority)],
   ];
 
-  // Prioridade: Urgente/Imediata vermelho, Alta laranja, Normal azul, Baixa cinza —
-  // reaproveita os tons de .tk-status-* (nunca inventar cor nova pra badge).
+  // Prioridade (design Espectro): 3 barras de altura crescente + o nome do Redmine.
+  // Urgente/Imediata = 3 barras em vermelho, Alta = 3 em âmbar, Normal = 2, Baixa = 1;
+  // nome fora dessas faixas mostra só o texto (barras apagadas) — nunca chuta nível.
   function priorityBadge(p) {
     if (!p) return '<span class="muted">—</span>';
-    const tone = isUrgent(p) ? 'risk' : /alta/i.test(p) ? 'attention' : /normal/i.test(p) ? 'signal' : 'idle';
-    return `<span class="tk-status tk-status-${tone}">${esc(p)}</span>`;
+    const [lvl, tone] = isUrgent(p) ? [3, 'urgent'] : /alta/i.test(p) ? [3, 'high'] : /normal/i.test(p) ? [2, 'normal'] : /baixa/i.test(p) ? [1, 'normal'] : [0, 'normal'];
+    return `<span class="rm-prio rm-prio-${tone}" data-level="${lvl}"><span class="rm-bars" aria-hidden="true"><i></i><i></i><i></i></span>${esc(p)}</span>`;
   }
+
+  // Status do ticket: anel com preenchimento (forma) + cor + nome. O tom vem do mesmo
+  // mapeamento global por regex (index.html > ticketStatusTone) usado no resto da UI.
+  function statusBadge(s) {
+    if (!s) return '<span class="muted">—</span>';
+    const tone = typeof ticketStatusTone === 'function' ? ticketStatusTone(s) : 'idle';
+    return `<span class="rm-status rm-st-${tone}"><span class="rm-ring" aria-hidden="true"></span>${esc(s)}</span>`;
+  }
+
+  // Run vinculado (linkedRun.kind/status vêm de deriveRunKind no server): glifo + cor
+  // conforme as regras de estado do design. Sem dado = "Sem estado", nunca concluído.
+  const RUN_WAITING = /needs_human|awaiting|pending-approval|authorization-pending|escalat|blocked|interrupted|spec-draft|spec-drift|spec-change-rejected/;
+  function runState(run) {
+    if (run.kind === 'failed') return ['failed', '✕', 'Falhou'];
+    if (run.kind === 'completed') return ['done', '✓', 'Concluído'];
+    if (run.kind === 'has_pr') return ['done', '✓', 'Com PR'];
+    if (run.kind === 'active') return RUN_WAITING.test(run.status || '') ? ['waiting', '‖', 'Aguardando humano'] : ['running', '◐', 'Em execução'];
+    return ['queued', '○', 'Sem estado'];
+  }
+  function runButton(run, extraClass) {
+    const [tone, glyph, label] = runState(run);
+    return `<button type="button" class="rm-run rm-run-${tone}${extraClass ? ` ${extraClass}` : ''}" data-rmact="run" data-run="${esc(run.taskId)}" title="Ver run ${esc(run.taskId)} · ${label}" aria-label="Ver run ${esc(run.taskId)} (${label})"><span aria-hidden="true">${glyph}</span><span class="rm-run-node">${esc(run.node || label)}</span></button>`;
+  }
+
+  const initials = name => String(name || 'Sistema').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '·';
 
   const render = () => window.Views?.refresh();
 
@@ -89,41 +115,71 @@
   }
 
   // ------------------------------------------------------------------ tabela
-  const ICON_LINK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
-
   function row(t) {
     const rejected = isQaRejected(t.status);
     const busy = st.starting.has(t.id);
     const run = t.linkedRun;
     const qaRetry = rejected && run && run.kind !== 'completed';
     return `<tr class="${rejected ? 'qa-rejected' : ''}${dr.id === t.id ? ' rm-current' : ''}">
-      <td><button type="button" class="run-link" data-rmact="open" data-id="${t.id}" title="Abrir detalhes do ticket">#${t.id}</button></td>
+      <td class="c-id"><button type="button" class="rm-id" data-rmact="open" data-id="${t.id}" title="Abrir detalhes do ticket">#${t.id}</button></td>
       <td class="rm-subject"><span title="${esc(t.subject)}">${esc(t.subject)}</span></td>
-      <td>${priorityBadge(t.priority)}</td>
-      <td>${t.status ? ticketStatusBadge(t.status) : '<span class="muted">—</span>'}</td>
-      <td>${run ? `<button type="button" class="rm-icon" data-rmact="run" data-run="${esc(run.taskId)}" title="Ver run ${esc(run.taskId)}" aria-label="Ver run ${esc(run.taskId)}">${ICON_LINK}</button>` : '<span class="muted">—</span>'}</td>
-      <td>${t.prUrl ? `<a class="rm-icon" href="${esc(t.prUrl)}" target="_blank" rel="noopener noreferrer" title="Abrir PR no Bitbucket" aria-label="Abrir PR no Bitbucket">${ICON_LINK}</a>` : '<span class="muted">—</span>'}</td>
-      <td title="${esc(when(t.updated_on))}">${esc(ago(t.updated_on)) || '—'}</td>
-      <td class="mt-actions">
-        <button type="button" class="ghost-btn" data-rmact="start" data-id="${t.id}" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? 'Disparando…' : '▶ Disparar'}</button>
-        <button type="button" class="ghost-btn" data-rmact="note" data-id="${t.id}">✎ Nota</button>
+      <td class="c-prio">${priorityBadge(t.priority)}</td>
+      <td class="c-status">${statusBadge(t.status)}</td>
+      <td class="c-run">${run ? runButton(run) : '<span class="muted">—</span>'}</td>
+      <td class="c-pr">${t.prUrl ? `<a class="rm-pr" href="${esc(t.prUrl)}" target="_blank" rel="noopener noreferrer" title="Abrir PR no Bitbucket" aria-label="Abrir PR no Bitbucket">PR <span aria-hidden="true">↗</span></a>` : '<span class="muted">—</span>'}</td>
+      <td class="c-upd" title="${esc(when(t.updated_on))}">${esc(ago(t.updated_on)) || '—'}</td>
+      <td class="c-act"><div class="rm-actions">
+        <button type="button" class="btn" data-rmact="start" data-id="${t.id}" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? 'Disparando…' : '▶ Disparar'}</button>
+        <button type="button" class="btn" data-rmact="note" data-id="${t.id}">✎ Nota</button>
         ${qaRetry ? `<button type="button" class="qa-retry-btn" data-rmact="qaretry" data-run="${esc(run.taskId)}">🔄 Corrigir recusa QA</button>` : ''}
-      </td>
+      </div></td>
     </tr>`;
   }
 
+  // Lista vazia é ambígua: o server devolve [] tanto sem tickets quanto sem
+  // REDMINE_URL/REDMINE_API_KEY ou com o Redmine fora (redmine-ticket-list.js). Por isso
+  // as contagens viram "—" e o estado vazio diz que não confirma zero.
+  function stateBlock() {
+    if (!st.at) { // ainda sem nenhuma leitura: a aba dispara load() ao abrir
+      const sk = [70, 52, 64, 46, 74, 58].map(w => `<div class="rm-skel-row"><i style="width:${w}%"></i><i></i></div>`).join('');
+      return `<div class="rm-loading" role="status" aria-busy="true"><p>Carregando tickets do Redmine…</p><div class="rm-skel" aria-hidden="true">${sk}</div></div>`;
+    }
+    if (!st.list.length) {
+      if (st.error) return '';
+      return `<div class="rm-empty" role="status"><h3 class="t-heading">Nenhum ticket aberto atribuído a você</h3>
+        <p>O Redmine devolveu lista vazia. O dashboard também recebe lista vazia quando REDMINE_URL/REDMINE_API_KEY não estão configurados ou a consulta falha, então isto não confirma zero tickets.</p></div>`;
+    }
+    return null;
+  }
+
   function renderView() {
-    const count = pred => st.list.filter(pred).length;
-    const chip = ([k, label, pred]) => `<button type="button" data-rmact="filter" data-filter="${k}" aria-pressed="${st.filter === k}">${label} <span class="count">${count(pred)}</span></button>`;
+    const known = st.list.length > 0;
+    const count = pred => (known ? st.list.filter(pred).length : '—');
+    const chip = ([k, label, pred]) => `<button type="button" data-rmact="filter" data-filter="${k}" aria-pressed="${st.filter === k}">${label} <span class="num">${count(pred)}</span></button>`;
     const pred = (FILTERS.find(f => f[0] === st.filter) || FILTERS[0])[2];
     const items = st.list.filter(pred);
-    const empty = st.loading && !st.at ? 'Carregando tickets do Redmine…' : 'Nenhum ticket com esse filtro.';
-    return `<div class="vhead"><h2>Redmine</h2><p>Tickets abertos atribuídos a você, com o run e o PR vinculados. Clique no número para ver o histórico e mudar status ou comentar sem sair do dashboard.</p>
-        <div class="vtools"><div class="seg-ctl" role="group" aria-label="Filtro">${FILTERS.map(chip).join('')}</div>
-          <button class="ghost-btn" type="button" data-rmact="refresh" ${st.loading ? 'disabled' : ''}>${st.loading ? 'Atualizando…' : '↻ Atualizar'}</button></div>
-        ${st.error ? `<p class="fold-msg warn">Não foi possível carregar os tickets: ${esc(st.error)}</p>` : ''}</div>
-      <div class="rm-scroll"><table class="mt-table rm-table"><thead><tr><th>ID</th><th>Título</th><th>Prioridade</th><th>Status</th><th>Run</th><th>PR</th><th>Atualizado</th><th>Ações</th></tr></thead>
-        <tbody>${items.map(row).join('') || `<tr><td colspan="8" class="vempty">${empty}</td></tr>`}</tbody></table></div>`;
+    const sync = st.loading ? 'atualizando…' : st.error ? 'última leitura falhou' : st.at ? `lido ${ago(new Date(st.at).toISOString())}` : 'ainda não lido';
+    const err = st.error ? `<div class="rm-error" role="alert">
+        <h3 class="t-heading"><span class="rm-glyph-failed" aria-hidden="true">✕</span>Não foi possível carregar os tickets</h3>
+        <dl><dt>Causa</dt><dd>${esc(st.error)}</dd>${known ? '<dt>Preservado</dt><dd>A lista abaixo é a da última leitura que funcionou.</dd>' : ''}</dl>
+        <div><button type="button" class="btn primary lg" data-rmact="refresh" ${st.loading ? 'disabled' : ''}>Tentar novamente</button></div>
+      </div>` : '';
+    const state = stateBlock();
+    const body = state !== null ? state
+      : items.length ? `<div class="rm-scroll"><table class="dtable rm-table"><thead><tr><th class="c-id">ID</th><th>Título</th><th class="c-prio">Prioridade</th><th class="c-status">Status</th><th class="c-run">Run</th><th class="c-pr">PR</th><th class="c-upd">Atualizado</th><th class="c-act">Ações</th></tr></thead>
+        <tbody>${items.map(row).join('')}</tbody></table></div>`
+        : `<div class="rm-empty rm-empty-filter" role="status"><p>Nenhum ticket com esse filtro.</p><button type="button" class="btn lg" data-rmact="filter" data-filter="all">Ver todos os tickets</button></div>`;
+    return `<div class="rm-view">
+      <header class="rm-head"><h2 class="t-title">Redmine</h2><p>Tickets abertos atribuídos a você, com o run e o PR vinculados. Clique no número para ver o histórico e mudar status ou comentar sem sair do dashboard.</p></header>
+      <div class="rm-toolbar">
+        <div class="seg rm-filters" role="group" aria-label="Filtro">${FILTERS.map(chip).join('')}</div>
+        <span class="rm-sync" title="${st.at ? esc(when(new Date(st.at).toISOString())) : ''}">Redmine · ${sync}</span>
+        <button class="btn" type="button" data-rmact="refresh" ${st.loading ? 'disabled' : ''}>${st.loading ? 'Atualizando…' : '↻ Atualizar'}</button>
+      </div>
+      ${err}
+      ${body}
+      <p class="source-note rm-source">Título, prioridade, status e data vêm do Redmine (tickets abertos atribuídos a você). Run e PR vêm do estado local dos runs do Prisma vinculados ao ticket.</p>
+    </div>`;
   }
 
   // ------------------------------------------------------------------ painel lateral
@@ -193,10 +249,13 @@
     if (!j.notes && !details.length) return '';
     const rejected = details.some(d => d.name === 'status_id' && isQaRejected(d.new_label));
     return `<li class="rm-journal${rejected ? ' rm-journal-rejected' : ''}">
-      <div class="rm-journal-head"><b>${esc(j.user || 'Sistema')}</b> <span class="muted" title="${esc(when(j.created_on))}">${esc(ago(j.created_on))}</span>
-        ${rejected ? '<span class="qa-badge">⊘ RECUSADA QA</span>' : ''}${j.private_notes ? ' <span class="muted">(nota privada)</span>' : ''}</div>
-      ${details.length ? `<ul class="rm-changes">${details.map(d => `<li class="${d.name === 'status_id' && isQaRejected(d.new_label) ? 'rm-change-rejected' : ''}">${detailLine(d)}</li>`).join('')}</ul>` : ''}
-      ${j.notes ? `<div class="rm-note">${esc(j.notes)}</div>` : ''}
+      <span class="rm-avatar" aria-hidden="true">${esc(initials(j.user))}</span>
+      <div class="rm-journal-main">
+        <div class="rm-journal-head"><b>${esc(j.user || 'Sistema')}</b> <span class="muted" title="${esc(when(j.created_on))}">${esc(ago(j.created_on))}</span>
+          ${rejected ? '<span class="qa-badge">⊘ RECUSADA QA</span>' : ''}${j.private_notes ? ' <span class="muted">(nota privada)</span>' : ''}</div>
+        ${details.length ? `<ul class="rm-changes">${details.map(d => `<li class="${d.name === 'status_id' && isQaRejected(d.new_label) ? 'rm-change-rejected' : ''}">${detailLine(d)}</li>`).join('')}</ul>` : ''}
+        ${j.notes ? `<div class="rm-note">${esc(j.notes)}</div>` : ''}
+      </div>
     </li>`;
   }
 
@@ -204,8 +263,8 @@
     if (!isOpen()) return;
     const body = $('rmDrawerBody');
     $('rmDrawerTitle').textContent = `#${dr.id}`;
-    if (dr.loading) { body.innerHTML = '<div class="log-drawer-empty">Carregando ticket…</div>'; return; }
-    if (dr.error) { body.innerHTML = `<div class="log-drawer-empty">Não foi possível carregar o ticket: ${esc(dr.error)}</div>`; return; }
+    if (dr.loading) { body.innerHTML = '<div class="log-drawer-empty rm-dstate" role="status" aria-busy="true"><span class="rm-glyph-running" aria-hidden="true">◐</span> Carregando ticket…</div>'; return; }
+    if (dr.error) { body.innerHTML = `<div class="log-drawer-empty rm-dstate rm-dstate-err" role="alert"><span class="rm-glyph-failed" aria-hidden="true">✕</span> Não foi possível carregar o ticket: ${esc(dr.error)}</div>`; return; }
     // Preserva o que o usuário já digitou/escolheu entre re-renders.
     const prevNote = $('rmNote')?.value ?? '';
     const prevStatus = $('rmStatus')?.value;
@@ -219,35 +278,42 @@
     const busy = dr.busy;
     const starting = st.starting.has(t.id);
     const items = (journals || []).map(journalItem).filter(Boolean).reverse();
+    const facts = [
+      ['Status', statusBadge(t.status)],
+      ['Prioridade', priorityBadge(t.priority)],
+      t.tracker && ['Tipo', esc(t.tracker)],
+      t.assignee && ['Responsável', esc(t.assignee)],
+      t.updated_on && ['Atualizado', `<span title="${esc(when(t.updated_on))}">${esc(ago(t.updated_on))}</span>`],
+      ['Run', linkedRun ? `${runButton(linkedRun)} <span class="rm-mono rm-taskid">${esc(linkedRun.taskId)}</span>` : '<span class="muted">—</span>'],
+    ].filter(Boolean);
     body.innerHTML = `
       <header class="rm-dhead">
         <h4>${esc(t.subject)}</h4>
-        <div class="rm-badges">${priorityBadge(t.priority)} ${t.status ? ticketStatusBadge(t.status) : ''}</div>
         <div class="rm-links">
-          ${t.url ? `<a class="ext" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">Redmine ↗</a>` : ''}
-          ${prUrl ? `<a class="ext" href="${esc(prUrl)}" target="_blank" rel="noopener noreferrer">PR no Bitbucket ↗</a>` : ''}
-          ${linkedRun ? `<button type="button" class="run-link" data-rmact="run" data-run="${esc(linkedRun.taskId)}">Run ${esc(linkedRun.taskId)}</button>` : ''}
+          ${t.url ? `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">Redmine ↗</a>` : ''}
+          ${prUrl ? `<a class="btn" href="${esc(prUrl)}" target="_blank" rel="noopener noreferrer">PR no Bitbucket ↗</a>` : ''}
         </div>
-        <div class="rm-meta muted">${[t.tracker, t.assignee && `Com ${t.assignee}`, t.updated_on && `atualizado ${ago(t.updated_on)}`].filter(Boolean).map(esc).join(' · ')}</div>
       </header>
-      <section class="rm-sec"><h5>Descrição</h5>
+      <dl class="rm-facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+      <section class="rm-sec" aria-labelledby="rmSecDesc"><h5 class="label" id="rmSecDesc">Descrição</h5>
         ${desc ? `<div class="rm-desc">${esc(dr.descOpen || !long ? desc : `${desc.slice(0, 500)}…`)}</div>
           ${long ? `<button type="button" class="link-btn" data-rmact="desc">${dr.descOpen ? 'ver menos' : 'ver mais'}</button>` : ''}` : '<p class="muted">Sem descrição.</p>'}
       </section>
-      <section class="rm-sec"><h5>Ações rápidas</h5>
+      <section class="rm-sec" aria-labelledby="rmSecAct"><h5 class="label" id="rmSecAct">Ações rápidas</h5>
         <div class="rm-form">
           <label>Status <select id="rmStatus" ${busy ? 'disabled' : ''}>${options.map(s => `<option value="${s.id}" ${String(s.id) === sel ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
           <label>Nota (opcional para status) <textarea id="rmNote" rows="4" maxlength="20000" placeholder="Comentário que vai para o histórico do ticket" ${busy ? 'disabled' : ''}>${esc(prevNote)}</textarea></label>
           <div class="rm-form-actions">
-            <button type="button" class="send" data-rmact="save" ${busy ? 'disabled' : ''}>${busy === 'save' ? 'Salvando…' : 'Salvar'}</button>
-            <button type="button" class="ghost-btn" data-rmact="addnote" ${busy ? 'disabled' : ''}>${busy === 'note' ? 'Enviando…' : 'Adicionar nota'}</button>
-            <button type="button" class="ghost-btn" data-rmact="start" data-id="${t.id}" ${starting ? 'disabled aria-busy="true"' : ''}>${starting ? 'Disparando…' : '▶ Disparar run'}</button>
+            <button type="button" class="btn primary lg" data-rmact="save" ${busy ? 'disabled' : ''}>${busy === 'save' ? 'Salvando…' : 'Salvar'}</button>
+            <button type="button" class="btn lg" data-rmact="addnote" ${busy ? 'disabled' : ''}>${busy === 'note' ? 'Enviando…' : 'Adicionar nota'}</button>
+            <button type="button" class="btn lg" data-rmact="start" data-id="${t.id}" ${starting ? 'disabled aria-busy="true"' : ''}>${starting ? 'Disparando…' : '▶ Disparar run'}</button>
           </div>
         </div>
       </section>
-      <section class="rm-sec"><h5>Histórico <span class="muted">(${items.length})</span></h5>
+      <section class="rm-sec" aria-labelledby="rmSecHist"><h5 class="label" id="rmSecHist">Histórico no Redmine <span class="rm-count">(${items.length})</span></h5>
         ${items.length ? `<ol class="rm-timeline">${items.join('')}</ol>` : '<p class="muted">Nenhuma alteração ou nota registrada.</p>'}
-      </section>`;
+      </section>
+      <p class="source-note">Descrição, campos e histórico vêm do Redmine; o run vinculado vem do estado local do Prisma.</p>`;
     if (dr.focusNote) { dr.focusNote = false; $('rmNote')?.focus(); }
   }
 

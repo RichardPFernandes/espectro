@@ -41,7 +41,7 @@
             ${active.length ? `<div class="arch-warn"><b>${active.length === 1 ? `${esc(num(active[0]))} ainda está ativo.` : `${active.length} ainda estão ativos: ${active.map(r => esc(num(r))).join(', ')}.`}</b>
               O watcher deixa de acompanhar ${active.length === 1 ? 'esse run' : 'esses runs'}. Se o ticket voltar para Aprovada ou Recusa QA, ele começa um ciclo novo. Se um agente estiver rodando agora, ele pode recriar a pasta, e aí o run reaparece.</div>` : ''}
             <p class="arch-git">Fica uma mudança pendente no git do checkout onde o run está (arquivos movidos em <code>memory/runs</code>).</p>
-            ${many ? `<ul class="arch-list">${list.map(r => `<li><span class="lamp ${esc(r.status)}"></span>${esc(num(r))} <span>${esc(titleOf(r).text)}</span></li>`).join('')}</ul>` : ''}
+            ${many ? `<ul class="arch-list">${list.map(r => `<li>${stateGlyph(r.status)}${esc(num(r))} <span>${esc(titleOf(r).text)}</span></li>`).join('')}</ul>` : ''}
           </div>
           <div class="arch-actions">
             <button type="button" class="ghost-btn" data-no>Cancelar</button>
@@ -136,7 +136,7 @@
   function monthBlock(m) {
     const open = monthsOpen.has(m.month);
     const rows = open && rotated.full ? (m.runs || []).map(r => `<div class="arch-row arch-row-ro" title="${esc(r.path)}">
-        <span class="lamp ${esc(r.status || '')}"></span><div class="arch-row-main"><span class="arch-row-title">${esc(archTitle(r))}</span>
+        ${stateGlyph(r.status || 'unknown', r.status || 'sem status')}<div class="arch-row-main"><span class="arch-row-title">${esc(archTitle(r))}</span>
         <span class="arch-row-sub"${r.updatedAt ? ` title="${esc(when(r.updatedAt))}"` : ''}>${esc(r.status || 'sem status')}${r.updatedAt ? ` · ${esc(ago(r.updatedAt))}` : ''}${r.copies > 1 ? ` · ${r.copies} cópias` : ''}</span></div></div>`).join('') : '';
     return `<button class="group-head arch-month" type="button" data-arch-month="${esc(m.month)}" aria-expanded="${open}">
         ${ICON.chevLeft}${esc(monthLabel(m.month))} <span class="count">${m.count}</span></button>${rows}`;
@@ -177,37 +177,36 @@
 
   const style = document.createElement('style');
   style.textContent = `
-    .arch-btn { margin-left: 8px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 5px 11px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
-    .arch-note { margin-top: 14px; padding: 10px 14px; border-radius: 10px; background: var(--signal-soft); color: var(--ink-2); font-size: 14px; line-height: 1.5; }
-    .arch-note b { color: var(--signal); margin-right: 4px; }
-    .arch-btn:hover { border-color: var(--stop); color: var(--stop); background: var(--stop-bg); }
-    .action-bar .arch-many { background: var(--stop) !important; color: #fff !important; }
-    .action-bar [data-act="hide"] { background: rgba(255, 255, 255, .14) !important; color: inherit !important; }
+    .arch-btn { margin-left: 8px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border-control); background: transparent; border-radius: var(--radius-control); font-size: 13px; font-weight: 500; color: var(--text); cursor: pointer; }
+    .arch-btn:hover { border-color: var(--state-failed); color: var(--state-failed-fg); background: var(--state-failed-bg); }
+    .arch-note { margin-top: 16px; padding: 12px 16px; border-radius: var(--radius-control); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); background: var(--state-running-bg); color: var(--text-secondary); font-size: 14px; line-height: 20px; }
+    .arch-note b { color: var(--state-running-fg); margin-right: 4px; }
+    .action-bar .arch-many { background: var(--ground) !important; border-color: var(--state-failed) !important; color: var(--state-failed-fg) !important; }
+    .action-bar [data-act="hide"] { background: var(--ground) !important; border-color: var(--border-control) !important; color: var(--text) !important; }
     .arch-overlay { display: grid; }
-    .arch-dialog { position: relative; width: min(520px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); padding: 20px 22px 18px; display: grid; gap: 12px; }
-    .arch-dialog h2 { margin: 0; font-size: 18px; letter-spacing: -.01em; }
-    .arch-dialog p { margin: 0 0 8px; font-size: 14px; color: var(--ink-2); line-height: 1.5; }
-    .arch-dialog code { font: 12.5px var(--mono); background: var(--sunken); padding: 1px 4px; border-radius: 4px; }
-    .arch-warn { background: var(--attention-bg); border: 1px solid var(--attention-line); border-radius: 9px; padding: 10px 12px; font-size: 14px; color: var(--ink); line-height: 1.5; margin-bottom: 8px; }
-    .arch-warn b { display: block; color: var(--attention); margin-bottom: 2px; }
+    .arch-dialog { position: relative; width: min(520px, 100%); background: var(--surface); border: 1px solid var(--border-control); border-radius: var(--radius-panel); box-shadow: var(--shadow-pop); padding: 20px 24px; display: grid; gap: 12px; }
+    .arch-dialog h2 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
+    .arch-dialog p { margin: 0 0 8px; font-size: 14px; color: var(--text-secondary); line-height: 20px; }
+    .arch-dialog code { font: 12px var(--mono); background: var(--ground); padding: 1px 4px; border-radius: var(--radius-tag); }
+    .arch-warn { background: var(--state-waiting-bg); border: 1px solid color-mix(in srgb, var(--state-waiting) 45%, transparent); border-radius: var(--radius-control); padding: 10px 12px; font-size: 14px; color: var(--text); line-height: 20px; margin-bottom: 8px; }
+    .arch-warn b { display: block; color: var(--state-waiting-fg); margin-bottom: 2px; }
     .arch-git { font-size: 13px !important; color: var(--muted) !important; }
-    .arch-list { list-style: none; margin: 0; padding: 0; max-height: 180px; overflow: auto; border: 1px solid var(--line-soft); border-radius: 8px; }
-    .arch-list li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 13.5px; font-weight: 600; }
-    .arch-list li + li { border-top: 1px solid var(--line-soft); }
-    .arch-list li span:last-child { font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .arch-list { list-style: none; margin: 0; padding: 0; max-height: 180px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-control); }
+    .arch-list li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-family: var(--mono); font-size: 12px; font-weight: 500; }
+    .arch-list li + li { border-top: 1px solid var(--border); }
+    .arch-list li span:last-child { font-family: var(--sans); font-size: 13px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .arch-actions { display: flex; justify-content: flex-end; gap: 8px; }
-    .arch-go { border: 0; border-radius: 9px; background: var(--stop); color: #fff; font-weight: 600; font-size: 14px; padding: 8px 16px; cursor: pointer; }
-    .arch-go:hover { filter: brightness(1.08); }
+    .arch-go { min-height: 40px; padding: 0 16px; border: 1px solid var(--state-failed); border-radius: var(--radius-control); background: var(--state-failed-bg); color: var(--state-failed-fg); font-weight: 600; font-size: 13px; cursor: pointer; }
+    .arch-go:hover { filter: brightness(1.12); }
     #archivedGroup .group-head { color: var(--muted); }
-    .arch-row { display: flex; align-items: center; gap: 10px; padding: 8px 20px 8px 40px; }
+    .arch-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 16px 6px 40px; }
     .arch-row-main { display: grid; min-width: 0; flex: 1; }
-    .arch-row-title { font-size: 13.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .arch-row-sub { font-size: 12.5px; color: var(--faint); }
-    .arch-row .ghost-btn { padding: 3px 10px; font-size: 12.5px; }
-    #archivedGroup .arch-month { padding-left: 32px; font-size: 13px; }
-    .arch-row-ro { padding-left: 52px; align-items: flex-start; }
-    .arch-row-ro .lamp { margin-top: 5px; }
-    .arch-rotated-note, .arch-loading { padding: 8px 20px 2px 40px; font-size: 12px; color: var(--faint); }
+    .arch-row-title { font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .arch-row-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+    .arch-row .ghost-btn { min-height: 30px; padding: 0 10px; font-size: 12px; }
+    #archivedGroup .arch-month { padding-left: 32px; }
+    .arch-row-ro { padding-left: 48px; align-items: flex-start; }
+    .arch-rotated-note, .arch-loading { padding: 8px 16px 2px 40px; font-size: 12px; color: var(--muted); }
   `;
   document.head.appendChild(style);
 

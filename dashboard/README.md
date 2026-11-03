@@ -1,6 +1,7 @@
-# Graph Dashboard
+# Espectro — Dashboard
 
-Dashboard local de observabilidade do watcher (`scripts/readmine-watcher.js`) com um
+Dashboard local (interface no design Espectro: tokens em `public/prisma-theme.css`, base e
+componentes em `public/theme.css`, CSS de cada tela em `public/screens/`) de observabilidade do watcher (`scripts/readmine-watcher.js`) com um
 canal humano→agente: você acompanha os runs do grafo em tempo real e manda instruções
 pro agente sem matar o processo.
 
