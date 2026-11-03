@@ -3217,19 +3217,33 @@ function prospectiveSignalsForRun(agent, nodes, signalContext) {
     return out;
 }
 
+// Base do diff dos sinais; avaliada com guarda para nunca lançar fora da coleta best-effort.
+function signalBaseBranch(ticket) {
+    try { return BASE_BY_LIBERACAO[branchLiberacao(ticket)] ?? null; } catch { return null; }
+}
+
 // Estatística de linhas do diff do ticket (tracked desde o merge-base + untracked).
 // Qualquer leitura impossível => null (UNKNOWN); nunca subconta em silêncio.
+// git para os sinais: saída NUL-delimitada, sem aspas/escape octal em nomes com acento ou
+// espaço (core.quotepath=false + -z) e com timeout, para não travar o fechamento do run.
+function gitZ(cwd, args) {
+    return execFileSync('git', ['-c', 'core.quotepath=false', ...args],
+        { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024, timeout: 30000 })
+        .split('\0').filter(Boolean);
+}
+
 function collectDiffStat(worktreePath, mergeBase) {
     let added = 0, removed = 0;
-    const tracked = execFileSync('git', ['diff', '--numstat', mergeBase],
-        { cwd: worktreePath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
-    for (const line of tracked.split('\n').filter(Boolean)) {
-        const [a, r, ...rest] = line.split('\t');
+    // --no-renames: renomeação vira remoção + adição, sem "old => new" no caminho.
+    // Com -z cada registro é "<add>\t<rem>\t<caminho>".
+    for (const record of gitZ(worktreePath, ['diff', '--numstat', '-z', '--no-renames', mergeBase])) {
+        const [a, r, ...rest] = record.split('\t');
         if (planSignals.isFlowArtifact(rest.join('\t'))) continue;
         if (a === '-' || r === '-') return null; // binário: sem contagem de linhas
+        if (!/^\d+$/.test(a) || !/^\d+$/.test(r)) return null; // formato inesperado: UNKNOWN
         added += Number(a); removed += Number(r);
     }
-    for (const f of gitLines(worktreePath, ['ls-files', '--others', '--exclude-standard'])) {
+    for (const f of gitZ(worktreePath, ['ls-files', '--others', '--exclude-standard', '-z'])) {
         if (planSignals.isFlowArtifact(f)) continue;
         const abs = path.join(worktreePath, f);
         const st = fs.statSync(abs);
@@ -3252,8 +3266,8 @@ function collectRetrospectiveSignals(run, target) {
     if (!mergeBase) return planSignals.retrospectiveSignals(parts);
     try {
         parts.changedFiles = [...new Set([
-            ...gitLines(ctx.worktree_path, ['diff', '--name-only', mergeBase]),
-            ...gitLines(ctx.worktree_path, ['ls-files', '--others', '--exclude-standard']),
+            ...gitZ(ctx.worktree_path, ['diff', '--name-only', '-z', '--no-renames', mergeBase]),
+            ...gitZ(ctx.worktree_path, ['ls-files', '--others', '--exclude-standard', '-z']),
         ])];
     } catch { /* UNKNOWN */ }
     if (parts.changedFiles) {
@@ -3654,7 +3668,7 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
     const costRun = startCostRun(ticket.id, {
         agent: 'claude', nodes, sessionId, admissionDecision,
-        signalContext: { ticket, worktreePath, isRecusaQA, base: BASE_BY_LIBERACAO[branchLiberacao(ticket)] },
+        signalContext: { ticket, worktreePath, isRecusaQA, base: signalBaseBranch(ticket) },
     });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);
     if (costRun) {

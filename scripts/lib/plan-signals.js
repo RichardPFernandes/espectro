@@ -48,8 +48,14 @@ function globToRe(glob) {
     return new RegExp(`^${re}$`, 'i');
 }
 
+const GLOB_CACHE = new Map();
+function compiledGlob(g) {
+    if (!GLOB_CACHE.has(g)) GLOB_CACHE.set(g, globToRe(g));
+    return GLOB_CACHE.get(g);
+}
+
 function matchesAny(file, globs) {
-    return (globs || []).some(g => globToRe(g).test(file));
+    return (globs || []).some(g => compiledGlob(g).test(file));
 }
 
 // Natureza de UM caminho (a do grupo é a maior entre os caminhos). `behavior` vem antes
@@ -96,9 +102,11 @@ function parsePathsLine(line) {
     const raw = ticked.length ? ticked : body.split(/[,;]|\se\s/).map(t => t.trim().replace(/[.)]+$/, ''));
     const out = [];
     for (const t of raw) {
-        const p = normPath(t.replace(/\s*\(.*$/, ''));
-        // Caminho concreto: sem "...", sem espaço, sem curinga; com "/" ou extensão.
-        if (!p || /\.\.\./.test(p) || /\s/.test(p) || /[*<>{}]/.test(p) || !/[/.]/.test(p)) return null;
+        // Sufixos de posição (`x.js:42`, `X.java::metodo`) não fazem parte do caminho.
+        const p = normPath(t.replace(/\s*\(.*$/, '').replace(/::.*$/, '').replace(/:\d+(?:[-:]\d+)*$/, ''));
+        // Caminho concreto: sem "...", sem curinga, sem espaço (salvo entre crases); com "/" ou extensão.
+        // Diretório (termina em "/") não é arquivo: lista incompleta => UNKNOWN.
+        if (!p || /\/$/.test(t.trim()) || /\.\.\./.test(p) || (!ticked.length && /\s/.test(p)) || /[*<>{}]/.test(p) || !/[/.]/.test(p)) return null;
         out.push(p);
     }
     return out.length ? [...new Set(out)] : null;
@@ -117,7 +125,10 @@ function extractPlanSteps(planContent) {
         plan_version: planVersion,
         steps: steps.map((text, i) => {
             const lines = text.split('\n');
-            const fileLine = lines.find(l => /^\s*[-*]?\s*arquivos?\s*:/i.test(l));
+            // Mais de uma linha "Arquivo:" no passo: lista possivelmente parcial => UNKNOWN
+            // (nunca subestimar paths_decl; §4.1).
+            const fileLines = lines.filter(l => /^\s*[-*]?\s*arquivos?\s*:/i.test(l));
+            const fileLine = fileLines.length === 1 ? fileLines[0] : null;
             const acLine = lines.find(l => /^\s*[-*]?\s*crit[eé]rios?\s*:/i.test(l));
             return {
                 index: i + 1,
@@ -253,7 +264,7 @@ const FLOW_ARTIFACTS = [/^memory\/runs\//, /^memory\/spec\//];
 function isFlowArtifact(file) { return FLOW_ARTIFACTS.some(re => re.test(normPath(file))); }
 
 /**
- * @param input {changedFiles: string[]|null, diffStat: {added,removed,files}|null,
+ * @param input {changedFiles: string[]|null, diffStat: {added,removed}|null,
  *   affected: {services:string[], fullSuite:boolean}|null, schema: {detected:boolean,riskLevel:string|null}|null,
  *   declaredPaths: string[]|'UNKNOWN', state?: object}
  */

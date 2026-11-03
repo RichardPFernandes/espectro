@@ -168,6 +168,34 @@ test('worktree sem git: retrospectivo PARTIAL com UNKNOWN por campo (nunca 0)', 
     for (const k of ['files_touched', 'scope_violation', 'affected_services', 'schema_changes_detected', 'diff_lines_added']) assert.strictEqual(r[k], 'UNKNOWN', k);
 });
 
+test('F2: nomes com acento/espaço e renomeação não geram violação nem diff falso', () => {
+    const id = 91010;
+    const plan = '## Plano de execução\n' +
+        '1. Acento.\n   - Arquivo: `backend/svc-a/src/ação final.js`\n   - Critérios: AC-01\n   - Verificação: t.\n' +
+        '2. Renomear.\n   - Arquivo: `backend/svc-a/src/a.js`, `backend/svc-a/src/renomeado.js`\n   - Critérios: AC-02\n   - Verificação: t.\n';
+    const { dir, ticket } = setup(id, { planText: plan });
+    const run = watcher.startCostRun(id, { agent: 'claude', nodes: ['implement'], sessionId: 's10',
+        signalContext: { ticket, worktreePath: wt(id), base: 'main' } });
+    write(path.join(wt(id), 'backend/svc-a/src/ação final.js'), 'um\ndois\n');        // untracked, nome não ASCII com espaço
+    git(wt(id), 'mv', 'backend/svc-a/src/a.js', 'backend/svc-a/src/renomeado.js');       // renomeação no index
+    watcher.finishCostRun(id, 's10', run.started_at_ms + 1);
+    const r = attemptOf(dir).signals.retrospective;
+    assert.deepStrictEqual([r.status, r.undeclared_files, r.scope_violation], ['COMPLETE', 0, false]);
+    assert.strictEqual(r.files_touched, 3, 'ação final.js + a.js (removido) + renomeado.js');
+    // renomeação sem mudança de conteúdo: remoção de 1 linha + adição de 1 linha; mais 2 do untracked.
+    assert.deepStrictEqual([r.diff_lines_added, r.diff_lines_removed], [1 + 2, 1]);
+});
+
+test('F2: artefato de fluxo com acento em memory/runs continua excluído', () => {
+    const id = 91011;
+    const { dir, ticket } = setup(id);
+    const run = watcher.startCostRun(id, { agent: 'claude', nodes: ['implement'], sessionId: 's11',
+        signalContext: { ticket, worktreePath: wt(id), base: 'main' } });
+    write(path.join(dir, 'revisão final.md'), 'x\n');
+    watcher.finishCostRun(id, 's11', run.started_at_ms + 1);
+    assert.strictEqual(attemptOf(dir).signals.retrospective.files_touched, 0);
+});
+
 test('nó que não é implement (ou Codex): signals = UNAVAILABLE e nada de contexto no pendente', () => {
     const id = 91007;
     const { dir, ticket } = setup(id);

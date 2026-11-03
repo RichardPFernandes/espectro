@@ -71,6 +71,24 @@ test('Arquivo não parseável (placeholder "...", curinga, vazio) => paths_decl 
     }
 });
 
+test('F1: mais de uma linha "Arquivo:" no passo => paths_decl UNKNOWN (nunca lista parcial)', () => {
+    const text = '## Plano de execução\n1. a\n   - Arquivo: `a.js`\n   - Arquivo: `b.js`\n   - Critérios: AC-01\n   - Verificação: t.\n' +
+        '2. b\n   - Arquivo: `b.js`\n   - Critérios: AC-01\n   - Verificação: t.\n';
+    const r = ps.buildProspective(text, { specContent: SPEC, fileExists: () => true });
+    assert.strictEqual(r.groups[0].signals.paths_decl, U);
+    assert.strictEqual(r.groups[0].signals.n_files, U);
+    assert.strictEqual(r.groups[0].signals.schema_decl, U);
+    assert.strictEqual(ps.declaredUnion(r), U, 'sem declarado completo, o retrospectivo não conclui violação');
+});
+
+test('F4: sufixo de posição é aparado; diretório e curinga viram UNKNOWN', () => {
+    assert.deepStrictEqual(first([{ files: tick('scripts/x.js:42') }]).paths_decl, ['scripts/x.js']);
+    assert.deepStrictEqual(first([{ files: tick('scripts/x.js:42-50') }]).paths_decl, ['scripts/x.js']);
+    assert.deepStrictEqual(first([{ files: tick('backend/x/A.java::metodo') }]).paths_decl, ['backend/x/A.java']);
+    assert.strictEqual(first([{ files: tick('backend/svc/src/') }]).paths_decl, U);
+    assert.strictEqual(first([{ files: tick('a.js', 'backend/svc/') }]).paths_decl, U);
+});
+
 test('plano sem bloco => status UNKNOWN com causa, sem grupos', () => {
     const r = ps.buildProspective('# nada aqui\n', {});
     assert.deepStrictEqual([r.status, r.cause, r.plan_version, r.groups], ['UNKNOWN', 'PLAN_BLOCK_NOT_FOUND', U, []]);
