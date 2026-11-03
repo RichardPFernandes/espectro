@@ -6,6 +6,7 @@ const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
 const { createCoordination, applyCoordinationDefault } = require('./coordination');
 const { createVersion } = require('./version');
+const { createOnboarding } = require('./onboarding');
 const { createHoursBackfillJob } = require('./redmine-hours-backfill');
 const fs = require('fs');
 const path = require('path');
@@ -3019,6 +3020,26 @@ function createDashboard(options = {}) {
     });
     app.get('/api/watcher/prefs', (req, res) => res.json(readPrefs()));
 
+    // Tela "Este computador" (onboarding.js): ferramentas, configuração mínima e teste só leitura.
+    // Chave salva para o repo em uso passa a valer neste processo e entra na lista do redact.
+    const onboarding = createOnboarding({
+        repoRoot, prismaRoot, env: consumerEnv, redact: redactDeep,
+        envFile: options.onboardingEnvFile || path.join(__dirname, '.env'),
+        repoPathLocked: !!options.repoPathLocked,
+        listAccounts: () => listAccounts(),
+        probeUsage: args => probeUsage(args),
+        validateConfig: () => runValidateConfig(),
+        onSaved: updates => {
+            for (const [k, v] of Object.entries(updates)) {
+                consumerEnv[k] = v;
+                if (SECRET_KEY_RE.test(k) && v.length >= 6) secretValues.push(v);
+            }
+        },
+        ...(options.onboardingExec ? { exec: options.onboardingExec } : {}),
+        ...(options.onboardingFetch ? { fetchFn: options.onboardingFetch } : {}),
+    });
+    onboarding.mount(app);
+
     // Notificação via webhook (scripts/notify.js): o painel mostra se está configurada e
     // dispara um payload dummy pra conferir o webhook sem rodar ciclo. Nunca devolve a
     // URL (o token do Slack/Discord mora no caminho) — só o host.
@@ -3373,6 +3394,10 @@ function createDashboard(options = {}) {
 }
 
 if (require.main === module) {
+    // REPO_PATH do ambiente (launcher do consumidor) trava a pasta; sem ele, vale a gravada
+    // pela tela "Este computador" no dashboard/.env do Prisma.
+    const repoPathLocked = !!process.env.REPO_PATH;
+    loadDotEnv(path.join(__dirname, '.env'), ['REPO_PATH']);
     const consumerRoot = path.resolve(process.env.REPO_PATH || process.cwd());
     loadDotEnv(path.join(consumerRoot, 'dashboard', '.env'));
     // Fallback: mesmas credenciais que o watcher já lê do .env do repo (uma fonte só,
@@ -3388,7 +3413,7 @@ if (require.main === module) {
     const HOST = process.env.HOST || '127.0.0.1';
     // Reinício pedido pelo painel Versão: mesmo caminho do SIGTERM (para o watcher e sai).
     // Se parar watcher/previews travar, sai assim mesmo: o processo novo espera este PID.
-    const dashboard = createDashboard({ requestExit: () => {
+    const dashboard = createDashboard({ repoPathLocked, requestExit: () => {
         setTimeout(() => process.exit(0), 15000).unref();
         process.kill(process.pid, 'SIGTERM');
     } });

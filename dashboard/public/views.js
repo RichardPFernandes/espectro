@@ -9,7 +9,7 @@
     ['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'],
     ['timeline', 'Linha do tempo'], ['metricas', 'Métricas'], ['tickets', 'Tickets e PRs'],
     ['redmine', 'Redmine'], ['grafo', 'Grafo'], ['padroes', 'Padrões'], ['prs', 'PRs'],
-    ['coordenacao', 'Coordenação'], ['versao', 'Versão'],
+    ['coordenacao', 'Coordenação'], ['versao', 'Versão'], ['computador', 'Este computador'],
   ];
   // Etapas agrupadas em 4 fases pra linha do tempo: 7 tons de um matiz não ficam
   // distinguíveis (validado), 4 ficam. O nome exato da etapa vai no tooltip.
@@ -107,7 +107,7 @@
       ['padroes', 'Padrões de falha', 'M12 3l9 16H3zM12 10v4M12 17h.01'],
     ]],
     ['Conhecimento', [['grafo', 'Grafo', 'M6 6.5h.01M18 5.5h.01M12 18.5h.01M7 7.5l4 9.2M17 6.8l-4 9.9M7.5 6l9-.2']]],
-    ['Plataforma', [['versao', 'Versão', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2']]],
+    ['Plataforma', [['versao', 'Versão', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2'], ['computador', 'Este computador', 'M4 5h16v11H4zM2 19h20']]],
   ];
   const navKeyOf = v => (RUN_VIEWS.some(([k]) => k === v) ? 'runs' : v);
   const icon = d => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
@@ -156,6 +156,7 @@
     if (v === 'redmine') window.RedmineView?.load(false);
     if (v === 'coordenacao') window.CoordinationView?.load();
     if (v === 'versao') window.VersionView?.load(false);
+    if (v === 'computador') window.OnboardingView?.load();
   }
   $('tabs').addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
   $('runViews').addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
@@ -714,9 +715,11 @@
       const el = $('view');
       const keepY = el.scrollTop;
       const focusKey = document.activeElement?.dataset?.tfilter;
-      const domView = { coordenacao: window.CoordinationView, versao: window.VersionView }[view];
-      if (domView) el.replaceChildren(domView.render());
-      else el.innerHTML = view in { coordenacao: 1, versao: 1 } ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
+      const domView = { coordenacao: window.CoordinationView, versao: window.VersionView, computador: window.OnboardingView }[view];
+      // Visão que devolve sempre o mesmo nó (formulário do onboarding) não é remontada: manter foco e digitação.
+      const domNode = domView?.render();
+      if (domNode) { if (el.firstChild !== domNode || el.lastChild !== domNode) el.replaceChildren(domNode); }
+      else el.innerHTML = view in { coordenacao: 1, versao: 1, computador: 1 } ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
       el.scrollTop = keepY;
       if (focusKey) el.querySelector(`[data-tfilter="${focusKey}"]`)?.focus();
     });
