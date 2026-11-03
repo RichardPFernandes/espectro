@@ -18,6 +18,28 @@ npm start
 `npm run dev` reinicia sozinho quando `server.js` muda. `npm test` roda os testes do
 servidor (repo sintético, não toca nos runs reais).
 
+## Primeiro uso em outro computador (Este computador)
+
+Num computador sem configuração (pasta do projeto inválida ou Redmine sem endereço/chave), o
+dashboard abre sozinho a tela **Este computador** em tela cheia; depois ela fica em
+Plataforma › Este computador. Três etapas:
+
+1. **Reconhecer**: procura Git, Node 20+/npm, Claude Code e Codex (opcional) e mostra o
+   comando quando falta algo. Nada é instalado pelo painel.
+2. **Configurar**: pasta do repositório do projeto, conta do Claude, Redmine e Bitbucket
+   (opcional). A pasta vai para `REPO_PATH` no `dashboard/.env` do Prisma e vale depois de
+   reiniciar; se `REPO_PATH` vier do ambiente (launcher do consumidor), fica travada. Redmine
+   e Bitbucket vão para o `.env` da raiz do projeto (as mesmas chaves do watcher); a conta,
+   para `claude_config_dir` no `dashboard-prefs.json`. Chave em branco mantém a salva e
+   nenhuma chave volta pela API.
+3. **Pronto**: testa só com leitura (git do repo, `GET /users/current` no Redmine, `GET` do
+   repositório no Bitbucket, contrato de configuração) e a sondagem mínima do Claude, que
+   gasta um pouco da cota.
+
+Rotas: `GET /api/onboarding/tools`, `GET|PUT /api/onboarding/config`,
+`GET /api/onboarding/repo?path=`, `POST /api/onboarding/check` (`onboarding.js`, testes em
+`onboarding-api.test.js`).
+
 ## Configuração (`.env`)
 
 | Variável       | Padrão            | O que é |
