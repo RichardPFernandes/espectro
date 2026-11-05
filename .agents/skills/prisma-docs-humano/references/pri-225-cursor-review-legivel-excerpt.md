@@ -21,7 +21,9 @@ Esta revisão Cursor **relê** código + documento de invariantes e **confirma**
 
 ## Por que importa
 
-Enquanto esses gaps existirem, **não** dá para tratar o Human Gate (porta humana antes do efeito externo) como certificado, **nem** promover a PRI-180 a **writer** (componente que grava estado autoritativo) sob DS-09. Aceitar este parecer só reconhece o diagnóstico; **não** autoriza código. Os achados graves, se aceitos, vão para reconciliação humana (PRI-17) — **fora** desta auditoria.
+**Qualidade:** enquanto esses gaps existirem, **não** dá para tratar o Human Gate (porta humana antes do efeito externo) como certificado, **nem** promover a PRI-180 a **writer** (componente que grava estado autoritativo) sob DS-09.  
+**Custo:** seguir com build como se a auditoria já estivesse “aprovada” gastaria ciclos em cima de diagnóstico ainda sem aceite.  
+**Dia a dia:** aceitar este parecer só reconhece o diagnóstico; **não** autoriza código nem muda o produto. Os achados graves, se aceitos, vão para reconciliação humana (PRI-17) — **fora** desta auditoria.
 
 **Veredito operacional:** pronto para **decisão humana** (aceitar ou pedir REVISE). Em jargão de review: `APPROVE_FOR_HUMAN_DECISION` — ou seja, “pode decidir”; **não** “produto aprovado”.
 

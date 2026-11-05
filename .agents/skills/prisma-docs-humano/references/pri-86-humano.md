@@ -1,16 +1,18 @@
-# PRI-86 — ciclo 1 documental aceito
+# PRI-86 — ciclo 1 documental aceito; falta destino da issue
 
 ## O quê
 
-Ciclo 1 aceito: mantém o fluxo atual de recusa/QA; **não** adota aprendizado automático agora; Fatia C fica para um 2º ciclo. Ficou decidido no ciclo 1: fluxo operacional **manter**; IMPROVE automático (prompt, skill, policy, routing) **adiar**; Rejection→Regression / perguntas 198 / preventivo **adiar** (2º ciclo). Sem piloto, sem código runtime, sem Promotion Gate neste ciclo. Aceite D **não** é Done automático da issue.
+Ciclo 1 aceito: mantém o fluxo atual de recusa/QA; **não** adota aprendizado automático agora; a Fatia C (próximo ciclo de melhoria) fica para depois. Sem piloto, sem código no produto, sem Promotion Gate neste ciclo. Aceite documental **não** é Done automático da issue.
 
 ## Por quê
 
-O destino da issue (Done do ciclo 1 vs deixar aberta/Backlog para Fatia C) ainda precisa de escolha humana — o agente **não** muda o status. Autorizar Fatia C ou build de observação agregada (A1) agora, sem outcomes da PRI-181 e sem path/janela/dono, reabriria escopo que o ciclo 1 deliberadamente adiou.
+**Dia a dia:** o agente **não** muda o status Linear — você escolhe se o ciclo 1 basta (Done) ou se a issue fica aberta/Backlog só para a Fatia C.  
+**Custo:** autorizar Fatia C ou observação agregada agora, sem outcomes da PRI-181 e sem path/dono, reabre escopo que o ciclo 1 deliberadamente adiou — mais trabalho sem destravar a cadeia.  
+**Qualidade:** não copiar notas QA / corpo Redmine para “aprendizado” sem pedido humano novo.
 
 ## Quando
 
-Agora: escolher o destino da issue. Q4–Q7 (qualidade / cosmético) são opcionais e não mudam MANTER/ADIAR. Fatia C e A1: **depois** dos outcomes da PRI-181 (e, para A1, com path/janela/dono). Não implementar A1–A7 nem iniciar Fatia C sem HR (Human Request) novo. Não copiar notas QA / corpo Redmine para aprendizado.
+Agora: escolher o destino da issue. Perguntas cosméticas (Q4–Q7) são opcionais e não mudam MANTER/ADIAR. Fatia C e observação agregada: **depois** dos outcomes da PRI-181 (e, para observação, com path/janela/dono).
 
 ## Próximos passos
 
@@ -20,7 +22,7 @@ Agora: escolher o destino da issue. Q4–Q7 (qualidade / cosmético) são opcion
 
 ## Decisões (só se bloquearem o próximo passo)
 
-- **Done agora** (ciclo 1 documental basta) **ou** deixar aberta / Backlog só para Fatia C no 2º ciclo? *(bloqueia o próximo status da issue)*
+- **Done agora** (ciclo 1 documental basta) **ou** deixar aberta / Backlog só para Fatia C? *(bloqueia o próximo status da issue)*
 
 ---
 

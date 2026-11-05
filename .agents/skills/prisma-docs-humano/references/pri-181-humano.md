@@ -1,24 +1,28 @@
-# PRI-181 — confirmação P1 ainda falta
+# PRI-181 — falta confirmação explícita (o “aprovo” solto não conta)
 
 ## O quê
 
-Há um pacote técnico denso de decisões P1 (itens P-R3-01, DB-16b, RR-01…06) com recomendação todas **A**, e um “aprovo” solto no Project. Esse “aprovo” genérico **não** vale como decisão P1 desta issue: falta confirmação explícita com versão, hash e letra por item. Isto **não** aplica reconciliação, **não** libera C1+ (próxima fase de implementação após P1), **não** fecha a issue e **não** declara P1 APPLIED.
+Há um pacote de decisões humanas nesta issue (itens com letras recomendadas todas **A**) e um “aprovo” genérico no Project. Esse “aprovo” **não** vale: falta confirmação com versão, hash e letra por item.
+
+Isto **não** aplica mudança de arquitetura, **não** libera a próxima fase de implementação, **não** fecha a issue e **não** declara o pacote como APPLIED.
 
 ## Por quê
 
-Sem P1 explícito, a cadeia anti-recusa não avança para registro APPLIED/NOT nem para liberação de Implementation / C1. Tratar o “aprovo” genérico como confirmação seria inventar Approval. Em paralelo (sem desbloquear C1) ainda cabem gate Claude + checagem de SHA no host e trabalho nas issues 184 / 207 / 86 / 225 — nenhum desses substitui P1 da 181.
+**Qualidade:** tratar “aprovo” solto como decisão real inventaria Approval — autoridade falsa.  
+**Custo:** sem confirmação explícita, a cadeia anti-recusa não registra o pacote nem libera implementação; o time continua em paralelo (184, 207, 86, 225) **sem** destravar o passo caro.  
+**Dia a dia:** board e código do produto **não** mudam neste passo; o que muda é só a clareza de “está confirmado ou não”.
 
-Glossário rápido na 1ª ocorrência: **P1** = pacote de decisão humana desta issue; **DB-16b** = item de decisão humana na PRI-181; **RRC** (Architecture Change Candidate) = candidato de mudança estrutural — **não** aplicar neste passo.
+Glossário só do necessário: **P1** = este pacote de decisão humana; **C1+** = fase de implementação que só começa depois do P1; **RRC** = candidato a mudança de arquitetura — **não** aplicar aqui.
 
 ## Quando
 
-Ordem: P0 (host) → **P1 (você, agora)** → registrar APPLIED/NOT → inventário → **só então** você libera Implementation / C1. Confirmação P1 é o bloqueio atual. Review Claude + SHA no Mac (opção A do RR-06) pode andar **em paralelo**, sem desbloquear C1.
+Ordem prática: checagens de host → **sua confirmação agora** → registrar APPLIED/NOT → inventário → **só então** liberar implementação. Review Claude + SHA no Mac pode andar **em paralelo**, sem liberar implementação.
 
 ## Próximos passos
 
-1. **Não** aplicar reconciliação / **não** liberar C1+ / **não** fechar a issue.
+1. **Não** aplicar reconciliação / **não** liberar implementação / **não** fechar a issue.
 2. Confirmar o pacote recomendado (todas **A**) com comentário na PRI-181 — ou editar letras antes.
-3. Em paralelo (sem desbloquear C1): revisão Claude + SHA no Mac, se for seguir a opção A do item RR-06.
+3. Em paralelo (sem liberar implementação): revisão Claude + SHA no Mac, se for a opção A do item RR-06.
 
 ### Reply mínimo (se preferir Project)
 
@@ -30,7 +34,7 @@ Não aplica RRC / não autoriza C1+ neste passo.
 
 ## Decisões (só se bloquearem o próximo passo)
 
-- **Confirma P1** com o pacote recomendado todas A (ver draft no doc técnico §F)? *(bloqueia registro APPLIED/NOT e C1+)*
+- **Confirma o pacote** com todas A (ver draft no doc técnico §F)? *(bloqueia registro e a fase de implementação)*
 - Se **não**: quer listar deltas (ID = letra) antes de postar?
 
 ---
