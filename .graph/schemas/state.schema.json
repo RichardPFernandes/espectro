@@ -2150,6 +2150,57 @@
         }
       }
     },
+    "qa_diagnosis": {
+      "type": "object",
+      "description": "PRI-181 C2: ponteiro para Diagnosis Record publicado no store memory/qa-diagnosis/records/ (R3-A). Não é Context Record (RR-03=A). findings_status UNKNOWN até C3. Consultivo (DB-05).",
+      "properties": {
+        "rejection_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "identity_quality": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": ["OK", "DEGRADED", "UNKNOWN", null]
+        },
+        "published_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "authority_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Path relativo ou absoluto da autoridade no store da plataforma (não conteúdo corporativo)."
+        },
+        "schema_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "findings_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "UNKNOWN enquanto C3 não autorizado."
+        },
+        "is_context_record": {
+          "type": "boolean",
+          "const": false,
+          "description": "Sempre false (RR-03=A)."
+        }
+      }
+    },
     "qa_retry_count": {
       "type": "integer",
       "minimum": 0,
