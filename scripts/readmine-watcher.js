@@ -25,6 +25,7 @@ const serviceDetector = require('./lib/service-detector');
 const buildValidator = require('./lib/build-validator');
 const planScorer = require('./lib/plan-scorer');
 const planSignals = require('./lib/plan-signals');
+const wouldRoute = require('./lib/would-route');
 const schemaWatcher = require('./lib/schema-watcher');
 const prStatusPoll = require('./lib/pr-status-poll');
 const { getPRStatus } = require('./check-pr-status');
@@ -3292,6 +3293,25 @@ function attemptSignalsForRun(run, target) {
     }
 }
 
+// PRI-223 S3: decisão sombra would_route a partir dos sinais S2. Best-effort; falha
+// não altera despacho. classifier=off (default) → NO_DECISION; cheap_rule → R1–R8.
+// Nunca aplica --model / esforço (S4 fora de escopo).
+function attemptWouldRouteForRun(signals) {
+    if (!signals || signals === 'UNAVAILABLE') return 'UNAVAILABLE';
+    try {
+        return wouldRoute.shadowDecide({ signals });
+    } catch (e) {
+        console.error('[would_route] falha na decisão sombra (seguindo sem ela):', e.message);
+        return {
+            status: 'NO_DECISION',
+            cause: 'COLLECTION_FAILED',
+            detail: e.message,
+            decisions: [],
+            applied: false,
+        };
+    }
+}
+
 function setCostRunPid(ticketId, sessionId, pid) {
     try {
         const ledger = readCostLedger(ticketId);
@@ -3404,9 +3424,10 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
 
         const state = readStateJson(target.dir) || {};
         const current = ledger.tasks[target.taskId] || state.cost_tracking || costTracking.emptyCostTracking();
+        const signals = attemptSignalsForRun(run, target);
         const updated = costTracking.mergeRun(current, {
             node, agent: run.agent, alsoCovers: run.nodes.slice(0, -1), metrics,
-            run: { ...run, signals: attemptSignalsForRun(run, target) }, outcome: observedOutcome,
+            run: { ...run, signals, would_route: attemptWouldRouteForRun(signals) }, outcome: observedOutcome,
         });
         ledger.tasks[target.taskId] = updated;
         writeCostLedger(ticketId, ledger);

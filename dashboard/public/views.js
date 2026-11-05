@@ -9,7 +9,8 @@
     ['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'],
     ['timeline', 'Linha do tempo'], ['metricas', 'Métricas'], ['tickets', 'Tickets e PRs'],
     ['redmine', 'Redmine'], ['grafo', 'Grafo'], ['padroes', 'Padrões'], ['prs', 'PRs'],
-    ['coordenacao', 'Coordenação'], ['versao', 'Versão'], ['computador', 'Este computador'],
+    ['coordenacao', 'Coordenação'], ['medicao-modelo', 'Medição de modelo'],
+    ['versao', 'Versão'], ['computador', 'Este computador'],
   ];
   // Etapas agrupadas em 4 fases pra linha do tempo: 7 tons de um matiz não ficam
   // distinguíveis (validado), 4 ficam. O nome exato da etapa vai no tooltip.
@@ -104,6 +105,7 @@
     ]],
     ['Operação', [
       ['coordenacao', 'Coordenação', 'M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h4v6h-4zM19 16h2'],
+      ['medicao-modelo', 'Medição de modelo', 'M4 19V9M10 19V5M16 19v-6M22 19H2M3 5h4M9 3h4M15 7h4'],
       ['padroes', 'Padrões de falha', 'M12 3l9 16H3zM12 10v4M12 17h.01'],
     ]],
     ['Conhecimento', [['grafo', 'Grafo', 'M6 6.5h.01M18 5.5h.01M12 18.5h.01M7 7.5l4 9.2M17 6.8l-4 9.9M7.5 6l9-.2']]],
@@ -155,6 +157,7 @@
     if (v === 'tickets' && !bulk.running && !bulk.loadedOnce) loadAll(false);
     if (v === 'redmine') window.RedmineView?.load(false);
     if (v === 'coordenacao') window.CoordinationView?.load();
+    if (v === 'medicao-modelo') window.WouldRouteMetricsView?.load();
     if (v === 'versao') window.VersionView?.load(false);
     if (v === 'computador') window.OnboardingView?.load();
   }
@@ -715,11 +718,17 @@
       const el = $('view');
       const keepY = el.scrollTop;
       const focusKey = document.activeElement?.dataset?.tfilter;
-      const domView = { coordenacao: window.CoordinationView, versao: window.VersionView, computador: window.OnboardingView }[view];
+      const domView = {
+        coordenacao: window.CoordinationView,
+        'medicao-modelo': window.WouldRouteMetricsView,
+        versao: window.VersionView,
+        computador: window.OnboardingView,
+      }[view];
       // Visão que devolve sempre o mesmo nó (formulário do onboarding) não é remontada: manter foco e digitação.
       const domNode = domView?.render();
       if (domNode) { if (el.firstChild !== domNode || el.lastChild !== domNode) el.replaceChildren(domNode); }
-      else el.innerHTML = view in { coordenacao: 1, versao: 1, computador: 1 } ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
+      else el.innerHTML = view in { coordenacao: 1, 'medicao-modelo': 1, versao: 1, computador: 1 }
+        ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
       el.scrollTop = keepY;
       if (focusKey) el.querySelector(`[data-tfilter="${focusKey}"]`)?.focus();
     });

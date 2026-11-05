@@ -44,6 +44,7 @@ const acIdsLib = require('../scripts/lib/ac-ids');
 const cycleReplayer = require('../scripts/lib/cycle-replayer');
 const runComparator = require('../scripts/lib/run-comparator');
 const { projectCostTracking } = require('./cost-projection');
+const { buildWouldRouteMetrics } = require('./would-route-metrics');
 // Tira PR de Draft ("Marcar como pronto" no painel de preview).
 const { markPrReady } = require('../scripts/check-pr-status');
 // Lista/detalha/aprova PRs do Bitbucket, pra aba "PRs" (GET/POST /api/prs*).
@@ -837,6 +838,31 @@ function createDashboard(options = {}) {
     app.get('/api/coordination', (req, res) => {
         coordination.read().then(result => res.json(result))
             .catch(() => res.status(500).json({ error: 'não foi possível ler o estado de coordenação' }));
+    });
+
+    // Medição sombra would_route (PRI-223 / dashboard): contagem por faixa, economia
+    // potencial vs Opus-only, lista recente. Lê cost_tracking bruto; não aplica S4.
+    app.get('/api/would-route-metrics', (req, res) => {
+        try {
+            const recentLimit = req.query.limit != null ? Number(req.query.limit) : undefined;
+            const feeds = [];
+            const reg = readRegistry();
+            for (const [taskId, candidates] of collectCandidates()) {
+                if (archivedAway(taskId, candidates, reg)) continue;
+                const chosen = pickCandidate(taskId, candidates);
+                if (!chosen) continue;
+                const state = stateWriter.read(chosen.dir) || readJson(path.join(chosen.dir, 'state.json'));
+                feeds.push({
+                    taskId,
+                    ticketId: ticketIdOf(taskId, state),
+                    updatedAt: state?.updated_at || null,
+                    cost_tracking: state?.cost_tracking || null,
+                });
+            }
+            res.json(redactDeep(buildWouldRouteMetrics(feeds, { recentLimit })));
+        } catch (e) {
+            res.status(500).json({ error: redact(e.message) });
+        }
     });
 
     function withRun(req, res) {
