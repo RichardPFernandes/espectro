@@ -1,11 +1,12 @@
 ---
 name: prisma-docs-humano
 description: >-
-  Redige docs e asks legíveis para Richard (PT-BR): versão humana curta
-  (*-humano.md) e parecer técnico/legível com glossário inline na 1ª ocorrência,
-  abertura em português claro e explicação do porquê importa. Use sempre que
-  houver status, review, handoff, ask Linear/store, resumo de issue ou
-  comentário dirigido a Richard — mesmo sem pedido explícito de “versão humana”.
+  Redige docs e asks legíveis para Richard (PT-BR): versão humana detalhada
+  (*-humano.md) no formato O quê / Por quê / Quando / Próximos passos, e
+  parecer técnico/legível com glossário inline na 1ª ocorrência. Decisões só
+  se bloquearem o próximo passo. Use sempre que houver status, review, handoff,
+  ask Linear/store, resumo de issue ou comentário dirigido a Richard — mesmo
+  sem pedido explícito de “versão humana”.
 ---
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
@@ -14,10 +15,10 @@ description: >-
 
 Dois entregáveis, sempre que o destinatário for Richard (Project / Linear / store):
 
-1. **Versão humana** — curta, decisões sim/não.
+1. **Versão humana** — detalhada o bastante para agir sem abrir o técnico; formato fixo abaixo.
 2. **Parecer técnico legível** — o técnico original **não** some; ou reescreve o técnico, ou gera `*-legivel.md` ao lado. Siglas sem contexto na hora = ilegível.
 
-Preferência do Project (reforço): melhor **detalhado para humano** do que só resumir — explicar **por que importa**. Jargão (RRC, DB-xx, PHI, DS-09, gate…) nunca pressuposto.
+Preferência do Project (2026-11-05): docs humanos em **o quê / por quê / quando / próximos passos** (detalhe útil). **Decisões** só se bloquearem o próximo passo — **não** são o centro do doc. Jargão (RRC, DB-xx, PHI, DS-09, gate…) nunca pressuposto.
 
 ## Quando acionar (pushy)
 
@@ -25,32 +26,40 @@ Qualquer status, review, handoff, ask Linear/store, “o que falta”, “próxi
 
 ## 1) Versão humana (`*-humano.md`)
 
-Espelhar `references/*-humano.md`. Template fixo (~40 linhas max):
+Espelhar `references/*-humano.md`. Template fixo (detalhado; sem limite artificial de ~40 linhas se o detalhe for útil):
 
 ```markdown
-# <assunto> — o que fazer agora
+# <assunto>
 
-**Veredito:** <uma frase>
+## O quê
+<estado atual / o que foi feito ou achado — prosa clara, detalhe útil;
+ o que isto **não** é (Approval, Done, APPLIED, merge) quando couber>
 
-## Agora
+## Por quê
+<por que importa agora — risco, bloqueio, consequência se ignorar;
+ glossário inline na 1ª sigla>
+
+## Quando
+<em que momento isto vale: o que já passou, o que ainda não,
+ ordem na cadeia / dependências, o que pode andar em paralelo>
+
+## Próximos passos
 1. …
 2. …
 
-## Decisões (sim / não)
-- **…?**
-- **…?**
-
-## O que isto **não** é
-- …
-
-## Opcional (contexto)
-- …  # curto; sem matriz densa
+## Decisões (só se bloquearem o próximo passo)
+- **…?**   # omitir a seção inteira se nada bloquear
 
 ---
 
 Técnico: [`…`](./…) · Issue: […]
 ```
 
+### Regras do formato humano
+
+- **O quê / Por quê / Quando / Próximos passos** são **obrigatórios** e o centro do doc.
+- **Decisões** (sim/não): incluir **somente** quando uma resposta humana for pré-requisito do próximo passo. Caso contrário, omitir a seção — não inventar lista de perguntas para “completar o template”.
+- Preferir **detalhe útil** a resumo seco: o humano deve entender o contexto sem abrir o técnico.
 - **Não apagar** o doc técnico. Preferir `nome-humano.md` ao lado. Se for o **único** file, prefixar seção `# Para você` no topo (mesmo template) e manter o técnico abaixo.
 - PT-BR. Sem inventar **Approval**, **Done**, **APPLIED**, gate PASS ou merge.
 

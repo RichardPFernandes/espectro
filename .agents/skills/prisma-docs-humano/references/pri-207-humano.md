@@ -1,34 +1,26 @@
-# PRI-207 — o que fazer agora
+# PRI-207 — HOW aprovado; sem runtime
 
-**Veredito:** pacote A **já aprovado** (contexto mínimo no laço review→implement + escalonamento em sombra, sem subir tier sozinho) — **ainda sem** autorização de runtime.
+## O quê
 
-## Agora
+Pacote A **já aprovado**: contexto mínimo no laço review→implement + escalonamento em sombra (ALT-3), sem subir tier sozinho. Decisões D-207-1…6 = A. Dependência Linear `blockedBy` PRI-191 **já limpa**. Isto **ainda sem** autorização de runtime: **não** autoriza código, watcher, schemas, thresholds numéricos, Attempt de escalonamento efetivo, nem ligação com qa-retry (PRI-184) — domínio distinto.
 
-1. Tratar o HOW como fechado (decisões D-207-1…6 = A).
+## Por quê
+
+O HOW (How / desenho operacional acordado) está fechado; o que falta para build é **issue de implementação separada** + Promotion Gate (gate humano antes de promover implementação). Implementar envelope / sombra / Attempt nesta issue misturaria desenho já aprovado com runtime ainda não autorizado.
+
+## Quando
+
+Agora: tratar o HOW como fechado e **não** implementar nesta issue. Build (envelope / sombra / Attempt) só **quando** houver issue separada + Promotion Gate autorizado. N antes de “would_escalate” permanece UNKNOWN até evidência.
+
+## Próximos passos
+
+1. Tratar o HOW como fechado (D-207-1…6 = A).
 2. **Não** implementar envelope / sombra / Attempt sem issue separada + Promotion Gate.
-3. Dependência Linear `blockedBy` PRI-191: **já limpa**.
+3. Quando quiser build: abrir issue de implementação separada e autorizar Promotion Gate nessa issue *(ainda não)*.
 
-## Decisões (sim / não) — histórico
+## Decisões (só se bloquearem o próximo passo)
 
-| # | Pergunta | Resposta |
-|---|----------|----------|
-| 1 | Escalonamento em sombra (ALT-3), sem auto-bump? | **Sim (A)** |
-| 2 | Aceitar envelope de contexto mínimo + reversão? | **Sim (A)** |
-| 3 | Só `review → implement` nesta fatia? | **Sim (A)** |
-| 4 | N antes de “would_escalate” fica UNKNOWN? | **Sim (A)** |
-| 5 | Limpar bloqueio da PRI-191? | **Sim — feito** |
-| 6 | Evidência: preferir pasta Mac + store? | **Sim (A)** |
-
-## O que isto **não** autoriza
-
-- Código, watcher, schemas, thresholds numéricos.
-- Attempt de escalonamento efetivo.
-- Ligação com qa-retry (PRI-184) — domínio distinto.
-
-## Próximo passo humano (quando quiser build)
-
-- Abrir issue de implementação separada?
-- Autorizar Promotion Gate nessa issue? *(ainda não)*
+- Abrir issue de implementação separada e autorizar Promotion Gate? *(só quando quiser build — omitível se o próximo passo for só manter o HOW fechado)*
 
 ---
 

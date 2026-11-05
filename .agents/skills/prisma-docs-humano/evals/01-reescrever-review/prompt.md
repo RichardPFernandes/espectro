@@ -6,7 +6,7 @@ Você é um agente no Project Prisma. Acione a skill `prisma-docs-humano`.
 
 O arquivo técnico abaixo (trecho estilo `pri-225-cursor-review.md`) é ilegível para Richard: siglas sem contexto e matriz antes da prosa.
 
-1. Produza `pri-225-humano.md` no template da skill (Veredito / Agora / Decisões sim|não / o que não é / link técnico).
+1. Produza `pri-225-humano.md` no template da skill (**O quê / Por quê / Quando / Próximos passos**; Decisões só se bloquearem o próximo passo; link técnico).
 2. Produza `pri-225-cursor-review-legivel.md` (ou reescreva o técnico) com:
    - abertura **“o que foi achado”** em português claro **antes** de qualquer matriz;
    - **por que importa**;
