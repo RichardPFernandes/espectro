@@ -65,14 +65,22 @@ test('syncQaRejection: grava ticket_status + qa_rejection no run arquivado, sem 
     await watcher.syncQaRejection(ticket(92001, 13));
     const st = read(dir);
     assert.strictEqual(st.ticket_status, 'Recusa QA');
-    assert.deepStrictEqual(st.qa_rejection, { note: 'Botão salvar não grava UF', rejected_at: '2026-09-24T09:00:00Z', journal_id: 71 });
+    // Campos legados C0 + identidade C1 (DB-01: transition journal 70; nota no journal 71).
+    assert.strictEqual(st.qa_rejection.note, 'Botão salvar não grava UF');
+    assert.strictEqual(st.qa_rejection.rejected_at, '2026-09-24T09:00:00Z');
+    assert.strictEqual(st.qa_rejection.journal_id, 71);
+    assert.strictEqual(st.qa_rejection.transition_journal_id, 70);
+    assert.strictEqual(st.qa_rejection.rejection_key, 'qa-rej:v1:t92001:j70');
+    assert.ok(['OK', 'DEGRADED'].includes(st.qa_rejection.identity_quality));
     assert.strictEqual(st.updated_at, UPDATED);
     assert.strictEqual(st.status, 'committed');
 
-    // Mesmo status no tick seguinte: nem busca journals de novo.
+    // PRI-181 C1/DB-01b: mesmo status ainda relê journals; sem transição nova, legado estável.
     const before = calls.length;
+    const beforeRejection = JSON.stringify(st.qa_rejection);
     await watcher.syncQaRejection(ticket(92001, 13));
-    assert.strictEqual(calls.length, before);
+    assert.ok(calls.length > before, 'C1 relê journals com status igual');
+    assert.strictEqual(JSON.stringify(read(dir).qa_rejection), beforeRejection);
 });
 
 test('dispatchTicket: Recusa QA com run anterior espera o botão, não abre fetch_ticket', async () => {

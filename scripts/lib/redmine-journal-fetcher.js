@@ -49,6 +49,55 @@ function rejectionJournal(journals) {
     return null;
 }
 
+// Nota da recusa a partir de journals já obtidos (mesmo algoritmo de fetchLastRejectionNote).
+// Retorno: { note, journal_id, created_on, author, rejected_at } | null.
+function noteFromJournals(journals) {
+    if (!Array.isArray(journals) || !journals.length) return null;
+    const rejection = rejectionJournal(journals);
+    const isStatusChange = j => (j.details || []).some(d => d.name === 'status_id');
+    const noteOf = j => {
+        const n = typeof j.notes === 'string' ? j.notes.trim() : '';
+        return n && !specValidator.isWatcherNote(n) ? n : '';
+    };
+    const touchesRejected = j => (j.details || []).some(d => d.name === 'status_id'
+        && (Number(d.new_value) === QA_REJECTED_STATUS_ID || Number(d.old_value) === QA_REJECTED_STATUS_ID));
+    let from = 0;
+    if (rejection) {
+        const at = journals.indexOf(rejection);
+        const own = noteOf(rejection);
+        if (own) {
+            return { note: own, journal_id: rejection.id ?? null, created_on: rejection.created_on || null, author: rejection.user?.name || null, rejected_at: rejection.created_on || null };
+        }
+        // QA devolveu direto pra Em Desenvolvimento comentando, e alguém levou o
+        // ticket pra Recusa QA depois, em saltos sem nota (#43819: 8→2 com a nota,
+        // depois 2→8→19→13). Volta pelos saltos até o primeiro journal com nota; se
+        // for essa devolução, a nota é a da recusa. Para em qualquer entrada/saída de
+        // Recusa QA, pra não herdar a nota de uma recusa anterior.
+        for (let i = at - 1; i >= 0 && !touchesRejected(journals[i]); i--) {
+            const j = journals[i];
+            const note = noteOf(j);
+            if (!note) continue;
+            const bounced = (j.details || []).some(d => d.name === 'status_id' && Number(d.new_value) === EM_DESENVOLVIMENTO_STATUS_ID);
+            if (bounced) return { note, journal_id: j.id ?? null, created_on: j.created_on || null, author: j.user?.name || null, rejected_at: j.created_on || null };
+            break;
+        }
+        for (let i = at - 1; i >= 0; i--) if (isStatusChange(journals[i])) { from = i + 1; break; }
+    }
+    for (let i = journals.length - 1; i >= from; i--) {
+        const j = journals[i];
+        const note = typeof j.notes === 'string' ? j.notes.trim() : '';
+        if (!note || specValidator.isWatcherNote(note)) continue;
+        return {
+            note,
+            journal_id: j.id ?? null,
+            created_on: j.created_on || null,
+            author: j.user?.name || null,
+            rejected_at: rejection?.created_on || j.created_on || null,
+        };
+    }
+    return null;
+}
+
 // Nota da recusa: a do próprio journal que moveu pra Recusa QA; senão a mais recente
 // (não vazia) desde a troca de status anterior a ela — o comentário que o QA deixa
 // enquanto testa. Nunca volta pra antes disso: sem essa janela, uma 2ª recusa sem
@@ -71,49 +120,7 @@ async function fetchLastRejectionNote(issueId, opts = {}) {
         }
         const data = await res.json();
         const journals = Array.isArray(data?.issue?.journals) ? data.issue.journals : [];
-        const rejection = rejectionJournal(journals);
-        const isStatusChange = j => (j.details || []).some(d => d.name === 'status_id');
-        const noteOf = j => {
-            const n = typeof j.notes === 'string' ? j.notes.trim() : '';
-            return n && !specValidator.isWatcherNote(n) ? n : '';
-        };
-        const touchesRejected = j => (j.details || []).some(d => d.name === 'status_id'
-            && (Number(d.new_value) === QA_REJECTED_STATUS_ID || Number(d.old_value) === QA_REJECTED_STATUS_ID));
-        let from = 0;
-        if (rejection) {
-            const at = journals.indexOf(rejection);
-            const own = noteOf(rejection);
-            if (own) {
-                return { note: own, journal_id: rejection.id ?? null, created_on: rejection.created_on || null, author: rejection.user?.name || null, rejected_at: rejection.created_on || null };
-            }
-            // QA devolveu direto pra Em Desenvolvimento comentando, e alguém levou o
-            // ticket pra Recusa QA depois, em saltos sem nota (#43819: 8→2 com a nota,
-            // depois 2→8→19→13). Volta pelos saltos até o primeiro journal com nota; se
-            // for essa devolução, a nota é a da recusa. Para em qualquer entrada/saída de
-            // Recusa QA, pra não herdar a nota de uma recusa anterior.
-            for (let i = at - 1; i >= 0 && !touchesRejected(journals[i]); i--) {
-                const j = journals[i];
-                const note = noteOf(j);
-                if (!note) continue;
-                const bounced = (j.details || []).some(d => d.name === 'status_id' && Number(d.new_value) === EM_DESENVOLVIMENTO_STATUS_ID);
-                if (bounced) return { note, journal_id: j.id ?? null, created_on: j.created_on || null, author: j.user?.name || null, rejected_at: j.created_on || null };
-                break;
-            }
-            for (let i = at - 1; i >= 0; i--) if (isStatusChange(journals[i])) { from = i + 1; break; }
-        }
-        for (let i = journals.length - 1; i >= from; i--) {
-            const j = journals[i];
-            const note = typeof j.notes === 'string' ? j.notes.trim() : '';
-            if (!note || specValidator.isWatcherNote(note)) continue;
-            return {
-                note,
-                journal_id: j.id ?? null,
-                created_on: j.created_on || null,
-                author: j.user?.name || null,
-                rejected_at: rejection?.created_on || j.created_on || null,
-            };
-        }
-        return null;
+        return noteFromJournals(journals);
     } catch (e) {
         cfg.log(`[redmine-journal-fetcher] #${issueId}: falha buscando journals (${scrub(e?.name === 'TimeoutError' ? 'timeout' : e?.message, cfg.key)})`);
         return null;
@@ -163,6 +170,6 @@ function contextBlock(note, at = new Date().toISOString()) {
 }
 
 module.exports = {
-    fetchLastRejectionNote, setIssueStatus, contextBlock, isQaRejectedStatus,
+    fetchLastRejectionNote, noteFromJournals, rejectionJournal, setIssueStatus, contextBlock, isQaRejectedStatus,
     QA_REJECTED_STATUS_ID, EM_DESENVOLVIMENTO_STATUS_ID,
 };

@@ -221,24 +221,32 @@ function historyOf(state, contextMd) {
 }
 
 const sameRejection = (e, rej) => !!e && (
+    (rej.rejection_key && e.rejection_key === rej.rejection_key) ||
     (rej.rejected_at && e.rejected_at === rej.rejected_at) ||
     (!rej.rejected_at && rej.journal_id != null && e.journal_id === rej.journal_id && time(e.retry_requested_at) == null));
 
 // Watcher detectou Recusa QA: entrada nova (pendente) em state.qa_rejections. Run antigo
 // sem o campo herda antes o histórico reconstruído (lido com o qa_rejection ANTERIOR,
 // que é o único que ainda sabe quando o último retry começou). Mesma recusa já gravada
-// (mesmo rejected_at) não duplica.
-function recordRejection(state, contextMd, { note, rejected_at, journal_id, at }) {
+// (mesmo rejection_key C1, ou mesmo rejected_at legado) não duplica.
+function recordRejection(state, contextMd, {
+    note, rejected_at, journal_id, at,
+    rejection_key, identity_quality, transition_journal_id,
+}) {
     const prior = historyOf(state, contextMd);
-    if (prior.some(e => sameRejection(e, { rejected_at, journal_id }))) return prior;
-    return [...prior, {
+    if (prior.some(e => sameRejection(e, { rejected_at, journal_id, rejection_key }))) return prior;
+    const entry = {
         n: prior.length + 1,
         note: note ?? null,
         rejected_at: rejected_at ?? null,
         journal_id: journal_id ?? null,
         detected_at: at ?? new Date().toISOString(),
         retry_requested_at: null,
-    }];
+    };
+    if (rejection_key != null) entry.rejection_key = rejection_key;
+    if (identity_quality != null) entry.identity_quality = identity_quality;
+    if (transition_journal_id != null) entry.transition_journal_id = transition_journal_id;
+    return [...prior, entry];
 }
 
 // Retry que está começando: completa a recusa pendente (a última, gravada pelo watcher)
