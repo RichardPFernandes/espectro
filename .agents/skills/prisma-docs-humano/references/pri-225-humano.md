@@ -1,31 +1,28 @@
-# PRI-225 — o que fazer agora
+# PRI-225 — auditoria Cursor pronta para aceite
 
-**Veredito:** a auditoria Codex foi relida no Cursor e está pronta para você aceitar ou pedir revisão — isto **não** fecha a issue nem autoriza mudança de código.
+## O quê
 
-## Agora
+A auditoria Codex foi relida no Cursor: matriz **5 divergentes / 5 inconclusivos / 0 conformes**, com achados F-01…F-05 confirmados por leitura de código. Isto **não** fecha a issue, **não** é Approval de produto, **não** muda PHI (Policy / Human Invariants da reconciliação), Roadmap nem código, e **não** promove a PRI-180 a writer. O writer DS-09 (decisão de writer único / Decision imutável) físico continua na PRI-231.
+
+## Por quê
+
+Sem aceite (ou pedido de revisão) humano, os achados graves (F-01, F-02, F-04 — redecisão após falha, supersessão sem cercar efeito, contexto pós-decisão frágil) não seguem para a reconciliação humana (PRI-17). O pacote de prova Mac desta rodada está ausente: claims só de probe ficam inconclusivos por reprodução; o diagnóstico de código dos achados foi confirmado por leitura.
+
+## Quando
+
+Agora — a review Cursor já está pronta. Aceite ou REVISE **antes** de tratar qualquer follow-up de build nesta fatia. Encaminhar achados graves à PRI-17 é **fora** desta auditoria e só faz sentido **depois** do aceite. Prova byte a byte (custódia Mac: probes + hashes) é opcional e só se você precisar antes de aceitar.
+
+## Próximos passos
 
 1. Ler o parecer técnico (link no fim).
-2. Responder **sim ou não** às perguntas abaixo.
-3. Se aceitar: encaminhar os achados graves (F-01, F-02, F-04) à reconciliação humana (PRI-17) — **fora** desta auditoria.
+2. Aceitar a matriz/achados **ou** pedir revisão (com ou sem custódia Mac).
+3. Se aceitar: encaminhar F-01, F-02, F-04 à reconciliação humana (PRI-17).
 
-## Decisões (sim / não)
+## Decisões (só se bloquearem o próximo passo)
 
-- **Aceita** a matriz Codex (5 divergentes / 5 inconclusivos / 0 conformes) e os achados F-01…F-05 confirmados?
+- **Aceita** a matriz Codex e os achados F-01…F-05 confirmados? *(bloqueia encaminhar à PRI-17)*
 - **Aceita** que o “outro runtime” desta fatia foi Cursor (não Claude), conforme sua ordem?
-- **Quer revisar** antes do aceite pedindo a custódia Mac (probes + hashes)? *(só se precisar prova byte a byte)*
-
-## O que isto **não** é
-
-- Não é Approval de produto.
-- Não declara Done da PRI-225.
-- Não muda PHI, Roadmap nem código.
-- Não promove a PRI-180 a writer.
-
-## Opcional (contexto)
-
-- Achados críticos: redecisão após falha, supersessão sem cercar efeito, contexto pós-decisão frágil.
-- Pacote de prova Mac ausente nesta rodada → claims só de probe ficam inconclusivos por reprodução; o código dos achados foi confirmado por leitura.
-- Writer DS-09 físico continua na PRI-231.
+- **Quer revisar** antes do aceite pedindo a custódia Mac? *(só se precisar prova byte a byte)*
 
 ---
 
