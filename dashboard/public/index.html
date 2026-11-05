@@ -577,6 +577,7 @@
 <link rel="stylesheet" href="screens/patterns.css">
 <link rel="stylesheet" href="screens/coordination.css">
 <link rel="stylesheet" href="screens/would-route.css">
+<link rel="stylesheet" href="screens/run-subtasks.css">
 <link rel="stylesheet" href="screens/system.css">
 <link rel="stylesheet" href="screens/compare.css">
 <link rel="stylesheet" href="screens/onboarding.css">
@@ -630,6 +631,7 @@
 <!-- Antes do script inline: ele usa window.StateVersion no topo (stalePoller). -->
 <script src="state-version.js"></script>
 <script src="cost-attempts.js"></script>
+<script src="run-subtasks.js"></script>
 <script>
 const NODES = [
   ['fetch_ticket', 'Ticket'], ['plan', 'Plano'], ['implement', 'Implementação'], ['review', 'Revisão'],
@@ -1325,7 +1327,7 @@ function runRow(r) {
       <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}${highlight(t.text, q)}${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${qaRetryBlockedBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
       <span class="when" title="${esc(when(r.updatedAt))}">${esc(ago(r.updatedAt))}</span>
       ${svcChips(r) ? `<span class="svcs" aria-label="Serviços afetados">${svcChips(r, { max: 3 })}</span>` : ''}
-      <span class="sub">${miniRail(r)}${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}<span class="where">${esc(where)}</span>${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}${runCost(r)}</span>
+      <span class="sub">${miniRail(r)}${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}<span class="where">${esc(where)}</span>${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}${window.RunSubtasks?.chipHtml(costOf(r)) || ''}${runCost(r)}</span>
       ${qaActions(r)}
       ${sessionLimitActions(r)}
     </div>`;
@@ -1680,6 +1682,7 @@ function renderDetail() {
       ${preBuildHtml(r)}
       ${schemaFoldHtml(r)}
       ${foldsHtml(r)}
+      ${subtasksFoldHtml(r)}
       ${costFoldHtml(r)}
       ${prMatrixHtml(r)}
       ${replayHtml(r)}
@@ -1742,6 +1745,27 @@ function ticketIdOfRun(r) {
   const fromTaskId = /^\d{4}-\d{2}-\d{2}-/.test(r.taskId) ? null : (r.taskId.match(/^(\d{4,6})-/) || [])[1];
   const id = r.state?.ticket_id ?? r.ticket?.id ?? fromTaskId;
   return /^\d+$/.test(String(id ?? '')) ? Number(id) : null;
+}
+
+// ---------------------------------------------------------------- Subtarefas (signals + would_route)
+// Plataforma → consumidores: o detalhe do run mostra os grupos do plano e a faixa
+// sombra. Não aplica S4. Implementação em public/run-subtasks.js.
+function subtasksFoldHtml(r) {
+  const c = costOf(r);
+  if (!c || !window.RunSubtasks) return '';
+  return window.RunSubtasks.foldHtml(c, {
+    taskId: r.taskId,
+    open: openFolds.has(`${r.taskId}:subtasks`),
+    nodeLabels: NODE_LABEL,
+  });
+}
+function wireSubtasksFold(r) {
+  const el = $('foldSubtasks');
+  if (!el) return;
+  el.addEventListener('toggle', () => {
+    if (el.open) openFolds.add(`${r.taskId}:subtasks`);
+    else openFolds.delete(`${r.taskId}:subtasks`);
+  });
 }
 
 // ---------------------------------------------------------------- Custo (cost_tracking)
@@ -2310,6 +2334,7 @@ function wireReplay(r) {
 function wireFolds(r) {
   wireReplay(r);
   wireCostFold(r);
+  wireSubtasksFold(r);
   wireQaFold(r);
   wireSchemaFold(r);
   const fb = $('foldPreBuild');

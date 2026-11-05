@@ -11,6 +11,11 @@ const AGGREGATES = ['input_tokens', 'output_tokens', 'cache_read_input_tokens',
     'retries', 'runs_without_tokens', 'runs_without_cost'];
 const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_<\[\]][a-zA-Z0-9_.:<\[\]> -]{0,199}$/.test(value) ? value : 'UNKNOWN';
+// subtask_key S2 usa barra (ex. abcdef012345/0-2); paths_decl relativos sem absolute/private.
+const subtaskKey = value => typeof value === 'string' && /^[a-zA-Z0-9_<\[\].:\/-]{1,120}$/.test(value) ? value : 'UNKNOWN';
+const relPath = value => typeof value === 'string' && value.length > 0 && value.length <= 400
+    && !value.includes('\0') && !/^[\\\/]|^[A-Za-z]:[\\\/]|^\.\.(?:\/|$)/.test(value)
+    && !value.includes('/dom06/') && !value.includes('/private/') ? value : null;
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : 'UNKNOWN';
 const list = value => Array.isArray(value) ? value : [];
 const numeric = (value, fields) => Object.fromEntries(fields.filter(k => Object.hasOwn(value || {}, k)).map(k => [k, number(value[k])]));
@@ -59,6 +64,56 @@ function usageOf(row) {
     return result;
 }
 
+function projectSignals(value) {
+    if (value === 'UNAVAILABLE') return 'UNAVAILABLE';
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return {
+        status: id(value.status),
+        cause: value.cause == null ? null : id(String(value.cause)),
+        plan_version: value.plan_version == null ? null : id(String(value.plan_version).slice(0, 64)),
+        groups: list(value.groups).slice(0, 200).map(g => ({
+            subtask_key: subtaskKey(g?.subtask_key),
+            steps: list(g?.steps).filter(n => Number.isInteger(n) && n >= 0).slice(0, 100),
+            signals: g?.signals && typeof g.signals === 'object' ? {
+                kind: id(g.signals.kind),
+                n_files: number(g.signals.n_files),
+                n_new_files: number(g.signals.n_new_files),
+                n_acs_step: number(g.signals.n_acs_step),
+                code_local: typeof g.signals.code_local === 'boolean' ? g.signals.code_local : id(g.signals.code_local),
+                sensitive_decl: typeof g.signals.sensitive_decl === 'boolean' ? g.signals.sensitive_decl : id(g.signals.sensitive_decl),
+                schema_decl: typeof g.signals.schema_decl === 'boolean' ? g.signals.schema_decl : id(g.signals.schema_decl),
+                // Paths relativos do plano (sem absolute / private / dom06).
+                paths_decl: list(g.signals.paths_decl).map(relPath).filter(Boolean).slice(0, 80),
+            } : null,
+        })),
+    };
+}
+
+function projectWouldRoute(value) {
+    if (value === 'UNAVAILABLE') return 'UNAVAILABLE';
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return {
+        status: id(value.status),
+        cause: value.cause == null ? null : id(String(value.cause)),
+        detail: value.detail == null ? null : (typeof value.detail === 'string' && value.detail.length <= 400
+            && !/[\/\\]/.test(value.detail.replace(/https?:\/\/[^\s]+/g, '')) ? value.detail : 'UNKNOWN'),
+        policy_version: value.policy_version == null ? null : id(String(value.policy_version)),
+        policy_hash: value.policy_hash == null ? null : hash(value.policy_hash),
+        classifier_ref: { provider: id(value.classifier_ref?.provider) },
+        applied: value.applied === true,
+        decisions: list(value.decisions).slice(0, 200).map(d => ({
+            subtask_key: subtaskKey(d?.subtask_key),
+            steps: list(d?.steps).filter(n => Number.isInteger(n) && n >= 0).slice(0, 100),
+            class: id(d?.class),
+            tier: id(d?.tier),
+            rule: id(d?.rule),
+            leaves_opus_tier: d?.leaves_opus_tier === true,
+            would_model: id(d?.would_model),
+            selection_source: id(d?.selection_source),
+        })),
+    };
+}
+
 function attemptOf(value, context) {
     const a = value || {};
     return {
@@ -74,6 +129,9 @@ function attemptOf(value, context) {
             pricing_source: pricingSource(a.cost?.pricing_source), pricing_sha256: hash(a.cost?.pricing_sha256),
             estimated: typeof a.cost?.estimated === 'boolean' ? a.cost.estimated : 'UNKNOWN' },
         duration_ms: number(a.duration_ms), exit: Number.isInteger(a.exit) ? a.exit : 'UNKNOWN', result: id(a.result),
+        // PRI-222/223: subtarefas e decisão sombra — só campos públicos; applied permanece false em S3.
+        signals: projectSignals(a.signals),
+        would_route: projectWouldRoute(a.would_route),
     };
 }
 
@@ -89,4 +147,4 @@ function projectCostTracking(value, context) {
     };
 }
 
-module.exports = { projectCostTracking };
+module.exports = { projectCostTracking, projectSignals, projectWouldRoute };
