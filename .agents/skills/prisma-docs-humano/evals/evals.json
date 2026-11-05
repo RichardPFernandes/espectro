@@ -3,8 +3,8 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "Reescreva a review densa PRI-225 (trecho APPROVE_FOR_HUMAN_DECISION + matriz PHI) em pri-225-humano.md + pri-225-cursor-review-legivel.md: humano no formato O quê/Por quê/Quando/Próximos passos (decisões só se bloquearem); técnico com o que foi achado em português antes da matriz, por que importa, glossário inline na 1ª ocorrência; sem inventar Approval/Done/APPLIED.",
-      "expected_output": "Dois artefatos no padrão references/pri-225-humano.md e references/pri-225-cursor-review-legivel-excerpt.md; seções O quê/Por quê/Quando/Próximos passos; decisões só bloqueantes; técnico legível sem sigla órfã.",
+      "prompt": "Reescreva a review densa PRI-225 (trecho APPROVE_FOR_HUMAN_DECISION + matriz PHI) em pri-225-humano.md + pri-225-cursor-review-legivel.md: humano em sentido de negócio (custo/qualidade/dia a dia) no formato O quê/Por quê/Quando/Próximos passos (decisões só se bloquearem); jargão evitado ou explicado em português simples; técnico com o que foi achado antes da matriz, por que importa, glossário inline; sem inventar Approval/Done/APPLIED.",
+      "expected_output": "Dois artefatos no padrão references/pri-225-humano.md e references/pri-225-cursor-review-legivel-excerpt.md; Por quê com custo/qualidade/dia a dia; seções O quê/Por quê/Quando/Próximos passos; decisões só bloqueantes; técnico legível sem sigla órfã.",
       "files": [
         "evals/01-reescrever-review/prompt.md",
         "references/pri-225-humano.md",
@@ -13,8 +13,8 @@
     },
     {
       "id": 2,
-      "prompt": "Ask PRI-181: o 'aprovo' genérico não cobre P1. Escreva pri-181-humano.md com O quê/Por quê/Quando/Próximos passos; decisões só se bloquearem (confirma P1); explique P1/C1+/DB-16b/RRC na 1ª ocorrência.",
-      "expected_output": "Doc no padrão references/pri-181-humano.md; sem declarar P1 APPLIED nem Done; decisões não são o centro.",
+      "prompt": "Ask PRI-181: o 'aprovo' genérico não cobre a confirmação. Escreva pri-181-humano.md com sentido de negócio + O quê/Por quê/Quando/Próximos passos; decisões só se bloquearem; explique P1/C1+/RRC em português simples na 1ª ocorrência se inevitáveis.",
+      "expected_output": "Doc no padrão references/pri-181-humano.md; Por quê com custo/qualidade/dia a dia; sem declarar APPLIED nem Done; decisões não são o centro.",
       "files": [
         "evals/02-ask-decisoes/prompt.md",
         "references/pri-181-humano.md"
@@ -22,8 +22,8 @@
     },
     {
       "id": 3,
-      "prompt": "Status Linear anti-recusa para Richard: cadeia 181→184→207→86/198 com 225 como suporte. Escreva linear-anti-recusa-humano.md com O quê/Por quê/Quando/Próximos passos; decisões só se bloquearem o próximo passo.",
-      "expected_output": "Doc no padrão references/linear-anti-recusa-humano.md; sem mudar status Linear nem inventar Approval.",
+      "prompt": "Status Linear anti-recusa para Richard: cadeia 181→184→207→86/198 com 225 como suporte. Escreva linear-anti-recusa-humano.md com sentido de negócio + O quê/Por quê/Quando/Próximos passos; decisões só se bloquearem o próximo passo.",
+      "expected_output": "Doc no padrão references/linear-anti-recusa-humano.md; Por quê com custo/qualidade/dia a dia; sem mudar status Linear nem inventar Approval.",
       "files": [
         "evals/03-status-linear/prompt.md",
         "references/linear-anti-recusa-humano.md"
