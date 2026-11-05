@@ -45,6 +45,7 @@ const churnDetector = require('./lib/churn-detector');
 const cycleReplayer = require('./lib/cycle-replayer');
 const qaJournal = require('./lib/redmine-journal-fetcher');
 const qaCycles = require('./lib/qa-cycles');
+const qaIngest = require('./lib/qa-rejection-ingest');
 const { GracefulShutdown } = require('./lib/graceful-shutdown');
 const watcherLock = require('./lib/watcher-lock');
 const dispatchReservation = require('./lib/dispatch-reservation');
@@ -463,27 +464,70 @@ function latestRunForTicket(ticketId) {
 // Grava a mudança de status do ticket no run mais recente. Não mexe em updated_at
 // (decide findActiveTask/mostRecentArchivedCommit) nem em run com nó rodando (o agente
 // reescreve o state.json ao sair — fica pro próximo tick).
+//
+// PRI-181 C1: com status Recusa QA, relê journals mesmo se ticket_status não mudou
+// (DB-01b / between_polls). Identidade = journal → 13 + rejection_key; N-08 via
+// trava por chave no ingest. Sem Diagnosis Record (C2).
 async function syncQaRejection(ticket) {
     const name = ticket.status?.name;
     if (!name) return null;
     const latest = latestRunForTicket(ticket.id);
-    if (!latest || latest.state.status === 'running' || latest.state.ticket_status === name) return latest;
+    if (!latest || latest.state.status === 'running') return latest;
+
+    const statusChanged = latest.state.ticket_status !== name;
+    const rejected = qaJournal.isQaRejectedStatus(name);
+    // Fora de Recusa QA: só grava quando o status mudou (comportamento anterior).
+    if (!statusChanged && !rejected) return latest;
+
     const next = { ...latest.state, ticket_status: name };
-    if (qaJournal.isQaRejectedStatus(name)) {
-        const found = await qaJournal.fetchLastRejectionNote(ticket.id);
-        const rejection = {
-            note: found?.note ?? null,
-            rejected_at: found?.rejected_at || ticket.updated_on || new Date().toISOString(),
-            journal_id: found?.journal_id ?? null,
-        };
-        // Histórico por recusa ANTES de trocar o qa_rejection: o anterior (com
-        // retry_requested_at) é o que diz quando o último retry começou em run antigo.
+    let changed = statusChanged;
+
+    if (rejected) {
         let contextMd = '';
         try { contextMd = fs.readFileSync(`${latest.dir}/context.md`, 'utf8'); } catch { /* sem context.md */ }
-        next.qa_rejections = qaCycles.recordRejection(latest.state, contextMd, { ...rejection, at: new Date().toISOString() });
-        next.qa_rejection = rejection;
-        console.log(`Ticket #${ticket.id}: Recusa QA detectada — gravada em ${latest.taskId} (retry pelo botão "Corrigir recusa QA" do dashboard).`);
+        const journals = await qaIngest.fetchIssueJournals(ticket.id);
+        const found = journals ? qaJournal.noteFromJournals(journals) : null;
+        const at = new Date().toISOString();
+        const result = qaIngest.ingestFromJournals({
+            ticketId: ticket.id,
+            journals: journals || [],
+            state: next,
+            contextMd,
+            noteSource: found,
+            at,
+            repoPath: REPO_PATH,
+            ticketFallbackRejectedAt: ticket.updated_on || at,
+        });
+        if (result.blocked.length) {
+            console.warn(`Ticket #${ticket.id}: ingestão C1 bloqueada por N-08 (contention): ${result.blocked.map(b => b.rejection_key).join(', ')}`);
+        }
+        if (result.changed) {
+            Object.assign(next, {
+                qa_rejection: result.state.qa_rejection,
+                qa_rejections: result.state.qa_rejections,
+            });
+            changed = true;
+            if (result.ingested.length) {
+                console.log(`Ticket #${ticket.id}: Recusa QA C1 — ${result.ingested.length} identidade(s) em ${latest.taskId} (retry pelo botão "Corrigir recusa QA" do dashboard).`);
+            }
+        } else if (statusChanged && !next.qa_rejection) {
+            // Transporte falhou / sem journals: fallback legado (C0) sem inventar chave.
+            const rejection = {
+                note: null,
+                rejected_at: ticket.updated_on || at,
+                journal_id: null,
+                rejection_key: null,
+                identity_quality: 'UNKNOWN',
+                transition_journal_id: null,
+            };
+            next.qa_rejections = qaCycles.recordRejection(latest.state, contextMd, { ...rejection, at });
+            next.qa_rejection = rejection;
+            changed = true;
+            console.log(`Ticket #${ticket.id}: Recusa QA detectada (fallback UNKNOWN) — gravada em ${latest.taskId}.`);
+        }
     }
+
+    if (!changed) return latest;
     if (DRY_RUN) return { ...latest, state: next };
     stateWriter.write(latest.dir, next, { operation: 'qa_rejection_detected', actor: 'watcher', base: baseOf(latest.state) });
     if (latest.valid) checkWrittenState(latest.dir);

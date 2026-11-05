@@ -2014,7 +2014,7 @@
     },
     "qa_rejection": {
       "type": "object",
-      "description": "Última recusa do QA: gravada pelo watcher quando ticket_status entra em Recusa QA e atualizada pelo POST /api/runs/:taskId/retry-qa-rejection do dashboard (scripts/lib/redmine-journal-fetcher.js).",
+      "description": "Última recusa do QA: gravada pelo watcher quando ticket_status entra em Recusa QA (PRI-181 C1: também relê journals com status igual — DB-01b) e atualizada pelo POST /api/runs/:taskId/retry-qa-rejection do dashboard (scripts/lib/redmine-journal-fetcher.js + qa-rejection-identity/ingest).",
       "properties": {
         "note": {
           "type": [
@@ -2035,7 +2035,29 @@
             "integer",
             "null"
           ],
-          "description": "Id do journal de onde veio a nota."
+          "description": "Id do journal de onde veio a nota (heurística CURRENT; pode diferir do transition_journal_id)."
+        },
+        "rejection_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "PRI-181 C1: chave estável qa-rej:v1:t{ticket}:j{transition_journal_id} (DB-01). null = identidade UNKNOWN."
+        },
+        "identity_quality": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": ["OK", "DEGRADED", "UNKNOWN", null],
+          "description": "PRI-181 C1: qualidade da identidade (OK / DEGRADED / UNKNOWN). Não é Diagnosis Record."
+        },
+        "transition_journal_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "PRI-181 C1: journal da transição status_id → 13 (identidade DB-01)."
         },
         "retry_requested_at": {
           "type": "string",
@@ -2070,6 +2092,26 @@
             "type": [
               "integer",
               "string",
+              "null"
+            ]
+          },
+          "rejection_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "PRI-181 C1: chave estável da identidade (DB-01)."
+          },
+          "identity_quality": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": ["OK", "DEGRADED", "UNKNOWN", null]
+          },
+          "transition_journal_id": {
+            "type": [
+              "integer",
               "null"
             ]
           },

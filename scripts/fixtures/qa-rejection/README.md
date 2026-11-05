@@ -5,17 +5,18 @@ formas geométricas, datas fixas e marcadores sem credenciais. Nenhum arquivo do
 consumidor, ticket, nota QA ou configuração real foi usado como fixture.
 
 Baseline caracterizada: `fd9f08ed017194642525c87a1aede11e5985cc48`. Destino:
-este diretório e `scripts/lib/qa-rejection-current-golden.test.js`. Não há
-transporte de código do consumidor nem alteração em produção, schema ou gates.
+este diretório e `scripts/lib/qa-rejection-current-golden.test.js`. C1 (PRI-181)
+estende identidade/ingestão na **plataforma** (`scripts/lib/qa-rejection-*.js`,
+schema `qa_rejection`); não transporta dados/credenciais/fixtures do consumidor.
 
 ## Conteúdo e cobertura
 
 | Insumo | Golden atual |
 | --- | --- |
 | `current.json`: journals `own`, `none`, `bounce` | Nota própria vence comentário posterior; sem nota retorna null; bounce da correção #45 retorna ID/data da devolução 8→2, não da entrada em 13. |
-| `between_polls` | Há duas novas entradas em 13 depois da primeira; fetch direto seleciona a última, mas o sync não consulta journals se o status entre polls for igual. |
-| `transport` | Fonte indisponível, HTTP 401 e TimeoutError viram null; fetch direto se recupera. O sync grava fallback de `ticket.updated_on` e não recupera a nota enquanto o status não mudar. Timeout é lançado pelo stub, sem espera real. |
-| `legacy_unique`, `legacy_ambiguous` + state `legacy` | Insumos para futura qualidade DEGRADED: uma transição coincidente ou duas no mesmo segundo. Hoje não existe promoção/chave/identity_quality; sync pula status igual e qa-cycles deduplica por data mesmo quando a identidade é ambígua. C0 não introduz campos futuros. |
+| `between_polls` | C0: sync não lia journals com status igual. **PRI-181 C1 (DB-01b)** fecha a lacuna — ver `qa-rejection-ingest.test.js` / golden atualizado. |
+| `transport` | Fonte indisponível, HTTP 401 e TimeoutError viram null; fetch direto se recupera. Sync grava fallback UNKNOWN sem `rejection_key`. Timeout é lançado pelo stub, sem espera real. |
+| `legacy_unique`, `legacy_ambiguous` + state `legacy` | C1 promove `identity_quality` (OK/DEGRADED) e `rejection_key` a partir do journal → 13; fixtures continuam sintéticas (sem dados de consumidor). |
 | State `retry` | Consumo move o run arquivado, mantém task/execution/count, limpa churn, reabre implement, remove sinal e instrui só o primeiro despacho; destino ocupado não é sobrescrito. Exceção legada sem spec preservada. |
 | `adversarial.json` | Oito notas: aprovação, SQL, troca de alvo, leitura de env/config, FACT falso, JSON extra, falso Watcher e ferramenta. `contextBlock` apenas cita o texto literalmente e o parser o recupera. |
 
