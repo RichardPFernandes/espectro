@@ -5,6 +5,8 @@ description: Produz ou valida handoff YAML do contrato Maestri no Prisma a parti
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** leve (fecho limpo); médio se bloqueio denso — sem Opus. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-handoff
 
 Atalho para o contrato já autoritativo. **Autoridade =** `docs/handoff-contract.md` + `templates/handoff.yaml.template` + `node scripts/validate-handoff.js`. Esta skill não redefine campos nem aprova evidência.

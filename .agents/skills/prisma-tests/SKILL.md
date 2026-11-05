@@ -5,6 +5,8 @@ description: Roda a receita oficial de testes do Prisma (pacotes scripts/ e dash
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** leve — sem Opus. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-tests
 
 Receita completa em `docs/runbook.md`, seção «Testes dos pacotes (receita oficial)». **O runbook vence esta skill** em caso de divergência.

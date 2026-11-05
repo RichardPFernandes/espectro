@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** médio — preferir Sonnet (planejar com qualidade). Opus só se arquitetura/Freeze. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-issue
 
 Ponto de partida de uma sessão **interativa** no Prisma. Só lê e planeja; não edita código nem estado operacional até aprovação explícita do plano.

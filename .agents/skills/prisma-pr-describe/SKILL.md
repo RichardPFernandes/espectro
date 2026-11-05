@@ -5,6 +5,8 @@ description: Redige body de PR autoexplicativo no Prisma (o quê / por quê / o 
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** leve — sem Opus. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-pr-describe
 
 Redige descrição de PR legível **sem** abrir o diff inteiro. Acionar sob demanda (§1.1 esteira de produção); não é nó do ciclo despachado.

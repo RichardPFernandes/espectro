@@ -5,6 +5,8 @@ description: Guia mapeamento AC (change) → RN (capability) em modo Candidate c
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** médio; Opus se o mapa for grande/denso. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-ac-rn-map
 
 Complemento de `prisma-sdd-discipline` (ler aquela skill primeiro). Só **Candidate** — sem promoção Active, sem `log.json`, sem fechar H4.

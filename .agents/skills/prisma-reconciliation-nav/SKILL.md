@@ -5,6 +5,8 @@ description: Aponta quando impacto além da baseline exige reconciliação / Arc
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** médio se “cabe na baseline”; Opus se “não cabe” / Freeze. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-reconciliation-nav
 
 Navegação de governança. Skill **não** aprova reconciliação, **não** aplica RRC e **não** reabre Freeze.

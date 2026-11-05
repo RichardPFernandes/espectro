@@ -5,6 +5,8 @@ description: Checklist curto do que o nó /plan já exige (escopo, arquivos, ris
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** médio — preferir Sonnet. Opus só se aparecer Freeze. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-plan-lite
 
 Espelho **curto** do checklist do `/plan` (`.claude/commands/plan.md`) para sessão **interativa sem watcher**. **Não** substitui o nó despachado; o comando oficial continua a autoridade do HOW no ciclo.
