@@ -76,17 +76,48 @@
     const summary = el('section', null, 'wr-summary');
     summary.setAttribute('aria-label', 'Contagem por faixa');
     const counts = el('div', null, 'kpis wr-counts');
+    const diag = data.diagnosis || {};
+    const semDecisaoHint = diag.code === 'CLASSIFIER_OFF'
+      ? 'provider=off (esperado)'
+      : diag.primary_cause
+        ? String(diag.primary_cause)
+        : 'sem decisões sombra';
     counts.append(
       kpi('Leve (T1)', num(by.leve), 'sairia do Opus'),
       kpi('Médio (T2)', num(by.medio), 'sairia do Opus'),
       kpi('Opus (T3)', num(by.opus), 'permaneceria'),
-      kpi('Sem decisão', num(c.no_decision), 'classificador off / sem sinais'),
+      kpi('Sem decisão', num(c.no_decision), semDecisaoHint),
     );
     summary.append(counts);
     summary.append(el('p',
       `Decisões sombra: ${num(c.decisions)} · sairiam do Opus: ${num(c.leaves_opus_tier)} · Attempts com would_route: ${num(c.attempts_with_would_route)}.`,
       'source-note'));
     root.append(summary);
+
+    if (diag.title_pt) {
+      const panel = el('section', null, 'panel wr-diagnosis');
+      const head = el('div', null, 'panel-head');
+      head.append(el('h3', 'Diagnóstico dos zeros', 't-heading'));
+      panel.append(head);
+      const body = el('div', null, 'wr-savings-body');
+      body.append(el('p', diag.title_pt, 'wr-diagnosis-title'));
+      if (diag.explanation_pt) body.append(el('p', diag.explanation_pt));
+      if (diag.next_step_pt) {
+        const next = el('p', null);
+        next.append(el('strong', 'O que falta: '), document.createTextNode(diag.next_step_pt));
+        body.append(next);
+      }
+      const causeBits = Object.entries(c.causes || {}).map(([k, v]) => `${k}=${v}`);
+      if (causeBits.length) {
+        body.append(el('p', `Causas nos Attempts sem decisão: ${causeBits.join(' · ')}.`, 'source-note'));
+      }
+      if (diag.policy_file) {
+        body.append(el('p', `Arquivo da policy de sombra: ${diag.policy_file}`, 'source-note'));
+      }
+      body.append(el('p', 'Isto não liga S4: mesmo com cheap_rule, o despacho continua AS-IS.', 'source-note'));
+      panel.append(body);
+      root.append(panel);
+    }
 
     const savings = el('section', null, 'panel wr-savings');
     const savHead = el('div', null, 'panel-head');

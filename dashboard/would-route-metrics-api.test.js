@@ -122,6 +122,52 @@ test('GET /api/would-route-metrics: faixas, economia e lista recente', async () 
     assert.ok(body.savings_vs_opus_only.potential_savings_usd > 0);
     assert.ok(body.recent.some(r => r.task_id === '97001-shadow' && r.subtask_key === 'docs-only'));
     assert.match(JSON.stringify(body), /Sombra|sombra|AS-IS|would_route/i);
+    assert.ok(body.diagnosis);
+    assert.ok(['OK', 'CLASSIFIER_OFF', 'NO_DECISION', 'MIXED'].includes(body.diagnosis.code)
+        || typeof body.diagnosis.code === 'string');
+    // Mistura shadow + off: primary não precisa ser OFF, mas causes deve expor CLASSIFIER_OFF.
+    assert.equal(body.counts.causes.CLASSIFIER_OFF, 1);
+});
+
+test('GET /api/would-route-metrics: só CLASSIFIER_OFF → diagnosis explícito', async () => {
+    // seed dedicado
+    const dir = path.join(mainRuns, '97003-off-only');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
+        task_id: '97003-off-only',
+        ticket_id: 97003,
+        node: 'commit',
+        status: 'committed',
+        history: ['implement'],
+        started_at: '2026-11-05T10:00:00.000Z',
+        updated_at: '2026-11-05T12:30:00.000Z',
+        cost_tracking: {
+            pricing_source: 'test',
+            totals: { cost_usd: 1, input_tokens: 1, output_tokens: 1, duration_ms: 1, loop_count: 0 },
+            nodes: {
+                implement: {
+                    attempts: [{
+                        admission: { attempt_id: 'only-off', admitted_node: 'implement' },
+                        cost: { usd: 1 },
+                        would_route: {
+                            status: 'NO_DECISION',
+                            cause: 'CLASSIFIER_OFF',
+                            applied: false,
+                            decisions: [],
+                            classifier_ref: { provider: 'off' },
+                            signals_seen: { status: 'COMPLETE', groups: 2 },
+                        },
+                    }],
+                },
+            },
+        },
+    }));
+    const { status, body } = await get('/api/would-route-metrics');
+    assert.equal(status, 200);
+    // Pode misturar com seeds anteriores; CLASSIFIER_OFF deve aparecer e diagnosis não ser silent.
+    assert.ok(body.counts.causes.CLASSIFIER_OFF >= 1);
+    assert.ok(body.diagnosis?.title_pt);
+    assert.ok(body.diagnosis?.next_step_pt);
 });
 
 test('limit reduz a lista recente', async () => {

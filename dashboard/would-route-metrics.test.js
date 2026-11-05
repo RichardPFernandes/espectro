@@ -169,3 +169,50 @@ test('classificador off → no_decision; applied=true conta anomalia', () => {
     assert.equal(agg.counts.applied_true_anomaly, 1);
     assert.equal(agg.counts.decisions, 1);
 });
+
+test('diagnóstico: zeros com CLASSIFIER_OFF (cenário Richard) não é bug de UI', () => {
+    const ct = {
+        nodes: {
+            implement: {
+                attempts: [
+                    attempt({
+                        id: 'a',
+                        cost: 2,
+                        would_route: {
+                            status: 'NO_DECISION',
+                            cause: 'CLASSIFIER_OFF',
+                            applied: false,
+                            decisions: [],
+                            classifier_ref: { provider: 'off' },
+                            signals_seen: { status: 'COMPLETE', groups: 3 },
+                        },
+                    }),
+                    attempt({
+                        id: 'b',
+                        cost: 3,
+                        would_route: {
+                            status: 'NO_DECISION',
+                            cause: 'CLASSIFIER_OFF',
+                            applied: false,
+                            decisions: [],
+                            classifier_ref: { provider: 'off' },
+                            signals_seen: { status: 'COMPLETE', groups: 1 },
+                        },
+                    }),
+                ],
+            },
+        },
+    };
+    const agg = buildWouldRouteMetrics([{ taskId: 'r', cost_tracking: ct }]);
+    assert.equal(agg.counts.by_faixa.leve, 0);
+    assert.equal(agg.counts.by_faixa.medio, 0);
+    assert.equal(agg.counts.by_faixa.opus, 0);
+    assert.equal(agg.counts.decisions, 0);
+    assert.equal(agg.counts.no_decision, 2);
+    assert.equal(agg.counts.attempts_with_would_route, 2);
+    assert.equal(agg.diagnosis.code, 'CLASSIFIER_OFF');
+    assert.match(agg.diagnosis.explanation_pt, /provider=off|desligado/i);
+    assert.match(agg.diagnosis.next_step_pt, /cheap_rule/);
+    assert.equal(agg.diagnosis.policy_file, 'scripts/lib/model-routing-policy.s3-shadow.json');
+    assert.ok(agg.diagnosis.signals_groups_present_on_no_decision >= 1);
+});

@@ -29,6 +29,10 @@
 .wr-savings-body { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
 .wr-unknown { margin: 0; font-style: italic; color: var(--muted); }
 
+.wr-diagnosis .wr-diagnosis-title { margin: 0; font-weight: 600; color: var(--text); }
+.wr-diagnosis .wr-savings-body p { margin: 0; color: var(--text-secondary); line-height: 1.45; }
+.wr-diagnosis .wr-savings-body { gap: 10px; }
+
 .wr-table-wrap { border: 0; border-radius: 0; background: transparent; }
 .would-route .wr-table { font-size: 13px; width: 100%; }
 .would-route .wr-table th,

@@ -30,9 +30,10 @@ Vale quando há Attempts com `would_route` gravado. Com classificador **desligad
 ## Próximos passos
 
 1. Abrir o dashboard → **Operação › Medição de modelo** e conferir contagens / lista.
-2. Se quase tudo for “sem decisão”: decidir se a policy de sombra usa **regra barata** (passa a preencher faixa por subtarefa).
-3. Usar a economia potencial e a contagem “sairia do Opus” como evidência **antes** de qualquer autorização de troca real.
-4. **Não** autorizar S4 nesta fatia.
+2. Se Leve/Médio/Opus = 0 com Attempts would_route > 0: ler o painel **Diagnóstico dos zeros** — em geral é `CLASSIFIER_OFF` (policy default `off`), não bug de UI. Detalhe: store `docs/medicao-sombra-zeros-humano.md`.
+3. Decidir se a policy de sombra usa **regra barata** (`cheap_rule`) para preencher faixa por subtarefa nos **próximos** ciclos.
+4. Usar a economia potencial e a contagem “sairia do Opus” como evidência **antes** de qualquer autorização de troca real.
+5. **Não** autorizar S4 nesta fatia.
 
 ---
 
