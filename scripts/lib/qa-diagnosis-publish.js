@@ -9,7 +9,10 @@
 // 4. Gravar AUTHORITY no destino; origem/staging não-gravável após promote.
  // 5. Autoridade anterior (se houver republicação) vai para trash/.
 //
-// Não bloqueia retry QA (DB-05). Sem C3. Sem dados de consumidor.
+// Não bloqueia retry QA (DB-05). C3 pode passar findings/evidence_refs.
+// enrich: se autoridade existe com findings_status UNKNOWN e há findings novos,
+// move autoridade antiga para trash e promove novo record (imutabilidade → nova versão).
+// Sem dados de consumidor.
 
 const fs = require('fs');
 const path = require('path');
@@ -57,6 +60,12 @@ function publishDiagnosisRecord({
     at = new Date().toISOString(),
     acquireLock = ingest.acquireKeyLock,
     evidence_refs = [],
+    findings = null,
+    findings_status = null,
+    taxonomy_version = null,
+    findings_note = null,
+    corporate_content_included = false,
+    enrich = false,
 } = {}) {
     const key = identity?.rejection_key;
     if (!key) {
@@ -79,38 +88,48 @@ function publishDiagnosisRecord({
     try {
         layout.ensureLayout(repoPath);
         const p = layout.pathsFor(repoPath, key);
+        const hasFindings = Array.isArray(findings) && findings.length > 0;
 
-        // Idempotente: já há autoridade para esta chave com mesmo record key → ok.
+        // Idempotente / enrich C3: autoridade existente
         if (layout.isAuthorityDir(p.authorityDir) && fs.existsSync(p.authorityRecord)) {
             const existing = readJson(p.authorityRecord);
             if (existing.rejection_key === key && existing.authority === true) {
+                const needsEnrich = enrich && hasFindings
+                    && (existing.findings_status === 'UNKNOWN'
+                        || !Array.isArray(existing.findings)
+                        || existing.findings.length === 0);
+                if (!needsEnrich) {
+                    return {
+                        ok: true,
+                        promoted: false,
+                        idempotent: true,
+                        enriched: false,
+                        authority_path: p.authorityDir,
+                        record: existing,
+                        n08: { demonstrated_path: true, global_pass: false },
+                        no_replace: {
+                            demonstrated_path: true,
+                            os_rename_noreplace: layout.renameNoReplaceAvailable,
+                            global_pass: false,
+                            note: 'Destino já autoridade; republicação no-op (fail-closed se force replace).',
+                        },
+                    };
+                }
+                // Nova versão imutável: lixeira a autoridade antiga, depois promote
+                moveToTrash(repoPath, p.authorityDir, key);
+            } else {
                 return {
-                    ok: true,
-                    promoted: false,
-                    idempotent: true,
+                    ok: false,
+                    reason: 'no_replace_destination_exists',
                     authority_path: p.authorityDir,
-                    record: existing,
                     n08: { demonstrated_path: true, global_pass: false },
                     no_replace: {
                         demonstrated_path: true,
                         os_rename_noreplace: layout.renameNoReplaceAvailable,
                         global_pass: false,
-                        note: 'Destino já autoridade; republicação no-op (fail-closed se force replace).',
                     },
                 };
             }
-            // Destino existe com conteúdo divergente → no-replace fail-closed
-            return {
-                ok: false,
-                reason: 'no_replace_destination_exists',
-                authority_path: p.authorityDir,
-                n08: { demonstrated_path: true, global_pass: false },
-                no_replace: {
-                    demonstrated_path: true,
-                    os_rename_noreplace: layout.renameNoReplaceAvailable,
-                    global_pass: false,
-                },
-            };
         }
 
         // 1) Staging only
@@ -123,6 +142,12 @@ function publishDiagnosisRecord({
             at,
             status: 'staged',
             evidence_refs,
+            findings: hasFindings ? findings : [],
+            findings_status: findings_status
+                || (hasFindings ? 'EVALUATED' : 'UNKNOWN'),
+            taxonomy_version,
+            findings_note,
+            corporate_content_included,
         });
         staged = recordBuilder.markStaged(staged);
         writeJson(p.stagingRecord, staged);
@@ -189,6 +214,7 @@ function publishDiagnosisRecord({
             ok: true,
             promoted: true,
             idempotent: false,
+            enriched: enrich === true && hasFindings,
             authority_path: p.authorityDir,
             record: published,
             n08: { demonstrated_path: true, global_pass: false },
@@ -225,6 +251,10 @@ function statePointer(publishResult) {
         authority_path: publishResult.authority_path,
         schema_version: publishResult.record.schema_version,
         findings_status: publishResult.record.findings_status,
+        taxonomy_version: publishResult.record.taxonomy_version ?? null,
+        findings_count: Array.isArray(publishResult.record.findings)
+            ? publishResult.record.findings.length
+            : 0,
         is_context_record: false,
     };
 }

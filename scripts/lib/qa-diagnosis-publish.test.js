@@ -121,3 +121,102 @@ test('C2 record: exige rejection_key', () => {
     const rec = require('./qa-diagnosis-record');
     assert.throws(() => rec.buildDiagnosisRecord({}), (err) => err.code === 'MISSING_REJECTION_KEY');
 });
+
+test('C3 publish: findings na primeira publicação', () => {
+    const key = 'qa-rej:v1:t990210:j910';
+    const findings = [{
+        predicate_id: 'sys.has_rejection_key',
+        category: 'identity',
+        confidence: 'FACT',
+        system_predicate: true,
+        summary: 'rejection_key presente (identidade C1).',
+        signal_keys: ['has_rejection_key'],
+        lens: null,
+        causal_level: null,
+    }];
+    const r = publish.publishDiagnosisRecord({
+        repoPath: repo,
+        identity: { ...identity, rejection_key: key, transition_journal_id: 910 },
+        ticketId: 990210,
+        findings,
+        findings_status: 'EVALUATED',
+        taxonomy_version: '0.1',
+        evidence_refs: [{ type: 'rejection_key', id: key, source: 'qa-rejection-identity' }],
+    });
+    assert.equal(r.ok, true);
+    assert.equal(r.promoted, true);
+    assert.equal(r.record.findings_status, 'EVALUATED');
+    assert.equal(r.record.findings.length, 1);
+    assert.equal(r.record.taxonomy_version, '0.1');
+    assert.equal(r.record.corporate_content_included, false);
+    const ptr = publish.statePointer(r);
+    assert.equal(ptr.findings_count, 1);
+    assert.equal(ptr.taxonomy_version, '0.1');
+});
+
+test('C3 enrich: casca UNKNOWN → trash + nova autoridade com findings', () => {
+    const key = 'qa-rej:v1:t990211:j911';
+    const idn = { ...identity, rejection_key: key, transition_journal_id: 911 };
+    const shell = publish.publishDiagnosisRecord({
+        repoPath: repo,
+        identity: idn,
+        ticketId: 990211,
+        at: '2026-01-02T14:00:00.000Z',
+    });
+    assert.equal(shell.ok, true);
+    assert.equal(shell.record.findings_status, 'UNKNOWN');
+    const authorityBefore = shell.authority_path;
+
+    const findings = [{
+        predicate_id: 'sys.has_rejection_key',
+        category: 'identity',
+        confidence: 'FACT',
+        system_predicate: true,
+        summary: 'rejection_key presente (identidade C1).',
+        signal_keys: ['has_rejection_key'],
+        lens: null,
+        causal_level: null,
+    }];
+    const enriched = publish.publishDiagnosisRecord({
+        repoPath: repo,
+        identity: idn,
+        ticketId: 990211,
+        at: '2026-01-02T14:05:00.000Z',
+        findings,
+        findings_status: 'EVALUATED',
+        taxonomy_version: '0.1',
+        enrich: true,
+    });
+    assert.equal(enriched.ok, true);
+    assert.equal(enriched.promoted, true);
+    assert.equal(enriched.enriched, true);
+    assert.equal(enriched.record.findings_status, 'EVALUATED');
+    assert.equal(enriched.record.findings.length, 1);
+    assert.ok(layout.isAuthorityDir(enriched.authority_path));
+    // Mesmo path lógico (records/<seg>); versão antiga foi para trash/
+    assert.equal(enriched.authority_path, authorityBefore);
+    const trashRoot = path.join(layout.storeRoot(repo), layout.TRASH);
+    const trashEntries = fs.readdirSync(trashRoot);
+    assert.ok(trashEntries.length >= 1, 'casca UNKNOWN anterior em trash');
+    const trashed = trashEntries
+        .map((name) => path.join(trashRoot, name))
+        .find((dir) => fs.existsSync(path.join(dir, layout.RECORD_FILE)));
+    assert.ok(trashed);
+    const oldRec = JSON.parse(fs.readFileSync(path.join(trashed, layout.RECORD_FILE), 'utf8'));
+    assert.equal(oldRec.findings_status, 'UNKNOWN');
+    assert.equal(layout.isAuthorityDir(trashed), false, 'trash não carrega AUTHORITY');
+
+    // Segunda chamada com enrich + findings já presentes → idempotente
+    const again = publish.publishDiagnosisRecord({
+        repoPath: repo,
+        identity: idn,
+        ticketId: 990211,
+        findings,
+        findings_status: 'EVALUATED',
+        taxonomy_version: '0.1',
+        enrich: true,
+    });
+    assert.equal(again.ok, true);
+    assert.equal(again.idempotent, true);
+    assert.equal(again.enriched, false);
+});
