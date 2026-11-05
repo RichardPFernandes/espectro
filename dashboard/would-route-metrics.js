@@ -13,6 +13,15 @@ const FAIXA_LABEL = Object.freeze({ leve: 'leve', medio: 'médio', opus: 'Opus' 
 const COST_RATIO_VS_OPUS = Object.freeze({ T1: 0.2, T2: 0.6, T3: 1.0 });
 const DEFAULT_RECENT = 40;
 const MAX_RECENT = 200;
+const POLICY_SHADOW_FILE = 'scripts/lib/model-routing-policy.s3-shadow.json';
+
+const CAUSE_LABEL_PT = Object.freeze({
+    CLASSIFIER_OFF: 'classificador desligado (policy provider=off)',
+    POLICY_MISSING: 'policy de sombra ausente',
+    POLICY_INVALID: 'policy de sombra inválida',
+    CLASSIFIER_UNSUPPORTED: 'provider de classificador não suportado',
+    COLLECTION_FAILED: 'falha ao coletar sinais / decidir sombra',
+});
 
 const id = value => (typeof value === 'string' && value.length > 0 && value.length <= 200 ? value : 'UNKNOWN');
 const number = value => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null);
@@ -43,6 +52,14 @@ function collectFromCostTracking(costTracking, ctx = {}) {
             const share = attemptCost != null && decisions.length > 0
                 ? attemptCost / decisions.length
                 : null;
+            const signalsSeen = wr.signals_seen && typeof wr.signals_seen === 'object'
+                ? {
+                    status: id(wr.signals_seen.status),
+                    groups: number(wr.signals_seen.groups) ?? 0,
+                }
+                : null;
+            const signalGroups = Array.isArray(attempt?.signals?.groups) ? attempt.signals.groups.length
+                : (signalsSeen ? signalsSeen.groups : null);
             const base = {
                 task_id: id(ctx.taskId),
                 ticket_id: Number.isFinite(ctx.ticketId) ? ctx.ticketId : null,
@@ -56,6 +73,8 @@ function collectFromCostTracking(costTracking, ctx = {}) {
                 classifier_provider: id(wr.classifier_ref?.provider || 'UNKNOWN'),
                 applied: wr.applied === true, // deve permanecer false em S3
                 attempt_cost_usd: attemptCost,
+                signals_group_count: signalGroups,
+                signals_seen: signalsSeen,
             };
             if (!decisions.length) {
                 out.push({
@@ -207,6 +226,119 @@ function aggregateWouldRoute(runs, opts = {}) {
                 : null,
         },
         recent,
+        diagnosis: buildDiagnosis({ decisions, no_decision, causes, rows }),
+    };
+}
+
+/**
+ * Diagnóstico legível quando faixas ficam em zero.
+ * Não é bug de UI: default da policy é classifier.provider=off → NO_DECISION.
+ */
+function buildDiagnosis({ decisions, no_decision, causes, rows }) {
+    const causeEntries = Object.entries(causes || {}).sort((a, b) => b[1] - a[1]);
+    const topCause = causeEntries[0]?.[0] || null;
+    const providers = Object.create(null);
+    let withSignalGroups = 0;
+    let withoutSignalGroups = 0;
+    for (const row of rows || []) {
+        if (row.kind !== 'no_decision') continue;
+        const p = row.classifier_provider || 'UNKNOWN';
+        providers[p] = (providers[p] || 0) + 1;
+        if (typeof row.signals_group_count === 'number' && row.signals_group_count > 0) withSignalGroups += 1;
+        else withoutSignalGroups += 1;
+    }
+
+    if (decisions > 0 && no_decision === 0) {
+        return {
+            code: 'OK',
+            primary_cause: null,
+            title_pt: 'Medição com decisões sombra',
+            explanation_pt: 'Há decisões classificadas por faixa. Despacho continua AS-IS (S4 desligado).',
+            next_step_pt: 'Usar contagens e economia potencial como evidência antes de qualquer decisão de S4.',
+            policy_file: POLICY_SHADOW_FILE,
+            causes: { ...causes },
+            classifier_providers: providers,
+            signals_groups_present_on_no_decision: withSignalGroups,
+            signals_groups_absent_on_no_decision: withoutSignalGroups,
+        };
+    }
+
+    if (decisions > 0 && no_decision > 0) {
+        return {
+            code: 'MIXED',
+            primary_cause: topCause,
+            title_pt: 'Parte das Attempts ainda sem decisão',
+            explanation_pt: `Há ${decisions} decisão(ões) sombra e ${no_decision} Attempt(s) sem decisão (causa top: ${topCause || 'desconhecida'}). Attempts antigas com provider=off não ganham faixa sozinhas.`,
+            next_step_pt: topCause === 'CLASSIFIER_OFF'
+                ? `Ligar cheap_rule em ${POLICY_SHADOW_FILE} e gerar novos Attempts; S4 continua desligado.`
+                : 'Conferir causas no painel e policy/sinais dos Attempts sem decisão.',
+            policy_file: POLICY_SHADOW_FILE,
+            causes: { ...causes },
+            classifier_providers: providers,
+            signals_groups_present_on_no_decision: withSignalGroups,
+            signals_groups_absent_on_no_decision: withoutSignalGroups,
+        };
+    }
+
+    if (topCause === 'CLASSIFIER_OFF' || providers.off > 0) {
+        return {
+            code: 'CLASSIFIER_OFF',
+            primary_cause: 'CLASSIFIER_OFF',
+            title_pt: 'Zeros esperados: classificador sombra desligado',
+            explanation_pt: 'A infraestrutura gravou would_route (Attempts > 0), mas a policy padrão usa classifier.provider=off. Nesse modo não há classes/faixas — só NO_DECISION. Isto não é bug da tela nem ausência de UI; é o default de segurança da S3 (sem aplicar despacho).',
+            next_step_pt: `Para passar a medir leve/médio/Opus: no arquivo ${POLICY_SHADOW_FILE}, mudar classifier.provider de "off" para "cheap_rule", reiniciar o watcher e deixar novos Attempts de implement fecharem. Tentativas antigas com CLASSIFIER_OFF não são reclassificadas. S4 continua desligado.`,
+            policy_file: POLICY_SHADOW_FILE,
+            causes: { ...causes },
+            classifier_providers: providers,
+            signals_groups_present_on_no_decision: withSignalGroups,
+            signals_groups_absent_on_no_decision: withoutSignalGroups,
+        };
+    }
+
+    if (no_decision > 0 && withoutSignalGroups > 0 && withSignalGroups === 0 && !topCause) {
+        return {
+            code: 'NO_SIGNALS',
+            primary_cause: topCause,
+            title_pt: 'Sem grupos de sinais nas Attempts com would_route',
+            explanation_pt: 'would_route existe, mas não há groups de sinais S2 para classificar. Sem sinais do plano, mesmo cheap_rule produziria zero decisões.',
+            next_step_pt: 'Garantir que o nó implement fecha com plan/sinais prospectivos (PRI-222). Depois, com cheap_rule, novas Attempts passam a classificar.',
+            policy_file: POLICY_SHADOW_FILE,
+            causes: { ...causes },
+            classifier_providers: providers,
+            signals_groups_present_on_no_decision: withSignalGroups,
+            signals_groups_absent_on_no_decision: withoutSignalGroups,
+        };
+    }
+
+    if (no_decision > 0) {
+        const label = topCause && CAUSE_LABEL_PT[topCause] ? CAUSE_LABEL_PT[topCause] : (topCause || 'desconhecida');
+        return {
+            code: 'NO_DECISION',
+            primary_cause: topCause,
+            title_pt: 'Sem decisões sombra ainda',
+            explanation_pt: `Há Attempts com would_route sem decisões. Causa predominante: ${label}.`,
+            next_step_pt: topCause === 'CLASSIFIER_OFF'
+                ? `Ligar cheap_rule em ${POLICY_SHADOW_FILE} (sem S4).`
+                : 'Conferir policy, sinais do plano e logs [would_route] do watcher.',
+            policy_file: POLICY_SHADOW_FILE,
+            causes: { ...causes },
+            classifier_providers: providers,
+            signals_groups_present_on_no_decision: withSignalGroups,
+            signals_groups_absent_on_no_decision: withoutSignalGroups,
+        };
+    }
+
+    return {
+        code: 'EMPTY',
+        primary_cause: null,
+        title_pt: 'Nenhum would_route observado',
+        explanation_pt: 'Ainda não há Attempts com would_route nos runs visíveis. A medição só aparece depois que o watcher fecha um implement com a base S3.',
+        next_step_pt: 'Rodar ciclos com watcher atualizado; conferir cost_tracking.nodes.implement.attempts[].would_route.',
+        policy_file: POLICY_SHADOW_FILE,
+        causes: { ...causes },
+        classifier_providers: providers,
+        signals_groups_present_on_no_decision: withSignalGroups,
+        signals_groups_absent_on_no_decision: withoutSignalGroups,
     };
 }
 
@@ -218,7 +350,10 @@ module.exports = {
     TIER_FAIXA,
     FAIXA_LABEL,
     COST_RATIO_VS_OPUS,
+    POLICY_SHADOW_FILE,
+    CAUSE_LABEL_PT,
     collectFromCostTracking,
     aggregateWouldRoute,
     buildWouldRouteMetrics,
+    buildDiagnosis,
 };

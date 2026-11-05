@@ -101,6 +101,12 @@ function projectWouldRoute(value) {
         policy_hash: value.policy_hash == null ? null : hash(value.policy_hash),
         classifier_ref: { provider: id(value.classifier_ref?.provider) },
         applied: value.applied === true,
+        signals_seen: value.signals_seen && typeof value.signals_seen === 'object' && !Array.isArray(value.signals_seen)
+            ? {
+                status: id(value.signals_seen.status),
+                groups: number(value.signals_seen.groups) ?? 0,
+            }
+            : null,
         decisions: list(value.decisions).slice(0, 200).map(d => ({
             subtask_key: subtaskKey(d?.subtask_key),
             steps: list(d?.steps).filter(n => Number.isInteger(n) && n >= 0).slice(0, 100),
