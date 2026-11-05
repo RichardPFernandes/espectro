@@ -9,6 +9,8 @@ authority_runtime: false
 # Nascimento de subtarefa/worker: ver subtask-routing.yaml (mesmo vocabulário de faixa).
 pairs_with:
   - subtask-routing.yaml
+  - context-packing.yaml
+  - orchestration-patterns.yaml
 preferences:
   planning_bias: quality-up  # errar pra cima na qualidade do plano
   simple_task_model: sonnet

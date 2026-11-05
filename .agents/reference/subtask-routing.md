@@ -7,7 +7,9 @@
 **Preferências:** no planejamento, errar pra cima (qualidade → Sonnet); tarefa bem simples → Sonnet; Opus só no pesado.
 
 Espelho estruturado: [`subtask-routing.yaml`](./subtask-routing.yaml).  
-Playbook ação→skill: [../playbook/README.md](../playbook/README.md).
+Playbook ação→skill: [../playbook/README.md](../playbook/README.md).  
+Packing / orquestração: [`context-packing.md`](./context-packing.md) · [`orchestration-patterns.md`](./orchestration-patterns.md).  
+Plano com sizing/AC: skill `prisma-plan-lite`.
 
 ---
 
@@ -80,4 +82,5 @@ Não copiar R1–R8 para o Project. Não inventar S4 a partir deste checklist.
 - Troca real de modelo no watcher (`mode=ON`, S4).  
 - Decomposição Implement→Attempts (PRI-234).  
 - Skill Registry / dual-write `.claude/skills/` para o ciclo.  
-- Declarar Approval / Done / gate PASS.
+- Declarar Approval / Done / gate PASS.  
+- Inventar config/estado do consumidor; misturar C1 PRI-181.

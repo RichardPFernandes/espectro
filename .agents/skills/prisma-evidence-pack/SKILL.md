@@ -31,6 +31,30 @@ Empacota prova para alimentar handoff / PR / comentário Linear — **não** os 
 - UNKNOWN / falha de infra ≠ PASS; listar cada `not ok` ou marcar UNKNOWN.
 - Runbook (`docs/runbook.md`) e `prisma-tests` vencem se a receita divergir.
 
+## Common Rationalizations
+
+| Racionalização | Realidade |
+| --- | --- |
+| “Os testes passaram, então gate PASS” | Pacote interativo ≠ evidência do ciclo despachado. |
+| “Não preciso do HEAD, o branch basta” | Sem SHA a prova não é atribuível à versão. |
+| “Posso omitir os `not ok`” | UNKNOWN/falha listados; omissão vira falsa autoridade. |
+| “Incluo `.env` do consumidor na prova” | AGENTS.md §6 — credenciais/dados do consumidor não viajam. |
+
+## Red Flags
+
+- Pacote sem HEAD / comando / exit code.
+- Linguagem de Approval/Done/APPLIED no bloco de prova.
+- Prova que altera `state.json` ou tenta “fechar” verify.
+
+## Verification
+
+- [ ] HEAD + branch + limpo/sujo
+- [ ] Comandos e exit codes (ou UNKNOWN)
+- [ ] Paths TAP/artefatos; sem secrets de consumidor
+- [ ] Nenhuma declaração de gate PASS
+
 ## Saída típica
 
 Bloco markdown curto reutilizável em handoff (`validation.executed` + `evidence`), body de PR (`prisma-pr-describe`) ou comentário Linear (`prisma-linear-comment-evidence`).
+
+Anatomia: [`.agents/reference/skill-anatomy.md`](../../reference/skill-anatomy.md).

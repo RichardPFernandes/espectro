@@ -39,6 +39,30 @@ node scripts/validate-handoff.js <handoff.yaml|handoff.md> [--check-paths] [--pr
 - Tratar este handoff Maestri como substituto de `memory/runs/<task>/handoff.md` do grafo (`.claude/commands/*`): o handoff do grafo continua o estado operacional da run; este contrato **referencia** aquele path em `context_refs` quando couber.
 - Usar handoff para “fechar” Done/Approval Gate ou avançar nó do ciclo.
 - Transformar UNKNOWN ou ausência de prova em aprovação.
+- Inventar config/estado/credencial de **consumidor** no handoff da plataforma (AGENTS.md §6).
+
+## Common Rationalizations
+
+| Racionalização | Realidade |
+| --- | --- |
+| “Prosa no chat basta” | Contrato exige YAML; validador não lê narrativa solta. |
+| “PASSED — eu rodei mentalmente” | Sem `evidence` atribuível = não PASSED. |
+| “Vou fechar a issue no Linear com o handoff” | Handoff ≠ Done/Approval; só transfere. |
+| “Copio o state do consumidor pro próximo agente” | Transporte de código ≠ dados/credenciais/fixtures do consumidor. |
+
+## Red Flags
+
+- `validation.executed` com PASSED e `evidence` vazio.
+- Status COMPLETED com `open_issues` que bloqueiam o próximo passo.
+- Handoff usado para avançar nó do watcher / gravar `state.json`.
+- Mistura de paths de consumidor secreto com artefatos da plataforma.
+
+## Verification
+
+- [ ] YAML válido (`handoff_version`, routing/risk se 1.1)
+- [ ] `node scripts/validate-handoff.js <arquivo>` sem ERROR
+- [ ] Fatos vs assumptions separados; UNKNOWN preservado
+- [ ] Artefatos referenciados por path (não colados inteiros)
 
 ## Distinção rápida
 
@@ -48,3 +72,5 @@ node scripts/validate-handoff.js <handoff.yaml|handoff.md> [--check-paths] [--pr
 | `memory/runs/<task>/handoff.md` | Estado operacional do nó do grafo |
 
 Bloqueio e interrupção também geram handoff — não só conclusão feliz.
+
+Anatomia: [`.agents/reference/skill-anatomy.md`](../../reference/skill-anatomy.md).

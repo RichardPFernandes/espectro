@@ -1,0 +1,47 @@
+# Context packing — esteira Cursor (plataforma Prisma).
+# Preferência / análise Addy adaptada 2026-11-05. Não é Authority Runtime / S4 / consumidor.
+version: "2026-11-05.1"
+surface: esteira-cursor
+authority_runtime: false
+pairs_with:
+  - subtask-routing.yaml
+  - orchestration-patterns.yaml
+  - skill-model-map.yaml
+
+hierarchy:
+  - rules_platform
+  - spec_issue_baselines_slice
+  - task_files_and_neighbor_pattern
+  - error_tap_excerpt
+  - conversation_or_restartable_handoff
+
+include:
+  - action_skill
+  - model_band_map
+  - handoff_or_brief_with_skill_faixa
+  - verification_commands_and_exit
+
+exclude:
+  - full_addy_pack
+  - unrelated_issue_dump
+  - consumer_secrets_or_fixtures
+  - always_on_meta_skill
+
+confusion_stop: ask_human_do_not_guess
+
+restartable_session:
+  persist:
+    - accepted_scope_and_decisions
+    - current_and_next_subtask
+    - files_touched_git_status
+    - verification_commands_results
+    - open_unknowns_and_approvals
+  on_fresh_session:
+    - read_rules_then_issue_then_handoff_then_git_status
+    - do_not_infer_approval_from_chat_alone
+
+out_of_scope:
+  - s4
+  - authority_runtime
+  - consumer_config_invention
+  - pri-181-c1

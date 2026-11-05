@@ -8,7 +8,8 @@
 **Calibração:** no planejamento, preferir qualidade (errar pra cima → Sonnet); tarefa bem simples → Sonnet; Opus só no pesado.
 
 Espelho estruturado: [`skill-model-map.yaml`](./skill-model-map.yaml).  
-**Criação de subtarefa / worker:** aplicar este mapa na nascença — [`subtask-routing.md`](./subtask-routing.md).
+**Criação de subtarefa / worker:** aplicar este mapa na nascença — [`subtask-routing.md`](./subtask-routing.md).  
+**Contexto / orquestração / anatomia:** [`context-packing.md`](./context-packing.md) · [`orchestration-patterns.md`](./orchestration-patterns.md) · [`skill-anatomy.md`](./skill-anatomy.md).
 
 ---
 

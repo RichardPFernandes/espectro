@@ -7,6 +7,8 @@ surface: esteira-cursor
 authority_runtime: false
 pairs_with:
   - skill-model-map.yaml
+  - context-packing.yaml
+  - orchestration-patterns.yaml
   - ../playbook/README.md
 
 preferences:
