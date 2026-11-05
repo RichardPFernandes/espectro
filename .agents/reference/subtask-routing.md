@@ -21,12 +21,14 @@ Não substitui a sombra Runtime (`would_route` no Attempt): essa mede o watcher;
 
 ## Checklist (obrigatório na nascença)
 
-1. **Recortar uma ação** do playbook (uma subtarefa = uma ocasião dominante).  
+1. **Recortar uma ação** do playbook (uma subtarefa = uma ocasião dominante; “e …” no título = quase sempre duas).  
 2. **Carregar a skill** em `.agents/skills/<nome>/SKILL.md` (ou ocasião *editar código*, sem skill).  
 3. **Ler a faixa** em [`skill-model-map.md`](./skill-model-map.md) (leve / médio / pesado).  
 4. **Aplicar viés:** dúvida no plano → médio/Sonnet (não Opus por hábito); bem simples → Sonnet; pesado → Opus só se Freeze / mapa denso / implement estrutural.  
 5. **Quebrar herança:** se o pai está em Opus e a faixa é leve (tests, evidence, PR, comment, handoff limpo, docs-humano) → **trocar** o modelo do worker.  
-6. **Anotar no brief** da subtarefa: `skill: …` · `faixa: leve|medio|pesado` · modelo sugerido. Isto é o espelho **humano** do would_route na esteira — preferência revisável, não Attempt.
+6. **Anotar no brief** da subtarefa: `skill: …` · `faixa: leve|medio|pesado` · modelo sugerido. Espelho **humano** do would_route na esteira — preferência revisável, não Attempt.
+
+Fan-out paralelo: cada filho com skill+faixa própria.
 
 ---
 
@@ -51,15 +53,11 @@ Detalhe e teste de 30 s: [`skill-model-map.md`](./skill-model-map.md).
 
 ---
 
-## agents-skills (papel concreto)
+## Dependência externa (não reanalisar aqui)
 
-O padrão [Agent Skills](https://agentskills.io) ajuda a **achar** a skill na nascença (`description` pushy = trigger). O **skill-creator** serve para criar/melhorar skills e evals de trigger — **não** para policy de Attempt nem S4.
+Padrões de breakdown / contexto / orquestração do catálogo [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) são analisados **fora** desta fatia (store `docs/analise-addy-agent-skills-humano.md`, PRJ-104; adaptação PRJ-106). Este arquivo só exige o rito skill→faixa na nascença.
 
-| Usar | Não usar |
-| --- | --- |
-| Melhorar `description` para “ao criar worker de …” | Tratar como Authority Runtime |
-| Opcional: skill fina de despacho (só se o checklist falhar na prática) | Gravar decisão de modelo em `state.json` |
-| Evals de “dispara na ocasião certa?” | Fundir com classificadora R1–R8 do produto |
+Formato `SKILL.md`: [agentskills.io](https://agentskills.io). Path das skills Prisma: `.agents/skills/` — **não** substituir por install em massa.
 
 ---
 
@@ -80,4 +78,5 @@ Não copiar R1–R8 para o Project. Não inventar S4 a partir deste checklist.
 - Troca real de modelo no watcher (`mode=ON`, S4).  
 - Decomposição Implement→Attempts (PRI-234).  
 - Skill Registry / dual-write `.claude/skills/` para o ciclo.  
-- Declarar Approval / Done / gate PASS.
+- Declarar Approval / Done / gate PASS.  
+- Reabrir análise ou install do catálogo Addy neste path.

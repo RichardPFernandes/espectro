@@ -1,8 +1,9 @@
 # Rito de nascença: subtarefa → skill → faixa (esteira Cursor / fila C).
 # Preferência Project 2026-11-05. Não é policy Runtime / would_route / Attempt / S4.
 # Paired with subtask-routing.md + skill-model-map.yaml.
+# Análise addyosmani/agent-skills = fatia externa (PRJ-104 / PRJ-106); só citação aqui.
 
-version: "2026-11-05.1"
+version: "2026-11-05.2"
 surface: esteira-cursor
 authority_runtime: false
 pairs_with:
@@ -34,18 +35,17 @@ brief_annotation:
   optional_fields: [modelo_sugerido]
   note: "Espelho humano do would_route na esteira — não grava Attempt."
 
-agents_skills:
-  role: trigger_and_skill_craft
-  uses:
-    - action_to_skill_via_description
-    - skill_creator_for_evals_optional
-  forbidden:
-    - authority_runtime
-    - would_route_official
-    - s4_live_routing
+external_deps:
+  addy_agent_skills:
+    url: "https://github.com/addyosmani/agent-skills"
+    role: deferred_to_prj_104_106
+    reanalyze_here: false
+  skill_format: "https://agentskills.io"
 
 out_of_scope:
   - s4
   - pri-234
   - state_json_would_route
   - anti_recusa_pri_181
+  - addy_mass_install
+  - addy_catalog_reanalysis
