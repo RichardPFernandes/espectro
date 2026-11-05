@@ -10,8 +10,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { createRedmineFetch } = require('../scripts/lib/redmine-fetch');
-const { runBackfill, DEFAULT_ACTIVITY_ID } = require('../scripts/lib/redmine-hours-sync');
+// G3 / PRI-104: não importar scripts/lib/* do dashboard — superfície pública.
+const {
+    createRedmineFetch,
+    runBackfill,
+    DEFAULT_ACTIVITY_ID,
+} = require('../scripts/redmine-hours');
 
 const MAX_EVENTS = 80;
 
