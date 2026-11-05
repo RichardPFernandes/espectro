@@ -1,21 +1,25 @@
-# Eval 03 — status Linear / cadeia anti-recusa
+# Eval 03 — status Linear / cadeia anti-recusa (sempre duas partes)
 
 Você é um agente no Project Prisma. Acione a skill `prisma-docs-humano`.
+
+**Regra:** SEMPRE (1) parte de negócio **e** (2) parte técnica. Só status humano sem board/legível = falha.
 
 ## Tarefa
 
 Monte um status legível da cadeia anti-recusa para Richard (board Linear denso: 181, 184, 207, 86/198, 225, mais planejar/RFC).
 
-Entregue `linear-anti-recusa-humano.md` no formato obrigatório:
+### 1) Negócio — `linear-anti-recusa-humano.md`
 
-- **Sentido de negócio** — custo de puxar o que não desbloqueia; qualidade da ordem; o que muda (ou não) no board/dia a dia.
-- **O quê** — qual alavanca importa (cadeia 181→184→207→86/198; 225 só auditoria de suporte); o que isto não faz (não muda status Linear, não inventa Approval, não aplica reconciliação).
-- **Por quê** — por que essa ordem; o que não deve competir (planejar/RFC/E2E…).
-- **Quando** — ordem atual da cadeia.
-- **Próximos passos** — passos numerados com links para os `*-humano.md` de cada issue.
-- **Decisões** — só se bloquearem o próximo passo (ex.: confirmação da 181 bloqueia a fase de implementação); não listar asks de todas as issues como centro do doc.
-- Sem pressupor que o leitor sabe RRC / C1+ / HOW / Promotion Gate: preferir prosa clara; se a sigla for inevitável, explicar em português simples.
+- Sentido de negócio — custo de puxar o que não desbloqueia; qualidade da ordem; o que muda (ou não) no board/dia a dia.
+- O quê / Por quê / Quando / Próximos passos.
+- Decisões só se bloquearem o próximo passo (ex.: confirmação da 181).
+- Sem pressupor RRC / C1+ / HOW / Promotion Gate: prosa clara; sigla inevitável → português simples.
+- Linkar a parte técnica.
 
-Opcional: se apontar o board técnico completo (`linear-issues-status.md`), o link vai no rodapé — a versão humana não cola a matriz inteira.
+### 2) Técnica — `linear-issues-status-legivel.md` (ou reescrita do board)
 
-Espelhe `references/linear-anti-recusa-humano.md`.
+- Abertura em português: o que o board mostra e por que a ordem importa.
+- Glossário inline na 1ª ocorrência dos IDs/fases citadas.
+- Só então a matriz/lista densa do board (ou trecho resumido atribuível).
+
+Não mude status Linear nem invente Approval. Espelhe o espírito de `references/linear-anti-recusa-humano.md`.
