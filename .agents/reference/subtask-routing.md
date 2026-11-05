@@ -51,15 +51,29 @@ Detalhe e teste de 30 s: [`skill-model-map.md`](./skill-model-map.md).
 
 ---
 
-## agents-skills (papel concreto)
+## agents-skills — referência [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills)
 
-O padrão [Agent Skills](https://agentskills.io) ajuda a **achar** a skill na nascença (`description` pushy = trigger). O **skill-creator** serve para criar/melhorar skills e evals de trigger — **não** para policy de Attempt nem S4.
+Formato = [agentskills.io](https://agentskills.io). Catálogo/padrões úteis (Richard) = **Addy**, não install em massa no Prisma.
 
-| Usar | Não usar |
+### Já temos (manter `.agents/skills/` Prisma)
+
+Playbook + 12 skills Prisma cobrem issue/plan/SDD/tests/evidence/PR/comment/handoff/docs. **Não** substituir por `spec-driven-development` / `test-driven-development` / constraints genéricos do Addy (Freeze/gates/harness mandam).
+
+### Adotar (padrão, sem copiar o repo)
+
+| Padrão Addy | Na nascença |
 | --- | --- |
-| Melhorar `description` para “ao criar worker de …” | Tratar como Authority Runtime |
-| Opcional: skill fina de despacho (só se o checklist falhar na prática) | Gravar decisão de modelo em `state.json` |
-| Evals de “dispara na ocasião certa?” | Fundir com classificadora R1–R8 do produto |
+| `using-agent-skills` (intent→skill) | Casar fase → skill Prisma **antes** da faixa |
+| `planning-and-task-breakdown` | Subtarefa atômica; “and” no título = 2; tracker Project/Linear |
+| Orquestração (coordenador = orquestrador; sem router-persona) | Fan-out: cada filho com skill+faixa própria |
+| `incremental-implementation` | Separar implement (médio/pesado) de tests/PR/docs (**leve**) |
+| `context-engineering` + skill-anatomy | Brief mínimo; `description` com Use when / When NOT |
+
+### Não adotar agora
+
+`npx skills add` das 25; Active via skill; skill no lugar de gate; “router” de modelo; dual-write de slash `/spec`/`/plan` do plugin.
+
+Detalhe negócio+técnica: store `docs/subtarefas-roteamento-humano.md`.
 
 ---
 

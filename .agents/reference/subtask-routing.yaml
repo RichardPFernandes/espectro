@@ -35,14 +35,25 @@ brief_annotation:
   note: "Espelho humano do would_route na esteira — não grava Attempt."
 
 agents_skills:
-  role: trigger_and_skill_craft
-  uses:
-    - action_to_skill_via_description
-    - skill_creator_for_evals_optional
+  primary_reference: "https://github.com/addyosmani/agent-skills"
+  format_spec: "https://agentskills.io"
+  role: patterns_for_breakdown_and_intent_to_skill
+  adopt_patterns:
+    - using-agent-skills  # intent → skill before faixa
+    - planning-and-task-breakdown  # atomic subtarefa
+    - orchestration-coordinator-as-orchestrator
+    - incremental-implementation  # split leve vs médio/pesado
+    - context-engineering
+    - skill-anatomy-descriptions
+  keep_prisma_skills: true  # do not replace .agents/skills/
+  do_not_install_mass: true  # no npx skills add of all 25
   forbidden:
     - authority_runtime
     - would_route_official
     - s4_live_routing
+    - replace_freeze_gates_with_constraint_skill
+    - replace_prisma_tests_with_generic_tdd
+    - model_router_persona
 
 out_of_scope:
   - s4
