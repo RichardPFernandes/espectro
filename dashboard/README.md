@@ -66,6 +66,13 @@ A aba **Operação › Medição de modelo** lê `GET /api/would-route-metrics` 
 economia potencial vs Opus-only (hipótese de preço) e lista recente. **Não** liga
 troca real de modelo (S4). Doc: [`docs/dashboard-medicao-modelo-humano.md`](../docs/dashboard-medicao-modelo-humano.md).
 
+## Subtarefas nas Runs (somente leitura · sombra)
+
+No detalhe de cada run (e chip na lista), a plataforma mostra as **subtarefas do
+plano** a partir de `Attempt.signals` + `Attempt.would_route` (projetados em
+`cost-projection.js`). Fold **Subtarefas**: chave, passos, tipo, classe/faixa
+sombra e se sairia do Opus. Despacho continua AS-IS.
+
 ## Coordenação (somente leitura)
 
 A aba **Coordenação** lê `GET /api/coordination`; não despacha agentes nem grava estado.

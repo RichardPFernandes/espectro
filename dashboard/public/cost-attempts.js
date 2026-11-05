@@ -21,6 +21,7 @@
         <div><dt>Modelo solicitado / esforço</dt><dd>${esc(a.requested.model)} / ${esc(a.requested.effort)}</dd></div>
         <div><dt>RoutingDecision</dt><dd>${esc(a.routing_decision)}</dd></div>
       </dl>
+      ${typeof root.RunSubtasks?.wouldRouteNote === 'function' ? root.RunSubtasks.wouldRouteNote(a) : ''}
       ${a.role_attribution.status !== 'COMPLETE' ? `<p class="cost-note">Atribuição por papel: ${esc(a.role_attribution.status)} · mensagens em conflito: ${esc(tokens(a.role_attribution.conflicted_messages))}.</p>` : ''}
       ${rows ? `<div class="cost-wrap" role="region" aria-label="Uso por modelo e papel" tabindex="0"><table class="cost-table cost-usage"><caption>Uso por modelo e papel</caption><thead><tr>
         <th scope="col">Modelo</th><th scope="col">Papel</th><th scope="col">Modo / faixa</th><th scope="col" class="n">Entrada sem cache</th><th scope="col" class="n">Saída</th><th scope="col" class="n">Cache read</th><th scope="col" class="n">Cache write 5 min</th><th scope="col" class="n">Cache write 1 h</th><th scope="col" class="n">Cache write TTL não observado</th><th scope="col" class="n">Custo</th>

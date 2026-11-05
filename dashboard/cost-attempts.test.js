@@ -62,6 +62,29 @@ multi = add(multi, 'commit', 'commit-a');
 // Synthetic extra fields must not travel with the public cost subtree.
 multi.nodes.plan.attempts[0].read_order = [{ role: 'main', file: '/private/transcript.jsonl' }];
 multi.nodes.plan.attempts[0].transcript = 'DO-NOT-EXPOSE-TRANSCRIPT';
+// Subtarefas sombra (PRI-223): viajam no read model público sem paths privados.
+multi.nodes.implement.attempts[0].signals = {
+    status: 'COMPLETE',
+    groups: [{
+        subtask_key: 'planhash00001/0-0',
+        steps: [0],
+        signals: { kind: 'docs', n_files: 1, paths_decl: ['README.md', '/private/nope'] },
+    }],
+};
+multi.nodes.implement.attempts[0].would_route = {
+    status: 'SHADOW',
+    applied: false,
+    classifier_ref: { provider: 'cheap_rule' },
+    decisions: [{
+        subtask_key: 'planhash00001/0-0',
+        class: 'C1',
+        tier: 'T1',
+        rule: 'R5',
+        leaves_opus_tier: true,
+        steps: [0],
+        would_model: 'UNAVAILABLE',
+    }],
+};
 const multiSeed = seed('96002-multi', multi, true);
 const unknownMetrics = cost.sumClaudeUsage([{ role: 'main', content: main + '\n' + line('unknown', 'future-model', { input_tokens: 12, output_tokens: 3 }) }]);
 seed('96003-unpriced', add(null, 'review', 'unpriced-a', 'dispatch', 'claude', unknownMetrics, '96003-unpriced'));
@@ -121,6 +144,12 @@ test('API: all admission paths, retry cause, model/role/TTL/fast and recorded to
         }
     }
     assert.equal(c.nodes.implement.attempts[1].cause, 'retry');
+    const wr = c.nodes.implement.attempts[0].would_route;
+    assert.equal(wr.status, 'SHADOW');
+    assert.equal(wr.applied, false);
+    assert.equal(wr.decisions[0].subtask_key, 'planhash00001/0-0');
+    assert.equal(wr.decisions[0].leaves_opus_tier, true);
+    assert.deepEqual(c.nodes.implement.attempts[0].signals.groups[0].signals.paths_decl, ['README.md']);
     assert.equal(fs.readFileSync(path.join(multiSeed.dir, 'state.json'), 'utf8'), before, 'reads never write authoritative state');
 });
 
