@@ -5,6 +5,8 @@ description: Lembra a disciplina SDD do Prisma em modo somente leitura — Candi
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** leve (só checklist) / médio (auditoria). Sem Opus no checklist. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-sdd-discipline
 
 Guia **somente leitura**. Navega e lembra disciplina; **não** muta spec, Active, writers ou H4.

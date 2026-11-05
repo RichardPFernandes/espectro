@@ -10,6 +10,8 @@ description: >-
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** leve — sem Opus. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-docs-humano
 
 Dois entregáveis, sempre que o destinatário for Richard (Project / Linear / store):

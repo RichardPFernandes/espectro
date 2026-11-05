@@ -5,6 +5,8 @@ description: Monta pacote curto de prova atribuível (HEAD, comandos, suítes, T
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** leve — sem Opus. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-evidence-pack
 
 Empacota prova para alimentar handoff / PR / comentário Linear — **não** os substitui. Resultado interativo **não** é evidência oficial do ciclo despachado.

@@ -1,0 +1,97 @@
+# Mapa skill → faixa de modelo (esteira Cursor / fila C).
+# Preferência Project 2026-11-05. Não é policy Runtime / would_route / Attempt / S4.
+# Faixas: leve | medio | pesado
+# Preferências: planejamento errar pra cima (Sonnet); simples → Sonnet; Opus só pesado.
+
+version: "2026-11-05.1"
+surface: esteira-cursor
+authority_runtime: false
+preferences:
+  planning_bias: quality-up  # errar pra cima na qualidade do plano
+  simple_task_model: sonnet
+  opus_only: pesado
+
+tiers:
+  leve:
+    examples: [composer, grok, sonnet-low]
+    opus: false
+  medio:
+    examples: [sonnet, composer-strong]
+    preferred_planning: sonnet
+    opus: false
+  pesado:
+    examples: [opus]
+    opus: true
+
+entries:
+  - id: 1
+    skill: prisma-issue
+    faixa_default: medio
+    opus: conditional  # Freeze / Architecture
+    modelo_sugerido: sonnet
+  - id: 2
+    skill: prisma-plan-lite
+    faixa_default: medio
+    opus: false  # salvo escalação Freeze
+    modelo_sugerido: sonnet
+  - id: 3
+    skill: prisma-reconciliation-nav
+    faixa_default: medio  # se "cabe"
+    faixa_fora_baseline: pesado
+    opus: when_outside_baseline
+    modelo_sugerido: sonnet
+    modelo_fora: opus
+  - id: 4
+    skill: prisma-sdd-discipline
+    faixa_default: medio  # auditoria
+    faixa_checklist_only: leve
+    opus: false
+    modelo_sugerido: sonnet
+  - id: 5
+    skill: prisma-ac-rn-map
+    faixa_default: medio
+    faixa_mapa_denso: pesado
+    opus: conditional
+    modelo_sugerido: sonnet
+  - id: 6
+    skill: null
+    occasion: editar-codigo
+    playbook_action: 6
+    faixa_default: medio
+    faixa_estrutural: pesado
+    opus: when_structural
+    modelo_sugerido: sonnet
+  - id: 7
+    skill: prisma-tests
+    faixa_default: leve
+    opus: false
+    modelo_sugerido: composer
+  - id: 8
+    skill: prisma-evidence-pack
+    faixa_default: leve
+    opus: false
+    modelo_sugerido: composer
+  - id: 9
+    skill: prisma-pr-describe
+    faixa_default: leve
+    opus: false
+    modelo_sugerido: composer
+  - id: 10
+    skill: prisma-linear-comment-evidence
+    faixa_default: leve
+    opus: false
+    modelo_sugerido: composer
+  - id: 11
+    skill: prisma-handoff
+    faixa_default: leve
+    faixa_blocked_denso: medio
+    opus: false
+    modelo_sugerido: composer
+  - id: 12
+    skill: prisma-docs-humano
+    faixa_default: leve
+    opus: false
+    modelo_sugerido: composer
+
+opus_allowed_ids: [3, 5, 6]  # + escalação pontual 1/2
+never_opus_ids: [7, 8, 9, 10, 12]  # 11: não Opus; médio só BLOCKED denso

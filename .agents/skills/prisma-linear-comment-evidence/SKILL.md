@@ -5,6 +5,8 @@ description: Comenta em issue PRI do Linear só com links e evidência atribuív
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** leve — sem Opus. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-linear-comment-evidence
 
 Comentário Linear **curto**; detalhe fica no artefato linkado. Acionar sob demanda — não canal paralelo de Done/Approval Gate.
