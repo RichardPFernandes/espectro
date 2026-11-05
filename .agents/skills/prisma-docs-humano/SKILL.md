@@ -1,33 +1,48 @@
 ---
 name: prisma-docs-humano
 description: >-
-  Redige docs e asks legíveis para Richard (PT-BR) em sentido de negócio
-  (custo, qualidade, o que muda no dia a dia): *-humano.md no formato
-  O quê / Por quê / Quando / Próximos passos; jargão/siglas evitados ou
-  explicados em português simples; técnico legível com glossário na 1ª
-  ocorrência. Decisões só se bloquearem o próximo passo. Use sempre que
-  houver status, review, handoff, ask Linear/store, resumo de issue ou
-  comentário dirigido a Richard — mesmo sem pedido explícito de “versão humana”.
+  SEMPRE entrega dois artefatos para Richard (PT-BR): (1) parte de negócio
+  (*-humano.md — custo, qualidade, o que muda no dia a dia; O quê / Por quê /
+  Quando / Próximos passos) e (2) parte técnica legível (mesmo file ou
+  *-legivel.md — detalhe com glossário na 1ª ocorrência). Nunca só um dos
+  dois. Decisões só se bloquearem o próximo passo. Use em status, review,
+  handoff, ask Linear/store, resumo de issue ou comentário a Richard — mesmo
+  sem pedido explícito de “versão humana”.
 ---
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
 # prisma-docs-humano
 
-Dois entregáveis, sempre que o destinatário for Richard (Project / Linear / store):
+## Regra de ouro — SEMPRE os dois
 
-1. **Versão humana** — linguagem de **negócio**; detalhe útil para agir sem abrir o técnico.
-2. **Parecer técnico legível** — o técnico original **não** some; ou reescreve o técnico, ou gera `*-legivel.md` ao lado. Siglas sem contexto na hora = ilegível.
+Toda vez que o destinatário for Richard (Project / Linear / store), a skill **obriga** os **dois** entregáveis. Entregar só negócio ou só técnico = incompleto.
 
-Preferência do Project (2026-11-05): chat e docs humanos em **sentido de negócio** (custo, qualidade, o que muda no dia a dia); evitar jargão/siglas; se inevitável, explicar em português simples. Formato **O quê / Por quê / Quando / Próximos passos**. **Decisões** só se bloquearem o próximo passo — **não** são o centro do doc.
+| # | Parte | Arquivo típico | Conteúdo |
+| --- | --- | --- | --- |
+| **1** | **Negócio** | `*-humano.md` | Sentido / custo / qualidade / o que muda no dia a dia; formato O quê / Por quê / Quando / Próximos passos |
+| **2** | **Técnica** | reescrita do técnico **ou** `*-legivel.md` ao lado | Detalhe atribuível com prosa clara + **glossário na 1ª ocorrência** antes de matriz/IDs |
+
+Formas válidas:
+
+- Dois files: `assunto-humano.md` + `assunto-legivel.md` (ou técnico original reescrito no lugar).
+- Um file só: seção `# Para você` (negócio) **e** seção técnica legível abaixo — **ambas** presentes.
+
+Anti-padrões de entrega:
+
+- Só `*-humano.md` sem técnico / legível (link morto ou “veja o denso ilegível” não conta).
+- Só review/matriz técnica sem parte de negócio.
+- Negócio que é glossário disfarçado; técnico sem glossário na 1ª sigla.
+
+Preferência do Project (2026-11-05): chat e docs em **sentido de negócio** (custo, qualidade, o que muda no dia a dia); evitar jargão/siglas na parte 1; se inevitável, português simples. Formato **O quê / Por quê / Quando / Próximos passos**. **Decisões** só se bloquearem o próximo passo — **não** são o centro do doc de negócio.
 
 ## Quando acionar (pushy)
 
-Qualquer status, review, handoff, ask Linear/store, “o que falta”, “próximos passos”, comentário ou doc no store para Richard. Não esperar o humano pedir “versão humana”.
+Qualquer status, review, handoff, ask Linear/store, “o que falta”, “próximos passos”, comentário ou doc no store para Richard. Não esperar o humano pedir “versão humana”. Em **todo** acionamento: produzir **(1) + (2)**.
 
-## Linguagem de negócio (obrigatório na versão humana)
+## 1) Parte de negócio (`*-humano.md`)
 
-Antes de IDs, fases e siglas, o doc humano responde em prosa clara:
+Espelhar `references/*-humano.md`. Antes de IDs, fases e siglas, responder em prosa clara:
 
 | Pergunta | O que escrever |
 | --- | --- |
@@ -35,18 +50,7 @@ Antes de IDs, fases e siglas, o doc humano responde em prosa clara:
 | **Qualidade** | Risco de decisão frágil, prova incompleta, “aprovo” genérico virar falsa autoridade |
 | **Dia a dia** | O que muda (ou não) no uso: board, merge, status Linear, código do produto, próximos workers |
 
-Anti-padrões (versão humana):
-
-- Abrir com sopa de siglas (P1, C1+, RRC, PHI, DS-09, F-01…) sem dizer o impacto em português.
-- Traduzir jargão só com glossário técnico e **não** dizer custo / qualidade / dia a dia.
-- Centro do doc = lista de decisões sim/não; passos e “por quê” viram apêndice.
-- Inventar **Approval**, **Done**, **APPLIED**, gate PASS ou merge.
-
-Regra de sigla: **preferir zero**. Se o ID for inevitável (issue, item de pacote), na 1ª ocorrência explicar em português simples o que a pessoa precisa saber para decidir — não só expandir a sigla em inglês.
-
-## 1) Versão humana (`*-humano.md`)
-
-Espelhar `references/*-humano.md`. Template fixo (detalhado; sem limite artificial de ~40 linhas se o detalhe for útil):
+Template (detalhado; sem limite artificial de ~40 linhas se o detalhe for útil):
 
 ```markdown
 # <assunto>
@@ -75,30 +79,35 @@ Espelhar `references/*-humano.md`. Template fixo (detalhado; sem limite artifici
 Técnico: [`…`](./…) · Issue: […]
 ```
 
-### Regras do formato humano
+### Regras da parte de negócio
 
-- **O quê / Por quê / Quando / Próximos passos** são **obrigatórios** e o centro do doc.
+- **O quê / Por quê / Quando / Próximos passos** são **obrigatórios** e o centro desta parte.
 - **Por quê** deve incluir pelo menos um de: custo, qualidade, o que muda no dia a dia.
-- **Decisões** (sim/não): incluir **somente** quando uma resposta humana for pré-requisito do próximo passo. Caso contrário, omitir a seção — não inventar lista de perguntas para “completar o template”.
-- Preferir **detalhe útil** a resumo seco: o humano deve entender o contexto sem abrir o técnico.
-- **Não apagar** o doc técnico. Preferir `nome-humano.md` ao lado. Se for o **único** file, prefixar seção `# Para você` no topo (mesmo template) e manter o técnico abaixo.
+- **Decisões** (sim/não): só quando resposta humana for pré-requisito do próximo passo; senão omitir a seção.
+- Regra de sigla: **preferir zero**. Se inevitável, na 1ª ocorrência explicar em português simples o que precisa para decidir — não só expandir em inglês.
+- Linkar (ou embutir) a **parte técnica** correspondente — a parte 2 não é opcional.
 - PT-BR. Sem inventar **Approval**, **Done**, **APPLIED**, gate PASS ou merge.
 
-## 2) Técnico legível (mesmo file ou `*-legivel.md`)
+Anti-padrões (negócio): sopa de siglas sem impacto; glossário técnico no lugar de custo/qualidade/dia a dia; centro = lista de decisões; inventar Approval/Done/APPLIED/merge.
+
+## 2) Parte técnica (mesmo file ou `*-legivel.md`)
+
+O técnico denso **não** some. Ou reescreve o técnico, ou gera `*-legivel.md` ao lado. Siglas sem contexto na hora = ilegível.
 
 Antes de matriz/tabela/IDs:
 
 1. **O que foi achado** — parágrafo(s) em português claro (sem sigla órfã).
-2. **Por que importa** — consequência para o humano (risco, bloqueio, custo de ignorar, o que não pode fazer ainda).
+2. **Por que importa** — consequência (risco, bloqueio, custo de ignorar, o que não pode fazer ainda).
 3. **Glossário inline na 1ª ocorrência** — ex.: `RRC (candidato a mudança de arquitetura — só humano aplica)`, `PHI (regras humanas da reconciliação)`, `DS-09 (quem pode gravar a decisão — um writer só)`, `DB-16b (um dos itens que você precisa confirmar na PRI-181)`. Não pressupor DB-xx / PHI / DS-09 / RRC / CAS / AUTH-id.
 4. Só então matriz, findings, hashes, paths.
 
-Anti-padrões do técnico ilegível: abrir com tabela de metadados opaca; listar F-01…F-05 sem dizer o que cada um significa em prosa; usar APPROVE_FOR_HUMAN_DECISION sem traduzir.
+Anti-padrões do técnico ilegível: abrir com tabela de metadados opaca; listar F-01…F-05 sem prosa; usar APPROVE_FOR_HUMAN_DECISION sem traduzir; entregar só a parte 2 sem a parte 1 de negócio.
 
-Exemplo reescrito: `references/pri-225-cursor-review-legivel-excerpt.md` (trecho da review densa). Ouros humanos: `references/pri-*-humano.md`, `references/linear-anti-recusa-humano.md`.
+Exemplo reescrito: `references/pri-225-cursor-review-legivel-excerpt.md`. Ouros de negócio: `references/pri-*-humano.md`, `references/linear-anti-recusa-humano.md` (sempre com técnico linkado ou excerpt ao lado).
 
 ## Regras
 
+- **Sempre (1) + (2)** — incompleto se faltar qualquer um.
 - Basear-se no doc/issue/diff citados — **sem inventar** escopo, Approval, Done ou APPLIED.
 - UNKNOWN / ausência de prova permanece UNKNOWN.
 - Skill irmã de evidência/PR/handoff: não substitui `prisma-pr-describe`, `prisma-handoff`, `prisma-linear-comment-evidence`.
@@ -106,4 +115,5 @@ Exemplo reescrito: `references/pri-225-cursor-review-legivel-excerpt.md` (trecho
 ## Fora do escopo
 
 - Fechar issue Linear, merge, aplicar RRC, promover Active, escrever `state.json`/`log.json`.
-- Apagar ou “resumir embora” o técnico denso sem deixar trilha legível.
+- Apagar ou “resumir embora” o técnico denso sem deixar trilha legível (parte 2).
+- Entregar só resumo de negócio “para não cansar” e omitir o técnico legível.
