@@ -1,0 +1,35 @@
+{
+  "version": "s3-shadow-p1-0",
+  "mode": "SHADOW",
+  "classifier": {
+    "provider": "off"
+  },
+  "class_to_tier": {
+    "C1": { "tier": "T1", "effort": "baixo" },
+    "C2": { "tier": "T2", "effort": "médio" },
+    "C3": { "tier": "T2", "effort": "alto" },
+    "C4": { "tier": "T3", "effort": "alto" },
+    "C5": { "tier": "T3", "effort": "máximo" }
+  },
+  "tiers": {
+    "T1": { "models": ["UNAVAILABLE"] },
+    "T2": { "models": ["UNAVAILABLE"] },
+    "T3": { "models": ["UNAVAILABLE"] }
+  },
+  "default_route": {
+    "model_id": "UNAVAILABLE",
+    "effort": "UNAVAILABLE"
+  },
+  "design_ref": {
+    "extract": "docs/s3-design-extract.md",
+    "source_sha256": "2d8919febfa6440f5bb248fce05025d23989d555efbe2932456fefb25885f6ec",
+    "sections": ["4.4", "4.7"]
+  },
+  "planning_bias": {
+    "prefer_quality_on_doubt": true,
+    "sonnet_only_if_very_simple": true,
+    "source": "human_note_2026-11-05",
+    "alters_r1_r8": false
+  },
+  "note": "PRI-223 S3 sombra. classifier.provider=off por default. cheap_rule = R1–R8 do extrato v9 §4.4. Model ids UNAVAILABLE até policy aprovada; tier mede leve≠Opus. Nota humana: na dúvida qualidade pra cima; Sonnet só bem simples — não muda R1–R8. Sem mode=ON / S4."
+}

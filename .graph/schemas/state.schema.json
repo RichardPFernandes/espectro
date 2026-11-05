@@ -2756,6 +2756,126 @@
         }
       }
     },
+    "costWouldRoute": {
+      "type": "object",
+      "description": "Decisão sombra PRI-223. applied deve ser false nesta fatia.",
+      "properties": {
+        "status": {
+          "enum": [
+            "SHADOW",
+            "NO_DECISION"
+          ]
+        },
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policy_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policy_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "classifier_ref": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string"
+            }
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "subtask_key": {
+                "type": "string"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "class": {
+                "enum": [
+                  "C1",
+                  "C2",
+                  "C3",
+                  "C4",
+                  "C5"
+                ]
+              },
+              "tier": {
+                "enum": [
+                  "T1",
+                  "T2",
+                  "T3"
+                ]
+              },
+              "rule": {
+                "enum": [
+                  "R1",
+                  "R2",
+                  "R3",
+                  "R4",
+                  "R5",
+                  "R6",
+                  "R7",
+                  "R8"
+                ]
+              },
+              "leaves_opus_tier": {
+                "type": "boolean"
+              },
+              "requested_effort": {
+                "enum": [
+                  "UNAVAILABLE"
+                ]
+              },
+              "would_model": {
+                "type": "string"
+              },
+              "selection_source": {
+                "type": "string"
+              },
+              "signals_sha256": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "applied": {
+          "enum": [
+            false
+          ]
+        },
+        "planning_bias": {
+          "type": "object"
+        },
+        "aggregate": {
+          "type": "object"
+        },
+        "signals_seen": {
+          "type": "object"
+        }
+      }
+    },
     "costAttempt": {
       "type": "object",
       "properties": {
@@ -2918,6 +3038,19 @@
             },
             {
               "$ref": "#/definitions/costSignals"
+            }
+          ]
+        },
+        "would_route": {
+          "description": "PRI-205 S3 / PRI-223: decisão sombra de roteamento por subtarefa. Nunca aplicada ao despacho (applied=false). classifier off → NO_DECISION; cheap_rule → classe/tier/regra R1–R8.",
+          "anyOf": [
+            {
+              "enum": [
+                "UNAVAILABLE"
+              ]
+            },
+            {
+              "$ref": "#/definitions/costWouldRoute"
             }
           ]
         },

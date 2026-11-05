@@ -93,6 +93,11 @@ test('implement: sinais prospectivos no início, retrospectivos no fim, junto do
     assert.strictEqual(a.attributed_node, 'implement');
     assert.strictEqual(a.exit, 0);
     assert.ok(!JSON.stringify(a.signals).includes(wt(id)), 'nenhum caminho absoluto do worktree no registro');
+    // S3 default: classificador off → sombra sem classes; nunca aplicada.
+    assert.strictEqual(a.would_route.status, 'NO_DECISION');
+    assert.strictEqual(a.would_route.cause, 'CLASSIFIER_OFF');
+    assert.strictEqual(a.would_route.applied, false);
+    assert.deepStrictEqual(a.would_route.decisions, []);
     validateSchema(stateOf(dir));
 });
 
