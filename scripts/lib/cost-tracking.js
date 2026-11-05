@@ -373,6 +373,7 @@ function attemptRecord(run, node, alsoCovers, metrics, outcome) {
         effort_router_plugin: run.effort_router_plugin || 'UNKNOWN',
         first_turn: metrics.first_turn || { cache_read_tokens: null, cache_write_5m_tokens: null, cache_write_1h_tokens: null },
         selection_source: 'DEFAULT_INHERITED', routing_decision: 'UNAVAILABLE', subtask: 'UNAVAILABLE', workspace: 'UNAVAILABLE',
+        signals: run.signals || 'UNAVAILABLE',
         observed: { usage: run.agent === 'codex' ? codexUsage : metrics.usage || [], effort: 'UNKNOWN' },
         usage_provenance: 'SELF_REPORTED',
         read_order: metrics.read_order || [], dedup_conflicts: metrics.dedup_conflicts || [],

@@ -68,4 +68,4 @@ function testCommandFor(services, env = process.env) {
     return env.TEST_COMMAND || null;
 }
 
-module.exports = { detectAffectedServices, analyzeChangedFiles, testCommandFor, SERVICE_ROOT };
+module.exports = { detectAffectedServices, analyzeChangedFiles, testCommandFor, serviceOf, SERVICE_ROOT };

@@ -2400,6 +2400,362 @@
         }
       }
     },
+    "costProspectiveSignals": {
+      "type": "object",
+      "description": "Sinais prospectivos de um grupo de passos (PRI-205 S2). Sinal ausente = UNKNOWN, nunca zero (desenho v9 §4.1–§4.2). Somente observacional.",
+      "properties": {
+        "paths_decl": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "n_files": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "n_new_files": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "sensitive",
+            "schema",
+            "behavior",
+            "config",
+            "code",
+            "test",
+            "docs",
+            "UNKNOWN"
+          ]
+        },
+        "n_services_decl": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "service_buckets": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "schema_decl": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "sensitive_decl": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "n_acs_step": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "code_local": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "rework_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ticket_rework": {
+          "type": "boolean"
+        },
+        "schema_risk_seen": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Maior schema_risk_level já observado no state; null = sem observação (não bloqueia)."
+        }
+      }
+    },
+    "costRetrospectiveSignals": {
+      "type": "object",
+      "description": "Sinais retrospectivos no fim do Implement (PRI-205 S2): só calibração e reclassificação para cima. Falha de coleta => UNKNOWN por campo ou status UNKNOWN com cause.",
+      "properties": {
+        "status": {
+          "enum": [
+            "COMPLETE",
+            "PARTIAL",
+            "UNKNOWN"
+          ]
+        },
+        "cause": {
+          "type": "string"
+        },
+        "files_touched": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "files_declared": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "undeclared_files": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "scope_violation": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "affected_services": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "full_suite": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "schema_changes_detected": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "schema_risk_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diff_lines_added": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "diff_lines_removed": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "risk_level_seen": {
+          "type": "string"
+        },
+        "tokens_vs_p90": {
+          "enum": [
+            "UNAVAILABLE"
+          ]
+        }
+      }
+    },
+    "costSignals": {
+      "type": "object",
+      "description": "Sinais por Attempt do nó implement (PRI-205 S2), gravados junto do registro de Attempt. Aditivo; não altera despacho nem classifica.",
+      "properties": {
+        "status": {
+          "enum": [
+            "COMPLETE",
+            "UNKNOWN"
+          ]
+        },
+        "cause": {
+          "type": "string"
+        },
+        "plan_version": {
+          "type": "string",
+          "description": "SHA-256 do bloco '## Plano de execução' normalizado, ou UNKNOWN."
+        },
+        "plan_steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "subtask_key": {
+                "type": "string"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "signals": {
+                "$ref": "#/definitions/costProspectiveSignals"
+              }
+            }
+          }
+        },
+        "retrospective": {
+          "$ref": "#/definitions/costRetrospectiveSignals"
+        }
+      }
+    },
     "costAttempt": {
       "type": "object",
       "properties": {
@@ -2551,6 +2907,18 @@
         "workspace": {
           "enum": [
             "UNAVAILABLE"
+          ]
+        },
+        "signals": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNAVAILABLE"
+              ]
+            },
+            {
+              "$ref": "#/definitions/costSignals"
+            }
           ]
         },
         "observed": {

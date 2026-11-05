@@ -24,6 +24,7 @@ const sanitizeLog = require('./sanitize-log');
 const serviceDetector = require('./lib/service-detector');
 const buildValidator = require('./lib/build-validator');
 const planScorer = require('./lib/plan-scorer');
+const planSignals = require('./lib/plan-signals');
 const schemaWatcher = require('./lib/schema-watcher');
 const prStatusPoll = require('./lib/pr-status-poll');
 const { getPRStatus } = require('./check-pr-status');
@@ -3160,7 +3161,7 @@ function writeCostLedger(ticketId, ledger) {
     fs.writeFileSync(costLedgerPath(ticketId), JSON.stringify(ledger, null, 2));
 }
 
-function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null }) {
+function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null, signalContext = null }) {
     if (DRY_RUN) return null;
     try {
         const selected = agent === 'claude' ? resolveClaudeAccount() : null;
@@ -3169,7 +3170,8 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
         const run = { session_id: sessionId, agent, nodes, started_at_ms: Date.now(), pid: null,
             ...costTracking.admissionForCost(admissionDecision, ticketId, taskRunsDir(ticketId)), ...metadata,
             pricing_snapshot: costTracking.pricingSnapshot(),
-            ...(selected?.dir ? { claude_config_dir: selected.dir } : {}) };
+            ...(selected?.dir ? { claude_config_dir: selected.dir } : {}),
+            ...prospectiveSignalsForRun(agent, nodes, signalContext) };
         const ledger = readCostLedger(ticketId);
         ledger.pending.push(run);
         writeCostLedger(ticketId, ledger);
@@ -3177,6 +3179,116 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
     } catch (e) {
         console.error(`[custo] #${ticketId}: falha registrando início do despacho (seguindo sem métrica):`, e.message);
         return null;
+    }
+}
+
+// ---------------------------------------------------------------------------------
+// Sinais prospectivos e retrospectivos do Implement (PRI-222 / PRI-205 S2).
+// SÓ OBSERVACIONAL: gravados no registro de Attempt da S1 (cost_tracking.nodes.implement
+// .attempts[].signals); nada aqui classifica, roteia ou altera o despacho. Coleta
+// best-effort: qualquer falha vira UNKNOWN com causa e o nó/despacho segue igual.
+function prospectiveSignalsForRun(agent, nodes, signalContext) {
+    if (agent !== 'claude' || nodes[nodes.length - 1] !== 'implement') return {};
+    const out = { signals_prospective: { status: 'UNKNOWN', cause: 'COLLECTION_FAILED', groups: [] } };
+    if (!signalContext?.ticket || !signalContext.worktreePath) {
+        out.signals_prospective.cause = 'NO_SIGNAL_CONTEXT';
+        return out;
+    }
+    const { ticket, worktreePath, base = null, isRecusaQA = false } = signalContext;
+    // Só o diretório local de trabalho, para o fim do despacho; nunca vai para o Attempt.
+    out.signal_ctx = { worktree_path: worktreePath, base };
+    try {
+        const active = findActiveTask(ticket.id);
+        if (!active || active.corrupted) { out.signals_prospective.cause = 'NO_ACTIVE_TASK'; return out; }
+        const { planContent, specContent } = readPlanArtifacts(ticket, active.dir);
+        const root = path.resolve(worktreePath);
+        out.signals_prospective = planSignals.buildProspective(planContent, {
+            specContent, state: active.state, costTracking: active.state?.cost_tracking, isRecusaQA,
+            fileExists: rel => {
+                const abs = path.resolve(root, rel);
+                if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error('caminho fora do worktree');
+                return fs.existsSync(abs);
+            },
+        });
+    } catch (e) {
+        out.signals_prospective = { status: 'UNKNOWN', cause: 'COLLECTION_FAILED', groups: [] };
+        console.error(`[sinais] #${ticket.id}: falha nos sinais prospectivos (seguindo sem eles):`, e.message);
+    }
+    return out;
+}
+
+// Base do diff dos sinais; avaliada com guarda para nunca lançar fora da coleta best-effort.
+function signalBaseBranch(ticket) {
+    try { return BASE_BY_LIBERACAO[branchLiberacao(ticket)] ?? null; } catch { return null; }
+}
+
+// Estatística de linhas do diff do ticket (tracked desde o merge-base + untracked).
+// Qualquer leitura impossível => null (UNKNOWN); nunca subconta em silêncio.
+// git para os sinais: saída NUL-delimitada, sem aspas/escape octal em nomes com acento ou
+// espaço (core.quotepath=false + -z) e com timeout, para não travar o fechamento do run.
+function gitZ(cwd, args) {
+    return execFileSync('git', ['-c', 'core.quotepath=false', ...args],
+        { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024, timeout: 30000 })
+        .split('\0').filter(Boolean);
+}
+
+function collectDiffStat(worktreePath, mergeBase) {
+    let added = 0, removed = 0;
+    // --no-renames: renomeação vira remoção + adição, sem "old => new" no caminho.
+    // Com -z cada registro é "<add>\t<rem>\t<caminho>".
+    for (const record of gitZ(worktreePath, ['diff', '--numstat', '-z', '--no-renames', mergeBase])) {
+        const [a, r, ...rest] = record.split('\t');
+        if (planSignals.isFlowArtifact(rest.join('\t'))) continue;
+        if (a === '-' || r === '-') return null; // binário: sem contagem de linhas
+        if (!/^\d+$/.test(a) || !/^\d+$/.test(r)) return null; // formato inesperado: UNKNOWN
+        added += Number(a); removed += Number(r);
+    }
+    for (const f of gitZ(worktreePath, ['ls-files', '--others', '--exclude-standard', '-z'])) {
+        if (planSignals.isFlowArtifact(f)) continue;
+        const abs = path.join(worktreePath, f);
+        const st = fs.statSync(abs);
+        if (!st.isFile() || st.size > 2 * 1024 * 1024) return null;
+        const text = fs.readFileSync(abs, 'utf8');
+        if (text.includes('\0')) return null;
+        added += text === '' ? 0 : text.replace(/\n$/, '').split('\n').length;
+    }
+    return { added, removed };
+}
+
+function collectRetrospectiveSignals(run, target) {
+    const ctx = run.signal_ctx;
+    if (!ctx?.worktree_path) return { status: 'UNKNOWN', cause: 'NO_SIGNAL_CONTEXT' };
+    const parts = { changedFiles: null, diffStat: null, affected: null, schema: null,
+        declaredPaths: planSignals.declaredUnion(run.signals_prospective), state: null };
+    try { parts.state = target ? readStateJson(target.dir) : null; } catch { /* sem state */ }
+    let mergeBase = null;
+    try { mergeBase = findMergeBase(ctx.worktree_path, ctx.base); } catch { /* UNKNOWN */ }
+    if (!mergeBase) return planSignals.retrospectiveSignals(parts);
+    try {
+        parts.changedFiles = [...new Set([
+            ...gitZ(ctx.worktree_path, ['diff', '--name-only', '-z', '--no-renames', mergeBase]),
+            ...gitZ(ctx.worktree_path, ['ls-files', '--others', '--exclude-standard', '-z']),
+        ])];
+    } catch { /* UNKNOWN */ }
+    if (parts.changedFiles) {
+        try { parts.affected = serviceDetector.analyzeChangedFiles(parts.changedFiles); } catch { /* UNKNOWN */ }
+        try {
+            const r = schemaWatcher.detectSchemaChanges(parts.changedFiles, collectSchemaDiff(ctx.worktree_path, ctx.base, parts.changedFiles));
+            parts.schema = { detected: r.detected, riskLevel: r.riskLevel ?? null };
+        } catch { /* UNKNOWN */ }
+    }
+    try { parts.diffStat = collectDiffStat(ctx.worktree_path, mergeBase); } catch { /* UNKNOWN */ }
+    return planSignals.retrospectiveSignals(parts);
+}
+
+// Valor final de attempts[].signals para o run que acabou de fechar. Nunca lança.
+function attemptSignalsForRun(run, target) {
+    if (!run.signals_prospective) return undefined; // nó sem sinais (não-implement): 'UNAVAILABLE' no registro
+    try {
+        return { ...run.signals_prospective, retrospective: collectRetrospectiveSignals(run, target) };
+    } catch (e) {
+        console.error('[sinais] falha nos sinais retrospectivos (seguindo sem eles):', e.message);
+        return { ...run.signals_prospective, retrospective: { status: 'UNKNOWN', cause: 'COLLECTION_FAILED' } };
     }
 }
 
@@ -3293,7 +3405,8 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
         const state = readStateJson(target.dir) || {};
         const current = ledger.tasks[target.taskId] || state.cost_tracking || costTracking.emptyCostTracking();
         const updated = costTracking.mergeRun(current, {
-            node, agent: run.agent, alsoCovers: run.nodes.slice(0, -1), metrics, run, outcome: observedOutcome,
+            node, agent: run.agent, alsoCovers: run.nodes.slice(0, -1), metrics,
+            run: { ...run, signals: attemptSignalsForRun(run, target) }, outcome: observedOutcome,
         });
         ledger.tasks[target.taskId] = updated;
         writeCostLedger(ticketId, ledger);
@@ -3553,7 +3666,10 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     ];
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
-    const costRun = startCostRun(ticket.id, { agent: 'claude', nodes, sessionId, admissionDecision });
+    const costRun = startCostRun(ticket.id, {
+        agent: 'claude', nodes, sessionId, admissionDecision,
+        signalContext: { ticket, worktreePath, isRecusaQA, base: signalBaseBranch(ticket) },
+    });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);
     if (costRun) {
         if (FOLLOW) finishCostRun(ticket.id, sessionId, Date.now(), { exitCode: result.code, output: result.stderr });
