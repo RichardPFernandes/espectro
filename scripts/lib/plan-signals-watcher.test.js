@@ -93,11 +93,13 @@ test('implement: sinais prospectivos no início, retrospectivos no fim, junto do
     assert.strictEqual(a.attributed_node, 'implement');
     assert.strictEqual(a.exit, 0);
     assert.ok(!JSON.stringify(a.signals).includes(wt(id)), 'nenhum caminho absoluto do worktree no registro');
-    // S3 default: classificador off → sombra sem classes; nunca aplicada.
-    assert.strictEqual(a.would_route.status, 'NO_DECISION');
-    assert.strictEqual(a.would_route.cause, 'CLASSIFIER_OFF');
+    // S3: cheap_rule (policy sombra) → decisões por subtarefa; nunca aplicada (S4 off).
+    assert.strictEqual(a.would_route.status, 'SHADOW');
     assert.strictEqual(a.would_route.applied, false);
-    assert.deepStrictEqual(a.would_route.decisions, []);
+    assert.strictEqual(a.would_route.classifier_ref.provider, 'cheap_rule');
+    assert.strictEqual(a.would_route.decisions.length, a.signals.groups.length);
+    assert.ok(a.would_route.decisions.every(d => d.class && d.tier && d.rule && d.subtask_key));
+    assert.ok(typeof a.would_route.aggregate?.leaves_opus_tier === 'number');
     validateSchema(stateOf(dir));
 });
 

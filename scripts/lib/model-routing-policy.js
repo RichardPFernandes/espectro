@@ -1,8 +1,9 @@
 // Policy versionada de roteamento de modelo (PRI-205 S3 / PRI-223), caminho sombra.
 // Envelope + hash. Taxonomia C1–C5 / R1–R8 vem do extrato v9 §4.4 (would-route.js),
-// não inventada aqui. Default: classifier.provider = off. jev fora (núcleo 2).
+// não inventada aqui. Platform default atual: classifier.provider = cheap_rule
+// (medição sombra). off ainda permitido. jev fora (núcleo 2).
 //
-// SOMBRA: carregar/validar nunca altera argv, Attempt vivo nem gates.
+// SOMBRA: carregar/validar nunca altera argv, Attempt vivo nem gates. Sem S4.
 
 const fs = require('fs');
 const path = require('path');

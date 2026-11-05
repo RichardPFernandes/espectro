@@ -1,8 +1,8 @@
 {
-  "version": "s3-shadow-p1-0",
+  "version": "s3-shadow-p1-1",
   "mode": "SHADOW",
   "classifier": {
-    "provider": "off"
+    "provider": "cheap_rule"
   },
   "class_to_tier": {
     "C1": { "tier": "T1", "effort": "baixo" },
@@ -31,5 +31,5 @@
     "source": "human_note_2026-11-05",
     "alters_r1_r8": false
   },
-  "note": "PRI-223 S3 sombra. classifier.provider=off por default. cheap_rule = R1–R8 do extrato v9 §4.4. Model ids UNAVAILABLE até policy aprovada; tier mede leve≠Opus. Nota humana: na dúvida qualidade pra cima; Sonnet só bem simples — não muda R1–R8. Sem mode=ON / S4."
+  "note": "PRI-223 S3 sombra. classifier.provider=cheap_rule (ligado sob pedido Richard 2026-11-05 para medição). R1–R8 do extrato v9 §4.4. Model ids UNAVAILABLE; tier mede leve≠Opus. applied=false; mode=SHADOW; Sem mode=ON / S4. Attempts antigos com CLASSIFIER_OFF não são reescritos — só novos fechamentos de implement."
 }

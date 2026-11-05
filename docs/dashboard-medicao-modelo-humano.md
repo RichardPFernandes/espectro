@@ -30,8 +30,8 @@ Vale quando há Attempts com `would_route` gravado. Com classificador **desligad
 ## Próximos passos
 
 1. Abrir o dashboard → **Operação › Medição de modelo** e conferir contagens / lista.
-2. Se Leve/Médio/Opus = 0 com Attempts would_route > 0: ler o painel **Diagnóstico dos zeros** — em geral é `CLASSIFIER_OFF` (policy default `off`), não bug de UI. Detalhe: store `docs/medicao-sombra-zeros-humano.md`.
-3. Decidir se a policy de sombra usa **regra barata** (`cheap_rule`) para preencher faixa por subtarefa nos **próximos** ciclos.
+2. Policy de sombra na plataforma usa **`cheap_rule`** (medição). Attempts **antigos** com `CLASSIFIER_OFF` não reclassificam — só **novos** fechamentos de implement enchem leve/médio/Opus.
+3. Se ainda houver zeros: painel **Diagnóstico dos zeros** (Attempts velhos off, ou falta de sinais). Detalhe histórico: store `docs/medicao-sombra-zeros-humano.md` · ligar medição: `docs/cheap-rule-ligado-humano.md`.
 4. Usar a economia potencial e a contagem “sairia do Opus” como evidência **antes** de qualquer autorização de troca real.
 5. **Não** autorizar S4 nesta fatia.
 
@@ -57,7 +57,7 @@ Sem UI de medição, o dado sombra fica só no JSON dos Attempts — difícil ca
 - **Faixa / tier** — `T1` leve, `T2` médio, `T3` Opus (capacidade mínima; **não** ranking de custo real).
 - **`leaves_opus_tier`** — subtarefa cuja faixa sombra é T1 ou T2 (sairia do Opus).
 - **S4** — fatia futura que *aplicaria* a decisão no despacho; **fora** deste trabalho.
-- **Policy de sombra** — `scripts/lib/model-routing-policy.s3-shadow.json` (`classifier.provider`: `off` ou `cheap_rule`).
+- **Policy de sombra** — `scripts/lib/model-routing-policy.s3-shadow.json` (`classifier.provider=cheap_rule` na plataforma; `off` ainda válido; `mode=SHADOW`, sem S4).
 - **Opus-only** — baseline “tudo no modelo caro”; custo observado do Attempt é tratado como essa baseline enquanto o despacho for AS-IS.
 - **AS-IS** — despacho igual ao de hoje (argv/modelo/esforço inalterados).
 
