@@ -432,6 +432,9 @@ function createDashboard(options = {}) {
             out[state.node] = status === 'running' ? 'running'
                 : (status === 'failed' || status === 'needs_human_review') ? 'failed'
                     : 'pending';
+            // Retry (Recusa QA, review reprovado): history acumula os nós do ciclo anterior,
+            // mas o que vem depois do nó atual ainda vai rodar de novo — mostra pendente.
+            for (const n of NODES.slice(NODES.indexOf(state.node) + 1)) out[n] = 'pending';
         }
         return out;
     }
