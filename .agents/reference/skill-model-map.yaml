@@ -6,6 +6,9 @@
 version: "2026-11-05.1"
 surface: esteira-cursor
 authority_runtime: false
+# Nascimento de subtarefa/worker: ver subtask-routing.yaml (mesmo vocabulário de faixa).
+pairs_with:
+  - subtask-routing.yaml
 preferences:
   planning_bias: quality-up  # errar pra cima na qualidade do plano
   simple_task_model: sonnet
