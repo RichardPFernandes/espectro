@@ -59,6 +59,13 @@ As credenciais das integrações vêm, nesta ordem, do ambiente, do `dashboard/.
 `PREVIEW_*` e `SPEC_APPROVAL_KEYWORD` são lidas). Não é preciso copiá-las para `dashboard/.env`. `KEY=` vazio não conta.
 
 
+## Medição de modelo (somente leitura · sombra)
+
+A aba **Operação › Medição de modelo** lê `GET /api/would-route-metrics` e agrega
+`would_route` dos Attempts (`cost_tracking`): contagem por faixa (leve/médio/Opus),
+economia potencial vs Opus-only (hipótese de preço) e lista recente. **Não** liga
+troca real de modelo (S4). Doc: [`docs/dashboard-medicao-modelo-humano.md`](../docs/dashboard-medicao-modelo-humano.md).
+
 ## Coordenação (somente leitura)
 
 A aba **Coordenação** lê `GET /api/coordination`; não despacha agentes nem grava estado.
@@ -546,6 +553,7 @@ Por baixo, é `scripts/watcher-manager.js`:
 | GET  | `/api/validate-config` | Painel **Saúde do Sistema** (🔧 no topo): roda `scripts/validate-config.js --format json` (só leitura, nunca `--fix`) e devolve o relatório `{ contractVersion, valid, exitCode, message, summary: { errors, warnings, info, rules, passedRules }, results: [{ rule, severity, passed, message, details? }] }`. Exit 1 do script continua 200 com `exitCode: 1` — é o que acende o alerta **⚠ Erros de Configuração** no topo. 500 se o validador não rodou. |
 | GET  | `/api/status` | Saúde: `{ uptime_ms, ws_clients, last_file_change, runs_tracked }`. Único endpoint fora do filtro de localhost (só contadores). |
 | GET  | `/api/coordination` | Estado v1 validado de frentes/tarefas e capacidade; `empty`/`invalid` explícitos. Read-only. Contrato adjacente `coordination.openapi.json`. |
+| GET  | `/api/would-route-metrics` | Agrega `would_route` (sombra): faixas, economia potencial vs Opus-only, lista recente. Query `limit` (opcional). Não aplica S4. |
 | GET  | `/api/version` | Pin do Prisma: `{ status, current, latest, behind[], behind_truncated, fetched_at, fetch_error, update: { configured, enabled, reason, restart }, last_update }`. `?refresh=1` refaz o fetch. |
 | POST | `/api/version/update` | `{ target: <sha40> }`: roda `PRISMA_BUMP_COMMAND` e, se houver, reinicia via `PRISMA_RESTART_COMMAND`. 400 SHA inválido, 409 travado/fora da main/já na revisão, 500 bump falhou. |
 
