@@ -7,7 +7,8 @@
 **Fontes:** preferência do Project (2026-11-05) + análise no store (`analise-jev-skills.md`).  
 **Calibração:** no planejamento, preferir qualidade (errar pra cima → Sonnet); tarefa bem simples → Sonnet; Opus só no pesado.
 
-Espelho estruturado: [`skill-model-map.yaml`](./skill-model-map.yaml).
+Espelho estruturado: [`skill-model-map.yaml`](./skill-model-map.yaml).  
+**Criação de subtarefa / worker:** aplicar este mapa na nascença — [`subtask-routing.md`](./subtask-routing.md).
 
 ---
 

@@ -1,0 +1,51 @@
+# Rito de nascença: subtarefa → skill → faixa (esteira Cursor / fila C).
+# Preferência Project 2026-11-05. Não é policy Runtime / would_route / Attempt / S4.
+# Paired with subtask-routing.md + skill-model-map.yaml.
+
+version: "2026-11-05.1"
+surface: esteira-cursor
+authority_runtime: false
+pairs_with:
+  - skill-model-map.yaml
+  - ../playbook/README.md
+
+preferences:
+  planning_bias: quality-up
+  simple_task_model: sonnet
+  opus_only: pesado
+  break_parent_opus_on_leve: true
+
+birth_checklist:
+  - id: 1
+    step: recortar_acao_playbook
+  - id: 2
+    step: carregar_skill
+  - id: 3
+    step: ler_faixa_skill_model_map
+  - id: 4
+    step: aplicar_vies_preferencias
+  - id: 5
+    step: quebrar_heranca_opus_se_leve
+  - id: 6
+    step: anotar_skill_faixa_no_brief
+
+brief_annotation:
+  required_fields: [skill, faixa]
+  optional_fields: [modelo_sugerido]
+  note: "Espelho humano do would_route na esteira — não grava Attempt."
+
+agents_skills:
+  role: trigger_and_skill_craft
+  uses:
+    - action_to_skill_via_description
+    - skill_creator_for_evals_optional
+  forbidden:
+    - authority_runtime
+    - would_route_official
+    - s4_live_routing
+
+out_of_scope:
+  - s4
+  - pri-234
+  - state_json_would_route
+  - anti_recusa_pri_181
