@@ -47,6 +47,7 @@ const cycleReplayer = require('./lib/cycle-replayer');
 const qaJournal = require('./lib/redmine-journal-fetcher');
 const qaCycles = require('./lib/qa-cycles');
 const qaIngest = require('./lib/qa-rejection-ingest');
+const qaDiagnosisPublish = require('./lib/qa-diagnosis-publish');
 const { GracefulShutdown } = require('./lib/graceful-shutdown');
 const watcherLock = require('./lib/watcher-lock');
 const dispatchReservation = require('./lib/dispatch-reservation');
@@ -510,6 +511,33 @@ async function syncQaRejection(ticket) {
             changed = true;
             if (result.ingested.length) {
                 console.log(`Ticket #${ticket.id}: Recusa QA C1 — ${result.ingested.length} identidade(s) em ${latest.taskId} (retry pelo botão "Corrigir recusa QA" do dashboard).`);
+            }
+            // PRI-181 C2: publicar casca do Diagnosis Record (store/staging). Consultivo (DB-05):
+            // falha de publish não desfaz a ingestão. Sem C3 (predicados).
+            const idn = next.qa_rejection;
+            if (idn?.rejection_key) {
+                try {
+                    const pub = qaDiagnosisPublish.publishDiagnosisRecord({
+                        repoPath: REPO_PATH,
+                        identity: idn,
+                        ticketId: ticket.id,
+                        at,
+                    });
+                    if (pub.ok) {
+                        const ptr = qaDiagnosisPublish.statePointer(pub);
+                        if (ptr) {
+                            next.qa_diagnosis = ptr;
+                            changed = true;
+                        }
+                        if (pub.promoted) {
+                            console.log(`Ticket #${ticket.id}: Diagnosis Record C2 publicado em ${pub.authority_path}`);
+                        }
+                    } else {
+                        console.warn(`Ticket #${ticket.id}: C2 publish não promoveu (${pub.reason}) — ingestão C1 preservada`);
+                    }
+                } catch (e) {
+                    console.warn(`Ticket #${ticket.id}: C2 publish falhou (${e.message}) — ingestão C1 preservada`);
+                }
             }
         } else if (statusChanged && !next.qa_rejection) {
             // Transporte falhou / sem journals: fallback legado (C0) sem inventar chave.
