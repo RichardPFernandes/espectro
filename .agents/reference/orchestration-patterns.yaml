@@ -1,0 +1,37 @@
+# Orquestração barata — esteira Cursor (plataforma Prisma).
+# Adaptado de padrões Addy (orchestration-patterns) 2026-11-05.
+# Não é Authority Runtime / S4 / DoD-as-gate / PRI-181 C1.
+version: "2026-11-05.1"
+surface: esteira-cursor
+authority_runtime: false
+pairs_with:
+  - subtask-routing.yaml
+  - context-packing.yaml
+  - skill-model-map.yaml
+
+governing_rule: coordinator_orchestrates_workers_do_not_chain_personas
+
+endorsed:
+  - id: direct
+    cost: lowest
+  - id: parallel_fanout_merge
+    requires:
+      - independent_arms
+      - skill_faixa_per_brief
+      - merge_fits_coordinator
+  - id: sequential_pipeline_with_human_checkpoints
+  - id: research_isolation_readonly_digest
+
+forbidden:
+  - persona_invokes_persona
+  - addy_meta_skill_always_on
+  - worker_approves_gate_or_freeze
+  - build_auto_as_authority
+  - mix_runtime_s4_into_esteira_orchestration
+
+out_of_scope:
+  - s4
+  - authority_runtime
+  - definition_of_done_as_product_gate
+  - pri-181-c1
+  - consumer_config_invention
