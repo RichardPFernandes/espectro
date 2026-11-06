@@ -16,4 +16,6 @@ module.exports = {
     decision: require('./sdd-writer-decision'),
     decide: require('./sdd-writer-decide'),
     replay: require('./sdd-writer-replay'),
+    audit: require('./sdd-writer-audit'),
+    check: require('./sdd-writer-check'),
 };
