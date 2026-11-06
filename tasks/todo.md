@@ -226,6 +226,22 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 - [ ] Revisão independente intermediária (Claude) do diff no escritor de Attempt e no watcher
 - [ ] Richard decide a P-2 antes da T8
 
+### Testes instáveis do watcher (corrigidos em 2026-11-06)
+
+**Diagnóstico:** a instabilidade é **anterior à S4**. Sem os dois testes de watcher da S4, o `churn-detector` ainda falhou em 1 de 4 rodadas completas. Os testes da S4 aumentavam a frequência, porque acrescentam carga. Todas as falhas eram corridas entre o agente falso ou o próprio teste e as escritas do watcher no `state.json`. Em uso real essas corridas não acontecem: o agente real leva segundos até a primeira escrita e grava antes de sair.
+
+| Teste | Corrida | Correção (só no teste; nenhuma asserção mudou) |
+| -- | -- | -- |
+| `churn-detector` "CHURN_THRESHOLD=2" | `agentRound` gravava entre as duas escritas do wrapper destacado (`releaseNode`, depois `recordNodeExit`); a segunda sobrescrevia o history (log: "1 rodada(s) analisada(s)") | `agentRound` espera o wrapper terminar: status fora de `running` e todo `node_start` com seu `node_end`/`node_error` |
+| `node-events` "ciclo completo…" | o agente falso gravava antes do `recordAgentPid` do watcher (lê, roda `ps`, regrava), que sobrescrevia o avanço de nó (review despachado duas vezes) | o agente falso espera o `agent_pid` registrado (teto de 10 s) |
+| `transcript-writer` "ciclo de 4 nós…" | a mesma do `node-events` (`'test' !== 'verify'`) | a mesma |
+| `cost-tracking` (298/299/303) | a mesma no avanço de nó; e o `waitFor` de 5 s estourava sob carga | a mesma, e teto de 30 s (igual ao `dom06-dispatch-env`) |
+| `node-lease` (hook `after`) | o `rmSync` corria com o wrapper ainda gravando (`ENOTEMPTY`) | `rmSync` com `maxRetries: 20, retryDelay: 100` |
+
+**Medição (Node 22, suíte scripts completa):** antes, 4 de 13 rodadas com falha nesta sessão. Depois das correções, 9 de 10 verdes: a única falha foi o `transcript-writer`, corrigido em seguida, e as 5 rodadas seguintes saíram verdes. Node 24: scripts 1241/0 e dashboard 299/0.
+
+**Risco remanescente (fora do escopo):** a mesma janela entre `recordAgentPid` e uma escrita imediata do agente existe no código de produção. Só seria atingida por um agente que gravasse o state em milissegundos. Fica registrada como observação, sem mudança no watcher.
+
 ## Fase 3: override, visibilidade e fechamento
 
 ## Tarefa 8: override humano (BLOQUEADA até a P-2)

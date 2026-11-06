@@ -132,6 +132,16 @@ fs.writeFileSync(path.join(dir, sid + '.jsonl'), JSON.stringify({ type: 'assista
   message: { id: 'msg-' + sid, model: 'claude-sonnet-5', usage: { input_tokens: 100, cache_read_input_tokens: 900, output_tokens: 100 } } }) + '\\n');
 const stateFile = process.env.FAKE_STATE_FILE;
 fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+// Task já existente: como o agente real, só grava depois que o watcher registrou o
+// agent_pid (recordAgentPid lê, roda ps e regrava o state); antes disso a regravação
+// perdia o avanço de nó sob carga (PRI-233). Teto de 10 s; sem pid registrado, segue.
+if (fs.existsSync(stateFile)) {
+  const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  for (let i = 0; i < 500; i++) {
+    try { if (JSON.parse(fs.readFileSync(stateFile, 'utf8')).agent_pid) break; } catch { /* escrita em curso */ }
+    sleep(20);
+  }
+}
 const s = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8'))
     : { task_id: path.basename(path.dirname(stateFile)), node: 'plan', history: ['fetch_ticket'], status: 'in_progress', started_at: now };
 delete s.cost_tracking; // agente que regrava state.json sem o campo — watcher tem que restaurar
@@ -170,7 +180,11 @@ function writeState(node) {
     }));
 }
 
-async function waitFor(cond, ms = 5000) {
+// Teto de espera pelo agente destacado e pelo release do watcher. 5 s estourava com a
+// suíte inteira em paralelo (PRI-233: "timeout esperando condição" em 2 de 6 rodadas
+// completas, verde sozinho). 30 s = mesmo teto do dom06-dispatch-env.test.js; a
+// condição esperada não muda.
+async function waitFor(cond, ms = 30000) {
     const until = Date.now() + ms;
     while (!cond()) {
         if (Date.now() > until) throw new Error('timeout esperando condição');
