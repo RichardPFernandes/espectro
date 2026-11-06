@@ -181,14 +181,18 @@ casos, `cost-tracking` grava `requested`, `selection_source`, `routing_decision`
 e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 
 **Critérios de aceite:**
-- [ ] Watcher com stub, mode ON e produção real (mecanismo `UNAVAILABLE`): todo nó dá `NOT_STARTED/CONFIG_UNVERIFIABLE` com `EFFORT_MECHANISM_UNAVAILABLE`, stub não invocado, um único Attempt e um único aviso em 3 ticks (AC-07).
-- [ ] Conta sintética com `skills/jev-model-router` → `CONFIG_UNVERIFIABLE` com `effort_router_plugin ≠ NOT_LOADED` (AC-08).
-- [ ] Provider desabilitado ou sem candidato → `PROVIDER_NOT_ELIGIBLE` (AC-06).
-- [ ] O registro de custo do Attempt traz a RoutingDecision, ou o motivo da recusa, nos campos que já existem.
-- [ ] Golden da T1 inalterado.
+- [x] Watcher com stub, mode ON e produção (mecanismo `UNAVAILABLE`): a Run em andamento dá 1 Attempt `NOT_STARTED/CONFIG_UNVERIFIABLE` (`EFFORT_MECHANISM_UNAVAILABLE`) com a RoutingDecision, a Run fica `blocked` e há 1 aviso em 3 ticks, sem o stub rodar (AC-07). O ticket novo ON dá o mesmo resultado no `fetch_ticket`, no `default_route` (AC-03).
+- [~] AC-08 (conta com `skills/` → LOADED): provado em unidade (`routedPluginProof`, 6 casos). No watcher a prova só roda com o esforço verificado, que não existe em produção (AD-5, sem porta dos fundos).
+- [~] AC-06 (`PROVIDER_NOT_ELIGIBLE`): provado em unidade. No watcher o provider é `ACTIVE` fixo (UNK-AR-005).
+- [x] AC-05 no watcher: snapshot adulterado + config corrente OFF → `NOT_STARTED/CONFIG_UNVERIFIABLE` (`snapshot_hash_mismatch`), sem despachar. Prova que a config não é relida.
+- [x] O registro de custo usa `requested`, `selection_source` e `routing_decision` da decisão quando há despacho roteado. A recusa não gera registro de custo (não há spawn) e fica no Attempt DOM06 (`not_started` + `routing`).
+- [x] Golden da T1 inalterado.
 
-**Verificação:**
-- [ ] `node --test scripts/lib/routing-admission-watcher.test.js scripts/lib/cost-tracking.test.js scripts/lib/routing-off-golden.test.js`
+**Verificação (2026-11-06):**
+- [x] `routing-admission-watcher.test.js` 7/7; `claude-account.test.js` 9/9; `cost-tracking.test.js` 30/30.
+- [x] Node 22: scripts 1225 pass / 0 fail / 6 skip; dashboard 298/0; `check:js`, `lint:src` e `arch:check` limpos.
+- **Testes da T5 e da T6 alterados de propósito:** com ON válido, o ticket novo agora para em `NOT_STARTED` (SP-1). O teste de ligação da T5 passou a semear uma Run admitida ON pelo DOM06 real, e o caso "policy corrigida" da T6 agora espera `routing_not_started`.
+- **Ordem do TDD:** em `routedPluginProof` o teste e a implementação foram escritos juntos, não um antes do outro.
 
 **Dependências:** T5, T6.
 **Arquivos:** `scripts/readmine-watcher.js`, `scripts/lib/cost-tracking.js` (+test), `scripts/lib/claude-account.js` (+test), `scripts/lib/routing-admission-watcher.test.js`.
@@ -196,7 +200,7 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 **ACs do SPEC:** AC-02 (registro), AC-03, AC-06, AC-07, AC-08.
 
 ### Checkpoint B
-- [ ] Suítes completas e checks estáticos verdes; golden inalterado
+- [x] Suítes completas e checks estáticos verdes; golden inalterado (2026-11-06, Node 22).
 - [ ] Revisão independente intermediária (Claude) do diff no escritor de Attempt e no watcher
 - [ ] Richard decide a P-2 antes da T8
 

@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const { execSync, execFileSync, spawn } = require('child_process');
 const specValidator = require('./lib/spec-validator');
 const specRepairer = require('./lib/spec-repairer');
-const { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, accountCostMetadata } = require('./lib/claude-account');
+const { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, accountCostMetadata, routedPluginProof } = require('./lib/claude-account');
 const nodeLease = require('./lib/node-lease');
 const invalidate = require('./invalidate');
 const nodeEvents = require('./lib/node-events');
@@ -1505,6 +1505,89 @@ async function notifyRoutingAdmissionBlocked(ticket, cfg) {
     } catch {
         // Não é macOS, ou sem permissão de notificação — não bloqueia o tick.
     }
+}
+
+// PRI-233 (PRI-205 S4, T7): resolução do §4.7 no início de cada Attempt de uma Run
+// admitida com mode ON. Capacidades de produção: mecanismo de esforço UNAVAILABLE (SP-1),
+// então todo despacho roteado termina em NOT_STARTED/CONFIG_UNVERIFIABLE; a prova do
+// plugin (SP-2, --settings próprio) só é gerada quando o esforço estiver verificado.
+// Provider: ACTIVE (um provider, sem dono de estado operacional: UNK-AR-005). Override
+// humano: nenhum até a T8 (P-2). Núcleo 2 (Jev): nunca na S4.
+function routingCapabilities(runDir) {
+    const effortMechanism = modelRouting.PRODUCTION_EFFORT_MECHANISM;
+    if (effortMechanism.status !== 'VERIFIED') return { effortMechanism, pluginProof: { status: 'NOT_EVALUATED' } };
+    return { effortMechanism, pluginProof: routedPluginProof({ accountDir: resolveClaudeAccount().dir, runDir }) };
+}
+
+function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir }) {
+    if (!runSnapshot.ok) {
+        return { ok: false, result: 'NOT_STARTED', cause: 'CONFIG_UNVERIFIABLE', detail: runSnapshot.detail, decision: null };
+    }
+    const signals = node === modelRouting.ROUTED_NODE
+        ? prospectiveSignalsForRun('claude', [node], { ticket, worktreePath, base: signalBaseBranch(ticket), isRecusaQA }).signals_prospective
+        : undefined;
+    return modelRouting.resolveRoute({
+        snapshot: runSnapshot.snapshot, node, signals, provider: { state: 'ACTIVE' },
+        capabilities: routingCapabilities(runDir), overrides: [], nodeBoundaryAt: null, authorityRef: null,
+    });
+}
+
+function routingRefusalNote(node, resolution) {
+    return `Roteamento de modelo (mode ON) não iniciou o nó "${node}": NOT_STARTED / ${resolution.cause} ` +
+        `(${resolution.detail}). Nenhum modelo foi herdado e nada foi despachado. ` +
+        (resolution.detail === 'EFFORT_MECHANISM_UNAVAILABLE'
+            ? 'O mecanismo para fixar o esforço no despacho ainda não foi verificado (U1); com mode ON nenhum despacho roteado inicia. '
+            : '') +
+        `Saída: desligar o roteamento (mode OFF) vale só para Runs novas; esta Run mantém o snapshot da admissão.`;
+}
+
+// Task existente: grava o Attempt NOT_STARTED, põe a Run em blocked (caminho humano
+// existente) e avisa uma vez (notifyBlocked, assinatura nó:status). Nos ticks seguintes
+// o status blocked impede novo Attempt.
+async function refuseRoutedNode({ ticket, taskId, node, state, dir, resolution }) {
+    dom06.beginAttempt(dir, {
+        node, cause: dom06.causeFromState(state),
+        admission: { status: 'NOT_STARTED', cause: resolution.cause, detail: resolution.detail },
+        ...(resolution.decision ? { routing: resolution.decision } : {}),
+    });
+    const note = routingRefusalNote(node, resolution);
+    const at = new Date().toISOString();
+    const next = { ...state, status: 'blocked', agent_log: [...(state.agent_log || []), { agent: 'watcher', nodes: [node], at, note }] };
+    writeTaskState(dir, next, 'routing_not_started');
+    appendEvent(taskId, { type: 'checkpoint', node, agent: 'watcher', ts: at, detail: `routing NOT_STARTED: ${resolution.cause} (${resolution.detail})` }, dir);
+    console.warn(`Task ${taskId}: ${note}`);
+    await notifyBlocked(ticket, taskId, node, 'blocked', dir, next, note);
+    return { action: 'skip', reason: 'routing_not_started', taskId, node, cause: resolution.cause, detail: resolution.detail };
+}
+
+// Ticket novo: o fetch_ticket recusado não cria Run. Um Attempt NOT_STARTED e um aviso
+// por assinatura (causa|detalhe|snapshot); repetir o tick não grava outro Attempt.
+async function refuseRoutedFetch({ ticket, fetchRunDir, resolution, snapshotSha }) {
+    const markerPath = path.join(fetchRunDir, 'routing-not-started.json');
+    const signature = `${resolution.cause}|${resolution.detail}|${snapshotSha}`;
+    const base = { action: 'skip', reason: 'routing_not_started', node: 'fetch_ticket', cause: resolution.cause, detail: resolution.detail };
+    if (alreadyNotified(markerPath, signature)) return base;
+    dom06.beginAttempt(fetchRunDir, {
+        node: 'fetch_ticket', cause: 'dispatch',
+        admission: { status: 'NOT_STARTED', cause: resolution.cause, detail: resolution.detail },
+        ...(resolution.decision ? { routing: resolution.decision } : {}),
+    });
+    const note = routingRefusalNote('fetch_ticket', resolution);
+    console.warn(`Ticket #${ticket.id}: ${note}`);
+    if (!FOLLOW) {
+        try {
+            await redmineFetch(`${REDMINE_URL}/issues/${ticket.id}.json`, {
+                method: 'PUT',
+                headers: { 'X-Redmine-API-Key': REDMINE_API_KEY, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ issue: { notes: `[Watcher] Ticket #${ticket.id}: ${note}` } }),
+            });
+        } catch (e) {
+            console.error(`Falha comentando NOT_STARTED de roteamento no Redmine #${ticket.id}:`, e.message);
+        }
+    }
+    fs.mkdirSync(fetchRunDir, { recursive: true });
+    markNotified(markerPath, signature);
+    return base;
 }
 
 // ---------------------------------------------------------------------------------
@@ -3302,7 +3385,7 @@ function writeCostLedger(ticketId, ledger) {
     fs.writeFileSync(costLedgerPath(ticketId), JSON.stringify(ledger, null, 2));
 }
 
-function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null, signalContext = null }) {
+function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null, signalContext = null, routing = null }) {
     if (DRY_RUN) return null;
     try {
         const selected = agent === 'claude' ? resolveClaudeAccount() : null;
@@ -3312,7 +3395,8 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
             ...costTracking.admissionForCost(admissionDecision, ticketId, taskRunsDir(ticketId)), ...metadata,
             pricing_snapshot: costTracking.pricingSnapshot(),
             ...(selected?.dir ? { claude_config_dir: selected.dir } : {}),
-            ...prospectiveSignalsForRun(agent, nodes, signalContext) };
+            ...prospectiveSignalsForRun(agent, nodes, signalContext),
+            ...(routing?.ok ? { routing_decision: routing.decision } : {}) };
         const ledger = readCostLedger(ticketId);
         ledger.pending.push(run);
         writeCostLedger(ticketId, ledger);
@@ -3780,7 +3864,7 @@ const NO_SUBAGENT_NODES = new Set(['plan']);
 // e um único comando (`/plan`, `/review` ou `/verify`) pra resumir uma task ativa —
 // nunca encadeia através de um nó com veredito (review/test/verify), porque o
 // resultado desses só se sabe depois de rodar.
-async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null }) {
+async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null, routing = null }) {
     const qaSection = isRecusaQA
         ? `\n\nEste ticket voltou como Recusa QA — é retrabalho, não trabalho novo. ` +
           `Motivo(s) da recusa (comentários do QA, mais recente primeiro):\n${qaFeedback.join('\n')}\n` +
@@ -3825,10 +3909,12 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
         '--add-dir', PRISMA_ROOT,
         ...siblingAddDirArgs(ticket.id),
     ];
+    // PRI-233 T7: só com resolução ok (Run ON); sem routing o argv é o do AS-IS.
+    if (routing) args.push(...modelRouting.routedArgs([], routing));
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
     const costRun = startCostRun(ticket.id, {
-        agent: 'claude', nodes, sessionId, admissionDecision,
+        agent: 'claude', nodes, sessionId, admissionDecision, routing,
         signalContext: { ticket, worktreePath, isRecusaQA, base: signalBaseBranch(ticket) },
     });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);
@@ -4228,6 +4314,21 @@ async function dispatchTicketReserved(ticket) {
             return { action: 'skip', reason: 'worktree_indisponivel' };
         }
 
+        // PRI-233 (PRI-205 S4, T7): com mode ON, o segmento fetch_ticket+plan (nós fixos,
+        // D6) é resolvido antes do marcador/lease. Recusa = NOT_STARTED sem Run.
+        let fetchRouting = null;
+        if (routingSnapshot) {
+            const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
+            fetchRouting = resolveNodeRoute({
+                runSnapshot: { ok: true, snapshot: routingSnapshot }, node: 'fetch_ticket', ticket, worktreePath, isRecusaQA,
+                runDir: fetchRunDir,
+            });
+            if (!fetchRouting.ok) {
+                return refuseRoutedFetch({ ticket, fetchRunDir, resolution: fetchRouting, snapshotSha: routingSnapshot.sha256 });
+            }
+            try { fs.rmSync(path.join(fetchRunDir, 'routing-not-started.json'), { force: true }); } catch { /* best-effort */ }
+        }
+
         // state.json ainda não existe (quem cria é o próprio fetch_ticket) — não há o
         // que marcar como running; o lease só carimba node_started_at/node_timeout_ms
         // na task nova quando o agente sai. Crash aqui no meio é autocorrigível: sem
@@ -4262,7 +4363,7 @@ async function dispatchTicketReserved(ticket) {
                 baseBranch: base,
                 specHash: null,
                 cause: 'dispatch',
-                ...(routingSnapshot ? { routing: routingSnapshot } : {}),
+                ...(routingSnapshot ? { routing: routingSnapshot, routingDecision: fetchRouting.decision } : {}),
             });
         } catch (e) {
             dropUnspawnedFetchDispatch(id, newTaskLease);
@@ -4280,7 +4381,7 @@ async function dispatchTicketReserved(ticket) {
         try {
         fetchResult = await dispatchClaudeSegment({
             ticket, isRecusaQA, qaFeedback, worktreePath, lease: newTaskLease,
-            extraEnv: dom06AttemptEnv(fetchAdmission), admissionDecision: fetchAdmission,
+            extraEnv: dom06AttemptEnv(fetchAdmission), admissionDecision: fetchAdmission, routing: fetchRouting,
             commands: [`/fetch-ticket ${id}`, '/plan (use o task-id que acabou de gerar)'],
             nodes: ['fetch_ticket', 'plan'],
             contextBlock: nodeContextBlock('plan', { ticket, worktreePath }),
@@ -4559,14 +4660,25 @@ async function dispatchTicketReserved(ticket) {
     }
     // PRI-233 (PRI-205 S4): liga a task ao snapshot routing fixado na admissão da Run
     // (Attempt fetch_ticket em _dom06). Run admitida OFF não ganha campo nenhum.
+    // T7: Run admitida ON resolve o §4.7 antes do Attempt; Run OFF segue o código atual.
+    let nodeRouting = null;
+    let nodeRoutingSnapshot = null;
     if (!DRY_RUN) {
-        const routingBinding = routingRun.bindingFor(state, path.join(taskRunsDir(id), '_dom06'));
+        const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
+        const routingBinding = routingRun.bindingFor(state, fetchRunDir);
         if (routingBinding) {
             state.routing_snapshot = routingBinding;
             writeTaskState(dir, state, 'routing_snapshot_bind');
         }
+        const runSnapshot = routingRun.loadRunSnapshot(state, fetchRunDir);
+        if (runSnapshot.mode === 'ON') {
+            nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir });
+            if (!nodeRouting.ok) return refuseRoutedNode({ ticket, taskId, node, state, dir, resolution: nodeRouting });
+            nodeRoutingSnapshot = runSnapshot.snapshot;
+        }
     }
     const nodeAdmission = dom06.prepareDispatch({
+        ...(nodeRouting ? { routing: nodeRoutingSnapshot, routingDecision: nodeRouting.decision } : {}),
         runDir: dir,
         node,
         ticketId: id,
@@ -4595,7 +4707,7 @@ async function dispatchTicketReserved(ticket) {
     const schemaResult = stampSchemaChecklist(taskId, dir, worktreePath, base);
 
     segment = await dispatchClaudeSegment({
-        ticket, isRecusaQA, qaFeedback, worktreePath, lease, admissionDecision: nodeAdmission,
+        ticket, isRecusaQA, qaFeedback, worktreePath, lease, admissionDecision: nodeAdmission, routing: nodeRouting,
         commands: [`/${node} ${taskId}`],
         nodes: [node],
         contextBlock: nodeContextBlock(node, { ticket, dir, worktreePath }),

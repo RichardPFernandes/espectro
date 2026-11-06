@@ -369,10 +369,14 @@ function attemptRecord(run, node, alsoCovers, metrics, outcome) {
         session_id: run.session_id || 'UNKNOWN', runtime: run.agent,
         provider: run.agent === 'claude' ? 'anthropic' : run.agent === 'codex' ? 'openai' : 'UNKNOWN',
         account: run.account || { source: 'UNKNOWN', label: 'UNKNOWN' },
-        requested: { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' },
+        // PRI-233 T7: despacho roteado grava o par fixado (modelo, esforço do CLI) e a decisão.
+        requested: run.routing_decision?.chosen
+            ? { model: run.routing_decision.chosen.model_id, effort: run.routing_decision.chosen.cli_effort }
+            : { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' },
         effort_router_plugin: run.effort_router_plugin || 'UNKNOWN',
         first_turn: metrics.first_turn || { cache_read_tokens: null, cache_write_5m_tokens: null, cache_write_1h_tokens: null },
-        selection_source: 'DEFAULT_INHERITED', routing_decision: 'UNAVAILABLE', subtask: 'UNAVAILABLE', workspace: 'UNAVAILABLE',
+        selection_source: run.routing_decision?.selection_source || 'DEFAULT_INHERITED',
+        routing_decision: run.routing_decision || 'UNAVAILABLE', subtask: 'UNAVAILABLE', workspace: 'UNAVAILABLE',
         signals: run.signals || 'UNAVAILABLE',
         // PRI-223 S3: decisão sombra (would_route). Nunca altera argv; applied=false.
         would_route: run.would_route || 'UNAVAILABLE',

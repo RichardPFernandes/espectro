@@ -86,6 +86,21 @@ test('custo US$: preço por modelo da mensagem, cache por TTL, fast mode, modelo
     assert.strictEqual(c.totals.cost_usd, 0.5);
 });
 
+test('PRI-233 T7: Attempt roteado grava RoutingDecision, par pedido e origem; sem routing fica AS-IS', () => {
+    const decision = {
+        node: 'implement', selection_source: 'RULES', subagent: 'UNENFORCED',
+        chosen: { model_id: 'm-t2', effort: 'médio', cli_effort: 'medium', tier: 'T2' },
+    };
+    const routed = ct.mergeRun(null, { node: 'implement', agent: 'claude', run: { routing_decision: decision }, metrics: { ...tokens(1, 1), duration_ms: 1 } });
+    const a = routed.nodes.implement.attempts[0];
+    assert.deepStrictEqual(a.routing_decision, decision);
+    assert.deepStrictEqual(a.requested, { model: 'm-t2', effort: 'medium' });
+    assert.strictEqual(a.selection_source, 'RULES');
+    const plain = ct.mergeRun(null, { node: 'implement', agent: 'claude', metrics: { ...tokens(1, 1), duration_ms: 1 } }).nodes.implement.attempts[0];
+    assert.deepStrictEqual([plain.routing_decision, plain.selection_source, plain.requested],
+        ['UNAVAILABLE', 'DEFAULT_INHERITED', { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' }]);
+});
+
 test('parseCodexResultTokens: números, "não disponível" e seção ausente', () => {
     const md = (body) => `# Resultado Codex — test — 1-x\n\n## Learnings\nnenhum\n## Tokens\n${body}\n## Outra\ninput_tokens: 999\n`;
     assert.deepStrictEqual(ct.parseCodexResultTokens(md('input_tokens: 12.345\noutput_tokens: 678')), { input_tokens: 12345, output_tokens: 678 });

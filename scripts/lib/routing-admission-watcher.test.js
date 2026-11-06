@@ -15,6 +15,8 @@ const http = require('http');
 const crypto = require('crypto');
 const { execFile, execFileSync } = require('child_process');
 const dom06 = require('./dom06-attempt');
+const mr = require('./model-routing');
+const policyLoader = require('./model-routing-policy');
 
 const PRISMA_ROOT = path.resolve(__dirname, '..', '..');
 const WATCHER = path.join(PRISMA_ROOT, 'scripts', 'readmine-watcher.js');
@@ -173,25 +175,44 @@ const invocations = scenario => {
 test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
-test('T5: admissão ON fixa o snapshot no fetch_ticket; a task liga-se a ele e mudar a config depois não troca nada', async () => {
+// Run já admitida ON (o fetch_ticket ON nunca inicia em produção hoje, SP-1): o
+// Attempt de admissão é gravado pelo DOM06 real com o snapshot da config do consumidor,
+// e a task existe como o agente a teria criado. `bound` = state já ligado (T5).
+function seedOnRun(repo, id, { bound = true, node = 'implement' } = {}) {
+    const worktree = worktreeOf(repo, id);
+    fs.mkdirSync(worktree, { recursive: true });
+    git(worktree, 'init', '-q', '-b', String(id));
+    git(worktree, 'commit', '-q', '--allow-empty', '-m', `Melhoria #${id}`);
+    const snapshot = mr.buildRoutingSnapshot(policyLoader.readRoutingConfig(repo));
+    const fetch = dom06.prepareDispatch({
+        runDir: fetchRunDirOf(repo, id), node: 'fetch_ticket', ticketId: id, baseBranch: 'development',
+        specHash: null, cause: 'dispatch', routing: snapshot,
+    });
+    const dir = taskDirOf(repo, id);
+    fs.mkdirSync(dir, { recursive: true });
+    const history = ['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify'];
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
+        task_id: `${id}-rt`, node, history: history.slice(0, history.indexOf(node)), status: 'in_progress',
+        started_at: new Date(Date.now() + 1000).toISOString(), retries: {},
+        ...(bound ? { routing_snapshot: { attempt_id: fetch.attempt.attempt_id, sha256: snapshot.sha256 } } : {}),
+    }));
+    fs.writeFileSync(path.join(dir, 'context.md'), '# Contexto\n');
+    fs.writeFileSync(path.join(dir, 'plan.md'), '# Plano\n\n## Passos\n\n1. Passo único.\n');
+    return { fetch: fetch.attempt, snapshot, dir };
+}
+
+test('T5: a task liga-se ao snapshot da admissão; mudar a config depois não troca nada', async () => {
     const id = 233501;
     const repo = consumer(r => writeRouting(r));
-    const first = await dispatch(repo, id, 't5-on-admissao');
-    assert.strictEqual(first.result?.action, 'dispatched', first.output);
-
-    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
-    assert.strictEqual(fetch.node, 'fetch_ticket');
-    const snap = fetch.snapshot.routing;
-    assert.ok(snap && snap.mode === 'ON', 'o snapshot routing está no Attempt de admissão');
-    assert.strictEqual(snap.policy_ref.version, 'p-test-1');
-    assert.ok(!('routing_snapshot' in readState(repo, id)), 'a ligação só é gravada no primeiro despacho de nó');
-
+    const { fetch, snapshot } = seedOnRun(repo, id, { bound: false });
     // Config muda depois da admissão: outra policy válida, outro sha.
     writeRouting(repo, { version: 'p-test-2' });
-    const second = await dispatch(repo, id, 't5-on-no');
-    assert.strictEqual(second.result?.action, 'dispatched', second.output);
-    assert.deepStrictEqual(readState(repo, id).routing_snapshot, { attempt_id: fetch.attempt_id, sha256: snap.sha256 });
+    const r = await dispatch(repo, id, 't5-on-no');
+    assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
+    assert.deepStrictEqual(readState(repo, id).routing_snapshot, { attempt_id: fetch.attempt_id, sha256: snapshot.sha256 });
     assert.strictEqual(dom06.listAttempts(fetchRunDirOf(repo, id))[0].snapshot.routing.policy_ref.version, 'p-test-1');
+    const [notStarted] = dom06.listAttempts(taskDirOf(repo, id));
+    assert.strictEqual(notStarted.routing.snapshot_sha256, snapshot.sha256, 'a resolução usou o snapshot da admissão, não a config nova');
 });
 
 test('T5: Run admitida OFF (config ausente) não ganha snapshot nem campo no state', async () => {
@@ -244,9 +265,66 @@ test('T6: um aviso por projeto em 3 ticks; outro projeto OFF despacha; corrigir 
     const off = consumer();
     assert.strictEqual((await dispatch(off, 233603, 't6-projeto-off')).result?.action, 'dispatched');
 
-    // Policy corrigida: o próximo tick admite e o marcador some.
+    // Policy corrigida: o próximo tick passa da admissão (marcador some). Em produção o
+    // fetch_ticket roteado ainda para em NOT_STARTED (SP-1, coberto pelos testes T7).
     writeRouting(repo);
     const fixed = await dispatch(repo, id, 't6-corrigida', { follow: false });
-    assert.strictEqual(fixed.result?.action, 'dispatched', fixed.output);
+    assert.strictEqual(fixed.result?.reason, 'routing_not_started', fixed.output);
     assert.ok(!fs.existsSync(path.join(repo, 'memory', 'runs', 'routing-admission-blocked.json')), 'marcador removido');
+});
+
+// ── T7: resolução no despacho por nó ──────────────────────────────────────────
+
+test('T7 / AC-07: Run ON em andamento em produção → 1 Attempt NOT_STARTED, Run blocked e 1 aviso em 3 ticks; agente nunca roda', async () => {
+    const id = 233701;
+    const repo = consumer(r => writeRouting(r));
+    const { dir, snapshot } = seedOnRun(repo, id);
+    for (let i = 0; i < 3; i++) await dispatch(repo, id, `t7-andamento-${i}`, { follow: false });
+    for (let i = 0; i < 3; i++) assert.strictEqual(invocations(`t7-andamento-${i}`), 0, 'o stub do claude não rodou');
+    const attempts = dom06.listAttempts(dir);
+    assert.deepStrictEqual(attempts.map(a => [a.node, a.started, a.result]), [['implement', false, 'NOT_STARTED']]);
+    const [a] = attempts;
+    assert.deepStrictEqual(a.not_started, { cause: 'CONFIG_UNVERIFIABLE', detail: 'EFFORT_MECHANISM_UNAVAILABLE' });
+    assert.strictEqual(a.routing.snapshot_sha256, snapshot.sha256);
+    assert.strictEqual(a.routing.class, 'C4', 'sinais do Plano sintético sem grupos completos → C4 conservador');
+    assert.deepStrictEqual(a.routing.chosen, { model_id: 'm-t3', effort: 'alto', cli_effort: 'high', tier: 'T3' });
+    assert.deepStrictEqual(a.routing.effort_mechanism, { status: 'UNAVAILABLE' });
+    assert.strictEqual(a.routing.subagent, 'UNENFORCED');
+    assert.strictEqual(readState(repo, id).status, 'blocked');
+    assert.strictEqual(redminePuts(id).length, 1, 'um único aviso');
+    assert.match(JSON.parse(redminePuts(id)[0].body).issue.notes, /EFFORT_MECHANISM_UNAVAILABLE/);
+});
+
+test('T7 / AC-05: snapshot adulterado → NOT_STARTED/CONFIG_UNVERIFIABLE, sem reler a config corrente (OFF)', async () => {
+    const id = 233702;
+    const repo = consumer(r => writeRouting(r));
+    const { fetch, dir } = seedOnRun(repo, id);
+    const file = path.join(fetchRunDirOf(repo, id), 'dom06', 'attempts', `${fetch.attempt_id}.json`);
+    const a = JSON.parse(fs.readFileSync(file, 'utf8'));
+    a.snapshot.routing.default_route.model_id = 'm-t1';
+    fs.writeFileSync(file, JSON.stringify(a));
+    // Config corrente OFF: se fosse relida, o nó despacharia AS-IS.
+    fs.rmSync(path.join(repo, '.claude', 'model-routing.json'));
+    const r = await dispatch(repo, id, 't7-adulterado');
+    assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
+    assert.strictEqual(invocations('t7-adulterado'), 0);
+    const [ns] = dom06.listAttempts(dir);
+    assert.deepStrictEqual(ns.not_started, { cause: 'CONFIG_UNVERIFIABLE', detail: 'snapshot_hash_mismatch' });
+    assert.strictEqual(ns.routing, undefined, 'sem snapshot íntegro não há decisão');
+});
+
+test('T7 / AC-03: ticket novo ON → fetch_ticket+plan no default_route, 1 Attempt NOT_STARTED e 1 aviso em 3 ticks', async () => {
+    const id = 233703;
+    const repo = consumer(r => writeRouting(r));
+    for (let i = 0; i < 3; i++) {
+        const r = await dispatch(repo, id, `t7-novo-${i}`, { follow: false });
+        assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
+        assert.strictEqual(invocations(`t7-novo-${i}`), 0);
+    }
+    const attempts = dom06.listAttempts(fetchRunDirOf(repo, id));
+    assert.deepStrictEqual(attempts.map(x => [x.node, x.started, x.result]), [['fetch_ticket', false, 'NOT_STARTED']]);
+    assert.deepStrictEqual(attempts[0].routing.chosen, { model_id: 'm-t3', effort: 'alto', cli_effort: 'high', tier: 'T3' });
+    assert.strictEqual(attempts[0].routing.selection_source, 'FIXED_NODE');
+    assert.strictEqual(redminePuts(id).length, 1);
+    assert.ok(!fs.existsSync(taskDirOf(repo, id)), 'nenhuma task criada');
 });

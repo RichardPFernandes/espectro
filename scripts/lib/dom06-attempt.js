@@ -164,7 +164,7 @@ function readAttempt(attemptFile) {
     return readJson(attemptFile);
 }
 
-function retryAttempt(runDir, { node, cause, proposed } = {}) {
+function retryAttempt(runDir, { node, cause, proposed, routing } = {}) {
     assertCauseAllowed(cause);
     const previous = latestBound(runDir, node);
     if (!previous || previous.authority === 'revoked' || !Array.isArray(previous.obligations)) {
@@ -172,6 +172,7 @@ function retryAttempt(runDir, { node, cause, proposed } = {}) {
         return beginAttempt(runDir, {
             node,
             cause,
+            routing,
             admission: { status: previous?.authority === 'revoked' ? 'DENIED' : 'UNKNOWN' },
             rebindRefused: proposed ? { owner: proposed.owner ?? null, snapshot: proposed.snapshot ?? null, reason } : null,
         });
@@ -182,6 +183,7 @@ function retryAttempt(runDir, { node, cause, proposed } = {}) {
     return beginAttempt(runDir, {
         node,
         cause,
+        routing,
         admission: {
             status: 'ADMITTED',
             owner: previous.owner,
@@ -217,7 +219,8 @@ function causeFromState(state) {
 
 // `routing` (PRI-233): snapshot routing da Run, fixado na admissão. Só entra no
 // snapshot do Attempt quando passado; sem ele, o snapshot fica como no AS-IS.
-function prepareDispatch({ runDir, node, ticketId, baseBranch = null, specHash = null, cause = 'dispatch', state = null, routing } = {}) {
+// `routingDecision`: RoutingDecision resolvida para este Attempt (despacho roteado).
+function prepareDispatch({ runDir, node, ticketId, baseBranch = null, specHash = null, cause = 'dispatch', state = null, routing, routingDecision } = {}) {
     const resolvedCause = state ? causeFromState(state) : cause;
     assertCauseAllowed(resolvedCause);
     const hold = readHold(runDir);
@@ -241,11 +244,12 @@ function prepareDispatch({ runDir, node, ticketId, baseBranch = null, specHash =
         : { status: 'ADMITTED', owner: 'dom06', snapshot };
     if (RETRY_CAUSES.has(resolvedCause)) {
         const previous = latestBound(runDir, node);
-        if (previous) return retryAttempt(runDir, { node, cause: resolvedCause, proposed });
+        if (previous) return retryAttempt(runDir, { node, cause: resolvedCause, proposed, routing: routingDecision });
     }
     return beginAttempt(runDir, {
         node,
         cause: resolvedCause,
+        routing: routingDecision,
         admission: proposed.status === 'ADMITTED' ? proposed : { status: 'UNKNOWN' },
         obligations: proposed.status === 'ADMITTED' ? obligationsFor(node) : null,
     });

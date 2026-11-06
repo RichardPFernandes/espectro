@@ -24,6 +24,11 @@
 const crypto = require('crypto');
 const wouldRoute = require('./would-route');
 
+// SP-1 (PRI-233): o mecanismo de esforço no `claude -p` não foi verificado (U1). Em
+// produção, nesta fatia, ele é sempre UNAVAILABLE; não há env nem flag que o ligue
+// (AD-5). Consequência: todo despacho com mode ON termina em CONFIG_UNVERIFIABLE.
+const PRODUCTION_EFFORT_MECHANISM = Object.freeze({ status: 'UNAVAILABLE', reason: 'U1_UNVERIFIED' });
+
 const TIER_ORDER = ['T1', 'T2', 'T3'];
 const CLASS_RANK = wouldRoute.CLASS_RANK;
 const ROUTED_NODE = 'implement';
@@ -264,5 +269,6 @@ module.exports = {
     routedArgs,
     canonicalSha256: sha256,
     ROUTED_NODE,
+    PRODUCTION_EFFORT_MECHANISM,
     _classifySubtask: wouldRoute.classifySubtask,
 };

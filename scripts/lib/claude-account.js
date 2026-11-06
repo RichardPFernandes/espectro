@@ -6,6 +6,7 @@
 //      sem reiniciar o watcher. "default" = conta padrão do CLI (~/.claude).
 //   2. WATCHER_CLAUDE_CONFIG_DIR no .env — sem o prefixo CLAUDE, sobrevive à limpeza.
 // Nenhum dos dois = conta padrão do CLI. Aceita ~ no começo.
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -103,7 +104,46 @@ function detectEffortRouterPlugin(settings, configDir) {
     return 'UNKNOWN';
 }
 
+// PRI-233 (PRI-205 S4) SP-2: prova de que o jev-model-router fica desligado num
+// despacho roteado. Gera <runDir>/routing-settings.json com todo plugin do router
+// conhecido em false (o --settings do despacho tem precedência sobre o settings da
+// conta), relê e confere o sha256. Fontes que um --settings não neutraliza (árvore
+// skills/ e pluginConfigs ligados) dão LOADED. Sem observação suficiente: UNKNOWN.
+// Nunca devolve NOT_LOADED sem o arquivo gravado e conferido.
+const ROUTER_SKILLS_DIR_KEY = 'jev-model-router@skills-dir';
+
+function routedPluginProof({ accountDir = null, runDir, home = os.homedir() } = {}) {
+    const configDir = accountDir || path.join(home, '.claude');
+    const isRouterKey = (key) => typeof key === 'string' && /^jev-model-router(?:@|$)/.test(key);
+    let settings = {};
+    const settingsFile = path.join(configDir, 'settings.json');
+    if (fs.existsSync(settingsFile)) {
+        try { settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8')) || {}; } catch { return { status: 'UNKNOWN', reason: 'account_settings_unreadable' }; }
+    }
+    try {
+        if (fs.existsSync(path.join(configDir, 'skills', 'jev-model-router'))) return { status: 'LOADED', reason: 'skills_dir_not_neutralizable' };
+    } catch { return { status: 'UNKNOWN', reason: 'account_skills_unreadable' }; }
+    const configs = Object.entries(settings.pluginConfigs || {}).filter(([key]) => isRouterKey(key));
+    if (configs.some(([, value]) => !(value === false || (value && typeof value === 'object' && value.enabled === false)))) {
+        return { status: 'LOADED', reason: 'plugin_config_not_neutralizable' };
+    }
+    const keys = new Set([ROUTER_SKILLS_DIR_KEY, ...Object.keys(settings.enabledPlugins || {}).filter(isRouterKey)]);
+    const generated = { enabledPlugins: Object.fromEntries([...keys].sort().map(k => [k, false])) };
+    const target = path.join(runDir, 'routing-settings.json');
+    const bytes = Buffer.from(`${JSON.stringify(generated, null, 2)}\n`);
+    const expected = crypto.createHash('sha256').update(bytes).digest('hex');
+    try {
+        fs.writeFileSync(target, bytes);
+        const back = crypto.createHash('sha256').update(fs.readFileSync(target)).digest('hex');
+        if (back !== expected) return { status: 'UNKNOWN', reason: 'settings_readback_mismatch' };
+    } catch {
+        return { status: 'UNKNOWN', reason: 'settings_write_failed' };
+    }
+    return { status: 'NOT_LOADED', settings_path: target, settings_sha256: expected };
+}
+
 module.exports = {
+    routedPluginProof,
     accountCostMetadata, detectEffortRouterPlugin, withClaudeAccount, resolveClaudeAccount,
     listClaudeAccounts, expandHome, DEFAULT_ACCOUNT, DEFAULT_PREFS_FILE,
 };
