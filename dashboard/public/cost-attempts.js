@@ -7,6 +7,24 @@
   const status = { NOT_OBSERVED: 'contadores não observados', DIMENSION_NOT_OBSERVED: 'modo não observado', PRICING_UNAVAILABLE: 'tabela histórica indisponível', UNPRICED: 'modelo sem preço' };
   const role = row => `${row.role === 'main' ? 'principal' : row.role === 'subagent' ? 'subagente' : row.role}${row.role_provenance === 'CONFLICTED' ? ' · CONFLICTED (atribuição parcial)' : ''}`;
 
+  const source = { FIXED_NODE: 'nó fixo (default_route)', CONSERVATIVE_DEFAULT: 'default conservador', HUMAN_OVERRIDE: 'override humano', RULES: 'regra' };
+  const meta = (label, value) => `<div><dt>${esc(label)}</dt><dd>${value}</dd></div>`;
+  // PRI-233: RoutingDecision de Attempt roteado (só leitura). String (UNAVAILABLE/UNKNOWN) segue como antes.
+  function routingHtml(rd) {
+    if (!rd || typeof rd !== 'object') return meta('RoutingDecision', esc(rd));
+    const chosen = rd.chosen ? `${esc(rd.chosen.model_id)} · tier ${esc(rd.chosen.tier)} · esforço ${esc(rd.chosen.effort)}` : 'nenhum';
+    const discarded = (rd.candidates || []).filter(c => c.status !== 'CHOSEN');
+    const sha = String(rd.policy_ref?.sha256 ?? 'UNKNOWN');
+    return [
+      meta('Modelo roteado', `${chosen}${rd.effort_applied === false ? '<br><small>esforço não aplicado</small>' : rd.effort_applied === true ? '' : `<br><small>esforço aplicado: ${esc(rd.effort_applied)}</small>`}`),
+      meta('Classe / regra', `${esc(rd.class ?? '—')} / ${esc(rd.class_rule ?? '—')}`),
+      meta('Origem da seleção', `${esc(Object.hasOwn(source, rd.selection_source) ? source[rd.selection_source] : rd.selection_source)}<br><small>plugin de roteamento: ${esc(rd.effort_router_plugin)}</small>`),
+      meta('Policy', `${esc(rd.policy_ref?.id)}@${esc(rd.policy_ref?.version)}<br><small><code title="${esc(sha)}">${esc(sha === 'UNKNOWN' ? sha : sha.slice(0, 12))}</code></small>`),
+      rd.override_ref ? meta('Override', `${esc(rd.override_ref.ref ?? 'sem ref')} · escopo ${esc(rd.override_ref.scope)}`) : '',
+      discarded.length ? meta('Candidatos descartados', discarded.map(c => `${esc(c.model_id)} (${esc(c.tier)}) · ${esc(c.reason ?? c.status)}`).join('<br>')) : '',
+    ].join('');
+  }
+
   function attemptHtml(a) {
     const usage = a.observed.usage;
     const rows = usage.map(u => `<tr><td>${esc(u.model)}</td><td>${esc(role(u))}</td>
@@ -19,7 +37,7 @@
         <div><dt>Runtime / conta</dt><dd>${esc(a.runtime)} · ${esc(a.account.label)}</dd></div>
         <div><dt>Nó admitido / atribuído</dt><dd>${esc(a.admission.admitted_node)} / ${esc(a.attributed_node)}</dd></div>
         <div><dt>Modelo solicitado / esforço</dt><dd>${esc(a.requested.model)} / ${esc(a.requested.effort)}</dd></div>
-        <div><dt>RoutingDecision</dt><dd>${esc(a.routing_decision)}</dd></div>
+        ${routingHtml(a.routing_decision)}
       </dl>
       ${typeof root.RunSubtasks?.wouldRouteNote === 'function' ? root.RunSubtasks.wouldRouteNote(a) : ''}
       ${a.role_attribution.status !== 'COMPLETE' ? `<p class="cost-note">Atribuição por papel: ${esc(a.role_attribution.status)} · mensagens em conflito: ${esc(tokens(a.role_attribution.conflicted_messages))}.</p>` : ''}

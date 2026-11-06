@@ -149,9 +149,15 @@ function evaluatePluginProof({ accountDir = null, projectDir = null, home = os.h
     // precedência sobre user/projeto/local e faz merge por chave em enabledPlugins. Plugin
     // em skills/ usa a chave <nome>@skills-dir; skill solta é escondida por skillOverrides
     // "off" (docs oficiais: code.claude.com/docs/en/plugins/loading.md e skills.md).
+    // pluginConfigs só com opções (sem `enabled`) não liga o plugin: conferido no CLI real
+    // 2.1.319 com o router em skills/ da conta (cli-plugin-proof.md, caso B). `enabled`
+    // presente e diferente de false, ou o valor `true`, não foi conferido → LOADED.
+    const configEnables = (value) => value === true ||
+        (value !== false && !(value && typeof value === 'object')) ||
+        (value && typeof value === 'object' && Object.hasOwn(value, 'enabled') && value.enabled !== false);
     for (const settings of sources) {
         const configs = Object.entries(settings.pluginConfigs || {}).filter(([key]) => isRouterKey(key));
-        if (configs.some(([, value]) => !(value === false || (value && typeof value === 'object' && value.enabled === false)))) {
+        if (configs.some(([, value]) => configEnables(value))) {
             return { status: 'LOADED', reason: 'plugin_config_not_neutralizable' };
         }
     }
@@ -163,8 +169,9 @@ function evaluatePluginProof({ accountDir = null, projectDir = null, home = os.h
     return { status: 'NEUTRALIZABLE', generated };
 }
 
-// Conferido no CLI real 2.1.319 para skill solta em .claude/skills/ do projeto
-// (~/Workspace/prisma-evidence/2026-11-06-pri-233/cli-plugin-proof.md).
+// Conferido no CLI real 2.1.319 (~/Workspace/prisma-evidence/2026-11-06-pri-233/
+// cli-plugin-proof.md): skill solta no projeto e na conta, plugin de marketplace em
+// enabledPlugins e o router como plugin em skills/ da conta (@skills-dir).
 function routedPluginProof({ runDir, ...opts } = {}) {
     const evaluation = evaluatePluginProof(opts);
     if (evaluation.status !== 'NEUTRALIZABLE') return evaluation;
