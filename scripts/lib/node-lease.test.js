@@ -291,6 +291,21 @@ test('startup: órfão é recuperado e redespachado no MESMO nó, com nota de re
 
     assert.strictEqual((await watcher.dispatchTicket(ticket(92201))).action, 'dispatched');
     assert.ok(await waitFor(() => claudeCalled(new RegExp(`/verify ${orphan.taskId}.*RECUPERAÇÃO`))));
+    // O wrapper detached ainda roda `node-lease.js release` depois que o claude sai: releaseNode
+    // (in_progress) e, em seguida, fulfillOnExit (Attempt). Sem esperar os dois, o test.after
+    // apaga o diretório do run enquanto o release ainda escreve nele (ENOTEMPTY intermitente).
+    // Mesmo padrão do teste 92101.
+    assert.ok(await waitFor(() => read(orphan.dir).status === 'in_progress'), 'release do wrapper do redespacho recuperado devolve pra in_progress');
+    const executeNodeStatus = () => {
+        const attemptDir = path.join(orphan.dir, 'dom06', 'attempts');
+        if (!fs.existsSync(attemptDir)) return null;
+        const attemptName = fs.readdirSync(attemptDir).find(name => name.endsWith('.json'));
+        if (!attemptName) return null;
+        const attempt = JSON.parse(fs.readFileSync(path.join(attemptDir, attemptName), 'utf8'));
+        return attempt.obligations.find(item => item.id === 'execute_node').status;
+    };
+    await waitFor(() => executeNodeStatus() === 'fulfilled');
+    assert.strictEqual(executeNodeStatus(), 'fulfilled', 'fulfillOnExit do wrapper não cumpriu execute_node no Attempt do redespacho recuperado em 5 s após o release');
     assert.strictEqual(read(orphan.dir).recovered_from_orphan, undefined, 'marcador consumido no redespacho');
 
     assert.strictEqual((await watcher.dispatchTicket(ticket(92202))).reason, 'status_needs_human_review');
