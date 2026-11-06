@@ -66,3 +66,7 @@ Receita oficial da suíte `scripts`: Node 22.23.2 1470/0 (6 skip de ambiente); N
 - faltantes ficam UNKNOWN (veredito UNKNOWN, nunca PASS).
 
 **Resultado:** 394/394 em Node 22 e 24; `lint:src`, `check:js` e `arch:check` limpos. O U15 real (contra a TypeSafe) não foi executado: depende da ativação (P-4) e do teste de fumaça manual (P-3).
+
+## T10 (2026-11-06)
+
+AC-15, AC-16 e AC-17 cobertos no módulo `classifier-selection.js` (21/21 em Node 22 e 24): opções, as seis validações do §4.8 na ordem com os códigos, auditoria por versão, append-only, concorrência por CAS e trava. A admissão (T11) e a API (T12) ainda não usam o registro.

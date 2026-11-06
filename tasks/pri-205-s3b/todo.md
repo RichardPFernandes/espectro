@@ -265,14 +265,37 @@ não é mais necessária).
 com as validações 0–5 do B11, na ordem, e gravação atômica com auditoria.
 
 **Aceite:**
-- [ ] AC-15: `policy_only` → `{provider: off}`; `policy_jev` → seção completa da plataforma; sem registro vale a policy
-- [ ] AC-16: um teste por código de recusa, na ordem (idempotência antes do CAS; `active` sempre `CLASSIFIER_NOT_CALIBRATED`; jev sem ref `CLASSIFIER_SCOPE_NOT_AUTHORIZED`)
-- [ ] AC-17: auditoria completa por versão; concorrência com a mesma `expected_version` → um grava, o outro 409
+- [x] AC-15: `policy_only` → `{provider: off}`; `policy_jev` → seção completa da plataforma; sem registro vale a policy
+- [x] AC-16: um teste por código de recusa, na ordem (idempotência antes do CAS; `active` sempre `CLASSIFIER_NOT_CALIBRATED`; jev sem ref `CLASSIFIER_SCOPE_NOT_AUTHORIZED`)
+- [x] AC-17: auditoria completa por versão; concorrência com a mesma `expected_version` → um grava, o outro 409
 
 **Verificação:** `node --test scripts/lib/classifier-selection.test.js`
 **Dependências:** T5
 **Arquivos:** `scripts/lib/classifier-selection.js`, `.test.js`
 **Tamanho:** M
+
+**Feito (2026-11-06):** `classifier-selection.test.js` 21/21 em Node 22.23.2 e 24.22.1. Cobre:
+- sem registro vale a policy;
+- "Só policy" grava `off` com auditoria completa;
+- "Policy + Jev" grava a seção da plataforma, que passa no `validateClassifierSection`;
+- ordem 0: idempotência antes do CAS;
+- ordem 1: CAS, e a mesma `expected_version` duas vezes;
+- trava tomada → 409;
+- ordem 2: jev sem ref → 422 com o motivo;
+- ordem 3: `active` sempre 422;
+- ordem 4: unidade S6 ativa → 422; sem registro grava `NO_REGISTRY`;
+- 8 pedidos inválidos → 400;
+- append-only com `previous_version`;
+- registro quebrado → efetivo `off` e o writer não sobrescreve;
+- `previewOptions` para a UI;
+- `registryGitIgnored`.
+
+Conjunto: 369/369. `lint:src`, `check:js` e `arch:check` limpos.
+
+**Decisões de implementação:**
+- A trava de escrita é um arquivo exclusivo (`.lock`). Se tiver mais de 60 s, é considerada abandonada e retomada uma vez.
+- Registro ilegível → 409 `CLASSIFIER_SELECTION_INVALID`, sem sobrescrever.
+- A trava de experimento lê `memory/routing/experiment-units.json` (ainda não existe). Se o arquivo estiver ilegível, a troca fica travada (fail-closed).
 
 ## T11: admissão lê o registro
 

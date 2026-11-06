@@ -81,7 +81,7 @@ Ref (Q9), a policy p2 (Q2) e o item no Keychain.
 - [ ] T9: consumidores dos Attempts, documentação do consumidor e proposta da p2
 
 ### Fase 4: seletor "Só policy" × "Policy + Jev" (R-SEL, SPEC §B11; Q11–Q14)
-- [ ] T10: registro de seleção e writer governado (`classifier-selection.js`)
+- [x] T10: registro de seleção e writer governado (`classifier-selection.js`)
 - [ ] T11: admissão lê o registro (snapshot `classifier_selection_ref`, `selection_version` no `classifier_ref`)
 - [ ] T12: `GET`/`POST /api/routing/classifier` no Dashboard; contrato enviado à sessão `routing-screens`
 
