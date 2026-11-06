@@ -6,6 +6,7 @@
 //      sem reiniciar o watcher. "default" = conta padrão do CLI (~/.claude).
 //   2. WATCHER_CLAUDE_CONFIG_DIR no .env — sem o prefixo CLAUDE, sobrevive à limpeza.
 // Nenhum dos dois = conta padrão do CLI. Aceita ~ no começo.
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -103,7 +104,73 @@ function detectEffortRouterPlugin(settings, configDir) {
     return 'UNKNOWN';
 }
 
+// PRI-233 (PRI-205 S4) SP-2: prova de que o jev-model-router fica desligado num
+// despacho roteado. Gera <runDir>/routing-settings.json com todo plugin do router
+// conhecido em false (o --settings do despacho tem precedência sobre os settings de
+// usuário, projeto e local), relê e confere o sha256.
+// Fontes lidas (revisão do Checkpoint B, MAJOR-2): settings da conta, settings.json e
+// settings.local.json do projeto (cwd do despacho). O --settings gerado desliga toda
+// chave do router e esconde a skill (skillOverrides "off"), o que cobre também árvores
+// skills/ da conta e do projeto. pluginConfigs ligado (não coberto pela doc) dá LOADED;
+// managed settings presentes ficam acima do CLI e dão UNKNOWN. Nunca devolve
+// NOT_LOADED sem o arquivo gravado e conferido.
+const ROUTER_SKILLS_DIR_KEY = 'jev-model-router@skills-dir';
+const DEFAULT_MANAGED_PATHS = Object.freeze([
+    '/Library/Application Support/ClaudeCode/managed-settings.json',
+    '/etc/claude-code/managed-settings.json',
+]);
+
+function readSettings(file) {
+    if (!fs.existsSync(file)) return { ok: true, settings: {} };
+    try { return { ok: true, settings: JSON.parse(fs.readFileSync(file, 'utf8')) || {} }; } catch { return { ok: false }; }
+}
+
+function routedPluginProof({ accountDir = null, runDir, projectDir = null, home = os.homedir(), managedPaths = DEFAULT_MANAGED_PATHS } = {}) {
+    const configDir = accountDir || path.join(home, '.claude');
+    const isRouterKey = (key) => typeof key === 'string' && /^jev-model-router(?:@|$)/.test(key);
+    try {
+        if (managedPaths.some(p => fs.existsSync(p))) return { status: 'UNKNOWN', reason: 'managed_settings_present' };
+    } catch { return { status: 'UNKNOWN', reason: 'managed_settings_unreadable' }; }
+    const account = readSettings(path.join(configDir, 'settings.json'));
+    if (!account.ok) return { status: 'UNKNOWN', reason: 'account_settings_unreadable' };
+    const sources = [account.settings];
+    if (projectDir) {
+        for (const name of ['settings.json', 'settings.local.json']) {
+            const project = readSettings(path.join(projectDir, '.claude', name));
+            if (!project.ok) return { status: 'UNKNOWN', reason: 'project_settings_unreadable' };
+            sources.push(project.settings);
+        }
+    }
+    // Árvore skills/ (conta ou projeto): neutralizável pelo próprio --settings, que tem
+    // precedência sobre user/projeto/local e faz merge por chave em enabledPlugins. Plugin
+    // em skills/ usa a chave <nome>@skills-dir; skill solta é escondida por skillOverrides
+    // "off" (docs oficiais: code.claude.com/docs/en/plugins/loading.md e skills.md).
+    for (const settings of sources) {
+        const configs = Object.entries(settings.pluginConfigs || {}).filter(([key]) => isRouterKey(key));
+        if (configs.some(([, value]) => !(value === false || (value && typeof value === 'object' && value.enabled === false)))) {
+            return { status: 'LOADED', reason: 'plugin_config_not_neutralizable' };
+        }
+    }
+    const keys = new Set([ROUTER_SKILLS_DIR_KEY, ...sources.flatMap(s => Object.keys(s.enabledPlugins || {}).filter(isRouterKey))]);
+    const generated = {
+        enabledPlugins: Object.fromEntries([...keys].sort().map(k => [k, false])),
+        skillOverrides: { 'jev-model-router': 'off' },
+    };
+    const target = path.join(runDir, 'routing-settings.json');
+    const bytes = Buffer.from(`${JSON.stringify(generated, null, 2)}\n`);
+    const expected = crypto.createHash('sha256').update(bytes).digest('hex');
+    try {
+        fs.writeFileSync(target, bytes);
+        const back = crypto.createHash('sha256').update(fs.readFileSync(target)).digest('hex');
+        if (back !== expected) return { status: 'UNKNOWN', reason: 'settings_readback_mismatch' };
+    } catch {
+        return { status: 'UNKNOWN', reason: 'settings_write_failed' };
+    }
+    return { status: 'NOT_LOADED', settings_path: target, settings_sha256: expected };
+}
+
 module.exports = {
+    routedPluginProof,
     accountCostMetadata, detectEffortRouterPlugin, withClaudeAccount, resolveClaudeAccount,
     listClaudeAccounts, expandHome, DEFAULT_ACCOUNT, DEFAULT_PREFS_FILE,
 };
