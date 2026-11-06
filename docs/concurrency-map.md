@@ -99,10 +99,6 @@ e do dashboard, que rodam em processos diferentes. Ele roda inteiro sob a reserv
   visível: state.json `running` ou `gate.fetch_dispatch` com o `agent_pid` do agente.
 - Quem chega com a reserva tomada pula com `despacho_reservado`.
 - Se o dono crashar, a reserva é retomada no próximo despacho e não fica órfã. Em erro, ela sai no `finally`.
-- Falha ao gravar o marcador `fetch_dispatch` aborta o spawn (falha fechada): sem marcador
-  visível a corrida original voltaria.
-- Hostname diferente na reserva (mesma regra da trava do watcher) conta como dono vivo —
-  tipicamente disco compartilhado entre máquinas; remoção manual se tiver certeza.
 
 O marcador `fetch_dispatch` passa a valer também para o watcher (`nodeLease.fetchDispatchLive`).
 Enquanto o agente do fetch_ticket+plan vive, nada é redespachado no ticket (`fetch_em_execucao`),

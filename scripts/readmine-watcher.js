@@ -4199,6 +4199,20 @@ async function dispatchTicketReserved(ticket) {
             dropUnspawnedFetchDispatch(id, newTaskLease);
             throw e;
         }
+        let fetchAdmission;
+        try {
+            fetchAdmission = dom06.prepareDispatch({
+                runDir: path.join(taskRunsDir(id), '_dom06'),
+                node: 'fetch_ticket',
+                ticketId: id,
+                baseBranch: base,
+                specHash: null,
+                cause: 'dispatch',
+            });
+        } catch (e) {
+            dropUnspawnedFetchDispatch(id, newTaskLease);
+            throw e;
+        }
         if (!fetchAdmission.dispatch) {
             dropUnspawnedFetchDispatch(id, newTaskLease);
             console.warn(`Ticket #${id}: admissão DOM06 ${fetchAdmission.attempt.result} — fetch_ticket não despachado e não conta como PASS.`);
