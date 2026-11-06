@@ -22,6 +22,16 @@ const crypto = require('crypto');
 
 const RETRY_CAUSES = new Set(['retry', 'timeout', 'resume']);
 const BINDING_CAUSES = new Set(['dispatch', 'retry', 'timeout', 'resume']);
+// PRI-233 (PRI-205 S4, RC-2/D-5): `escalation` só reservada. Nenhum Attempt com essa
+// causa pode ser criado até a S5b (autorização humana). Recusa explícita: antes, causa
+// desconhecida virava `dispatch` em silêncio, e escalation passaria como despacho comum.
+const RESERVED_CAUSES = new Set(['escalation']);
+// Desfechos de resolução que impedem o início do Attempt (v9 §4.7; F13).
+const NOT_STARTED_CAUSES = new Set(['CONFIG_UNVERIFIABLE', 'PROVIDER_NOT_ELIGIBLE']);
+
+function assertCauseAllowed(cause) {
+    if (RESERVED_CAUSES.has(cause)) throw new Error(`ESCALATION_CAUSE_RESERVED: causa "${cause}" reservada, sem efeito na S4`);
+}
 
 function attemptDir(runDir) {
     return path.join(runDir, 'dom06', 'attempts');
@@ -76,6 +86,10 @@ function classifyAdmission(admission) {
     if (admission.status === 'DENIED') {
         return { dispatch: false, result: 'DENIED', reason: 'ADMISSION_DENIED' };
     }
+    if (admission.status === 'NOT_STARTED') {
+        if (!NOT_STARTED_CAUSES.has(admission.cause)) return { dispatch: false, result: 'UNKNOWN', reason: 'ADMISSION_UNKNOWN' };
+        return { dispatch: false, result: 'NOT_STARTED', reason: admission.cause };
+    }
     if (admission.status !== 'ADMITTED' || !admission.owner || !admission.snapshot || typeof admission.snapshot !== 'object') {
         return { dispatch: false, result: 'UNKNOWN', reason: 'ADMISSION_INCOMPLETE' };
     }
@@ -107,10 +121,16 @@ function persist(runDir, attempt) {
     return attemptPath(runDir, attempt.attempt_id);
 }
 
-function beginAttempt(runDir, { node, admission, obligations, cause = 'dispatch', rebindRefused = null } = {}) {
+function beginAttempt(runDir, { node, admission, obligations, cause = 'dispatch', rebindRefused = null, routing } = {}) {
+    assertCauseAllowed(cause);
     const gate = classifyAdmission(admission);
     const attempt = blankAttempt({ node, cause, result: gate.result });
     attempt.rebind_refused = rebindRefused;
+    // RoutingDecision (PRI-233) só quando há roteamento: Attempt AS-IS fica sem o campo.
+    if (routing !== undefined) attempt.routing = structuredClone(routing);
+    if (gate.result === 'NOT_STARTED') {
+        attempt.not_started = { cause: admission.cause, detail: admission.detail ?? null };
+    }
     if (!gate.dispatch) {
         const attemptFile = persist(runDir, attempt);
         return { dispatch: false, reason: gate.reason, attempt, attemptFile, spawned: false };
@@ -145,6 +165,7 @@ function readAttempt(attemptFile) {
 }
 
 function retryAttempt(runDir, { node, cause, proposed } = {}) {
+    assertCauseAllowed(cause);
     const previous = latestBound(runDir, node);
     if (!previous || previous.authority === 'revoked' || !Array.isArray(previous.obligations)) {
         const reason = previous?.authority === 'revoked' ? 'AUTHORITY_REVOKED' : 'ADMISSION_UNKNOWN';
@@ -196,6 +217,7 @@ function causeFromState(state) {
 
 function prepareDispatch({ runDir, node, ticketId, baseBranch = null, specHash = null, cause = 'dispatch', state = null } = {}) {
     const resolvedCause = state ? causeFromState(state) : cause;
+    assertCauseAllowed(resolvedCause);
     const hold = readHold(runDir);
     if (hold && hold.status !== 'ADMITTED') {
         return beginAttempt(runDir, {
@@ -402,7 +424,7 @@ function summarize(attempt) {
         verdict: 'UNKNOWN',
     };
     if (!attempt?.started) {
-        const result = attempt?.result === 'DENIED' ? 'DENIED' : 'UNKNOWN';
+        const result = attempt?.result === 'DENIED' || attempt?.result === 'NOT_STARTED' ? attempt.result : 'UNKNOWN';
         return { ...summary, result, verdict: result };
     }
     if (!obligations) return summary;
@@ -411,6 +433,25 @@ function summarize(attempt) {
         return { ...summary, pending, pending_count: 0, pass: true, result: 'COMPLETE', verdict: 'PASS' };
     }
     return { ...summary, pending, pending_count: pending.length, result: 'INCOMPLETE', verdict: 'INCOMPLETE' };
+}
+
+// Registro `escalation_proposal` (RC-2/DP-1): só a forma. Não há produtor na S4 e nenhum
+// caminho do escritor transforma a proposta em despacho. A proposta nunca carrega a
+// autorização: authorization_ref nasce null e só a S5b (humano) a preenche.
+function validateEscalationProposal(p) {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return { ok: false, errors: ['not_object'] };
+    const errors = [];
+    const route = r => r && typeof r === 'object' && typeof r.model_id === 'string' && r.model_id !== '' && typeof r.effort === 'string' && r.effort !== '';
+    if (typeof p.node !== 'string' || !p.node) errors.push('node_invalid');
+    if (p.subtask_key !== null && typeof p.subtask_key !== 'string') errors.push('subtask_key_invalid');
+    if (typeof p.failure_class !== 'string' || !p.failure_class) errors.push('failure_class_invalid');
+    if (!route(p.from)) errors.push('from_invalid');
+    if (!route(p.to)) errors.push('to_invalid');
+    if (typeof p.proposed_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(p.proposed_at) || !Number.isFinite(Date.parse(p.proposed_at))) {
+        errors.push('proposed_at_invalid');
+    }
+    if (p.authorization_ref !== null) errors.push('authorization_ref_must_be_null');
+    return { ok: errors.length === 0, errors };
 }
 
 function argValue(argv, name) {
@@ -496,6 +537,7 @@ module.exports = {
     beginAttempt, retryAttempt, prepareDispatch, causeFromState, spawnIfAdmitted,
     readAttempt, recordEffect, revoke, authorizeEffect, applyExternalEffect, summarize,
     fulfillOnExit, obligationsFor, listAttempts, closeAttempt, redmineEffect,
+    RESERVED_CAUSES, NOT_STARTED_CAUSES, validateEscalationProposal,
 };
 
 if (require.main === module) {

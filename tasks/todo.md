@@ -101,22 +101,23 @@ sem spawn e sem PASS. A causa `escalation` é recusada com erro explícito em
 `dispatch`. `escalation_proposal` ganha um validador de forma, sem produtor.
 
 **Critérios de aceite:**
-- [ ] Um Attempt `NOT_STARTED` fica gravado com `started: false`, motivo e detalhe, e `spawnIfAdmitted` não chama o spawn.
-- [ ] `cause: 'escalation'` em qualquer das três funções lança ou devolve recusa, sem gravar arquivo em `attempts/` (AC-10).
-- [ ] Os testes atuais do DOM06 e o `dom06-dispatch-env.test.js` passam.
+- [x] Um Attempt `NOT_STARTED` fica gravado com `started: false`, motivo e detalhe, e `spawnIfAdmitted` não chama o spawn. Causa fora de `CONFIG_UNVERIFIABLE`/`PROVIDER_NOT_ELIGIBLE` vira `UNKNOWN`.
+- [x] `cause: 'escalation'` nas três funções lança `ESCALATION_CAUSE_RESERVED`, sem gravar Attempt (AC-10). Outra causa desconhecida continua virando `dispatch`, como hoje.
+- [x] Os testes atuais do DOM06 e o `dom06-dispatch-env.test.js` passam. A RoutingDecision só entra no Attempt quando é passada; o Attempt AS-IS segue sem o campo `routing`.
 
-**Verificação:**
-- [ ] `node --test scripts/lib/dom06-attempt.test.js scripts/lib/dom06-dispatch-env.test.js`
+**Verificação (2026-11-06):**
+- [x] `dom06-attempt.test.js` 16/16 (7 novos).
 
 **Dependências:** T1 (pode andar em paralelo com T2/T3).
 **Arquivos:** `scripts/lib/dom06-attempt.js` (+test).
 **Tamanho:** S. **ACs do SPEC:** AC-10, base de AC-05 a AC-08.
 
 ### Checkpoint A
-- [ ] `cd scripts && npm test`, `cd dashboard && npm test`
-- [ ] `cd scripts && npm run check:js && npm run arch:check && npm run lint:src`
-- [ ] Golden da T1 inalterado
-- [ ] Revisão do Richard antes da fase 2
+- [x] Node 22: scripts 1194 pass / 0 fail / 6 skip; dashboard 298 / 0.
+- [x] `check:js`, `lint:src` e `arch:check` limpos (sem violação nova).
+- [x] Golden da T1 inalterado.
+- [ ] Revisão do Richard antes da fase 2.
+- **Instabilidade observada (UNKNOWN se é pré-existente):** 3 testes de tempo do watcher em `cost-tracking.test.js` (298, 299 e 303; os dois últimos em cascata do 298) falharam em 2 de 6 rodadas completas da suíte scripts nesta sessão. Sozinho, o arquivo passou 4 de 4. A causa provável é o `waitFor` de 5 s sob carga, com os arquivos de teste rodando em paralelo; o golden da T1 acrescenta processos do watcher à rodada. Nenhuma tarefa da S4 toca `cost-tracking` até a T7. Não comparei com a base sem a T1.
 
 ## Fase 2: ligação no despacho
 
