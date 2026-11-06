@@ -35,6 +35,8 @@ const [watcherPath, id, resultFile] = process.argv.slice(2).filter(a => a !== '-
 // fetch do watcher stubado; cada chamada fica registrada para as asserções de aviso.
 global.fetch = async (url, opts = {}) => {
     fs.appendFileSync(process.env.FETCH_LOG, JSON.stringify({ url: String(url), method: opts.method || 'GET', body: opts.body || null }) + '\\n');
+    // FAIL_PUT=1: o Redmine responde 500 aos PUTs (aviso que não chegou).
+    if (process.env.FAIL_PUT === '1' && opts.method === 'PUT') return { ok: false, status: 500, json: async () => ({}), text: async () => '' };
     return { ok: true, status: 204, json: async () => ({}), text: async () => '' };
 };
 const watcher = require(watcherPath);
@@ -137,7 +139,7 @@ const fetchLog = path.join(tmp, 'fetch.jsonl');
 const redminePuts = id => (fs.existsSync(fetchLog) ? fs.readFileSync(fetchLog, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [])
     .filter(c => c.method === 'PUT' && c.url.endsWith(`/issues/${id}.json`));
 
-function dispatch(repo, id, scenario, { follow = true } = {}) {
+function dispatch(repo, id, scenario, { follow = true, failPut = false } = {}) {
     const resultFile = path.join(results, `${scenario}-${Date.now()}.json`);
     const env = {
         PATH: `${binDir}:${process.env.PATH}`,
@@ -154,6 +156,7 @@ function dispatch(repo, id, scenario, { follow = true } = {}) {
         REDMINE_MIN_INTERVAL_MS: '0',
         ROUTING_SCENARIO: scenario,
         FETCH_LOG: fetchLog,
+        ...(failPut ? { FAIL_PUT: '1' } : {}),
     };
     const args = [driver, WATCHER, String(id), resultFile, ...(follow ? ['--follow'] : [])];
     return new Promise(resolve => {
@@ -317,7 +320,11 @@ test('T7 / AC-05: snapshot adulterado → NOT_STARTED/CONFIG_UNVERIFIABLE, sem r
     assert.strictEqual(ns.routing, undefined, 'sem snapshot íntegro não há decisão');
 });
 
-test('T7 / AC-03: ticket novo ON → fetch_ticket+plan no default_route, 1 Attempt NOT_STARTED e 1 aviso em 3 ticks', async () => {
+// Bugbot (PR #97): ticket novo recusado não cria branch nem worktree; sem Run não há
+// Attempt, a recusa fica no marcador RUNS_DIR/<ticket>-routing-not-started.json.
+const notStartedMarker = (repo, id) => path.join(repo, 'memory', 'runs', `${id}-routing-not-started.json`);
+
+test('T7 / AC-03: ticket novo ON → fetch_ticket+plan no default_route, recusa sem worktree e 1 aviso em 3 ticks', async () => {
     const id = 233703;
     const repo = consumer(r => writeRouting(r));
     for (let i = 0; i < 3; i++) {
@@ -325,12 +332,38 @@ test('T7 / AC-03: ticket novo ON → fetch_ticket+plan no default_route, 1 Attem
         assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
         assert.strictEqual(invocations(`t7-novo-${i}`), 0);
     }
-    const attempts = dom06.listAttempts(fetchRunDirOf(repo, id));
-    assert.deepStrictEqual(attempts.map(x => [x.node, x.started, x.result]), [['fetch_ticket', false, 'NOT_STARTED']]);
-    assert.deepStrictEqual(attempts[0].routing.chosen, { model_id: 'm-t3', effort: 'alto', cli_effort: 'high', tier: 'T3' });
-    assert.strictEqual(attempts[0].routing.selection_source, 'FIXED_NODE');
+    assert.ok(!fs.existsSync(worktreeOf(repo, id)), 'nenhum worktree criado para ticket recusado');
+    assert.strictEqual(git(repo, 'branch', '--list', String(id)), '', 'nenhuma branch do ticket criada');
+    const marker = JSON.parse(fs.readFileSync(notStartedMarker(repo, id), 'utf8'));
+    assert.deepStrictEqual([marker.node, marker.result, marker.cause, marker.detail],
+        ['fetch_ticket', 'NOT_STARTED', 'CONFIG_UNVERIFIABLE', 'EFFORT_MECHANISM_UNAVAILABLE']);
+    assert.deepStrictEqual(marker.routing.chosen, { model_id: 'm-t3', effort: 'alto', cli_effort: 'high', tier: 'T3' });
+    assert.strictEqual(marker.routing.selection_source, 'FIXED_NODE');
+    assert.ok(marker.notified_at, 'aviso marcado depois de enviado');
     assert.strictEqual(redminePuts(id).length, 1);
     assert.ok(!fs.existsSync(taskDirOf(repo, id)), 'nenhuma task criada');
+});
+
+test('Bugbot (PR #97): aviso que não chegou ao Redmine é tentado de novo no tick seguinte', async () => {
+    const recusado = 233706;
+    const repo = consumer(r => writeRouting(r));
+    await dispatch(repo, recusado, 'b-falha-1', { follow: false, failPut: true });
+    assert.strictEqual(redminePuts(recusado).length, 1);
+    assert.strictEqual(JSON.parse(fs.readFileSync(notStartedMarker(repo, recusado), 'utf8')).notified_at, null);
+    await dispatch(repo, recusado, 'b-falha-2', { follow: false });
+    assert.strictEqual(redminePuts(recusado).length, 2, 'tentou de novo');
+    assert.ok(JSON.parse(fs.readFileSync(notStartedMarker(repo, recusado), 'utf8')).notified_at);
+    await dispatch(repo, recusado, 'b-falha-3', { follow: false });
+    assert.strictEqual(redminePuts(recusado).length, 2, 'depois de enviado, não repete');
+
+    // Mesmo comportamento no aviso de admissão recusada por config inválida (por projeto).
+    const invalido = consumer(r => writeRouting(r, { badSha: true }));
+    const blocked = path.join(invalido, 'memory', 'runs', 'routing-admission-blocked.json');
+    await dispatch(invalido, 233707, 'b-falha-adm-1', { follow: false, failPut: true });
+    assert.strictEqual(JSON.parse(fs.readFileSync(blocked, 'utf8')).notified_at, null);
+    await dispatch(invalido, 233707, 'b-falha-adm-2', { follow: false });
+    assert.strictEqual(redminePuts(233707).length, 2);
+    assert.ok(JSON.parse(fs.readFileSync(blocked, 'utf8')).notified_at);
 });
 
 // ── Revisão do Checkpoint B ────────────────────────────────────────────────────

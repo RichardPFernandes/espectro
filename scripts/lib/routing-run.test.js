@@ -172,17 +172,29 @@ test('loadRunSnapshot: sha da ligação diverge do snapshot → snapshot_binding
 const invalidCfg = (over = {}) => ({ status: 'INVALID', cause: 'POLICY_HASH_MISMATCH', detail: 'expected:ff', transient: false, ...over });
 const AT = '2026-11-06T12:00:00.000Z';
 
-test('blockedNotice: primeiro bloqueio não transitório avisa e grava a assinatura', () => {
+// Bugbot no PR #97: notified_at só é gravado depois que o aviso saiu (markNoticeSent);
+// aviso que falhou é tentado de novo no próximo tick.
+const sent = (r, at = AT) => rr.markNoticeSent(r.marker, at);
+
+test('blockedNotice: primeiro bloqueio não transitório avisa; notified_at só depois do envio', () => {
     const r = rr.blockedNotice(null, invalidCfg(), { ticketId: 1, at: AT });
     assert.strictEqual(r.notify, true);
     assert.deepStrictEqual(r.marker, {
         signature: 'POLICY_HASH_MISMATCH|expected:ff', cause: 'POLICY_HASH_MISMATCH', detail: 'expected:ff',
-        transient: false, transient_count: 0, tickets: [1], first_blocked_at: AT, notified_at: AT,
+        transient: false, transient_count: 0, tickets: [1], first_blocked_at: AT, notified_at: null,
     });
+    assert.strictEqual(sent(r).notified_at, AT);
+});
+
+test('blockedNotice: aviso que falhou (sem markNoticeSent) é tentado de novo no tick seguinte', () => {
+    const failed = rr.blockedNotice(null, invalidCfg(), { ticketId: 1, at: AT });
+    const retry = rr.blockedNotice(failed.marker, invalidCfg(), { ticketId: 1, at: '2026-11-06T12:05:00.000Z' });
+    assert.strictEqual(retry.notify, true);
+    assert.strictEqual(retry.marker.first_blocked_at, AT);
 });
 
 test('blockedNotice: mesma assinatura não avisa de novo; outro ticket entra na lista (um aviso por projeto)', () => {
-    const first = rr.blockedNotice(null, invalidCfg(), { ticketId: 1, at: AT }).marker;
+    const first = sent(rr.blockedNotice(null, invalidCfg(), { ticketId: 1, at: AT }));
     const again = rr.blockedNotice(first, invalidCfg(), { ticketId: 1, at: '2026-11-06T12:05:00.000Z' });
     assert.strictEqual(again.notify, false);
     const other = rr.blockedNotice(again.marker, invalidCfg(), { ticketId: 2, at: '2026-11-06T12:06:00.000Z' });
@@ -205,7 +217,7 @@ test('blockedNotice: leitura transitória só avisa no 3º bloqueio seguido (R-6
     const c = rr.blockedNotice(b.marker, t, { ticketId: 1, at: AT });
     assert.deepStrictEqual([a.notify, b.notify, c.notify], [false, false, true]);
     assert.deepStrictEqual([a.marker.transient_count, b.marker.transient_count, c.marker.transient_count], [1, 2, 3]);
-    assert.strictEqual(rr.blockedNotice(c.marker, t, { ticketId: 1, at: AT }).notify, false);
+    assert.strictEqual(rr.blockedNotice(sent(c), t, { ticketId: 1, at: AT }).notify, false);
 });
 
 test('loadRunSnapshot: attempt_id com caminho (../) é recusado sem ler fora do _dom06', () => {

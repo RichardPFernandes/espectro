@@ -1488,23 +1488,37 @@ async function notifyRoutingAdmissionBlocked(ticket, cfg) {
         `Saídas: corrigir a policy ou o policy_ref (id, versão, sha256) em ${modelRoutingPolicy.ROUTING_CONFIG_REL}, ` +
         `ou desligar explicitamente com { "mode": "OFF" } nesse arquivo. ` +
         `Confira com: node scripts/validate-config.js --severity error. O próximo tick retoma sozinho.`;
+    const sent = await sendRoutingNotice(ticket.id, msg, 'Roteamento ON inválido: admissão recusada',
+        `${cfg.cause} — ver ${modelRoutingPolicy.ROUTING_CONFIG_REL}`);
+    // Só agora o aviso conta como dado; falhou = sem notified_at e o próximo tick tenta de novo.
+    if (sent) fs.writeFileSync(markerPath, JSON.stringify(routingRun.markNoticeSent(marker, new Date().toISOString()), null, 2));
+}
+
+// Aviso de roteamento pelo canal existente: comentário no Redmine (fora de --follow, como
+// notifyBlocked) e notificação local. Devolve true só se o aviso saiu: com --follow o canal
+// é a notificação local (o Redmine fica de fora de propósito); sem --follow, o PUT tem que
+// voltar 2xx. Falha de rede ou HTTP de erro = false, para o chamador tentar no próximo tick.
+async function sendRoutingNotice(ticketId, msg, title, localBody) {
+    let sent = FOLLOW;
     if (!FOLLOW) {
         try {
-            await redmineFetch(`${REDMINE_URL}/issues/${ticket.id}.json`, {
+            const res = await redmineFetch(`${REDMINE_URL}/issues/${ticketId}.json`, {
                 method: 'PUT',
                 headers: { 'X-Redmine-API-Key': REDMINE_API_KEY, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ issue: { notes: msg } }),
             });
+            sent = Boolean(res && res.ok);
+            if (!sent) console.error(`Aviso de roteamento não chegou ao Redmine #${ticketId}: HTTP ${res?.status} — tento de novo no próximo tick.`);
         } catch (e) {
-            console.error(`Falha comentando admissão recusada (roteamento) no Redmine #${ticket.id}:`, e.message);
+            console.error(`Falha comentando aviso de roteamento no Redmine #${ticketId}:`, e.message);
         }
     }
     try {
-        const title = 'Roteamento ON inválido: admissão recusada';
-        execFileSync('osascript', ['-e', `display notification ${JSON.stringify(`${cfg.cause} — ver ${modelRoutingPolicy.ROUTING_CONFIG_REL}`)} with title ${JSON.stringify(title)}`], { stdio: 'ignore' });
+        execFileSync('osascript', ['-e', `display notification ${JSON.stringify(localBody)} with title ${JSON.stringify(title)}`], { stdio: 'ignore' });
     } catch {
         // Não é macOS, ou sem permissão de notificação — não bloqueia o tick.
     }
+    return sent;
 }
 
 // PRI-233 (PRI-205 S4, T7): resolução do §4.7 no início de cada Attempt de uma Run
@@ -1515,7 +1529,9 @@ async function notifyRoutingAdmissionBlocked(ticket, cfg) {
 // humano: nenhum até a T8 (P-2). Núcleo 2 (Jev): nunca na S4.
 function routingCapabilities(runDir, projectDir) {
     const effortMechanism = modelRouting.PRODUCTION_EFFORT_MECHANISM;
-    if (effortMechanism.status !== 'VERIFIED') return { effortMechanism, pluginProof: { status: 'NOT_EVALUATED' } };
+    // runDir null = pré-checagem sem worktree (ticket novo): a prova grava o --settings,
+    // então fica para a resolução completa, depois do worktree.
+    if (effortMechanism.status !== 'VERIFIED' || !runDir) return { effortMechanism, pluginProof: { status: 'NOT_EVALUATED' } };
     // projectDir = cwd do despacho (worktree do ticket): os settings do projeto também valem.
     return { effortMechanism, pluginProof: routedPluginProof({ accountDir: resolveClaudeAccount().dir, runDir, projectDir }) };
 }
@@ -1568,41 +1584,36 @@ async function refuseRoutedNode({ ticket, taskId, node, state, dir, resolution }
     return { action: 'skip', reason: 'routing_not_started', taskId, node, cause: resolution.cause, detail: resolution.detail };
 }
 
-// Ticket novo: o fetch_ticket recusado não cria Run. Um Attempt NOT_STARTED e um aviso
-// por assinatura (causa|detalhe|snapshot); repetir o tick não grava outro Attempt.
-async function refuseRoutedFetch({ ticket, fetchRunDir, resolution, snapshotSha }) {
-    const markerPath = path.join(fetchRunDir, 'routing-not-started.json');
+// Ticket novo: o fetch_ticket recusado não cria Run nem worktree (Bugbot, PR #97: um
+// worktree por ticket recusado esgotaria o pool). Sem Run não há Attempt: a recusa e a
+// RoutingDecision ficam no marcador RUNS_DIR/<ticket>-routing-not-started.json, como a
+// admissão recusada por config inválida. Um aviso por assinatura (causa|detalhe|snapshot),
+// marcado como dado só depois de sair; falhou = o próximo tick tenta de novo.
+function routingNotStartedMarkerPath(ticketId) {
+    return `${RUNS_DIR}/${ticketId}-routing-not-started.json`;
+}
+
+async function refuseRoutedFetch({ ticket, resolution, snapshotSha }) {
+    const markerPath = routingNotStartedMarkerPath(ticket.id);
     const signature = `${resolution.cause}|${resolution.detail}|${snapshotSha}`;
     const base = { action: 'skip', reason: 'routing_not_started', node: 'fetch_ticket', cause: resolution.cause, detail: resolution.detail };
-    if (alreadyNotified(markerPath, signature)) return base;
-    // Deduplicação pelo próprio Attempt (MINOR-7): se um tick anterior gravou o Attempt e
-    // caiu antes do marcador, não grava outro; só completa o aviso.
-    const last = dom06.listAttempts(fetchRunDir).filter(a => a.node === 'fetch_ticket').at(-1);
-    const sameAttempt = last && last.result === 'NOT_STARTED'
-        && last.not_started?.cause === resolution.cause && last.not_started?.detail === resolution.detail
-        && (last.routing?.snapshot_sha256 ?? null) === (resolution.decision?.snapshot_sha256 ?? null);
-    if (!sameAttempt) {
-        dom06.beginAttempt(fetchRunDir, {
-            node: 'fetch_ticket', cause: 'dispatch',
-            admission: { status: 'NOT_STARTED', cause: resolution.cause, detail: resolution.detail },
-            ...(resolution.decision ? { routing: resolution.decision } : {}),
-        });
+    let marker = null;
+    try { marker = JSON.parse(fs.readFileSync(markerPath, 'utf8')); } catch { marker = null; }
+    if (marker && marker.signature === signature && marker.notified_at) return base;
+    if (!marker || marker.signature !== signature) {
+        marker = {
+            signature, node: 'fetch_ticket', result: 'NOT_STARTED', cause: resolution.cause, detail: resolution.detail,
+            snapshot_sha256: snapshotSha, routing: resolution.decision || null,
+            first_refused_at: new Date().toISOString(), notified_at: null,
+        };
+        fs.mkdirSync(RUNS_DIR, { recursive: true });
+        fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
     }
     const note = routingRefusalNote('fetch_ticket', resolution);
     console.warn(`Ticket #${ticket.id}: ${note}`);
-    if (!FOLLOW) {
-        try {
-            await redmineFetch(`${REDMINE_URL}/issues/${ticket.id}.json`, {
-                method: 'PUT',
-                headers: { 'X-Redmine-API-Key': REDMINE_API_KEY, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ issue: { notes: `[Watcher] Ticket #${ticket.id}: ${note}` } }),
-            });
-        } catch (e) {
-            console.error(`Falha comentando NOT_STARTED de roteamento no Redmine #${ticket.id}:`, e.message);
-        }
-    }
-    fs.mkdirSync(fetchRunDir, { recursive: true });
-    markNotified(markerPath, signature);
+    const sent = await sendRoutingNotice(ticket.id, `[Watcher] Ticket #${ticket.id}: ${note}`,
+        `Ticket #${ticket.id}: roteamento não iniciou`, `${resolution.cause} (${resolution.detail})`);
+    if (sent) fs.writeFileSync(markerPath, JSON.stringify({ ...marker, notified_at: new Date().toISOString() }, null, 2));
     return base;
 }
 
@@ -4314,6 +4325,23 @@ async function dispatchTicketReserved(ticket) {
             return { action: 'dry-run', node: 'fetch_ticket' };
         }
 
+        // PRI-233 (Bugbot, PR #97): pré-checagem do roteamento ANTES de qualquer branch ou
+        // worktree. Toda recusa que não depende da prova do plugin (hoje sempre
+        // EFFORT_MECHANISM_UNAVAILABLE, SP-1) sai aqui, sem tocar no git. Só a prova do
+        // plugin precisa do worktree (settings do projeto e --settings gravado): com
+        // esforço verificado, a resolução completa acontece depois do worktree, abaixo.
+        if (routingSnapshot) {
+            const pre = resolveNodeRoute({
+                runSnapshot: { ok: true, snapshot: routingSnapshot }, node: 'fetch_ticket', ticket,
+                worktreePath: REPO_PATH, isRecusaQA, runDir: null,
+            });
+            if (!pre.ok && pre.detail !== 'PLUGIN_NOT_PROVEN_OFF') {
+                return refuseRoutedFetch({ ticket, resolution: pre, snapshotSha: routingSnapshot.sha256 });
+            }
+        } else {
+            try { fs.rmSync(routingNotStartedMarkerPath(id), { force: true }); } catch { /* best-effort */ }
+        }
+
         for (const repo of SIBLING_REPOS) {
             const repoPath = `${WORKSPACE}/${repo}`;
             if (!fs.existsSync(repoPath)) continue;
@@ -4331,18 +4359,20 @@ async function dispatchTicketReserved(ticket) {
         }
 
         // PRI-233 (PRI-205 S4, T7): com mode ON, o segmento fetch_ticket+plan (nós fixos,
-        // D6) é resolvido antes do marcador/lease. Recusa = NOT_STARTED sem Run.
+        // D6) é resolvido por inteiro (com a prova do plugin) antes do marcador/lease.
+        // Só chega aqui com o esforço verificado; recusa = NOT_STARTED sem Run.
         let fetchRouting = null;
         if (routingSnapshot) {
             const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
+            fs.mkdirSync(fetchRunDir, { recursive: true });
             fetchRouting = resolveNodeRoute({
                 runSnapshot: { ok: true, snapshot: routingSnapshot }, node: 'fetch_ticket', ticket, worktreePath, isRecusaQA,
                 runDir: fetchRunDir,
             });
             if (!fetchRouting.ok) {
-                return refuseRoutedFetch({ ticket, fetchRunDir, resolution: fetchRouting, snapshotSha: routingSnapshot.sha256 });
+                return refuseRoutedFetch({ ticket, resolution: fetchRouting, snapshotSha: routingSnapshot.sha256 });
             }
-            try { fs.rmSync(path.join(fetchRunDir, 'routing-not-started.json'), { force: true }); } catch { /* best-effort */ }
+            try { fs.rmSync(routingNotStartedMarkerPath(id), { force: true }); } catch { /* best-effort */ }
         }
 
         // state.json ainda não existe (quem cria é o próprio fetch_ticket) — não há o

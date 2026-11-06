@@ -130,17 +130,24 @@ function blockedNotice(marker, cfg, { ticketId, at }) {
     const transientCount = cfg.transient ? (same ? (marker.transient_count || 0) : 0) + 1 : 0;
     const alreadyNotified = Boolean(same && marker.notified_at);
     const notify = !alreadyNotified && (!cfg.transient || transientCount >= TRANSIENT_NOTICE_AFTER);
+    // notified_at só é gravado por markNoticeSent, depois que o aviso saiu de fato: um
+    // PUT que falhou deixa o marcador sem ele e o próximo tick tenta de novo (Bugbot, PR #97).
     return {
         notify,
         marker: {
             signature, cause: cfg.cause, detail: cfg.detail, transient: Boolean(cfg.transient),
             transient_count: transientCount, tickets,
             first_blocked_at: same ? marker.first_blocked_at : at,
-            notified_at: notify ? at : (same ? marker.notified_at || null : null),
+            notified_at: same ? marker.notified_at || null : null,
         },
     };
 }
 
+function markNoticeSent(marker, at) {
+    return { ...marker, notified_at: at };
+}
+
 module.exports = {
-    recordAdmission, clearAdmission, markConsumed, bindingFor, loadRunSnapshot, blockedNotice, TRANSIENT_NOTICE_AFTER,
+    recordAdmission, clearAdmission, markConsumed, bindingFor, loadRunSnapshot, blockedNotice, markNoticeSent,
+    TRANSIENT_NOTICE_AFTER,
 };
