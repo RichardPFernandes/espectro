@@ -4,8 +4,8 @@
 //     authorized_op_id | request_id, approver_id, approver_current_right, record_digest }
 // Só leitura. Qualquer campo indeterminado → recusa. Exceção/timeout da porta = falha
 // de obtenção (UNVERIFIABLE, transitória); resposta obtida e negativa = FAIL definitivo.
-// Adaptador produtivo: UNKNOWN (fonte PHI não conforme; U-002-9). Aqui só existe o
-// adaptador de TESTE, e ele nunca lê a árvore candidata do PR (M-02): só `at_commit`.
+// Adaptador produtivo: UNKNOWN (fonte PHI não conforme; U-002-9). Os adaptadores de TESTE
+// (D-231-4 A) ficam no kit de testes do writer e nunca leem a árvore do PR (M-02).
 
 const { RE_HEX64, RE_ID } = require('./sdd-writer-command');
 
@@ -30,39 +30,4 @@ function checkRecord(r) {
     return { valid: true };
 }
 
-/**
- * Adaptador SÓ DE TESTE. `records`: { [decision_ref]: record | (atCommit) => record }.
- * `fail`: { [decision_ref]: 'throw' } simula exceção/timeout. `calls` registra as consultas.
- */
-function createTestDecisionPort(records = {}, { fail = {} } = {}) {
-    const calls = [];
-    return {
-        calls,
-        async resolveDecision(ref, atCommit) {
-            calls.push({ ref, atCommit });
-            if (fail[ref] === 'throw' || fail['*'] === 'throw') throw new DecisionPortError(`porta indisponível para ${ref}`);
-            const r = records[ref];
-            if (r === undefined) return { state: 'UNKNOWN' };
-            return typeof r === 'function' ? r(atCommit) : r;
-        },
-    };
-}
-
-/**
- * Adaptador SÓ DE TESTE lido de objetos Git em `at_commit` (para o caso M-02): registros em
- * `<dir>/<decision_ref>.json`. Ler `at_commit` = base nunca enxerga o que o PR adiciona.
- */
-function createTreeDecisionPort(git, dir) {
-    const calls = [];
-    return {
-        calls,
-        async resolveDecision(ref, atCommit) {
-            calls.push({ ref, atCommit });
-            const bytes = git.readBlob(atCommit, `${dir}/${ref.replace(/[^A-Za-z0-9._-]/g, '_')}.json`);
-            if (bytes === null) return { state: 'UNKNOWN' };
-            return JSON.parse(bytes.toString('utf8'));
-        },
-    };
-}
-
-module.exports = { checkRecord, createTestDecisionPort, createTreeDecisionPort, DecisionPortError, STATES };
+module.exports = { checkRecord, DecisionPortError, STATES };

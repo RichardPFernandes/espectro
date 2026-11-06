@@ -123,7 +123,9 @@ function applyCommand(state, command, { editResolver = null, strictEdit = true }
             const baseOk = head === null
                 ? p.base_version === null && p.base_hash === null
                 : p.base_version === head.cap_version && p.base_hash === head.cap_hash;
+            // @guard V-8-BASE
             if (!baseOk) return { ok: false, code: 'STALE', reason: 'INC_BASE' };
+            // @end V-8-BASE
             if (head !== null && p.target_hash === head.cap_hash) {
                 if (p.target_version !== head.cap_version) return { ok: false, code: 'DERIVED', reason: 'NOOP_TARGET_VERSION' };
                 next.version_head = { cap_version: head.cap_version, cap_hash: head.cap_hash, spec_sha256: p.target_spec_sha256 };
@@ -139,7 +141,9 @@ function applyCommand(state, command, { editResolver = null, strictEdit = true }
         }
         case 'ACTIVATE':
         case 'REACTIVATE': {
+            // @guard V-8-ACTIVE
             if (!sameActive(p.expected_active, state.active)) return { ok: false, code: 'STALE', reason: 'EXPECTED_ACTIVE' };
+            // @end V-8-ACTIVE
             if (command.op === 'REACTIVATE' && state.active === null) return { ok: false, code: 'STALE', reason: 'REACTIVATE_WITHOUT_ACTIVE' };
             const v = state.versions[String(p.target_version)];
             if (!v || v.cap_hash !== p.target_hash) return { ok: false, code: 'STALE', reason: 'TARGET_NOT_A_VERSION' };

@@ -11,7 +11,7 @@
 const cmd = require('./sdd-writer-command');
 const { treeReader, UnverifiableError } = require('./sdd-writer-git');
 const { parseLog, deriveState, applyCommand, appendBytes } = require('./sdd-writer-log');
-const { decide } = require('./sdd-writer-decide');
+const { decide, readAdmittedProject } = require('./sdd-writer-decide');
 const { recognize } = require('./sdd-writer-replay');
 const { generateCatalog } = require('./sdd-writer-catalog');
 const { auditCapability, DEFAULT_IDENTITIES } = require('./sdd-writer-audit');
@@ -33,12 +33,18 @@ function markerInfo(git, sha) {
 
 /** Passo 1 da C-21: fetch + busca do op_id (caminho R interno, com C-17/C-22). */
 async function locate(a) {
-    const { git, host, registryBranch, project, slug, opId, commandSha256, decisionPort, identities, testOnly } = a;
+    const { git, host, registryBranch, project, slug, opId, commandSha256, decisionPort, identities } = a;
+    const testOnly = a[cmd.TEST_HOOKS] || {};
     const tip = await host.getRef(`refs/heads/${registryBranch}`);
     if (!tip) return { verdict: out('UNCERTAIN', 'UNCERTAIN', { reason: 'REGISTRY_BRANCH_UNREADABLE' }) };
+    // O-13 / C-04: registry_branch e projeto conferidos com a representação admitida (E-01), sem default.
+    const admitted = readAdmittedProject(treeReader(git, tip));
+    if (!admitted.ok || admitted.value.registry_branch !== registryBranch || admitted.value.project !== project) {
+        return { verdict: out('REFUSED', 'NONE', { code: 'E01', reason: 'REGISTRY_CONFIG_MISMATCH' }) };
+    }
     let audit;
     try {
-        audit = await auditCapability({ git, host, tip, project, slug, decisionPort, mode: 'incremental', identities, testOnly });
+        audit = await auditCapability({ git, host, tip, project, slug, decisionPort, mode: 'incremental', identities, [cmd.TEST_HOOKS]: testOnly });
     } catch {
         audit = { state: 'UNVERIFIABLE' };
     }
@@ -52,12 +58,16 @@ async function locate(a) {
 
 async function releaseIfOurs(a, markerSha) {
     const { git, host, project, slug, opId } = a;
-    if (markerSha && markerInfo(git, markerSha).opId === opId) await host.deleteRef(cmd.markerRef(project, slug));
+    if (!markerSha) return;
+    const info = markerInfo(git, markerSha);
+    // O-11: o marcador é "nosso" só com o mesmo op_id E o mesmo command_sha256 (C-20).
+    if (info.opId === opId && info.commandSha256 === a.commandSha256) await host.deleteRef(cmd.markerRef(project, slug));
 }
 
 /** Monta a árvore candidata (N1) sobre `tip`. → {tree, entry} | {refused} */
 async function buildCandidate(a, tip, audit) {
-    const { git, project, slug, command, opId, decisionRef, actor, at, specBytes, decisionPort, testOnly } = a;
+    const { git, project, slug, command, opId, decisionRef, actor, at, specBytes, decisionPort } = a;
+    const testOnly = a[cmd.TEST_HOOKS] || {};
     const base = treeReader(git, tip);
     const oldBytes = base.read(cmd.logPath(slug));
     const old = oldBytes === null ? { status: 'OK', entries: [] } : parseLog(oldBytes);
@@ -85,7 +95,7 @@ async function buildCandidate(a, tip, audit) {
     const r = await decide({
         mode: 'new', project, slug, baseTree: base, resultTree: treeReader(git, tree), entry,
         oldEntries: old.entries, oldState: derived.state, auditState: audit.state, decisionPort, atCommit: tip,
-        conditions: testOnly.conditions, editResolver: testOnly.editResolver || null,
+        [cmd.TEST_HOOKS]: testOnly,
     });
     if (!r.ok) return { refused: { code: r.code, reason: r.reason } };
     return { tree, entry };
@@ -103,6 +113,8 @@ async function resumeFromMarker(a, markerSha, depth) {
         const otherOpen = prs.find(p => p.state === 'OPEN');
         return out('WAITING', 'WAIT_OTHER_OPERATION', otherOpen ? { pr: otherOpen.number } : {});
     }
+    // O-11: mesmo op_id com outro conteúdo é conflito, nunca "a mesma operação".
+    if (info.commandSha256 !== a.commandSha256) return out('CONFLICT', 'NEW_COMMAND_REQUIRED', { reason: 'MARKER_OP_ID_OTHER_CONTENT' });
     const merged = prs.find(p => p.state === 'MERGED');
     if (merged) {
         // m-06: corrida entre os passos 1 e 2 → novo fetch e nova busca.
@@ -119,7 +131,12 @@ async function resumeFromMarker(a, markerSha, depth) {
         // @else
         // const definitive = st && st.state === 'FAIL';
         // @end R3-01
-        if (definitive) {
+        // HP-1 estrito: PR cuja base ficou para trás nunca recebe status nem integra. Sem merge, a
+        // Decision não foi consumida (C-14): fecha e reapresenta sobre o tip, se a geração ainda vale
+        // (EM §3 prop. 4: commit independente não invalida o comando).
+        const tipNow = await host.getRef(`refs/heads/${registryBranch}`);
+        const behind = !st && git.firstParent(open.head) !== tipNow;
+        if (definitive || behind) {
             await host.closePR(open.number);
             open.state = 'CLOSED';
         } else {
@@ -153,9 +170,13 @@ async function resumeFromMarker(a, markerSha, depth) {
  * @returns {Promise<{state, control, result:'NOT_AVAILABLE', ...}>}
  */
 async function prepare(a, depth = 0) {
-    const args = { identities: DEFAULT_IDENTITIES, testOnly: {}, ...a, commandSha256: cmd.commandSha256(a.command) };
+    const args = { identities: DEFAULT_IDENTITIES, ...a, commandSha256: cmd.commandSha256(a.command) };
     try {
         const { git, host, project, slug, opId, actor, preparerId, at } = args;
+        // O-17 / HP-3 N-07: preparador e instante identificam o commit do marcador.
+        if (typeof preparerId !== 'string' || !cmd.RE_ID.test(preparerId) || typeof at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(at)) {
+            return out('REFUSED', 'NONE', { code: 'COMMAND', reason: 'PREPARER_OR_AT' });
+        }
         // C-21 passo 1 / C-12 nota: caminho R interno antes de qualquer elegibilidade.
         // @guard C21-SEARCH
         const loc = await locate(args);
@@ -172,7 +193,8 @@ async function prepare(a, depth = 0) {
         if (cand.refused) return out('REFUSED', cand.refused.code === 'STALE' ? 'NEW_COMMAND_REQUIRED' : 'NONE', { code: cand.refused.code, reason: cand.refused.reason });
         // HP-3 [r3] N-07: preparador + at no commit → dois W-P nunca produzem o mesmo SHA.
         const message = `sdd-op ${opId}\n\nop_id: ${opId}\ncommand_sha256: ${args.commandSha256}\npreparer: ${preparerId}\nat: ${at}\n`;
-        const commit = git.commitTree(cand.tree, [loc.tip], message, actor);
+        // O-08: datas fixadas por `at` → commit-tree determinístico (repetição idempotente).
+        const commit = git.commitTree(cand.tree, [loc.tip], message, actor, { date: at });
         const acquired = await host.createRefIfAbsent(cmd.markerRef(project, slug), commit);
         if (!acquired) {
             const existing = await host.getRef(cmd.markerRef(project, slug));
@@ -200,6 +222,9 @@ async function humanReleaseMarker({ git, host, registryBranch, project, slug, op
     if (prs.length) return { released: false, reason: 'PR_EXISTS' };
     const tip = await host.getRef(`refs/heads/${registryBranch}`);
     const parsed = parseLog(treeReader(git, tip).read(cmd.logPath(slug)));
+    // O-12: a ausência do op_id tem de ser CONFERIDA; log ilegível ou marcador sem op_id → recusa.
+    if (!info.opId) return { released: false, reason: 'MARKER_WITHOUT_OP_ID' };
+    if (parsed.status !== 'OK' && parsed.status !== 'ABSENT') return { released: false, reason: 'LOG_UNREADABLE' };
     if (parsed.status === 'OK' && parsed.entries.some(e => e.op_id === info.opId)) return { released: false, reason: 'OP_ID_IN_LOG' };
     await host.comment(`sdd-op: ref ${cmd.markerRef(project, slug)} (op_id ${info.opId}, autor ${info.author}) removida por ação humana de ${operator}`);
     await host.deleteRef(cmd.markerRef(project, slug));

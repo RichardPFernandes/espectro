@@ -89,7 +89,7 @@ function createHost({ hp3 = true, identities = DEFAULT_IDENTITIES, registryBranc
         // ---- PRs (HP-8) ----
         async openPR({ branch, author, head }) {
             guard();
-            const pr = { number: prs.length + 1, branch, author, head: head || refOf(`refs/heads/${branch}`), state: 'OPEN', base: registryBranch, verified: true, checkRuns: 0 };
+            const pr = { number: prs.length + 1, branch, author, head: head || refOf(`refs/heads/${branch}`), state: 'OPEN', base: registryBranch, verified: true, batchProtected: 1, checkRuns: 0 };
             prs.push(pr);
             return pr;
         },
@@ -108,7 +108,7 @@ function createHost({ hp3 = true, identities = DEFAULT_IDENTITIES, registryBranc
         propose(files, { branch, author = 'richard', extra = {}, withCode = true } = {}) {
             const c = commitFiles(files, [refOf(mainRef)], `proposta ${branch}`, author, { withCode });
             git.run(['update-ref', `refs/heads/${branch}`, c]);
-            const pr = { number: prs.length + 1, branch, author, head: c, state: 'OPEN', base: registryBranch, verified: true, checkRuns: 0, ...extra };
+            const pr = { number: prs.length + 1, branch, author, head: c, state: 'OPEN', base: registryBranch, verified: true, batchProtected: 1, checkRuns: 0, ...extra };
             prs.push(pr);
             return pr;
         },
@@ -141,7 +141,7 @@ function createHost({ hp3 = true, identities = DEFAULT_IDENTITIES, registryBranc
             // @end HP-7
             void codeFrom;
             const res = await mod.checkIntegration({
-                git, host, baseSha: base, resultTree: tree, decisionPort, hp3, identities, testOnly,
+                git, host, baseSha: base, resultTree: tree, decisionPort, hp3, identities, [cmd.TEST_HOOKS]: testOnly,
                 pr: { target: pr.base, author: pr.author, branch: pr.branch, number: pr.number, verified: pr.verified, batchProtected: pr.batchProtected },
             });
             const status = { state: res.status, code: res.code || null, identity: identities.wc, codeDigest: digest, base, tree };
@@ -177,7 +177,7 @@ function createHost({ hp3 = true, identities = DEFAULT_IDENTITIES, registryBranc
  */
 function makeEnv({ hp3 = true, scenarioOpts = {}, seedFiles = null, hostImpl = createHost } = {}) {
     const { fixtures } = require('./sdd-writer-testkit');
-    const { createTestDecisionPort } = require('./sdd-writer-decision');
+    const { createTestDecisionPort } = require('./sdd-writer-testkit');
     const host = hostImpl({ hp3 });
     const s = fixtures.scenario(scenarioOpts);
     host.seed(seedFiles || s.state.files);

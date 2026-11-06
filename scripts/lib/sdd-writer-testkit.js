@@ -75,6 +75,7 @@ const W = () => ({
     specHash: require('./spec-hash'),
 });
 
+const TEST_HOOKS_KEY = Symbol.for('prisma.sdd-writer.test-hooks');
 const ROOT = process.env.PRISMA_ROOT || path.resolve(LIB, '..', '..');
 const H = c => c.repeat(64);
 const AT = '2026-11-06T12:00:00Z';
@@ -206,13 +207,13 @@ function scenario({ project = 'prisma', slug = 'spec-change', ticket = 'PRI-900'
             ctx: {
                 mode: 'new', project, slug, baseTree: tree(state.files, 'base'), resultTree: tree(result, 'result'),
                 entry, oldEntries: [...state.entries], oldState: state.state, auditState: 'OK', atCommit: 'base-sha',
-                editResolver: opts.editResolver || null,
+                [TEST_HOOKS_KEY]: { editResolver: opts.editResolver || null },
             },
         };
     }
 
     function commit(s) {
-        const r = log.applyCommand(state.state, s.entry.command, { editResolver: s.ctx.editResolver, strictEdit: false });
+        const r = log.applyCommand(state.state, s.entry.command, { editResolver: s.ctx[TEST_HOOKS_KEY].editResolver, strictEdit: false });
         if (!r.ok) throw new Error(`fixture: passo inválido ${r.code} ${r.reason}`);
         state.files = s.files;
         state.entries = [...state.entries, s.entry];
@@ -225,3 +226,46 @@ function scenario({ project = 'prisma', slug = 'spec-change', ticket = 'PRI-900'
 }
 
 module.exports.fixtures = { H, AT, ROOT, specText, contractHashOf, hashConfigBytes, admittedFiles, promotionFiles, approving, scenario };
+
+// ---------------------------------------------------------------------------
+// Adaptadores de Decision SÓ DE TESTE (D-231-4 A), fora da API de produção (O-07).
+const { DecisionPortError } = require('./sdd-writer-decision');
+
+/**
+ * Adaptador SÓ DE TESTE. `records`: { [decision_ref]: record | (atCommit) => record }.
+ * `fail`: { [decision_ref]: 'throw' } simula exceção/timeout. `calls` registra as consultas.
+ */
+function createTestDecisionPort(records = {}, { fail = {} } = {}) {
+    const calls = [];
+    return {
+        calls,
+        async resolveDecision(ref, atCommit) {
+            calls.push({ ref, atCommit });
+            if (fail[ref] === 'throw' || fail['*'] === 'throw') throw new DecisionPortError(`porta indisponível para ${ref}`);
+            const r = records[ref];
+            if (r === undefined) return { state: 'UNKNOWN' };
+            return typeof r === 'function' ? r(atCommit) : r;
+        },
+    };
+}
+
+/**
+ * Adaptador SÓ DE TESTE lido de objetos Git em `at_commit` (para o caso M-02): registros em
+ * `<dir>/<decision_ref>.json`. Ler `at_commit` = base nunca enxerga o que o PR adiciona.
+ */
+function createTreeDecisionPort(git, dir) {
+    const calls = [];
+    return {
+        calls,
+        async resolveDecision(ref, atCommit) {
+            calls.push({ ref, atCommit });
+            const bytes = git.readBlob(atCommit, `${dir}/${ref.replace(/[^A-Za-z0-9._-]/g, '_')}.json`);
+            if (bytes === null) return { state: 'UNKNOWN' };
+            return JSON.parse(bytes.toString('utf8'));
+        },
+    };
+}
+
+module.exports.createTestDecisionPort = createTestDecisionPort;
+module.exports.createTreeDecisionPort = createTreeDecisionPort;
+module.exports.TEST_HOOKS = require('./sdd-writer-command').TEST_HOOKS;

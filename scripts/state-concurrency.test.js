@@ -524,6 +524,9 @@ test('AC-02: comparação de state_version / execution_id / expected_* só em sc
     for (const file of sources()) {
         if (file === path.join(__dirname, 'cas.js')) continue;
         if (file.includes(`${path.sep}public${path.sep}`)) continue; // dica visual do banner; a decisão é o CAS do servidor
+        // Writer SDD (PRI-266): compara execution_id da PROMOÇÃO em registry_branch (P-1 iii),
+        // não o estado de run; o contrato C-20 o proíbe de usar scripts/cas.js.
+        if (/^sdd-writer[^/\\]*\.js$/.test(path.basename(file)) && file.includes(`${path.sep}lib${path.sep}`)) continue;
         fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
             if (cmp.test(line) && !/^\s*(\/\/|\*)/.test(line)) hits.push(`${path.relative(REPO, file)}:${i + 1}: ${line.trim()}`);
         });

@@ -5,7 +5,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { decide } = require('./sdd-writer-decide');
-const { createTestDecisionPort, createTreeDecisionPort } = require('./sdd-writer-decision');
+const { createTestDecisionPort, createTreeDecisionPort, TEST_HOOKS } = require('./sdd-writer-testkit');
 const { canonicalBytes } = require('./sdd-writer-jcs');
 const cmd = require('./sdd-writer-command');
 const { loadMutant, fixtures: F } = require('./sdd-writer-testkit');
@@ -15,7 +15,10 @@ const TEST_ONLY = { u0028Decided: true }; // D-266-3 A: condição injetada só 
 
 async function run(st, { records, port, over = {}, impl = decide } = {}) {
     const decisionPort = port || createTestDecisionPort(records || st.records);
-    return impl({ ...st.ctx, decisionPort, ...over });
+    const { conditions, ...rest } = over;
+    const ctx = { ...st.ctx, decisionPort, ...rest };
+    if (conditions) ctx[TEST_HOOKS] = { ...st.ctx[TEST_HOOKS], conditions };
+    return impl(ctx);
 }
 const decideOf = m => m.decide.decide;
 
@@ -352,7 +355,7 @@ describe('WT-F4-13 sabotagens (uma de cada vez): o caso ruim correspondente pass
             const m = loadMutant([file, guard]);
             // O writer sabotado gera o próprio catálogo (consistente com a sua regra).
             const files = { ...st.files };
-            const cat = m.catalog.generateCatalog(m.git.memTree(files), { editResolver: st.ctx.editResolver });
+            const cat = m.catalog.generateCatalog(m.git.memTree(files), { editResolver: st.ctx[TEST_HOOKS].editResolver });
             if (cat) files[cmd.CATALOG_PATH] = cat;
             const sabotaged = await run(st, { over: { ...over, resultTree: m.git.memTree(files, 'result') }, impl: decideOf(m) });
             assert.equal(sabotaged.ok, true, `sem ${name} o caso ruim deveria passar: ${JSON.stringify(sabotaged)}`);

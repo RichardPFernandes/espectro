@@ -17,6 +17,9 @@ const ADMITTED_PROJECT = `${ADMITTED_DIR}/project.json`;
 const ADMITTED_POLICY = `${ADMITTED_DIR}/policy.json`;
 const SPEC_HASH_CONFIG = '.claude/spec-hash-config.json';
 const HASH_SCOPE = 'contract_sections_v1';
+// D-266-3 A / O-07: ganchos SÓ de teste (condição U-002-8, resolvedor de edit) viajam numa
+// chave Symbol, que não sai de JSON, env nem argv: opção de configuração não os liga.
+const TEST_HOOKS = Symbol.for('prisma.sdd-writer.test-hooks');
 
 const OPS = ['INC', 'ACTIVATE', 'REACTIVATE', 'ARCHIVE', 'EDIT_ALIASES_SOURCES'];
 const VALIDATION_KINDS = ['qa_approved', 'verify_pass'];
@@ -187,7 +190,7 @@ function protectedSlugOf(p) {
 
 module.exports = {
     CANON, SPEC_ROOT, CATALOG_PATH, CAPABILITIES_DIR, ADMITTED_DIR, ADMITTED_PROJECT, ADMITTED_POLICY,
-    SPEC_HASH_CONFIG, HASH_SCOPE, OPS, VALIDATION_KINDS, RESULTS,
+    SPEC_HASH_CONFIG, HASH_SCOPE, TEST_HOOKS, OPS, VALIDATION_KINDS, RESULTS,
     RE_NAME, RE_ID, RE_HEX64,
     CommandError, validateCommand, parseCommandBytes, validateEntry, commandSha256, sha256hex,
     parseCapabilityId, deriveOpId, capDir, logPath, specPath, versionPath, markerRef, markerBranch, anchorTag,

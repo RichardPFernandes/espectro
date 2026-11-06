@@ -13,7 +13,7 @@
 
 const {
     validateEntry, CommandError, ADMITTED_PROJECT, ADMITTED_POLICY, SPEC_HASH_CONFIG, HASH_SCOPE,
-    specPath, versionPath, CATALOG_PATH, capDir, sha256hex, deriveOpId, parseCapabilityId, exactKeys,
+    logPath, specPath, versionPath, CATALOG_PATH, capDir, sha256hex, deriveOpId, parseCapabilityId, exactKeys,
     RE_NAME, RE_ID, RE_HEX64,
 } = require('./sdd-writer-command');
 const { parseCanonical, parseStrict } = require('./sdd-writer-jcs');
@@ -22,9 +22,10 @@ const { checkRecord } = require('./sdd-writer-decision');
 const { generateCatalog, projectCapabilities } = require('./sdd-writer-catalog');
 const { UnverifiableError } = require('./sdd-writer-git');
 const specHash = require('./spec-hash');
+const cmd = require('./sdd-writer-command');
 
 // U-002-8 aberta: E-01/E-02 em operação não-INC não decididas → operação não-INC impedida.
-// D-266-3 A: só teste injeta `conditions.u0028Decided`; nenhum CLI/W-C produtivo o aceita.
+// D-266-3 A: só teste injeta a condição, pela chave Symbol TEST_HOOKS (O-07).
 const PRODUCTION_CONDITIONS = Object.freeze({ u0028Decided: false });
 
 const fail = (code, reason) => ({ ok: false, code, reason });
@@ -61,6 +62,8 @@ function readAdmittedPolicy(tree) {
 }
 
 /** DS-03b (P-1 iv): o tipo vem da identidade admitida, nunca de config ou do payload. */
+// No Prisma, `verify_pass` segue condicionado à U-H3-4: até ela, vale a atestação do responsável
+// na Decision sobre o comando exato (RRC-SDD-002 §6; RRC-SDD-004 §4.5) — O-15.
 const requiredValidationKind = project => (project === 'prisma' ? 'verify_pass' : 'qa_approved');
 
 const PROMOTION_FIELDS = ['promotion_id', 'execution_id', 'spec_sha256', 'observed_contract_hash',
@@ -148,7 +151,8 @@ async function decide(ctx) {
     } catch (e) {
         if (e instanceof UnverifiableError) return fail('UNVERIFIABLE', e.reason);
         if (e && e.code === 'NOT_REGULAR_FILE') return fail('DERIVED', 'NOT_REGULAR_FILE');
-        // Erro inesperado: nunca PASS; tratado como não obtido (W-C roda de novo).
+        // Erro inesperado (defeito do writer, não do conteúdo): nunca PASS; tratado como não obtido,
+        // com a mesma política em check, decide e audit (O-06). Conteúdo inválido é definitivo.
         return fail('UNVERIFIABLE', `INTERNAL:${e && e.message}`);
     }
 }
@@ -156,8 +160,9 @@ async function decide(ctx) {
 async function decideInner(ctx) {
     const { mode, project, slug, baseTree, resultTree, entry, oldEntries, oldState, decisionPort, atCommit } = ctx;
     const sourcesTree = ctx.sourcesTree || resultTree;
-    const conditions = ctx.conditions || PRODUCTION_CONDITIONS;
-    const editResolver = ctx.editResolver || null;
+    const hooks = ctx[cmd.TEST_HOOKS] || {};
+    const conditions = hooks.conditions || PRODUCTION_CONDITIONS;
+    const editResolver = hooks.editResolver || null;
     if (mode !== 'new' && mode !== 'historical') throw new Error('mode inválido');
 
     // V-0 — elegibilidade da capability (estado de auditoria derivado, C-22).
@@ -271,16 +276,30 @@ async function decideInner(ctx) {
         }
     }
     // @end V-9-SPEC
+    const allowedNew = command.op === 'INC' ? versionPath(slug, command.approved_payload.target_spec_sha256) : null;
     // @guard V-9-VERSIONS
-    let allowedNew = null;
     if (command.op === 'INC') {
-        allowedNew = versionPath(slug, command.approved_payload.target_spec_sha256);
         const vb = resultTree.read(allowedNew);
         if (vb === null || spec === null || !vb.equals(spec)) return fail('DERIVED', 'VERSION_FILE');
     }
     const vchk = checkVersions(baseTree, resultTree, slug, allowedNew);
     if (!vchk.ok) return vchk;
     // @end V-9-VERSIONS
+    // O-01: o delta dentro de capabilities/<slug>/ é fechado: log.json, e, só na INC, spec.md e
+    // versions/<target_spec_sha256>.md. Qualquer outro arquivo acrescido, alterado ou removido → DERIVED.
+    // @guard V-9-CLOSED
+    const allowedPaths = new Set([logPath(slug), ...(command.op === 'INC' ? [specPath(slug), allowedNew] : [])]);
+    const dir = capDir(slug);
+    const pathsBefore = baseTree.list(dir);
+    const pathsAfter = resultTree.list(dir);
+    for (const p of new Set([...pathsBefore.keys(), ...pathsAfter.keys()])) {
+        if (allowedPaths.has(p)) continue;
+        if (p.startsWith(`${dir}/versions/`) && pathsBefore.has(p) && pathsAfter.has(p)) continue; // conferido acima
+        const b = pathsBefore.has(p) ? baseTree.read(p) : null;
+        const a = pathsAfter.has(p) ? resultTree.read(p) : null;
+        if (b === null || a === null || !a.equals(b)) return fail('DERIVED', 'CAPABILITY_DELTA_NOT_CLOSED');
+    }
+    // @end V-9-CLOSED
     // @guard V-9-CATALOG
     const cat = generateCatalog(resultTree, { editResolver });
     const catNow = resultTree.read(CATALOG_PATH);
@@ -293,7 +312,9 @@ async function decideInner(ctx) {
         const edit = editResolver(command.approved_payload.edit_sha256);
         const caps = projectCapabilities(resultTree, { editResolver });
         for (const a of edit.add || []) {
-            const holders = caps.filter(c => c.status === 'OK' && c.state.aliases.vigentes.some(x => aliasKey(x) === aliasKey(a)));
+            // O-03: unicidade não demonstrável não vale como única.
+            if (caps.some(c => c.status !== 'OK' || c.state.aliases.unknown)) return fail('ALIAS', 'ALIAS_UNIQUENESS_UNDEMONSTRABLE');
+            const holders = caps.filter(c => c.state.aliases.vigentes.some(x => aliasKey(x) === aliasKey(a)));
             if (holders.length !== 1) return fail('ALIAS', 'ALIAS_NOT_UNIQUE_IN_PROJECT');
         }
         // @end V-10

@@ -10,7 +10,7 @@ const { canonicalBytes } = require('./sdd-writer-jcs');
 const { appendBytes } = require('./sdd-writer-log');
 const { memTree } = require('./sdd-writer-git');
 const { decide } = require('./sdd-writer-decide');
-const { createTestDecisionPort } = require('./sdd-writer-decision');
+const { createTestDecisionPort, TEST_HOOKS } = require('./sdd-writer-testkit');
 const { projectCapabilities, resolveAlias, ambiguousAliases, generateCatalog } = require('./sdd-writer-catalog');
 const { auditCapability, runAudit } = require('./sdd-writer-audit');
 const { makeEnv } = require('./sdd-writer-hostsim');
@@ -109,13 +109,19 @@ describe('WT-F7-11 reescrita no meio do log preservando a ancestralidade do comm
 });
 
 describe('WT-F7-08 sabotagem: sem conferir o prefixo de bytes da âncora', () => {
-    it('a reescrita no meio deixa de ser VIOLATION', async () => {
+    // Desde a CR-4 (bytes antes do status), a reescrita é VIOLATION também pelo diff do commit:
+    // o prefixo da âncora virou defesa em profundidade. A sabotagem caracteriza essa redundância.
+    it('sem o prefixo da âncora, a reescrita continua VIOLATION pelo diff do commit (redundância declarada)', async () => {
         const m = loadMutant(['sdd-writer-audit.js', 'ANCHOR-PREFIX']);
         const env = await envWith(2);
         await wa(env);
         const files = { ...env.s.state.files, [LOG]: Buffer.from(env.s.state.files[LOG].toString().replace('"at":"2026-11-06T12:00:00Z"', '"at":"2026-11-06T12:00:01Z"')) };
         adminCommit(env, files);
-        assert.notEqual((await audit(env, 'full', m.audit.auditCapability)).state, 'VIOLATION');
+        const a = await audit(env, 'full', m.audit.auditCapability);
+        assert.equal(a.state, 'VIOLATION');
+        assert.ok(a.reasons.some(r => r.includes('PREFIX_NOT_PRESERVED')) && !a.reasons.some(r => r.includes('ANCHOR_PREFIX')), a.reasons.join());
+        const full = await audit(env);
+        assert.ok(full.reasons.some(r => r.includes('ANCHOR_PREFIX')), 'com a proteção, a âncora também acusa');
     });
 });
 
@@ -360,22 +366,22 @@ describe('WT-266-03 ambiguidade de alias herdada da base (R-RRC-01d A, fallback 
     it('W-C recusa alias novo que repete o valor; alias novo único passa mesmo com a ambiguidade herdada', async () => {
         const s = bypassBase();
         const dup = s.step('EDIT_ALIASES_SOURCES', { editResolver: sha => (sha === F.H('d') ? { add: [{ kind: 'module_name', value: 'x' }, X], retire: [] } : resolver(sha)), editSha: F.H('d') });
-        const r = await decide({ ...dup.ctx, decisionPort: createTestDecisionPort(dup.records), conditions: TEST_ONLY });
+        const r = await decide({ ...dup.ctx, decisionPort: createTestDecisionPort(dup.records), [TEST_HOOKS]: { ...dup.ctx[TEST_HOOKS], conditions: TEST_ONLY } });
         assert.equal(r.ok, false);
         const ok = s.step('EDIT_ALIASES_SOURCES', { editResolver: resolver, editSha: F.H('e') });
-        const r2 = await decide({ ...ok.ctx, decisionPort: createTestDecisionPort(ok.records), conditions: TEST_ONLY });
+        const r2 = await decide({ ...ok.ctx, decisionPort: createTestDecisionPort(ok.records), [TEST_HOOKS]: { ...ok.ctx[TEST_HOOKS], conditions: TEST_ONLY } });
         assert.equal(r2.ok, true, JSON.stringify(r2));
     });
     it('tombstone por Decision encerra; o vínculo retirado nunca é reativado', async () => {
         const s = bypassBase();
         const tomb = s.step('EDIT_ALIASES_SOURCES', { editResolver: resolver, editSha: F.H('c') });
-        const r = await decide({ ...tomb.ctx, decisionPort: createTestDecisionPort(tomb.records), conditions: TEST_ONLY });
+        const r = await decide({ ...tomb.ctx, decisionPort: createTestDecisionPort(tomb.records), [TEST_HOOKS]: { ...tomb.ctx[TEST_HOOKS], conditions: TEST_ONLY } });
         assert.equal(r.ok, true, JSON.stringify(r));
         s.commit(tomb);
         const caps = projectCapabilities(s.tree(), { editResolver: resolver });
         assert.deepEqual(resolveAlias(caps, X.kind, X.value), { status: 'RESOLVED', id: 'cap:prisma:alpha' });
         const again = s.step('EDIT_ALIASES_SOURCES', { editResolver: resolver, editSha: F.H('b') });
-        const r2 = await decide({ ...again.ctx, decisionPort: createTestDecisionPort(again.records), conditions: TEST_ONLY });
+        const r2 = await decide({ ...again.ctx, decisionPort: createTestDecisionPort(again.records), [TEST_HOOKS]: { ...again.ctx[TEST_HOOKS], conditions: TEST_ONLY } });
         assert.deepEqual([r2.ok, r2.code], [false, 'ALIAS']);
     });
 });

@@ -22,12 +22,12 @@ async function envWithInc() {
 const code = r => (r.status === 'PASS' ? 'PASS' : r.code);
 
 /** Chama o W-C de um writer (mutante ou não) direto, fora do host (para sabotagem). */
-async function directCheck(writer, env, files, { author = 'richard', branch, testOnly = {} } = {}) {
+async function directCheck(writer, env, files, { author = 'richard', branch, testOnly = {}, prExtra = {} } = {}) {
     const tip = env.host.tip();
     const c = env.host.commitFiles(files, [tip], 'direto', author);
     return writer.check.checkIntegration({
-        git: env.git, host: env.host, baseSha: tip, resultTree: env.git.treeOf(c), decisionPort: env.port, testOnly,
-        pr: { target: 'main', author, branch: branch || cmd.markerBranch('prisma', 'spec-change'), number: 99, verified: true },
+        git: env.git, host: env.host, baseSha: tip, resultTree: env.git.treeOf(c), decisionPort: env.port, [cmd.TEST_HOOKS]: testOnly,
+        pr: { target: 'main', author, branch: branch || cmd.markerBranch('prisma', 'spec-change'), number: 99, verified: true, batchProtected: 1, ...prExtra },
     });
 }
 const real = require('./sdd-writer');

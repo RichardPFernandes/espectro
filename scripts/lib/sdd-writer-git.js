@@ -22,12 +22,15 @@ const STDIN_TIMEOUT_MS = 3000;
 function makeGit(repoDir, { identity } = {}) {
     const baseEnv = {
         PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
-        GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C',
+        GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C',
     };
     function run(args, { input, allow = [0], env } = {}) {
-        // Medido nesta máquina (git 2.52, macOS): ~1% das chamadas que leem stdin não
-        // terminam. Só hash-object/mktree/commit-tree leem stdin, e os objetos são
-        // endereçados por conteúdo: repetir é seguro. Esgotado o limite → falha de obtenção.
+        // Medido nesta máquina (git 2.52, macOS, também com config isolada): ~1% das chamadas
+        // que leem stdin não terminam; `cat`/`shasum` no mesmo laço não travam. Causa: UNKNOWN.
+        // Só hash-object/mktree/commit-tree leem stdin. Repetir não move ref: blob e árvore são
+        // endereçados por conteúdo; commit-tree é determinístico quando o W-P fixa as datas
+        // (`at`); sem data fixa, a tentativa morta deixa só um objeto órfão. Timeout cresce com
+        // o tamanho da entrada. Esgotado o limite → falha de obtenção (UNVERIFIABLE).
         const attempts = input === undefined ? 1 : STDIN_ATTEMPTS;
         let r;
         for (let i = 0; i < attempts; i++) {
@@ -35,7 +38,7 @@ function makeGit(repoDir, { identity } = {}) {
                 input, env: { ...baseEnv, ...env }, maxBuffer: 512 * 1024 * 1024,
                 // Sem entrada explícita, o git nunca herda nem espera stdin.
                 stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-                timeout: input === undefined ? undefined : STDIN_TIMEOUT_MS,
+                timeout: input === undefined ? undefined : STDIN_TIMEOUT_MS + Math.ceil(Buffer.byteLength(input) / 65536) * 100,
             });
             if (!(r.error && r.error.code === 'ETIMEDOUT') && r.signal === null) break;
         }
@@ -142,7 +145,7 @@ function makeGit(repoDir, { identity } = {}) {
             }
             for (const [p, buf] of Object.entries(changes)) {
                 if (buf === null) files.delete(p);
-                else files.set(p, { mode: '100644', type: 'blob', oid: api.hashBlob(buf) });
+                else files.set(p, { mode: files.has(p) && files.get(p).mode === '100755' ? '100755' : '100644', type: 'blob', oid: api.hashBlob(buf) });
             }
             const root = { files: new Map(), dirs: new Map() };
             for (const [p, e] of files) {
@@ -162,11 +165,12 @@ function makeGit(repoDir, { identity } = {}) {
             };
             return write(root);
         },
-        commitTree(tree, parents, message, who = identity) {
+        commitTree(tree, parents, message, who = identity, { date } = {}) {
             if (!who) throw new Error('commitTree: identidade obrigatória');
             const env = {
                 GIT_AUTHOR_NAME: who, GIT_AUTHOR_EMAIL: `${who}@sdd.invalid`,
                 GIT_COMMITTER_NAME: who, GIT_COMMITTER_EMAIL: `${who}@sdd.invalid`,
+                ...(date ? { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } : {}),
             };
             const args = ['commit-tree', tree, ...parents.flatMap(p => ['-p', p])];
             return out(args, { input: message, env });
