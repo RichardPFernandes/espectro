@@ -120,6 +120,27 @@ function projectWouldRoute(value) {
     };
 }
 
+// PRI-233: RoutingDecision de um Attempt roteado (objeto de resolveRoute). Só o subconjunto
+// público: nunca plugin_proof, policy_ref.path, override_ref.by/recorded_at/value nem caminhos.
+const optId = value => value == null ? null : id(value);
+function projectRoutingDecision(value) {
+    if (typeof value === 'string') return id(value);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return 'UNKNOWN';
+    const chosen = value.chosen && typeof value.chosen === 'object' && !Array.isArray(value.chosen) ? value.chosen : null;
+    const override = value.override_ref && typeof value.override_ref === 'object' && !Array.isArray(value.override_ref) ? value.override_ref : null;
+    return {
+        class: optId(value.class), class_rule: optId(value.class_rule), selection_source: id(value.selection_source),
+        chosen: chosen ? { model_id: id(chosen.model_id), effort: id(chosen.effort), tier: id(chosen.tier) } : null,
+        effort_applied: typeof value.effort_applied === 'boolean' ? value.effort_applied : 'UNKNOWN',
+        effort_router_plugin: id(value.effort_router_plugin),
+        override_ref: override ? { ref: optId(override.ref), scope: id(override.scope) } : null,
+        policy_ref: { id: id(value.policy_ref?.id), version: id(value.policy_ref?.version), sha256: hash(value.policy_ref?.sha256) },
+        candidates: list(value.candidates).slice(0, 20).map(c => ({
+            tier: id(c?.tier), model_id: id(c?.model_id), status: id(c?.status), reason: optId(c?.reason),
+        })),
+    };
+}
+
 function attemptOf(value, context) {
     const a = value || {};
     return {
@@ -128,7 +149,7 @@ function attemptOf(value, context) {
         cause: id(a.cause), started_at: startOf(a, context), runtime: id(a.runtime), provider: id(a.provider),
         account: { label: typeof a.account?.label === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(a.account.label) ? a.account.label : 'UNKNOWN' },
         requested: { model: id(a.requested?.model), effort: id(a.requested?.effort) },
-        routing_decision: id(a.routing_decision), selection_source: id(a.selection_source),
+        routing_decision: projectRoutingDecision(a.routing_decision), selection_source: id(a.selection_source),
         observed: { usage: list(a.observed?.usage).map(usageOf), effort: id(a.observed?.effort) },
         role_attribution: { status: id(a.role_attribution?.status), conflicted_messages: number(a.role_attribution?.conflicted_messages) },
         cost: { usd: number(a.cost?.usd), unpriced_models: list(a.cost?.unpriced_models).map(id),
@@ -153,4 +174,4 @@ function projectCostTracking(value, context) {
     };
 }
 
-module.exports = { projectCostTracking, projectSignals, projectWouldRoute };
+module.exports = { projectCostTracking, projectSignals, projectWouldRoute, projectRoutingDecision };
