@@ -369,10 +369,17 @@ function attemptRecord(run, node, alsoCovers, metrics, outcome) {
         session_id: run.session_id || 'UNKNOWN', runtime: run.agent,
         provider: run.agent === 'claude' ? 'anthropic' : run.agent === 'codex' ? 'openai' : 'UNKNOWN',
         account: run.account || { source: 'UNKNOWN', label: 'UNKNOWN' },
-        requested: { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' },
-        effort_router_plugin: run.effort_router_plugin || 'UNKNOWN',
+        // PRI-233 T7: despacho roteado grava o par fixado (modelo, esforço do CLI) e a decisão.
+        // Esforço só conta como pedido se foi de fato para o argv (SP-1 revista: só modelo).
+        requested: run.routing_decision?.chosen
+            ? { model: run.routing_decision.chosen.model_id, effort: run.routing_decision.effort_applied ? run.routing_decision.chosen.cli_effort : 'UNAVAILABLE' }
+            : { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' },
+        // Despacho roteado: o estado do plugin é o provado pela decisão (--settings do
+        // despacho), não o lido do perfil da conta (revisão do Checkpoint B, MINOR-4).
+        effort_router_plugin: run.routing_decision?.effort_router_plugin || run.effort_router_plugin || 'UNKNOWN',
         first_turn: metrics.first_turn || { cache_read_tokens: null, cache_write_5m_tokens: null, cache_write_1h_tokens: null },
-        selection_source: 'DEFAULT_INHERITED', routing_decision: 'UNAVAILABLE', subtask: 'UNAVAILABLE', workspace: 'UNAVAILABLE',
+        selection_source: run.routing_decision?.selection_source || 'DEFAULT_INHERITED',
+        routing_decision: run.routing_decision || 'UNAVAILABLE', subtask: 'UNAVAILABLE', workspace: 'UNAVAILABLE',
         signals: run.signals || 'UNAVAILABLE',
         // PRI-223 S3: decisão sombra (would_route). Nunca altera argv; applied=false.
         would_route: run.would_route || 'UNAVAILABLE',

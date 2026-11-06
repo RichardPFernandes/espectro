@@ -16,7 +16,7 @@ const repo = path.join(tmp, 'consumer');
 fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
 fs.copyFileSync(path.resolve(__dirname, '../../.claude/spec-hash-config.json'), path.join(repo, '.claude/spec-hash-config.json'));
 const envKeys = ['REPO_PATH', 'REDMINE_URL', 'REDMINE_API_KEY', 'REDMINE_MIN_INTERVAL_MS',
-    'REDMINE_RETRY_BASE_DELAY_MS', 'REDMINE_RETRY_MAX_ATTEMPTS', 'WATCHER_RECUSA_QA_NOVO_CICLO', 'REDMINE_STATUS_EM_DESENVOLVIMENTO_ID'];
+    'REDMINE_RETRY_BASE_DELAY_MS', 'REDMINE_RETRY_MAX_ATTEMPTS', 'WATCHER_RECUSA_QA_NOVO_CICLO', 'REDMINE_STATUS_EM_DESENVOLVIMENTO_ID', 'WATCHER_QA_DIAGNOSTICO'];
 const savedEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
 Object.assign(process.env, {
     REPO_PATH: repo, REDMINE_URL: 'https://redmine.synthetic.invalid', REDMINE_API_KEY: 'synthetic-key-pri221',
@@ -24,6 +24,8 @@ Object.assign(process.env, {
     REDMINE_STATUS_EM_DESENVOLVIMENTO_ID: '2',
 });
 delete process.env.WATCHER_RECUSA_QA_NOVO_CICLO;
+// PRI-181 c0b: esta suíte cobre o caminho C1–C3 (flag ligada); o C0 está em qa-rejection-c0-oracle.test.js.
+process.env.WATCHER_QA_DIAGNOSTICO = '1';
 
 // Todos os caminhos HTTP passam pelo stub, inclusive a releitura de ticket no retry.
 // Endpoint/método inesperado falha em vez de delegar ao fetch original.

@@ -477,3 +477,93 @@ test('C4: db-targets secret recria o item com ACL vazia (-T "") por /usr/bin/sec
     assert.deepStrictEqual(calls[1].slice(-3), ['-T', '', '-w']);
     assert.ok(calls[1].includes('qa-app') && calls[1].includes('prisma-db-qa-app'));
 });
+
+// ── PRI-233 T8 (P-2): override humano de roteamento ─────────────────────────────
+// Mesmo writer e mesma autoridade da autorização (aprovador do dashboard + CAS), sem
+// pausar a Run: a override só vale a partir do próximo limite de nó (D-4), aplicada
+// pelo resolver (scripts/lib/model-routing.js).
+
+// Run admitida ON de verdade: Attempt fetch_ticket com snapshot routing em _dom06 (DOM06
+// real) e state ligado a ele. A override é conferida contra esse snapshot (MINOR-3).
+const mr = require('./model-routing');
+const ROUTED_POLICY = {
+    id: 'routing-sintetica', version: 'p-test-1', mode: 'ROUTED', classifier: { provider: 'cheap_rule' },
+    class_to_tier: {
+        C1: { tier: 'T1', effort: 'baixo' }, C2: { tier: 'T2', effort: 'médio' }, C3: { tier: 'T2', effort: 'alto' },
+        C4: { tier: 'T3', effort: 'alto' }, C5: { tier: 'T3', effort: 'máximo' },
+    },
+    tiers: { T1: { models: ['claude-sonnet-5-5'] }, T2: { models: ['claude-sonnet-5-5'] }, T3: { models: ['claude-opus-5-5'] } },
+    default_route: { model_id: 'claude-opus-5-5', effort: 'alto' },
+    effort_map: { baixo: 'low', 'médio': 'medium', alto: 'high', 'máximo': 'max' },
+};
+function seedRouted() {
+    const seeded = seedRun();
+    const snap = mr.buildRoutingSnapshot({ status: 'ON', policy: ROUTED_POLICY,
+        policy_ref: { id: ROUTED_POLICY.id, version: ROUTED_POLICY.version, sha256: 'a'.repeat(64), path: '.claude/routing-policy.json' } });
+    const fetch = dom06.prepareDispatch({ runDir: path.join(path.dirname(seeded.dir), '_dom06'), node: 'fetch_ticket', ticketId: 42359,
+        baseBranch: 'development', specHash: null, cause: 'dispatch', routing: snap });
+    writeState(seeded.dir, { ...readState(seeded.dir), routing_snapshot: { attempt_id: fetch.attempt.attempt_id, sha256: snap.sha256 } });
+    return seeded;
+}
+const ov = (extra = {}) => ({ scope: 'node', node: 'implement', value: { model_id: 'claude-opus-5-5', effort: 'alto' }, ...extra });
+
+test('PRI-233 T8: recordRoutingOverride grava append-only com quem/quando, sem mudar status nem node', () => {
+    const { dir } = seedRouted();
+    const before = readState(dir);
+    const out = authorization.recordRoutingOverride(dir, {
+        by: 'richard', ...ov(), operationId: 'op-routing-1', expectedStateVersion: cas.effectiveVersion(before),
+        at: '2026-11-06T15:00:00.000Z',
+    });
+    assert.strictEqual(out.status, 'applied');
+    assert.deepStrictEqual(out.override, {
+        ref: 'RO-1', scope: 'node', node: 'implement', value: { model_id: 'claude-opus-5-5', effort: 'alto' },
+        by: 'richard', via: 'dashboard', recorded_at: '2026-11-06T15:00:00.000Z', operation_id: 'op-routing-1',
+    });
+    const after = readState(dir);
+    assert.deepStrictEqual([after.status, after.node], [before.status, before.node], 'a Run não pausa');
+    assert.deepStrictEqual(after.routing_overrides, [out.override]);
+    assert.strictEqual(after.events.at(-1).type, 'routing_override');
+
+    const second = authorization.recordRoutingOverride(dir, {
+        by: 'richard', ...ov({ scope: 'ticket', node: undefined, value: { model_id: 'claude-sonnet-5-5', effort: 'médio' } }),
+        operationId: 'op-routing-2', expectedStateVersion: cas.effectiveVersion(after), at: '2026-11-06T15:05:00.000Z',
+    });
+    assert.strictEqual(second.override.ref, 'RO-2');
+    assert.deepStrictEqual(readState(dir).routing_overrides.map(o => o.ref), ['RO-1', 'RO-2'], 'append-only');
+});
+
+test('PRI-233 T8: mesmo operation_id é idempotente; CAS velho é conflito', () => {
+    const { dir } = seedRouted();
+    const v = cas.effectiveVersion(readState(dir));
+    const args = { by: 'richard', ...ov(), operationId: 'op-routing-idem', expectedStateVersion: v };
+    assert.strictEqual(authorization.recordRoutingOverride(dir, args).status, 'applied');
+    assert.strictEqual(authorization.recordRoutingOverride(dir, args).status, 'already_processed');
+    assert.strictEqual(readState(dir).routing_overrides.length, 1);
+    // Versão crítica muda (outro escritor trocou o nó): a tela velha leva conflito.
+    const s = readState(dir);
+    writeState(dir, { ...s, node: 'review', state_version: (s.state_version || 0) + 1 });
+    assert.throws(() => authorization.recordRoutingOverride(dir, { ...args, operationId: 'op-routing-velho', expectedStateVersion: v }), e => cas.isConflict(e));
+});
+
+for (const [name, extra, code] of [
+    ['Run admitida OFF (sem routing_snapshot)', { state: {} }, 'ROUTING_OFF'],
+    ['escopo inválido', { args: { scope: 'projeto' } }, 'OVERRIDE_INVALID'],
+    ['escopo nó sem nó', { args: { scope: 'node', node: '' } }, 'OVERRIDE_INVALID'],
+    ['escopo subtarefa sem subtask_key', { args: { scope: 'subtask', node: undefined } }, 'OVERRIDE_INVALID'],
+    ['modelo vazio', { args: { value: { model_id: '', effort: 'alto' } } }, 'OVERRIDE_INVALID'],
+    ['esforço vazio', { args: { value: { model_id: 'claude-opus-5-5', effort: '' } } }, 'OVERRIDE_INVALID'],
+    ['sem aprovador', { args: { by: '' } }, 'OVERRIDE_INVALID'],
+    // Revisão independente (MINOR-3): conferido contra o snapshot da Run na gravação.
+    ['modelo fora do conjunto elegível', { args: { value: { model_id: 'claude-mythos', effort: 'alto' } } }, 'OVERRIDE_INELIGIBLE'],
+    ['esforço fora do effort_map', { args: { value: { model_id: 'claude-opus-5-5', effort: 'turbo' } } }, 'OVERRIDE_INELIGIBLE'],
+    ['ligação a snapshot ilegível', { state: { routing_snapshot: { attempt_id: '00000000-0000-4000-8000-000000000000', sha256: 'a'.repeat(64) } } }, 'ROUTING_UNVERIFIABLE'],
+]) {
+    test(`PRI-233 T8: ${name} → ${code}, nada gravado`, () => {
+        const { dir } = extra.state ? seedRun(extra.state) : seedRouted();
+        const v = cas.effectiveVersion(readState(dir));
+        assert.throws(() => authorization.recordRoutingOverride(dir, {
+            by: 'richard', ...ov(), operationId: `op-${code}-${name.length}`, expectedStateVersion: v, ...(extra.args || {}),
+        }), e => e instanceof authorization.AuthorizationError && e.code === code);
+        assert.strictEqual(readState(dir).routing_overrides, undefined);
+    });
+}

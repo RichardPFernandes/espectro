@@ -140,6 +140,14 @@ const lines = [
 ];
 fs.writeFileSync(path.join(dir, sid + '.jsonl'), lines.map(l => JSON.stringify(l)).join('\\n') + '\\n');
 const stateFile = process.env.FAKE_STATE_FILE;
+// Como o agente real, só grava depois que o watcher registrou o agent_pid (recordAgentPid
+// lê, roda ps e regrava o state); antes disso a regravação perdia o avanço de nó sob
+// carga (PRI-233: 'test' !== 'verify'). Teto de 10 s; sem pid registrado, segue.
+const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+for (let i = 0; i < 500; i++) {
+  try { if (JSON.parse(fs.readFileSync(stateFile, 'utf8')).agent_pid) break; } catch { /* escrita em curso */ }
+  sleep(20);
+}
 const s = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
 delete s.transcripts; // agente que regrava state.json sem o campo — watcher tem que restaurar
 if (process.env.FAKE_EXIT === '0') s.node = process.env.FAKE_NEXT_NODE;

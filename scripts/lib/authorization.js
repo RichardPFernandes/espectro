@@ -234,6 +234,71 @@ function humanEntry(event, p, { by, at, ...extra }) {
     return { id: p.id, event, by, via: 'dashboard', at, ...extra };
 }
 
+// ── Override humano de roteamento (PRI-233 T8, P-2) ─────────────────────────────
+//
+// Mesma autoridade das decisões acima (aprovador autenticado no dashboard + CAS com
+// operation_id), mas sem pausar a Run: não mexe em status nem em node. Grava em
+// state.routing_overrides[] (append-only, quem/quando/escopo/valor). Quem aplica é o
+// resolver do roteamento (scripts/lib/model-routing.js), a partir do próximo limite de
+// nó (D-4) e com precedência subtarefa > nó > ticket. Elegibilidade do modelo/esforço é
+// conferida lá, contra o snapshot da Run: override inelegível vira
+// NOT_STARTED/PROVIDER_NOT_ELIGIBLE, nunca troca silenciosa. Só vale para Run admitida
+// com roteamento (state.routing_snapshot).
+const ROUTING_OVERRIDE_SCOPES = new Set(['ticket', 'node', 'subtask']);
+
+function validateRoutingOverride({ by, scope, node, subtaskKey, value }) {
+    const errors = [];
+    if (!nonEmpty(by)) errors.push('aprovador ausente');
+    if (!ROUTING_OVERRIDE_SCOPES.has(scope)) errors.push(`scope deve ser ${[...ROUTING_OVERRIDE_SCOPES].join(' | ')}`);
+    if (scope === 'node' && !nonEmpty(node)) errors.push('scope node exige node');
+    if (scope === 'subtask' && !nonEmpty(subtaskKey)) errors.push('scope subtask exige subtask_key');
+    if (!value || !nonEmpty(value.model_id)) errors.push('value.model_id ausente');
+    if (!value || !nonEmpty(value.effort)) errors.push('value.effort ausente');
+    return errors;
+}
+
+function recordRoutingOverride(runDir, { by, scope, node = null, subtaskKey = null, value, operationId, expectedStateVersion, at = new Date().toISOString() } = {}) {
+    const errors = validateRoutingOverride({ by, scope, node, subtaskKey, value });
+    if (errors.length) throw new AuthorizationError('OVERRIDE_INVALID', errors.join('; '));
+    const lock = cas.validateAndLock({
+        runDir, operation: 'routing_override', actor: 'dashboard', operation_id: operationId,
+        expected_state_version: expectedStateVersion,
+    });
+    if (lock.status === 'already_processed') return { status: 'already_processed' };
+    try {
+        const state = lock.state;
+        if (!state) throw new AuthorizationError('NO_STATE', 'state.json ausente ou ilegível');
+        if (!state.routing_snapshot) {
+            throw new AuthorizationError('ROUTING_OFF', 'Run admitida sem roteamento (mode OFF): override de modelo não se aplica');
+        }
+        // Revisão independente (MINOR-3): confere modelo e esforço contra o snapshot da Run na
+        // gravação; erro de digitação vira 409 aqui, não um NOT_STARTED no próximo nó.
+        const run = require('./routing-run').loadRunSnapshot(state, path.join(path.dirname(path.resolve(runDir)), '_dom06'));
+        if (!run.ok) throw new AuthorizationError('ROUTING_UNVERIFIABLE', `snapshot de roteamento da Run ilegível (${run.detail}): override não gravada`);
+        const models = run.snapshot.eligible_set?.models || [];
+        if (!models.includes(value.model_id.trim())) {
+            throw new AuthorizationError('OVERRIDE_INELIGIBLE', `modelo fora do conjunto elegível da Run (${models.join(', ')})`);
+        }
+        if (!Object.prototype.hasOwnProperty.call(run.snapshot.policy?.effort_map || {}, value.effort.trim())) {
+            throw new AuthorizationError('OVERRIDE_INELIGIBLE', `esforço fora do mapa da policy (${Object.keys(run.snapshot.policy?.effort_map || {}).join(', ')})`);
+        }
+        const list = Array.isArray(state.routing_overrides) ? state.routing_overrides : [];
+        const override = {
+            ref: `RO-${list.length + 1}`, scope,
+            ...(scope === 'node' || (scope === 'subtask' && nonEmpty(node)) ? { node: node.trim() } : {}),
+            ...(scope === 'subtask' ? { subtask_key: subtaskKey.trim() } : {}),
+            value: { model_id: value.model_id.trim(), effort: value.effort.trim() },
+            by, via: 'dashboard', recorded_at: at, operation_id: operationId,
+        };
+        state.routing_overrides = [...list, override];
+        pushEvent(state, { type: 'routing_override', node: override.node || null, agent: 'human', at,
+            detail: `${override.ref} (${scope}${override.node ? `:${override.node}` : ''}${override.subtask_key ? `/${override.subtask_key}` : ''}) → ${override.value.model_id} / ${override.value.effort} por ${by}; vale a partir do próximo limite de nó` });
+        return { status: 'applied', state: lock.commit(state), override };
+    } finally {
+        lock.release();
+    }
+}
+
 // ── Pedido canônico, hash e cópia congelada ──────────────────────────────────────
 //
 // O que o aprovador confere na tela vira um objeto canônico (ticket do task-id,
@@ -506,6 +571,7 @@ function template() {
 module.exports = {
     STATUS, KINDS, RESUME_NODES, HANDOFF_START, HANDOFF_END, AuthorizationError,
     validateRequest, requestAuthorization, approve, reject, markManual, execute, describeRequest, canonicalRequest, requestHashOf, ticketOfTask,
+    recordRoutingOverride, ROUTING_OVERRIDE_SCOPES,
     parseThen, rootsFor, consumerRootOf, renderHandoffBlock, upsertHandoffBlock, template,
 };
 

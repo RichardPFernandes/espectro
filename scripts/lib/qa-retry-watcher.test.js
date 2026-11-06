@@ -18,6 +18,9 @@ process.env.REPO_PATH = repo;
 process.env.REDMINE_URL = 'http://redmine.test';
 process.env.REDMINE_API_KEY = 'chave-watcher-teste';
 delete process.env.WATCHER_RECUSA_QA_NOVO_CICLO;
+// PRI-181 c0b: esta suíte cobre o caminho C1–C3 (flag ligada); o C0 está em qa-retry-watcher-c0-oracle.test.js.
+const savedQaDiagnostico = process.env.WATCHER_QA_DIAGNOSTICO;
+process.env.WATCHER_QA_DIAGNOSTICO = '1';
 
 const calls = [];
 const statusName = { 13: 'Recusa QA', 2: 'Em Desenvolvimento' };
@@ -703,4 +706,8 @@ test('PRI-184: consumo bem-sucedido limpa o campo qa_retry_blocked e preserva o 
     assert.ok(!fs.existsSync(path.join(target, 'retry-signal.json')));
 });
 
-test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+test.after(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    if (savedQaDiagnostico === undefined) delete process.env.WATCHER_QA_DIAGNOSTICO;
+    else process.env.WATCHER_QA_DIAGNOSTICO = savedQaDiagnostico;
+});

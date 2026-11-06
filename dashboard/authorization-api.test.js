@@ -303,6 +303,77 @@ test('A3: pedido trocado no state depois do GET → 409 REQUEST_CHANGED, nada ex
     assert.strictEqual(calls.length, before);
 });
 
+// PRI-233 T8 (P-2): override humano de roteamento pelo mesmo canal/autoridade das
+// decisões (aprovador + CAS), sem pausar a Run. Antes do B3 (que esgota o rate limit).
+// Run admitida ON de verdade (Attempt fetch_ticket com snapshot em _dom06, DOM06 real): a
+// override é conferida contra esse snapshot na gravação.
+function bindRouted(dir) {
+    const dom06 = require('../scripts/lib/dom06-attempt');
+    const mr = require('../scripts/lib/model-routing');
+    const policy = {
+        id: 'routing-sintetica', version: 'p-test-1', mode: 'ROUTED', classifier: { provider: 'cheap_rule' },
+        class_to_tier: {
+            C1: { tier: 'T1', effort: 'baixo' }, C2: { tier: 'T2', effort: 'médio' }, C3: { tier: 'T2', effort: 'alto' },
+            C4: { tier: 'T3', effort: 'alto' }, C5: { tier: 'T3', effort: 'máximo' },
+        },
+        tiers: { T1: { models: ['claude-sonnet-5-5'] }, T2: { models: ['claude-sonnet-5-5'] }, T3: { models: ['claude-opus-5-5'] } },
+        default_route: { model_id: 'claude-opus-5-5', effort: 'alto' },
+        effort_map: { baixo: 'low', 'médio': 'medium', alto: 'high', 'máximo': 'max' },
+    };
+    const snap = mr.buildRoutingSnapshot({ status: 'ON', policy,
+        policy_ref: { id: policy.id, version: policy.version, sha256: 'a'.repeat(64), path: '.claude/routing-policy.json' } });
+    const fetch = dom06.prepareDispatch({ runDir: path.join(path.dirname(dir), '_dom06'), node: 'fetch_ticket', ticketId: 42370,
+        baseBranch: 'development', specHash: null, cause: 'dispatch', routing: snap });
+    const s = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ ...s, routing_snapshot: { attempt_id: fetch.attempt.attempt_id, sha256: snap.sha256 } }));
+}
+
+test('PRI-233 T8: POST routing-override grava a override com aprovador e CAS, sem mudar status', async () => {
+    const id = '42370-routing-a';
+    const dir = writeRun(id, { status: 'in_progress', pending: false });
+    bindRouted(dir);
+    const body = { scope: 'node', node: 'implement', model_id: 'claude-opus-5-5', effort: 'alto' };
+
+    const denied = await post(`/api/runs/${id}/routing-override`, { ...(await casOf(id)), ...body, approver: 'richard', approver_password: 'chute', operation_id: 'op-route-deny' });
+    assert.strictEqual(denied.status, 403);
+    assert.strictEqual(readState(id).routing_overrides, undefined, 'senha errada não grava');
+
+    const ok = await post(`/api/runs/${id}/routing-override`, { ...(await casOf(id)), ...body, ...CRED, operation_id: 'op-route-ok-1' });
+    assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+    assert.deepStrictEqual([ok.body.ok, ok.body.override.ref, ok.body.override.by, ok.body.override.value],
+        [true, 'RO-1', 'richard', { model_id: 'claude-opus-5-5', effort: 'alto' }]);
+    const after = readState(id);
+    assert.strictEqual(after.status, 'in_progress', 'a Run não pausa');
+    assert.strictEqual(after.routing_overrides.length, 1);
+    const listed = (await get('/api/runs')).body.find(r => r.taskId === id);
+    assert.deepStrictEqual(listed.routingOverrides.map(o => o.ref), ['RO-1']);
+
+    const again = await post(`/api/runs/${id}/routing-override`, { ...(await casOf(id)), ...body, ...CRED, operation_id: 'op-route-ok-1' });
+    assert.deepStrictEqual([again.status, again.body.status], [200, 'already_processed']);
+    assert.strictEqual(readState(id).routing_overrides.length, 1);
+});
+
+test('PRI-233 T8: routing-override recusa Run OFF, entrada inválida e nó rodando', async () => {
+    const off = '42370-routing-b';
+    writeRun(off, { status: 'in_progress', pending: false });
+    const r1 = await post(`/api/runs/${off}/routing-override`, { ...(await casOf(off)), scope: 'ticket', model_id: 'm', effort: 'alto', ...CRED, operation_id: 'op-route-off' });
+    assert.deepStrictEqual([r1.status, r1.body.code], [409, 'ROUTING_OFF']);
+
+    const on = '42370-routing-c';
+    const dir = writeRun(on, { status: 'in_progress', pending: false });
+    bindRouted(dir);
+    const r2 = await post(`/api/runs/${on}/routing-override`, { ...(await casOf(on)), scope: 'projeto', model_id: 'm', effort: 'alto', ...CRED, operation_id: 'op-route-bad' });
+    assert.deepStrictEqual([r2.status, r2.body.code], [409, 'OVERRIDE_INVALID']);
+    // MINOR-3: modelo fora do snapshot da Run é recusado na gravação.
+    const r2b = await post(`/api/runs/${on}/routing-override`, { ...(await casOf(on)), scope: 'ticket', model_id: 'claude-mythos', effort: 'alto', ...CRED, operation_id: 'op-route-inelegivel' });
+    assert.deepStrictEqual([r2b.status, r2b.body.code], [409, 'OVERRIDE_INELIGIBLE']);
+
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ ...readState(on), status: 'running' }));
+    const r3 = await post(`/api/runs/${on}/routing-override`, { ...(await casOf(on)), scope: 'ticket', model_id: 'm', effort: 'alto', ...CRED, operation_id: 'op-route-running' });
+    assert.strictEqual(r3.status, 409);
+    assert.strictEqual(readState(on).routing_overrides, undefined);
+});
+
 test('B3: rate limit global além do por nome (nomes variados) → 429', async () => {
     let last = null;
     for (let i = 0; i < 22; i++) last = await post('/api/authorization/targets', { approver: `chute${i}`, approver_password: 'errada' });

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espectro — Dashboard</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 12h18' stroke='%232b59c3' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='5' cy='12' r='3.5' fill='%232b59c3'/%3E%3Ccircle cx='12' cy='12' r='3.5' fill='white' stroke='%232b59c3' stroke-width='2.5'/%3E%3Ccircle cx='19' cy='12' r='3.5' fill='white' stroke='%232b59c3' stroke-width='2.5'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M6.1 15 A20 20 0 0 1 41.9 15 Z' fill='%236E9BFF'/%3E%3Cpath d='M4.9 18 H43.1 A20 20 0 0 1 43.1 30 H4.9 A20 20 0 0 1 4.9 18 Z' fill='%233DD68C'/%3E%3Cpath d='M6.1 33 H41.9 A20 20 0 0 1 6.1 33 Z' fill='%23F2A93B'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1324,7 +1324,7 @@ function runRow(r) {
       ${selecting
         ? `<span class="check ${picked.has(r.taskId) ? 'on' : ''}">${ICON.box}</span>`
         : stateGlyph(r.status)}
-      <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}${highlight(t.text, q)}${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${qaRetryBlockedBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
+      <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}${highlight(t.text, q)}${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${qaRetryBlockedBadge(r)}${routingBlockedBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
       <span class="when" title="${esc(when(r.updatedAt))}">${esc(ago(r.updatedAt))}</span>
       ${svcChips(r) ? `<span class="svcs" aria-label="Serviços afetados">${svcChips(r, { max: 3 })}</span>` : ''}
       <span class="sub">${miniRail(r)}${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}<span class="where">${esc(where)}</span>${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}${window.RunSubtasks?.chipHtml(costOf(r)) || ''}${runCost(r)}</span>
@@ -1363,6 +1363,16 @@ function qaRetryBlockedBadge(r) {
   const label = QA_RETRY_BLOCKED_LABEL[b.reason] || b.reason;
   const tip = `Retry QA bloqueado: ${label}${b.at ? ` · ${b.at}` : ''}`;
   return `<span class="qa-blocked-badge" title="${esc(tip)}">⚠ RETRY BLOQUEADO</span>`;
+}
+// PRI-233 T9: admissão recusada por roteamento ON com configuração inválida
+// (server.js > summarize: routingBlocked). Mesmo estilo do aviso de retry bloqueado.
+function routingBlockedBadge(r) {
+  const b = r.routingBlocked;
+  if (!b || typeof b.cause !== 'string') return '';
+  const tip = `Roteamento ON inválido: ${b.cause}${b.detail ? ` (${b.detail})` : ''}. ` +
+    `Corrija ${b.configFile} ou use mode OFF para admitir Runs novas.` +
+    (b.notifiedAt ? ` Avisado em ${b.notifiedAt}.` : (b.transient ? ' Leitura transitória: aviso após repetição.' : ''));
+  return `<span class="qa-blocked-badge" title="${esc(tip)}">⚠ ADMISSÃO BLOQUEADA</span>`;
 }
 function qaRetryBlockedMsg(r) {
   const b = qaRetryBlockedInfo(r);
