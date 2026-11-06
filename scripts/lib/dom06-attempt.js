@@ -215,7 +215,9 @@ function causeFromState(state) {
     return 'dispatch';
 }
 
-function prepareDispatch({ runDir, node, ticketId, baseBranch = null, specHash = null, cause = 'dispatch', state = null } = {}) {
+// `routing` (PRI-233): snapshot routing da Run, fixado na admissão. Só entra no
+// snapshot do Attempt quando passado; sem ele, o snapshot fica como no AS-IS.
+function prepareDispatch({ runDir, node, ticketId, baseBranch = null, specHash = null, cause = 'dispatch', state = null, routing } = {}) {
     const resolvedCause = state ? causeFromState(state) : cause;
     assertCauseAllowed(resolvedCause);
     const hold = readHold(runDir);
@@ -232,6 +234,7 @@ function prepareDispatch({ runDir, node, ticketId, baseBranch = null, specHash =
         base_branch: baseBranch,
         spec_hash: specHash,
     };
+    if (routing !== undefined) snapshot.routing = structuredClone(routing);
     const needsIdentity = snapshot.ticket_id == null || snapshot.ticket_id === '' || !snapshot.node || !snapshot.base_branch;
     const proposed = needsIdentity
         ? { status: 'UNKNOWN', owner: null, snapshot }

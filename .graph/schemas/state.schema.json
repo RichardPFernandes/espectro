@@ -1425,6 +1425,16 @@
       "format": "date-time",
       "description": "Lease: início do processo agent_pid (ps lstart, gravado logo depois do spawn). Com agent_pid forma a identidade do agente vivo (scripts/lib/process-identity.js); ausente = lease legado (removido no release)."
     },
+    "routing_snapshot": {
+      "type": "object",
+      "description": "PRI-233 (PRI-205 S4): ligação da task ao snapshot routing fixado na admissão da Run (admission.snapshot.routing do Attempt fetch_ticket em memory/runs/_dom06). Gravado pelo watcher uma vez, só para Run admitida com mode ON; ausente = Run OFF (despacho AS-IS). Nunca é trocado e a config corrente nunca é relida.",
+      "required": ["attempt_id", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
     "recovered_from_orphan": {
       "type": "object",
       "description": "Marcador de redespacho após recuperação de nó órfão (consumido no próximo acquire).",

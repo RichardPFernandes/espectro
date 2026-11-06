@@ -40,6 +40,10 @@ modules:
   - path: scripts/lib/model-routing.js
     capability: model-routing-resolution
     owner: UNKNOWN
+  # PRI-233 T5: lê o snapshot routing do Attempt de admissão (DOM06); não grava.
+  - path: scripts/lib/routing-run.js
+    capability: model-routing-run-snapshot
+    owner: UNKNOWN
 
   # SDD / evidence (candidatos)
   - path: scripts/lib/spec-change.js

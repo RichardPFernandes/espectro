@@ -131,13 +131,16 @@ aparecer, ligar `routing_snapshot { attempt_id, sha256 }` via `state-writer`
 ou com sha divergente, a resposta é `CONFIG_UNVERIFIABLE`, sem reler a config.
 
 **Critérios de aceite:**
-- [ ] Watcher com stub: depois da admissão ON, a task tem `routing_snapshot` com um sha igual ao do Attempt `fetch_ticket`.
-- [ ] Mudar a config do consumidor depois da admissão não muda o snapshot da Run em andamento.
-- [ ] Com o snapshot corrompido ou apagado, o próximo nó dá `NOT_STARTED/CONFIG_UNVERIFIABLE`, e um espião de `fs` prova que a config corrente não foi lida (AC-05).
+- [x] Watcher com stub: depois da admissão ON, a task tem `routing_snapshot` com um sha igual ao do Attempt `fetch_ticket`. A ligação acontece no primeiro despacho de nó.
+- [x] Mudar a config do consumidor depois da admissão não muda o snapshot da Run em andamento. Ligar ON depois não muda uma Run admitida OFF.
+- [~] Snapshot corrompido ou apagado: `loadRunSnapshot` devolve `ok:false` (ilegível, ausente, adulterado, ligação divergente, `attempt_id` com caminho) em teste de unidade. O `NOT_STARTED` no watcher fica para a T7, que é quem chama o resolver.
+- [x] (antecipado da T6) Admissão ON inválida recusa antes de worktree, marcador ou Attempt. O aviso humano fica para a T6.
 
-**Verificação:**
-- [ ] `node --test scripts/lib/routing-admission-watcher.test.js`
-- [ ] `node --test scripts/lib/routing-off-golden.test.js`
+**Verificação (2026-11-06):**
+- [x] `routing-run.test.js` 13/13; `routing-admission-watcher.test.js` 3/3.
+- [x] Node 22: scripts 1210 pass / 0 fail / 6 skip, com o golden da T1 inalterado; dashboard 298/0; `check:js`, `lint:src` e `arch:check` limpos.
+
+**Decisões de implementação:** `routing-run.js` (leitura, sem escrita). Com `routing` passado, o `prepareDispatch` o acrescenta ao snapshot do fetch_ticket. `routing_snapshot` foi documentado no schema do state (opcional). O vínculo usa o fetch_ticket mais recente criado até o `started_at` da task.
 
 **Dependências:** T3, T4.
 **Arquivos:** `scripts/readmine-watcher.js`, `scripts/state-writer.js` e o schema do state (só o campo `routing_snapshot`), `scripts/lib/routing-admission-watcher.test.js` (novo).

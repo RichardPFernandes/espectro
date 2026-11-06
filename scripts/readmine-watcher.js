@@ -26,6 +26,9 @@ const buildValidator = require('./lib/build-validator');
 const planScorer = require('./lib/plan-scorer');
 const planSignals = require('./lib/plan-signals');
 const wouldRoute = require('./lib/would-route');
+const modelRoutingPolicy = require('./lib/model-routing-policy');
+const modelRouting = require('./lib/model-routing');
+const routingRun = require('./lib/routing-run');
 const schemaWatcher = require('./lib/schema-watcher');
 const prStatusPoll = require('./lib/pr-status-poll');
 const { getPRStatus } = require('./check-pr-status');
@@ -4130,6 +4133,20 @@ async function dispatchTicketReserved(ticket) {
             return { action: 'skip', reason: 'spec_aguardando_aceite', status: 'spec-invalid', errors };
         }
 
+        // PRI-233 (PRI-205 S4): admissão da Run com roteamento. Ausente/OFF = AS-IS (sem
+        // snapshot). ON válido fixa o snapshot routing no Attempt fetch_ticket. ON inválido
+        // (ou mode malformado) recusa a admissão antes de worktree, marcador ou Attempt:
+        // nenhuma Run é criada (RC-5/D12 b, DP-3).
+        const routingConfig = modelRoutingPolicy.readRoutingConfig(REPO_PATH);
+        if (routingConfig.status === 'INVALID') {
+            console.warn(`Ticket #${id}: roteamento ON com configuração inválida (${routingConfig.cause}: ${routingConfig.detail}) — admissão recusada, nenhuma Run criada.`);
+            return {
+                action: 'skip', reason: 'routing_admission_blocked', node: 'fetch_ticket',
+                cause: routingConfig.cause, detail: routingConfig.detail, transient: routingConfig.transient,
+            };
+        }
+        const routingSnapshot = routingConfig.status === 'ON' ? modelRouting.buildRoutingSnapshot(routingConfig) : undefined;
+
         let qaFeedback = [];
         if (isRecusaQA) {
             qaFeedback = await fetchQaFeedback(id);
@@ -4194,6 +4211,7 @@ async function dispatchTicketReserved(ticket) {
                 baseBranch: base,
                 specHash: null,
                 cause: 'dispatch',
+                ...(routingSnapshot ? { routing: routingSnapshot } : {}),
             });
         } catch (e) {
             dropUnspawnedFetchDispatch(id, newTaskLease);
@@ -4487,6 +4505,15 @@ async function dispatchTicketReserved(ticket) {
         if (active.hash) executionSpec = invalidate.executionSpec(node, { hash: active.hash, version: active.version });
     } catch (e) {
         console.warn(`Task ${taskId}: execution_spec não registrada (${e.message}) — o carimbo do nó compara só com a spec atual.`);
+    }
+    // PRI-233 (PRI-205 S4): liga a task ao snapshot routing fixado na admissão da Run
+    // (Attempt fetch_ticket em _dom06). Run admitida OFF não ganha campo nenhum.
+    if (!DRY_RUN) {
+        const routingBinding = routingRun.bindingFor(state, path.join(taskRunsDir(id), '_dom06'));
+        if (routingBinding) {
+            state.routing_snapshot = routingBinding;
+            writeTaskState(dir, state, 'routing_snapshot_bind');
+        }
     }
     const nodeAdmission = dom06.prepareDispatch({
         runDir: dir,
