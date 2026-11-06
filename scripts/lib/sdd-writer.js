@@ -13,5 +13,7 @@ module.exports = {
     git: require('./sdd-writer-git'),
     log: require('./sdd-writer-log'),
     catalog: require('./sdd-writer-catalog'),
+    decision: require('./sdd-writer-decision'),
+    decide: require('./sdd-writer-decide'),
     replay: require('./sdd-writer-replay'),
 };
