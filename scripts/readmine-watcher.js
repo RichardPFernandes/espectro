@@ -1547,12 +1547,15 @@ function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA,
         ? prospectiveSignalsForRun('claude', [node], { ticket, worktreePath, base: signalBaseBranch(ticket), isRecusaQA }).signals_prospective
         : undefined;
     const overrides = Array.isArray(state?.routing_overrides) ? state.routing_overrides : [];
-    return modelRouting.resolveRoute({
+    const now = new Date().toISOString();
+    const boundary = state ? routingRun.nodeVisitStart(state, node, now) : null;
+    const resolution = modelRouting.resolveRoute({
         snapshot: runSnapshot.snapshot, node, signals, provider: { state: 'ACTIVE' },
-        capabilities: routingCapabilities(runDir, worktreePath), overrides,
-        nodeBoundaryAt: state ? routingRun.nodeVisitStart(state, node, new Date().toISOString()) : null,
-        authorityRef: null,
+        capabilities: routingCapabilities(runDir, worktreePath), overrides, nodeBoundaryAt: boundary, authorityRef: null,
     });
+    // Visita nova: o chamador grava o limite usado (state.routing_visit), para o retry da
+    // mesma visita não usar o node_start, que é posterior (Bugbot, PR #97).
+    return state ? { ...resolution, visit: routingRun.visitToRecord(state, node, boundary, now) } : resolution;
 }
 
 function routingRefusalNote(node, resolution) {
@@ -4692,7 +4695,9 @@ async function dispatchTicketReserved(ticket) {
         const runSnapshot = routingRun.loadRunSnapshot(state, fetchRunDir);
         if (runSnapshot.mode === 'ON') {
             nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state });
+            if (nodeRouting.visit) state.routing_visit = nodeRouting.visit;
             if (!nodeRouting.ok) return refuseRoutedNode({ ticket, taskId, node, state, dir, resolution: nodeRouting });
+            if (nodeRouting.visit) writeTaskState(dir, state, 'routing_visit');
             nodeRoutingSnapshot = runSnapshot.snapshot;
         }
     }

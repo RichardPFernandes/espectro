@@ -1435,6 +1435,12 @@
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
+    "routing_visit": {
+      "type": "object",
+      "description": "PRI-233 (D-4): limite de nó usado no 1º Attempt da visita atual (instante da resolução, anterior ao node_start). Os retries da mesma visita usam o menor entre ele e o node_start, para que uma override gravada no meio da visita nunca valha no retry. Gravado pelo watcher só para Run ON.",
+      "required": ["node", "at"],
+      "properties": { "node": { "type": "string" }, "at": { "type": "string", "format": "date-time" } }
+    },
     "routing_overrides": {
       "type": "array",
       "description": "PRI-233 T8 (P-2): overrides humanas de roteamento, append-only. Gravadas só pelo dashboard (POST /api/runs/:taskId/routing-override → scripts/lib/authorization.js recordRoutingOverride), com aprovador autenticado e CAS; não pausam a Run. O resolver (scripts/lib/model-routing.js) aplica a partir do próximo limite de nó (D-4), com precedência subtarefa > nó > ticket; modelo/esforço fora do snapshot = NOT_STARTED/PROVIDER_NOT_ELIGIBLE.",

@@ -252,6 +252,37 @@ test('nodeVisitStart: nó revisitado depois de outro (implement → review → i
     assert.strictEqual(rr.nodeVisitStart(state, 'implement', NOW), NOW);
 });
 
+// Bugbot (PR #97): o limite do 1º Attempt é o instante da resolução, anterior ao
+// node_start; ele fica gravado em state.routing_visit e o retry da mesma visita usa o menor.
+test('nodeVisitStart: retry usa o limite gravado no 1º Attempt (anterior ao node_start)', () => {
+    const state = {
+        routing_visit: { node: 'implement', at: '2026-11-06T10:55:00.000Z' },
+        events: [
+            ev('node_end', 'plan', '2026-11-06T10:30:00.000Z'),
+            ev('node_start', 'implement', '2026-11-06T11:00:00.000Z'),
+            ev('node_error', 'implement', '2026-11-06T11:20:00.000Z'),
+        ],
+    };
+    assert.strictEqual(rr.nodeVisitStart(state, 'implement', NOW), '2026-11-06T10:55:00.000Z');
+});
+
+test('nodeVisitStart: routing_visit de uma visita anterior do mesmo nó é ignorado', () => {
+    const state = {
+        routing_visit: { node: 'implement', at: '2026-11-06T09:00:00.000Z' },
+        events: [
+            ev('node_start', 'implement', '2026-11-06T09:01:00.000Z'), ev('node_end', 'implement', '2026-11-06T09:30:00.000Z'),
+            ev('node_start', 'review', '2026-11-06T10:00:00.000Z'), ev('node_retry', 'review', '2026-11-06T10:20:00.000Z'),
+            ev('node_start', 'implement', '2026-11-06T11:00:00.000Z'), ev('node_error', 'implement', '2026-11-06T11:20:00.000Z'),
+        ],
+    };
+    assert.strictEqual(rr.nodeVisitStart(state, 'implement', NOW), '2026-11-06T11:00:00.000Z');
+});
+
+test('nodeVisitStart: visita nova ignora routing_visit (vale agora)', () => {
+    const state = { routing_visit: { node: 'implement', at: '2026-11-06T09:00:00.000Z' }, events: [ev('node_end', 'review', '2026-11-06T10:20:00.000Z')] };
+    assert.strictEqual(rr.nodeVisitStart(state, 'implement', NOW), NOW);
+});
+
 test('loadRunSnapshot: attempt_id com caminho (../) é recusado sem ler fora do _dom06', () => {
     const r = rr.loadRunSnapshot({ routing_snapshot: { attempt_id: '../../etc/passwd', sha256: 'a'.repeat(64) } }, fetchRunDir());
     assert.deepStrictEqual(r, { mode: 'ON', ok: false, detail: 'snapshot_unreadable' });

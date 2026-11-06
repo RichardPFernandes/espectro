@@ -454,6 +454,10 @@ test('T8 / AC-09: override vigente entra na decisão (HUMAN_OVERRIDE); inelegív
     // Em produção ainda para no esforço (SP-1), mas a decisão registrada já é a da override.
     assert.deepStrictEqual([a.result, a.not_started.detail], ['NOT_STARTED', 'EFFORT_MECHANISM_UNAVAILABLE']);
     assert.deepStrictEqual([a.routing.selection_source, a.routing.override_ref.ref, a.routing.chosen.model_id], ['HUMAN_OVERRIDE', 'RO-1', 'm-t2']);
+    // Bugbot (PR #97): o limite do 1º Attempt da visita fica gravado para os retries.
+    const visit = readState(repo, id).routing_visit;
+    assert.strictEqual(visit.node, 'implement');
+    assert.ok(Date.parse(visit.at) <= Date.now());
 
     const bad = 233902;
     const repo2 = consumer(r => writeRouting(r));

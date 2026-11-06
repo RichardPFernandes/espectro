@@ -154,19 +154,35 @@ function markNoticeSent(marker, at) {
 // Sem node_start nessa sequência, a visita começa agora (1º Attempt dela).
 const LIFECYCLE = new Set(['node_start', 'node_end', 'node_error', 'node_retry']);
 
+// O 1º Attempt de uma visita resolve com `now`, antes do node_start (gravado depois, no
+// lease). Esse instante fica em state.routing_visit { node, at } (o watcher grava); nos
+// retries da mesma visita vale o menor entre ele e o node_start (Bugbot, PR #97). Um
+// routing_visit de visita anterior do mesmo nó (anterior ao fim da visita de outro nó
+// que quebrou a sequência) é ignorado.
 function nodeVisitStart(state, node, now) {
     const events = Array.isArray(state?.events) ? state.events : [];
     let start = null;
+    let before = null; // instante do último evento de outro nó (fim da visita anterior)
     for (let i = events.length - 1; i >= 0; i--) {
         const e = events[i];
         if (!e || !LIFECYCLE.has(e.type)) continue;
-        if (e.node !== node) break;
-        if (e.type === 'node_start' && typeof (e.ts || e.at) === 'string') start = e.ts || e.at;
+        const ts = typeof (e.ts || e.at) === 'string' ? (e.ts || e.at) : null;
+        if (e.node !== node) { before = ts; break; }
+        if (e.type === 'node_start' && ts) start = ts;
     }
-    return start || now;
+    if (!start) return now; // visita nova: 1º Attempt
+    const v = state?.routing_visit;
+    const vAt = v && v.node === node && typeof v.at === 'string' ? Date.parse(v.at) : NaN;
+    const ok = Number.isFinite(vAt) && (before == null || vAt > Date.parse(before)) && vAt < Date.parse(start);
+    return ok ? v.at : start;
+}
+
+/** O watcher grava o limite do 1º Attempt da visita (só quando a visita é nova). */
+function visitToRecord(state, node, boundary, now) {
+    return boundary === now ? { node, at: now } : null;
 }
 
 module.exports = {
-    recordAdmission, clearAdmission, markConsumed, bindingFor, loadRunSnapshot, blockedNotice, markNoticeSent, nodeVisitStart,
+    recordAdmission, clearAdmission, markConsumed, bindingFor, loadRunSnapshot, blockedNotice, markNoticeSent, nodeVisitStart, visitToRecord,
     TRANSIENT_NOTICE_AFTER,
 };
