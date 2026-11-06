@@ -68,8 +68,8 @@ Ref (Q9), a policy p2 (Q2) e o item no Keychain.
 - [x] Testes focados passam sob `loopback-only`, e o fake nunca recebe a chave em claro fora do header
 
 ### Fase 2: config, autoridade e efeito
-- [ ] T4: seção `classifier` do jev na policy roteada e `classifier_credential` no config
-- [ ] T5: Authority Ref e `classifier_effective` na admissão
+- [x] T4: seção `classifier` do jev na policy roteada e `classifier_credential` no config
+- [x] T5: Authority Ref e `classifier_effective` na admissão
 - [ ] T6: orquestração em sombra com Attempt de efeito (`classifier-shadow.js`)
 
 ### Checkpoint B

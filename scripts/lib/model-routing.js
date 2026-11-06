@@ -55,8 +55,10 @@ function tierOf(policy, modelId) {
 
 /**
  * @param {{ status: string, policy?: object, policy_ref?: object }} loaded saída de readRoutingConfig
+ * @param {{ classifierEffective?: object|null }} [opts] núcleo 2 efetivo decidido na admissão
+ *   (classifier-authority.evaluateClassifier, PRI-205 S3b). null/ausente = snapshot igual ao da S4.
  */
-function buildRoutingSnapshot(loaded) {
+function buildRoutingSnapshot(loaded, { classifierEffective = null } = {}) {
     if (!loaded || loaded.status !== 'ON' || !loaded.policy || !loaded.policy_ref) {
         throw new Error('ROUTING_SNAPSHOT_REQUIRES_ON');
     }
@@ -72,6 +74,7 @@ function buildRoutingSnapshot(loaded) {
         eligible_set,
         eligible_set_ref: sha256(eligible_set),
     };
+    if (classifierEffective) body.classifier_effective = structuredClone(classifierEffective);
     return { ...body, sha256: sha256(body) };
 }
 

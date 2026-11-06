@@ -110,9 +110,9 @@ const GIT_ENV = {
 };
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, env: { PATH: process.env.PATH, ...GIT_ENV }, encoding: 'utf8' }).trim();
 
-function policy(version = 'p-test-1') {
+function policy(version = 'p-test-1', classifier = { provider: 'cheap_rule' }) {
     return {
-        id: 'routing-sintetica', version, mode: 'ROUTED', classifier: { provider: 'cheap_rule' },
+        id: 'routing-sintetica', version, mode: 'ROUTED', classifier,
         class_to_tier: {
             C1: { tier: 'T1', effort: 'baixo' }, C2: { tier: 'T2', effort: 'médio' }, C3: { tier: 'T2', effort: 'alto' },
             C4: { tier: 'T3', effort: 'alto' }, C5: { tier: 'T3', effort: 'máximo' },
@@ -124,12 +124,13 @@ function policy(version = 'p-test-1') {
 }
 
 // Grava routing ON com policy válida (ou com sha divergente, para o caso inválido).
-function writeRouting(repo, { version = 'p-test-1', badSha = false } = {}) {
-    const bytes = JSON.stringify(policy(version));
+function writeRouting(repo, { version = 'p-test-1', badSha = false, classifier, extra = {} } = {}) {
+    const bytes = JSON.stringify(policy(version, classifier));
     fs.writeFileSync(path.join(repo, '.claude', 'routing-policy.json'), bytes);
     const sha = badSha ? 'f'.repeat(64) : crypto.createHash('sha256').update(bytes).digest('hex');
     fs.writeFileSync(path.join(repo, '.claude', 'model-routing.json'), JSON.stringify({
         mode: 'ON', policy_ref: { id: 'routing-sintetica', version, sha256: sha, path: '.claude/routing-policy.json' },
+        ...extra,
     }));
 }
 
@@ -588,4 +589,23 @@ test('T8 / D-4: override gravada no meio da visita ao nó não vale no retry do 
     assert.strictEqual(a.cause, 'retry');
     assert.strictEqual(a.routing.override_ref, null, 'override do meio do nó não vale neste Attempt');
     assert.deepStrictEqual(a.routing.overrides_pending, ['RO-1']);
+});
+
+// PRI-205 S3b T5: núcleo 2 na admissão. Hoje não há Authority Ref: a Run é admitida
+// normalmente e o snapshot registra o núcleo 2 off com o motivo (nunca bloqueia).
+test('S3b T5 / AC-07: policy jev sem Authority Ref → admitida, snapshot com núcleo 2 off (AUTHORITY_REF_ABSENT)', async () => {
+    const jevClient = require('./jev-client');
+    const id = 205501;
+    const classifier = {
+        provider: 'jev', mode: 'shadow', model_id: 'jev-latest', timeout_ms: 3000,
+        prompt_ref: { id: 'prisma-class-prompt', version: '1', sha256: jevClient.promptSha256() },
+        enum_version: jevClient.ENUM_VERSION, destination: jevClient.DESTINATION_ID,
+    };
+    const repo = consumer(r => writeRouting(r, { classifier, extra: { classifier_credential: { keychain: 'prisma-jev-typesafe', account: 'typesafe' } } }));
+    const r = await dispatch(repo, id, 's3b-t5-sem-ref');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    const eff = fetch.snapshot.routing.classifier_effective;
+    assert.deepStrictEqual([eff.provider, eff.declared, eff.reason, eff.credential], ['off', 'jev', 'AUTHORITY_REF_ABSENT', null]);
+    assert.strictEqual(flag(argvOf('s3b-t5-sem-ref'), '--model'), 'm-t3', 'o despacho segue igual');
 });

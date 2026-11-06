@@ -75,14 +75,16 @@ seção completa: `mode ∈ {shadow, active}`, `model_id`, `timeout_ms ≤ 5000`
 valor, como no `db-effect.js:74`) e `authority_ref {id, sha256, path}`.
 
 **Aceite:**
-- [ ] Policy jev incompleta → `POLICY_INVALID` com o detalhe; p1 (`cheap_rule`) continua válida, igual a hoje
-- [ ] Config com `password`, `token`, `key` ou valor literal → `ROUTING_CONFIG_INVALID`
-- [ ] Os testes atuais de `routing-config` e `model-routing-policy` passam sem mudança
+- [x] ~~Policy jev incompleta → `POLICY_INVALID` com o detalhe; p1 (`cheap_rule`) continua válida, igual a hoje~~ **Desvio (SPEC vence o plano):** a seção jev incompleta **não** invalida a policy. Ela é validada à parte por `validateClassifierSection`; o detalhe vai para a admissão (T5), que deixa o núcleo 2 `off`. Motivo: policy inválida com `mode = ON` bloqueia a admissão da Run (RC-5), e o SPEC §B2 diz que nada do núcleo 2 bloqueia.
+- [x] ~~Config com `password`, `token`, `key` ou valor literal → `ROUTING_CONFIG_INVALID`~~ Pelo mesmo motivo, vira erro em `classifier_config.errors` (`classifier_credential_invalid`, `authority_ref_invalid`, `authority_ref_path_outside_root`), sem ecoar o valor; o núcleo 2 fica `off`.
+- [x] Os testes atuais de `routing-config` e `model-routing-policy` passam sem mudança
 
 **Verificação:** `node --test scripts/lib/routing-config.test.js scripts/lib/routing-off-golden.test.js`
 **Dependências:** T3 (`promptSha256`)
 **Arquivos:** `scripts/lib/model-routing-policy.js` e testes
 **Tamanho:** S
+
+**Feito (2026-11-06):** `routing-config.test.js` 50/50 (20 casos novos). Com `routing-*`, `model-routing`, `cost-tracking`, `would-route`, os `classifier-*` e `jev-client`: 264/264 em Node 22.23.2 e 24.22.1. O snapshot e o hash de uma Run `cheap_rule` não mudam (`buildRoutingSnapshot` não lê `classifier_config`). `lint:src`, `check:js` e `arch:check` limpos.
 
 ## T5: Authority Ref e admissão
 
@@ -93,14 +95,25 @@ resultado e grava `classifier_effective {provider, mode, reason, authority_ref}`
 `isRevoked(ref)` relido a cada Attempt (Q4).
 
 **Aceite:**
-- [ ] Cada linha da tabela do B2 tem um teste (AC-07); nenhum caso bloqueia a admissão
-- [ ] O snapshot e o hash de uma Run `cheap_rule` ficam idênticos aos de `4d39a3c`
-- [ ] Revogação no meio da Run: o próximo Attempt fica `off`, e o já iniciado não muda
+- [x] Cada linha da tabela do B2 tem um teste (AC-07); nenhum caso bloqueia a admissão
+- [x] O snapshot e o hash de uma Run `cheap_rule` ficam idênticos aos de `4d39a3c`
+- [x] Revogação no meio da Run: o próximo Attempt fica `off`, e o já iniciado não muda
 
 **Verificação:** `node --test scripts/lib/classifier-authority.test.js scripts/lib/model-routing.test.js`
 **Dependências:** T4
 **Arquivos:** `scripts/lib/classifier-authority.js`, `scripts/lib/model-routing.js`, testes
 **Tamanho:** M
+
+**Feito (2026-11-06):**
+- `classifier-authority.test.js` tem 24 testes: todas as linhas do B2, `active` virando sombra, guarda indisponível, a função nunca lança, Q4 (espelho inalterado, revogado, mudado, ausente) e o snapshot.
+- Teste novo no watcher (`routing-admission-watcher.test.js` › "S3b T5 / AC-07"): uma policy `jev` sem Authority Ref é admitida e despacha igual, e o snapshot registra `off` com `AUTHORITY_REF_ABSENT`.
+- Conjunto de roteamento, DOM-06 e núcleo 2: 313/313 em Node 22.23.2 e 24.22.1. `lint:src`, `check:js` e `arch:check` limpos.
+
+**Decisões de implementação:**
+- `evaluateClassifier` devolve `null` para `off`/`cheap_rule`, e então o snapshot fica igual ao da S4.
+- A identidade do projeto em `scope.projects` é o nome da pasta do `REPO_PATH` (ex.: `app-back`). O espelho da Q9 deve usar esse nome.
+- Q4: qualquer mudança nos bytes do espelho para o envio a partir do próximo Attempt. Se o espelho novo traz `revoked_at`, o motivo é `REVOKED`; nos outros casos, `CHANGED`. Isso resolve a tensão entre "hash conferido" e "o espelho muda ao revogar".
+- A ligação da Q4 a cada Attempt fica com a T6/T7.
 
 ## T6: orquestração em sombra com Attempt de efeito
 

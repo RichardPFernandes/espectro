@@ -29,3 +29,11 @@
 **Risco do diff:** médio. Toca integração externa e credencial (Keychain), mas está dormente: nenhum chamador em produção, e nenhuma rede nos testes (loopback). Pelo perfil, a revisão independente G2 (Claude Opus, contexto limpo) fica no Checkpoint C, antes do PR.
 
 **Pendências que o Verify não fecha:** o formato da API TypeSafe não foi verificado contra a documentação oficial (P-3). Não encontrei em `harness/run-tests.js` onde o preload `loopback-only` é ligado no `npm test`; o teste de destino real fica pulado sem ele. A conferir no Checkpoint B.
+
+## T4 (2026-11-06)
+
+`routing-config.test.js` 50/50; conjunto de roteamento e núcleo 2 264/264 em Node 22 e 24; lint, check:js e arch:check limpos. Desvio do plano a favor do SPEC §B2: seção `jev` incompleta e referências malformadas não invalidam a policy nem a config (não bloqueiam a admissão); viram motivo para o núcleo 2 ficar `off` na T5. Parte do AC-07 (forma), sem a admissão ainda.
+
+## T5 (2026-11-06)
+
+AC-07 **coberto** em unidade (`classifier-authority.test.js`, cada linha do B2, `active` → sombra) e no watcher (policy `jev` sem ref → admitida, snapshot com `off`/`AUTHORITY_REF_ABSENT`, despacho igual). Q4: `checkStillAuthorized` testada; a chamada a cada Attempt entra na T6/T7. Snapshot de Run `cheap_rule` idêntico ao da S4 (teste). 313/313 em Node 22 e 24; lint, check:js e arch:check limpos.
