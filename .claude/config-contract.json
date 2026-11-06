@@ -1,5 +1,5 @@
 {
-  "contractVersion": "1.1.0",
+  "contractVersion": "1.2.0",
   "description": "Contrato da configuração do fluxo agêntico (.claude/, .graph/, .env.example). Validado por scripts/validate-config.js (regras em scripts/lib/config-validator.js). Caminhos relativos à raiz do consumidor. Mudou o contrato de forma incompatível (regra nova que reprova config antes válida, campo obrigatório novo)? Suba o major de contractVersion.",
   "rules": {
     "config-files-schema": {
@@ -25,6 +25,10 @@
     "worktrees-clean": {
       "severity": "warning",
       "description": "Não existem worktrees de ciclos encerrados nem worktrees órfãos (diretório sem registro git ou registro sem diretório). Corrigível com --fix."
+    },
+    "routing-config": {
+      "severity": "error",
+      "description": "PRI-233: .claude/model-routing.json ausente ou mode OFF passa sem ler policy. Com mode ON, a policy referenciada existe, tem o sha256 aprovado e um envelope roteado válido; inválida bloqueia a admissão de Runs novas do projeto."
     }
   },
   "graph": {

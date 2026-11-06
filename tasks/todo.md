@@ -42,12 +42,16 @@ vira regra nova do `config-validator.js` e é exportada para a admissão. O load
 da S3 passa a aceitar policy de produção sem mudar o caminho sombra.
 
 **Critérios de aceite:**
-- [ ] Um teste por desfecho: ausente, OFF, ON válido, ON com policy ausente, schema inválido, sha divergente, `mode` malformado, `UNAVAILABLE` com ON e leitura transitória × hash divergente (diretriz R-6 n.º 6).
-- [ ] Os testes existentes de `would-route`/`model-routing-policy` da S3 passam sem mudança.
-- [ ] `validate-config.js --format json` reporta a regra com severidade `error` só para escopo ON inválido.
+- [x] Um teste por desfecho: ausente, OFF, ON válido, ON com policy ausente, schema inválido, sha divergente, `mode` malformado, `UNAVAILABLE` com ON e leitura transitória × hash divergente (diretriz R-6 n.º 6). São 28 casos em `routing-config.test.js`, incluindo caminho absoluto, `..` e link simbólico para fora da raiz.
+- [x] Os testes da S3 (`would-route.test.js`) passam sem mudança, e o caminho sombra do loader continua igual (teste dedicado).
+- [x] A regra `routing-config` no `validateAll` dá `error` só para ON inválido; ausente e OFF passam sem ler policy. O contrato foi para 1.2.0 (regra nova não reprova config antes válida).
 
-**Verificação:**
-- [ ] `node --test scripts/lib/config-validator.test.js scripts/lib/model-routing-policy.test.js scripts/lib/would-route.test.js`
+**Verificação (2026-11-06):**
+- [x] `routing-config.test.js` 28/28, `config-validator.test.js` 23/23.
+- [x] No Node 22: scripts 1148 pass / 0 fail / 6 skip; dashboard 298 pass / 0 fail; `check:js` e `lint:src` limpos; golden da T1 inalterado.
+- [x] Mudança de teste existente: o teste do CLI agora espera "7 regras passaram" em vez de 6, por causa da regra nova. Não é enfraquecimento.
+
+**Decisões de implementação:** a validação roteada fica no `model-routing-policy.js` (`validateRoutedPolicy`, `readRoutingConfig`), sem módulo novo. A policy roteada exige `mode: ROUTED`, `id`, ids de modelo reais, `default_route` dentro do T3 e um `effort_map` total para low/medium/high/xhigh/max. Os códigos de E/S transitórios são EIO, EAGAIN, EBUSY, EMFILE, ENFILE, ETIMEDOUT e EINTR.
 
 **Dependências:** T1.
 **Arquivos:** `scripts/lib/config-validator.js` (+test), `scripts/lib/model-routing-policy.js` (+test).

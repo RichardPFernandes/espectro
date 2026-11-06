@@ -133,6 +133,146 @@ function defaultPolicyPath() {
     return DEFAULT_POLICY_PATH;
 }
 
+// ── PRI-233 (PRI-205 S4) T2: routing do consumidor e policy para mode ON ─────────
+// O caminho sombra acima (loadPolicy/validatePolicyEnvelope) não muda. A policy
+// roteada é validada à parte: precisa declarar mode ROUTED, id, ids de modelo reais
+// (nunca UNAVAILABLE), default_route explícito no T3 e mapeamento total de esforço
+// para o vocabulário do CLI. `routing.mode` vive no consumidor (SP-3), não na policy.
+
+const ROUTING_CONFIG_REL = path.join('.claude', 'model-routing.json');
+const ROUTED_PROVIDERS = new Set(['off', 'cheap_rule', 'jev']); // jev: efetivo decidido na admissão (A4)
+const CLI_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+const TRANSIENT_FS_CODES = new Set(['EIO', 'EAGAIN', 'EBUSY', 'EMFILE', 'ENFILE', 'ETIMEDOUT', 'EINTR']);
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+function nonEmptyString(v) {
+    return typeof v === 'string' && v.trim() !== '';
+}
+
+function isRealModel(v) {
+    return nonEmptyString(v) && v !== 'UNAVAILABLE' && v !== 'UNKNOWN';
+}
+
+/**
+ * @returns {{ ok: true, policy: object } | { ok: false, cause: string, detail: string }}
+ */
+function validateRoutedPolicy(raw) {
+    const fail = detail => ({ ok: false, cause: 'POLICY_INVALID', detail });
+    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return fail('root_not_object');
+    if (!nonEmptyString(raw.id)) return fail('id_missing');
+    if (!nonEmptyString(raw.version)) return fail('version_missing');
+    if (raw.mode !== 'ROUTED') return fail('mode_not_routed');
+    const provider = raw.classifier?.provider;
+    if (!nonEmptyString(provider)) return fail('classifier_provider_missing');
+    if (!ROUTED_PROVIDERS.has(provider)) return fail(`classifier_provider_unsupported:${provider}`);
+    if (!validClassToTier(raw.class_to_tier)) return fail('class_to_tier_invalid');
+    if (!validTiers(raw.tiers)) return fail('tiers_invalid');
+    for (const t of TIERS) {
+        if (!raw.tiers[t].models.every(isRealModel)) return fail(`tier_model_unavailable:${t}`);
+    }
+    const dr = raw.default_route;
+    if (!dr || !isRealModel(dr.model_id) || !nonEmptyString(dr.effort)) return fail('default_route_invalid');
+    if (!raw.tiers.T3.models.includes(dr.model_id)) return fail('default_route_not_t3');
+    const map = raw.effort_map;
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return fail('effort_map_invalid');
+    const used = [...new Set([...CLASSES.map(c => raw.class_to_tier[c].effort), dr.effort])];
+    for (const effort of used) {
+        if (!Object.prototype.hasOwnProperty.call(map, effort)) return fail(`effort_map_missing:${effort}`);
+        if (!CLI_EFFORTS.has(map[effort])) return fail(`effort_map_value_invalid:${effort}`);
+    }
+    return { ok: true, policy: raw };
+}
+
+function readFailure(cause, e) {
+    const transient = TRANSIENT_FS_CODES.has(e && e.code);
+    return { status: 'INVALID', cause, detail: `read:${(e && e.code) || 'ERROR'}`, transient };
+}
+
+function invalid(cause, detail) {
+    return { status: 'INVALID', cause, detail, transient: false };
+}
+
+function insideRoot(root, target) {
+    const rel = path.relative(root, target);
+    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+function validPolicyRef(ref) {
+    return ref && typeof ref === 'object' && !Array.isArray(ref)
+        && nonEmptyString(ref.id) && nonEmptyString(ref.version)
+        && typeof ref.sha256 === 'string' && SHA256_HEX.test(ref.sha256)
+        && nonEmptyString(ref.path);
+}
+
+/**
+ * Lê `.claude/model-routing.json` do consumidor e, só com mode ON, a policy referenciada.
+ * Nunca lança. Única função usada pelo check de config e pela admissão (AD-2).
+ *
+ * @param {string} root raiz do consumidor
+ * @param {{ readFile?: Function }=} opts
+ * @returns {{ status: 'OFF', source: 'absent'|'declared' }
+ *   | { status: 'ON', policy: object, policy_ref: object, policy_hash: string }
+ *   | { status: 'INVALID', cause: string, detail: string, transient: boolean }}
+ */
+function readRoutingConfig(root, { readFile = fs.readFileSync } = {}) {
+    const absRoot = path.resolve(root);
+    let text;
+    try {
+        text = readFile(path.join(absRoot, ROUTING_CONFIG_REL), 'utf8');
+    } catch (e) {
+        if (e && e.code === 'ENOENT') return { status: 'OFF', source: 'absent' };
+        return readFailure('ROUTING_CONFIG_UNREADABLE', e);
+    }
+    let cfg;
+    try {
+        cfg = JSON.parse(text);
+    } catch (e) {
+        return invalid('ROUTING_CONFIG_INVALID', `json_parse:${e.message}`);
+    }
+    if (cfg == null || typeof cfg !== 'object' || Array.isArray(cfg)) return invalid('ROUTING_CONFIG_INVALID', 'root_not_object');
+    if (cfg.mode === undefined || cfg.mode === 'OFF') return { status: 'OFF', source: 'declared' };
+    if (cfg.mode !== 'ON') return invalid('ROUTING_CONFIG_INVALID', 'mode_malformed');
+
+    const ref = cfg.policy_ref;
+    if (!validPolicyRef(ref)) return invalid('ROUTING_CONFIG_INVALID', 'policy_ref_invalid');
+    if (path.isAbsolute(ref.path)) return invalid('ROUTING_CONFIG_INVALID', 'policy_path_outside_root');
+    const policyPath = path.resolve(absRoot, ref.path);
+    if (!insideRoot(absRoot, policyPath)) return invalid('ROUTING_CONFIG_INVALID', 'policy_path_outside_root');
+    try {
+        if (fs.existsSync(policyPath) && !insideRoot(fs.realpathSync(absRoot), fs.realpathSync(policyPath))) {
+            return invalid('ROUTING_CONFIG_INVALID', 'policy_path_outside_root');
+        }
+    } catch (e) {
+        return readFailure('POLICY_UNREADABLE', e);
+    }
+
+    let bytes;
+    try {
+        bytes = readFile(policyPath);
+    } catch (e) {
+        if (e && e.code === 'ENOENT') return invalid('POLICY_MISSING', 'not_found');
+        return readFailure('POLICY_UNREADABLE', e);
+    }
+    const hash = sha256Bytes(Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes));
+    if (hash !== ref.sha256) return invalid('POLICY_HASH_MISMATCH', `expected:${ref.sha256}`);
+    let raw;
+    try {
+        raw = JSON.parse(bytes.toString('utf8'));
+    } catch (e) {
+        return invalid('POLICY_INVALID', `json_parse:${e.message}`);
+    }
+    const checked = validateRoutedPolicy(raw);
+    if (!checked.ok) return invalid(checked.cause, checked.detail);
+    if (raw.id !== ref.id) return invalid('POLICY_INVALID', 'id_mismatch');
+    if (raw.version !== ref.version) return invalid('POLICY_INVALID', 'version_mismatch');
+    return {
+        status: 'ON',
+        policy: raw,
+        policy_ref: { id: ref.id, version: ref.version, sha256: ref.sha256, path: ref.path },
+        policy_hash: hash,
+    };
+}
+
 module.exports = {
     DEFAULT_POLICY_PATH,
     ALLOWED_PROVIDERS,
@@ -142,4 +282,8 @@ module.exports = {
     validatePolicyEnvelope,
     defaultPolicyPath,
     sha256Bytes,
+    ROUTING_CONFIG_REL,
+    CLI_EFFORTS,
+    validateRoutedPolicy,
+    readRoutingConfig,
 };
