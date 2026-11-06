@@ -37,11 +37,12 @@ function cheapPolicy(overrides = {}) {
 
 // --- policy envelope --------------------------------------------------------
 
-test('policy default (off) carrega com hash estável', () => {
+test('policy default (cheap_rule) carrega com hash estável', () => {
     const a = policyLoader.loadPolicy();
     const b = policyLoader.loadPolicy();
     assert.strictEqual(a.status, 'LOADED');
-    assert.strictEqual(a.policy.classifier.provider, 'off');
+    assert.strictEqual(a.policy.classifier.provider, 'cheap_rule');
+    assert.strictEqual(a.policy.mode, 'SHADOW');
     assert.strictEqual(a.policy_version, b.policy_version);
     assert.strictEqual(a.policy_hash, b.policy_hash);
     assert.match(a.policy_hash, /^[0-9a-f]{64}$/);
@@ -69,12 +70,31 @@ test('policy inválida / jev / mode ON → INVALID; despacho não é assunto des
 });
 
 test('classifier off → NO_DECISION, applied=false, sem classes', () => {
-    const out = wr.shadowDecide({ loaded: policyLoader.loadPolicy(), signals: { status: 'COMPLETE', groups: [{ subtask_key: 'k', signals: firstSignals([{ files: tick('README.md') }]) }] } });
+    const off = JSON.parse(fs.readFileSync(policyLoader.DEFAULT_POLICY_PATH, 'utf8'));
+    off.classifier = { provider: 'off' };
+    const out = wr.shadowDecide({
+        loaded: policyLoader.loadPolicy({ json: off }),
+        signals: { status: 'COMPLETE', groups: [{ subtask_key: 'k', signals: firstSignals([{ files: tick('README.md') }]) }] },
+    });
     assert.strictEqual(out.status, wr.NO_DECISION);
     assert.strictEqual(out.cause, 'CLASSIFIER_OFF');
     assert.strictEqual(out.applied, false);
     assert.deepStrictEqual(out.decisions, []);
     assert.strictEqual(out.planning_bias.alters_r1_r8, false);
+});
+
+test('policy default cheap_rule → decisões sombra com faixa; applied=false; sem S4', () => {
+    const signals = ps.buildProspective(plan(
+        { title: 'Docs', files: tick('README.md'), acs: ['AC-01'] },
+        { title: 'Code', files: tick('src/a.js', 'src/a.test.js'), acs: ['AC-02'] },
+    ), { specContent: SPEC, fileExists: () => true });
+    const out = wr.shadowDecide({ loaded: policyLoader.loadPolicy(), signals });
+    assert.strictEqual(out.status, wr.SHADOW);
+    assert.strictEqual(out.applied, false);
+    assert.strictEqual(out.classifier_ref.provider, 'cheap_rule');
+    assert.ok(out.decisions.length >= 1);
+    assert.ok(out.decisions.every(d => d.class && d.tier && d.rule));
+    assert.ok(out.aggregate.subtasks === out.decisions.length);
 });
 
 test('policy ausente → NO_DECISION POLICY_MISSING', () => {

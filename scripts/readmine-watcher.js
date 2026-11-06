@@ -3382,7 +3382,7 @@ function attemptSignalsForRun(run, target) {
 }
 
 // PRI-223 S3: decisão sombra would_route a partir dos sinais S2. Best-effort; falha
-// não altera despacho. classifier=off (default) → NO_DECISION; cheap_rule → R1–R8.
+// não altera despacho. cheap_rule → R1–R8 (default da policy sombra); off → NO_DECISION.
 // Nunca aplica --model / esforço (S4 fora de escopo).
 function attemptWouldRouteForRun(signals) {
     if (!signals || signals === 'UNAVAILABLE') return 'UNAVAILABLE';
