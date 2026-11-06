@@ -255,7 +255,7 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 | MINOR-5: ticket novo recusado não aparece no Dashboard | **Pendente, registrado.** O aviso sai no Redmine e na notificação local. |
 | MINOR-6: docs e comentários desatualizados | **Corrigido** (matriz de evidência, este arquivo, comentário da T7 no watcher). |
 | NIT: `effort_applied` calculado tarde | **Corrigido.** |
-| Pedido: teste real do CLI | **Feito, parcial.** Ver AC-08 em `tasks/evidence.md`. |
+| Pedido: teste real do CLI | **Feito.** 1ª rodada: skill solta no projeto. 2ª rodada: plugin de marketplace, skill na conta e o router real como plugin em pasta na conta `personal`. A 2ª rodada corrigiu a regra de `pluginConfigs`: só com `options` é neutralizável. Ver AC-08 em `tasks/evidence.md`. |
 
 ## Fase 3: override, visibilidade e fechamento
 
