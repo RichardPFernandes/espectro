@@ -283,6 +283,87 @@ test('render: multimodel, unknowns, provenance, cache and unpriced/null counters
     assert.match(UI.render((await get('96007-partial')).state.cost_tracking), /Detalhamento disponível para 1 de 2 despachos/);
 });
 
+// PRI-233: Attempt roteado grava a RoutingDecision como objeto (formato de resolveRoute).
+const routedDecision = () => ({
+    node: 'implement', snapshot_sha256: 'a'.repeat(64), eligible_set_ref: 'eligible-set@1',
+    policy_ref: { id: 'routing-pri205', version: 'p1-2026-11-06', sha256: 'b'.repeat(64), path: '/private/consumer/config/routing-policy.json' },
+    class: 'C2', class_rule: 'R6', signals_sha256: 'c'.repeat(64),
+    classifier_ref: { declared: 'off', nucleus2_effective: 'off', reason: 'DECLARED_OFF' },
+    candidates: [
+        { tier: 'T1', model_id: 'claude-haiku-5-5', status: 'DISCARDED', reason: 'INELIGIBLE' },
+        { tier: 'T2', model_id: 'claude-sonnet-5-5', status: 'CHOSEN', reason: 'HUMAN_OVERRIDE' },
+    ],
+    chosen: { model_id: 'claude-sonnet-5-5', effort: 'medium', cli_effort: 'medium', tier: 'T2' },
+    selection_source: 'HUMAN_OVERRIDE',
+    override_ref: { ref: 'ovr-0001', scope: 'node', by: 'richard@example.invalid', recorded_at: '2026-11-06T10:00:00.000Z',
+        value: { model_id: 'claude-sonnet-5-5', effort: 'medium' } },
+    overrides_pending: ['ovr-0002'],
+    subagent: 'UNENFORCED', effort_router_plugin: 'NOT_LOADED',
+    plugin_proof: { settings_path: '/Users/someone/.prisma/dispatch-settings.json', settings_sha256: 'd'.repeat(64) },
+    effort_mechanism: { status: 'UNAVAILABLE' }, effort_applied: false,
+});
+
+test('projection and render: routed Attempt keeps a public RoutingDecision; OFF stays UNAVAILABLE', () => {
+    let ct = add(null, 'plan', 'off-a');
+    ct = cost.mergeRun(ct, { node: 'implement', agent: 'claude', metrics, alsoCovers: [],
+        run: { admission: { attempt_id: 'routed-a', admitted_node: 'implement',
+            attempt_ref: { runs_root: 'worktree:96002/memory/runs', path: '96002-multi/dom06/attempts/routed-a.json' } },
+        cause: 'dispatch', account: { source: 'dashboard', label: 'team' }, routing_decision: routedDecision() },
+        outcome: { exitCode: 0, attemptResult: 'COMPLETED' } });
+    const stored = ct.nodes.implement.attempts[0];
+    assert.equal(typeof stored.routing_decision, 'object', 'writer grava a decisão como objeto');
+    const before = JSON.stringify(ct);
+    const projected = projectCostTracking(ct);
+    assert.equal(JSON.stringify(ct), before, 'projection never mutates');
+    assert.equal(projected.nodes.plan.attempts[0].routing_decision, 'UNAVAILABLE');
+    const rd = projected.nodes.implement.attempts[0].routing_decision;
+    assert.deepEqual(rd, {
+        class: 'C2', class_rule: 'R6', selection_source: 'HUMAN_OVERRIDE',
+        chosen: { model_id: 'claude-sonnet-5-5', effort: 'medium', tier: 'T2' },
+        effort_applied: false, effort_router_plugin: 'NOT_LOADED',
+        override_ref: { ref: 'ovr-0001', scope: 'node' },
+        policy_ref: { id: 'routing-pri205', version: 'p1-2026-11-06', sha256: 'b'.repeat(64) },
+        candidates: [
+            { tier: 'T1', model_id: 'claude-haiku-5-5', status: 'DISCARDED', reason: 'INELIGIBLE' },
+            { tier: 'T2', model_id: 'claude-sonnet-5-5', status: 'CHOSEN', reason: 'HUMAN_OVERRIDE' },
+        ],
+    });
+    const json = JSON.stringify(projected);
+    for (const secret of ['/private/', '/Users/', 'settings_path', 'routing-policy.json', 'richard@', 'recorded_at', '"by"', 'path"', 'd'.repeat(64)]) {
+        assert.ok(!json.includes(secret), secret);
+    }
+
+    const html = UI.render(projected);
+    for (const text of ['claude-sonnet-5-5', 'T2', 'C2', 'R6', 'override humano', 'esforço não aplicado',
+        'routing-pri205@p1-2026-11-06', 'b'.repeat(12), 'ovr-0001', 'node', 'claude-haiku-5-5', 'INELIGIBLE', 'NOT_LOADED']) {
+        assert.ok(html.includes(text), text);
+    }
+    assert.doesNotMatch(html, /RoutingDecision<\/dt><dd>UNKNOWN/);
+    assert.doesNotMatch(html, /<(script|img|button|form|input)\b|\son\w+="/);
+
+    // Valores hostis viram UNKNOWN; candidatos limitados a 20; tipo inválido não quebra o render.
+    const hostile = clone(ct);
+    const h = hostile.nodes.implement.attempts[0].routing_decision;
+    h.chosen.model_id = '<img src=x onerror=alert(1)>';
+    h.policy_ref.sha256 = '/private/x';
+    h.candidates = Array.from({ length: 30 }, (_, i) => ({ tier: 'T1', model_id: `m-${i}`, status: 'DISCARDED', reason: 'INELIGIBLE' }));
+    const hp = projectCostTracking(hostile).nodes.implement.attempts[0].routing_decision;
+    assert.equal(hp.chosen.model_id, 'UNKNOWN');
+    assert.equal(hp.policy_ref.sha256, 'UNKNOWN');
+    assert.equal(hp.candidates.length, 20);
+    assert.doesNotMatch(UI.render(projectCostTracking(hostile)), /<img\b/);
+    const bogus = clone(ct);
+    bogus.nodes.implement.attempts[0].routing_decision = ['not', 'a', 'decision'];
+    assert.equal(projectCostTracking(bogus).nodes.implement.attempts[0].routing_decision, 'UNKNOWN');
+    const noOverride = clone(ct);
+    Object.assign(noOverride.nodes.implement.attempts[0].routing_decision, { override_ref: null, selection_source: 'CONSERVATIVE_DEFAULT', effort_applied: true });
+    const np = projectCostTracking(noOverride).nodes.implement.attempts[0].routing_decision;
+    assert.equal(np.override_ref, null);
+    const npHtml = UI.render(projectCostTracking(noOverride));
+    assert.doesNotMatch(npHtml, /esforço não aplicado|Override/);
+    assert.match(npHtml, /default conservador/);
+});
+
 test('render: zero remains observed; HTML is escaped and no actions are introduced', () => {
     assert.equal(UI.money(null), 'sem preço');
     assert.equal(UI.money(0), 'US$ 0,00');

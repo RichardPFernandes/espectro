@@ -119,9 +119,32 @@ for (const [name, setup] of [
     });
 }
 
+// CLI real 2.1.319 (conta com o router em skills/, prisma-evidence/2026-11-06-pri-233/
+// cli-plugin-proof.md, caso B): pluginConfigs só com options guarda opções, não liga o
+// plugin; o --settings com @skills-dir false desliga o router mesmo com essas opções.
+test('PRI-233 AC-08: pluginConfigs só com options (formato real) é neutralizável → NOT_LOADED', () => {
+    const { acc, run } = proofCase('so-options', a => {
+        fs.writeFileSync(path.join(a, 'settings.json'), JSON.stringify({
+            pluginConfigs: { 'jev-model-router@skills-dir': { options: { provider: 'builtin', routeMainEffort: true } } },
+        }));
+        fs.mkdirSync(path.join(a, 'skills', 'jev-model-router'), { recursive: true });
+    });
+    const p = routedPluginProof({ accountDir: acc, runDir: run, managedPaths: NO_MANAGED });
+    assert.equal(p.status, 'NOT_LOADED');
+    const generated = JSON.parse(fs.readFileSync(p.settings_path));
+    assert.deepEqual(generated.enabledPlugins, { 'jev-model-router@skills-dir': false });
+    assert.deepEqual(generated.skillOverrides, { 'jev-model-router': 'off' });
+});
+
 for (const [name, setup, reason] of [
     ['pluginConfigs ligado', a => fs.writeFileSync(path.join(a, 'settings.json'),
         JSON.stringify({ pluginConfigs: { 'jev-model-router@skills-dir': { enabled: true } } })), 'plugin_config_not_neutralizable'],
+    ['pluginConfigs ligado com options', a => fs.writeFileSync(path.join(a, 'settings.json'),
+        JSON.stringify({ pluginConfigs: { 'jev-model-router@skills-dir': { enabled: true, options: {} } } })), 'plugin_config_not_neutralizable'],
+    ['pluginConfigs true', a => fs.writeFileSync(path.join(a, 'settings.json'),
+        JSON.stringify({ pluginConfigs: { 'jev-model-router@skills-dir': true } })), 'plugin_config_not_neutralizable'],
+    ['pluginConfigs com enabled não booleano', a => fs.writeFileSync(path.join(a, 'settings.json'),
+        JSON.stringify({ pluginConfigs: { 'jev-model-router@skills-dir': { enabled: 'sim' } } })), 'plugin_config_not_neutralizable'],
 ]) {
     test(`PRI-233 SP-2 / AC-08: ${name} não é neutralizável → LOADED, sem --settings`, () => {
         const { acc, run } = proofCase(name.replace(/\W+/g, '-'), setup);
