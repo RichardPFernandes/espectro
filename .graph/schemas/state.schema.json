@@ -2185,13 +2185,16 @@
               "null"
             ],
             "description": "Tokens (entrada + saída) acumulados no início do retry."
+          },
+          "diagnosis": {
+            "description": "PRI-181 c2b-1 (SDD B v2 §4.2): bloco do Diagnosis Record desta recusa (rev, status, current_version, current_sha256, versions[], job, review, review_history, outcome, applied_ops, cost, fenced_tokens, blocked); versões imutáveis em memory/runs/<task-id>/qa-diagnosis/<slug>/vNNN.json. Gravado só pelo state-writer. Sem type de propósito: um bloco malformado não invalida o state.json nem muda o despacho (QRD-AC-10, DB-05); a validação estrita é do módulo scripts/lib/qa-diagnosis-model.js (validateBlock) e falha fechada só para a operação de diagnóstico. Preserve ao regravar o state.json."
           }
         }
       }
     },
     "qa_diagnosis": {
       "type": "object",
-      "description": "PRI-181 C2/C3: ponteiro para Diagnosis Record publicado no store memory/qa-diagnosis/records/ (R3-A). Não é Context Record (RR-03=A). C3 preenche findings via predicados de sistema. Consultivo (DB-05).",
+      "description": "Legado PRI-181 C2/C3, só leitura: ponteiro para o Diagnosis Record v1 do store por repo memory/qa-diagnosis/records/. Sem writer desde a c2b-1 (store por run; ver qa_rejections[].diagnosis). Não é removido nem reinterpretado. Não é Context Record (RR-03=A).",
       "properties": {
         "rejection_key": {
           "type": [
