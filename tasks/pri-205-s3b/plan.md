@@ -52,7 +52,7 @@ Ref (Q9), a policy p2 (Q2) e o item no Keychain.
   para ele por `authority_ref {id, sha256, path}`, como o `policy_ref`. A admissão
   valida e grava `classifier_effective` no snapshot. A revogação é relida a cada
   Attempt (Q4): só o campo `revoked_at` do espelho, com o hash conferido.
-- **AD-9. Policy p2 (Q2).** O plano gera a **proposta**
+- **AD-9. ~~Policy p2 (Q2).~~ Substituída pela Q12 (2026-11-06):** os parâmetros do Jev vêm da plataforma e ficam no registro de seleção; a p1 fica como está. Texto anterior: O plano gera a **proposta**
   `routing-pri205@p2-<data>` em `prisma-evidence/`, com o mapeamento igual ao da
   p1 e a seção `classifier` do jev. Ela não vai para o consumidor sem a sua
   aprovação.
@@ -77,8 +77,13 @@ Ref (Q9), a policy p2 (Q2) e o item no Keychain.
 
 ### Fase 3: integração, U15 e fechamento
 - [x] T7: `nucleus2` e `classifier_ref` na RoutingDecision, com a ligação no watcher
-- [ ] T8: comando U15 `jev-calibrate.js`
+- [x] T8: comando U15 `jev-calibrate.js`
 - [ ] T9: consumidores dos Attempts, documentação do consumidor e proposta da p2
+
+### Fase 4: seletor "Só policy" × "Policy + Jev" (R-SEL, SPEC §B11; Q11–Q14)
+- [ ] T10: registro de seleção e writer governado (`classifier-selection.js`)
+- [ ] T11: admissão lê o registro (snapshot `classifier_selection_ref`, `selection_version` no `classifier_ref`)
+- [ ] T12: `GET`/`POST /api/routing/classifier` no Dashboard; contrato enviado à sessão `routing-screens`
 
 ### Checkpoint C (fechamento)
 - [ ] Receita oficial em Node 22 e 24, mais `check:js`, `lint:src` e `arch:check`
@@ -95,6 +100,7 @@ Ref (Q9), a policy p2 (Q2) e o item no Keychain.
 | O Attempt `classifier` aparece onde se leem Attempts (`cost-projection.js:37`, `routing-run.js:102`) | Baixo | T9 testa os dois; o `latestBound` filtra por nó |
 | Latência no despacho do Implement (até 3 × 3 s) | Médio | Teto do Q8; latência gravada por chamada para medir |
 | Saldo de USD 9 gasto mais rápido com a sonda C1–C3 | Baixo | Sem teto (Q8); o gasto aparece no saldo; esgotado = `FAILED`, sem repetição |
+| `memory/routing/` do consumidor ser versionado no git (o registro deve ficar fora do git, Q11) | Médio | T10 confere o `.gitignore` do consumidor sem ler dados; a documentação (T9) diz para ignorar `memory/routing/`; o writer não depende do git |
 | Ampliação do §4.8 (sonda C1–C3) sem reconciliação | Médio | Registrada no SPEC e no handoff como candidata da reconciliação do RC-6 (regra 8); não aplicada |
 
 ## Perguntas em aberto (do plano)

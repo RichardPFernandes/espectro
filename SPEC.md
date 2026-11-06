@@ -1,7 +1,7 @@
 # Spec: PRI-205 S3b — núcleo 2 da classificação com o Jev (TypeSafe) em modo SOMBRA
 
 > **Status:** APROVADA pelo Richard em 2026-11-06 ("Approve, start plan"). Q0 a Q10 decididas (tabela
-> "Decisões tomadas nesta spec"). Plano em `tasks/pri-205-s3b/plan.md`. Sem código ainda. A spec
+> "Decisões tomadas nesta spec"). **Ampliada em 2026-11-06 pela R-SEL (seletor, B11) com Q11–Q14 decididas pelo Richard.** Plano em `tasks/pri-205-s3b/plan.md`. A spec
 > não é Ready da issue, não aplica RC-1 a RC-6 (todos NOT APPLIED), não altera o
 > desenho v9, a F13 nem a policy aprovada `routing-pri205@p1-2026-11-06`.
 > `roadmap-ref: UNKNOWN` (D-3: registro no Linear, sem Roadmap).
@@ -79,7 +79,7 @@ visita ao nó, sem efeito no despacho; (3) o comando U15 produz, para cada entra
 | Q0 | (b): tudo em sombra até a calibração. Custo × qualidade, não só economia |
 | Q0' | Sonda de subida em sombra também nos grupos C1–C3 (G3). Amplia o §4.8; vai para a reconciliação do RC-6 (regra 8) |
 | Q1 | Só em Runs com `mode = ON` |
-| Q2 | Propor no plano a `routing-pri205@p2`, só com a seção `classifier` do jev e o mapeamento de modelos igual ao da p1 |
+| Q2 | ~~Propor no plano a `routing-pri205@p2`~~ **Substituída pela Q12:** a p2 não é necessária; a p1 fica como está |
 | Q3 | Excluir também `rework` e `sensitive_decl = UNKNOWN` (já refletido no B3) |
 | Q4 | A revogação da Authority Ref vale a partir do próximo Attempt; é o único dado relido fora do snapshot |
 | Q5 | Pergunta = escolha entre as classes C1–C5, com critérios em texto, mais o `noul` de risco |
@@ -88,13 +88,18 @@ visita ao nó, sem efeito no despacho; (3) o comando U15 produz, para cada entra
 | Q8 | `timeout_ms` = 3000, no máximo 3 grupos por visita (G1/G2 antes de G3), sem teto diário; `--max-calls` só no U15 |
 | Q9 | Authority Ref registrada pelo Coordenador no Linear (DP-7), com espelho e hash no consumidor; até existir, a fatia fica desligada (`AUTHORITY_REF_ABSENT`) |
 | Q10 | Em sombra, aceita `model_version = UNKNOWN` se só houver `jev-latest`; o modo ativo exige um id fixo ou uma decisão nova |
+| R-SEL | **Requisito novo do Richard (2026-11-06, via sessão coordenadora):** "deve ter como selecionar as duas opções tanto usar o jev quanto só usar a policy". O seletor (D23/S7d, §4.8) **entra** nesta fatia: contrato, writer governado e endpoint. A tela é da sessão `routing-screens` |
+| Q11 | A escolha fica num **registro próprio** do consumidor, append-only, em `memory/routing/classifier-selection.json`, fora do git e fora da policy (o hash da p1 não muda). Entra no snapshot da Run e no `classifier_ref` (B11) |
+| Q12 | Os parâmetros do Jev (modelo, timeout, prompt, enum, destino) vêm **da plataforma** (constantes do `jev-client` desta versão) e são gravados em cada versão do registro. **A p2 deixa de ser necessária** (substitui a Q2) |
+| Q13 | Escopo **por projeto consumidor**, como o `mode` do roteamento (SP-3) |
+| Q14 | Quem troca: **aprovador autenticado**, como no override de roteamento (nome e senha, bloqueio após tentativas, CAS, `operation_id`) |
 
 ## Fora de escopo
 
 - Modo `active` para a **descida** (o lado do custo), em qualquer opção da Q0.
   Na opção (b), também para a subida. `active` declarado sem calibração vale
   como `shadow`, com o motivo registrado (§4.8, defesa na admissão).
-- Seletor no Dashboard e o writer governado da seção `classifier` (S7d, PRI-238).
+- A **tela** do seletor no Dashboard (sessão `routing-screens`). ~~Seletor e writer~~: entraram pela R-SEL (B11).
 - Esforço (U1, SP-1 revista) e `haiku` como classificador (vale `off`).
 - O plugin `jev-model-router`: continua desligado em todo despacho roteado pelo
   `--settings` gerado (`claude-account.js`, SP-2). Ele não é o mecanismo daqui.
@@ -110,7 +115,7 @@ visita ao nó, sem efeito no despacho; (3) o comando U15 produz, para cada entra
 
 | Item | Onde fica | Observação |
 | -- | -- | -- |
-| `classifier = {provider: "jev", mode: "shadow", model_id, timeout_ms, prompt_ref {id, version, sha256}, enum_version, destination: "typesafe:/v1/systemone"}` | policy roteada versionada (nova versão, Q2) | entra no snapshot da Run e no hash; vale só para Runs novas (F5) |
+| `classifier = {provider: "jev", mode: "shadow", model_id, timeout_ms, prompt_ref {id, version, sha256}, enum_version, destination: "typesafe:/v1/systemone"}` | **registro de seleção do consumidor** (B11, Q11/Q12), com os parâmetros da plataforma; sem registro, vale a seção da policy (hoje `cheap_rule`) | entra no snapshot da Run; vale só para Runs novas (F5) |
 | Referência da credencial: `{"keychain": "prisma-jev-typesafe", "account": "typesafe"}` | config do consumidor (`.claude/model-routing.json`, campo novo `classifier_credential`) | **só o nome do item do Keychain**; o valor nunca está no repo, na policy, no snapshot, no Attempt nem em log. Precedente: `db-effect.js:60-80` (segredo só no Keychain, serviço derivado do nome) |
 | Authority Ref do envio | registro durável próprio (B2) | não é config: config não autoriza nada (AGENTS.md regra 6) |
 
@@ -295,6 +300,50 @@ depois de ler o corpo, resposta não determinística para o U15). Credencial por
 provedor injetado (fake do Keychain). Nenhum teste toca rede externa, Keychain
 real ou texto real de ticket M&O.
 
+### B11. Seletor "Só policy" × "Policy + Jev" (R-SEL; Q11–Q14)
+
+**Registro.** `<consumidor>/memory/routing/classifier-selection.json`, append-only:
+`{schema: "classifier-selection@1", project, current_version, versions: [{version, choice,
+classifier, by, at, reason, previous_version, operation_id, payload_sha256, checks}]}`.
+
+- `choice = "policy_only"` → `classifier = {provider: "off"}`: só o núcleo 1.
+- `choice = "policy_jev"` → `classifier` completo do jev com os parâmetros da plataforma
+  (Q12) e `mode ∈ {shadow, active}`.
+- Sem registro (versão 0): vale `policy.classifier` (a p1 tem `cheap_rule`: só núcleo 1).
+
+**Writer governado** (`classifier-selection.writeSelection`). Valida na ordem do §4.8 e
+recusa com código:
+
+| Ordem | Validação | Recusa |
+| -- | -- | -- |
+| 0 | `operation_id` já gravado: mesmo hash do pedido → devolve o resultado gravado, sem nova escrita; hash diferente → recusa | `CLASSIFIER_IDEMPOTENCY_MISMATCH` |
+| 1 | `expected_version` igual a `current_version` (CAS) | `CLASSIFIER_VERSION_CONFLICT` |
+| 2 | Para `policy_jev` (sombra ou ativo): Authority Ref válida para o projeto (mesma avaliação do B2), credencial referenciada no config e guarda disponível | `CLASSIFIER_SCOPE_NOT_AUTHORIZED` (com o motivo do B2) |
+| 3 | Para `mode = active`: `calibration_ref` PASS igual campo a campo ao `classifier_ref`. **Não existe registro de calibração:** `active` é sempre recusado nesta fatia | `CLASSIFIER_NOT_CALIBRATED` |
+| 4 | Nenhuma unidade S6 ativa no projeto. **Não existe registro de unidades** (PRI-236 em Backlog): passa, e grava `experiment_lock: "NO_REGISTRY"` | `CLASSIFIER_LOCKED_BY_EXPERIMENT` |
+| 5 | Gravação atômica (arquivo de trava exclusivo, tmp + rename) da nova versão, com a auditoria (quem, quando, anterior, novo, motivo, `operation_id`, hash do pedido, resultado de 0–4) | — |
+
+`policy_only` exige só 0, 1, 4 e 5. A UI só projeta o estado e o motivo da recusa; a guarda
+é o writer.
+
+**Admissão.** A Run lê o registro uma vez e fixa no snapshot `classifier_selection_ref
+{version, sha256}`. O `classifier` efetivo (B2) é o do registro, ou o da policy sem
+registro. A mesma regra de autorização é reavaliada na admissão (defesa em profundidade).
+Uma troca só vale para Runs novas: Run em andamento mantém o snapshot, sem rebind. Registro
+ilegível ou com hash quebrado → núcleo 2 `off` com `CLASSIFIER_SELECTION_INVALID`, sem
+bloquear a admissão. O `classifier_ref` ganha `selection_version`.
+
+**API do Dashboard.**
+- `GET /api/routing/classifier` → estado atual do projeto do Dashboard: versão, escolha,
+  modo, autoria e motivo, as opções com `allowed` e o código de recusa previsto, o `mode` do
+  roteamento e as 20 últimas versões.
+- `POST /api/routing/classifier` com `{choice, mode?, expected_version, operation_id,
+  reason, approver, approver_password}` → `200 {ok, status: "applied" | "already_processed",
+  current}`, ou `{ok: false, code, error}` com 400 (pedido inválido), 401/403/429 (aprovador,
+  como hoje), 409 (`CLASSIFIER_VERSION_CONFLICT`, `CLASSIFIER_IDEMPOTENCY_MISMATCH`) ou 422
+  (`CLASSIFIER_SCOPE_NOT_AUTHORIZED`, `CLASSIFIER_NOT_CALIBRATED`,
+  `CLASSIFIER_LOCKED_BY_EXPERIMENT`).
+
 ## Critérios de aceite
 
 - **AC-01 (inércia):** policy com `provider ∈ {off, cheap_rule}`, ou `jev` sem
@@ -335,6 +384,19 @@ real ou texto real de ticket M&O.
 - **AC-14 (suíte):** a receita oficial (`harness/run-tests.js`) passa em Node 22 e
   24; os consumidores de `listAttempts` (custo por Attempt, Dashboard) ignoram ou
   mostram o nó `classifier` sem quebrar.
+- **AC-15 (seletor, opções):** `policy_only` grava `provider = off`; `policy_jev` grava a
+  seção completa com os parâmetros da plataforma; sem registro, vale a policy. A p1 e o hash
+  dela não mudam.
+- **AC-16 (writer, ordem 0–5):** cada recusa da tabela do B11 tem um teste, com o código; a
+  idempotência é conferida antes do CAS; `active` é sempre `CLASSIFIER_NOT_CALIBRATED`;
+  `policy_jev` sem Authority Ref é `CLASSIFIER_SCOPE_NOT_AUTHORIZED`.
+- **AC-17 (auditoria e atomicidade):** cada versão tem autor, data, anterior, novo, motivo,
+  `operation_id` e hash do pedido; duas escritas concorrentes com a mesma `expected_version`
+  → uma grava e a outra recebe 409.
+- **AC-18 (só Runs novas):** trocar a escolha não muda o snapshot nem a decisão de uma Run em
+  andamento; a Run seguinte usa a versão nova; o `classifier_ref` traz `selection_version`.
+- **AC-19 (API):** `GET` e `POST /api/routing/classifier` com aprovador autenticado, CAS e
+  `operation_id`; a recusa sai com o código, nunca 500.
 
 ## Conformidade com o DOM-07 (R-4: "a SDD verifica a adequação")
 

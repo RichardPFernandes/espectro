@@ -55,3 +55,14 @@ Receita oficial da suíte `scripts`: Node 22.23.2 1470/0 (6 skip de ambiente); N
 - AC-12: os 8 campos e a igualdade entre Attempts.
 
 **Resultado:** 385/385 em Node 22 e 24; `lint:src`, `check:js` e `arch:check` limpos.
+
+## T8 (2026-11-06)
+
+**AC-13 coberto** (`jev-calibration.test.js`, 9/9):
+- fake determinístico dá 100%;
+- fake alternado dá a taxa esperada;
+- `--max-calls` é obrigatório e respeitado;
+- repetições `COMPLETE` não se refazem;
+- faltantes ficam UNKNOWN (veredito UNKNOWN, nunca PASS).
+
+**Resultado:** 394/394 em Node 22 e 24; `lint:src`, `check:js` e `arch:check` limpos. O U15 real (contra a TypeSafe) não foi executado: depende da ativação (P-4) e do teste de fumaça manual (P-3).

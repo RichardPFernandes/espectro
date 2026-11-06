@@ -210,32 +210,102 @@ reserva do nó.
 `collectOpinions` e imprime só agregados.
 
 **Aceite:**
-- [ ] AC-13: fake determinístico dá 100%; fake alternado dá a taxa esperada; `--max-calls` é obrigatório e respeitado; repetições `COMPLETE` não se refazem
-- [ ] Respostas faltantes saem como `UNKNOWN`, nunca como concordância
-- [ ] A saída não contém texto de envelope
+- [x] AC-13: fake determinístico dá 100%; fake alternado dá a taxa esperada; `--max-calls` é obrigatório e respeitado; repetições `COMPLETE` não se refazem
+- [x] Respostas faltantes saem como `UNKNOWN`, nunca como concordância
+- [x] A saída não contém texto de envelope
 
-**Verificação:** `node --require ./harness/loopback-only.cjs --test scripts/jev-calibrate.test.js`
+**Verificação:** `node --require ./harness/loopback-only.cjs --test scripts/lib/jev-calibration.test.js` (a lógica fica em `scripts/lib/jev-calibration.js`, coberta pelo `lib/*.test.js` do `npm test`; `scripts/jev-calibrate.js` é só o CLI)
 **Dependências:** T6
 **Arquivos:** `scripts/jev-calibrate.js`, `.test.js`
 **Tamanho:** S
+
+**Feito (2026-11-06):** `jev-calibration.test.js` 9/9. Cobre:
+- fake determinístico: 5/5, taxa 1, PASS, 10 efeitos com `rep_index` 1..5;
+- fake alternado: moda 0,6, taxa 0, FAIL;
+- `--max-calls` respeitado: o que faltou fica UNKNOWN, e rodar de novo completa só o que faltava;
+- resposta incerta: conta como faltante e nunca é refeita;
+- erros de uso; núcleo 2 `off`;
+- relatório sem texto nem chave; envelope adulterado é pulado;
+- `--synthetic` (teste de fumaça P-3);
+- o CLI sem `--max-calls` sai com 2.
+
+Conjunto: 394/394 em Node 22 e 24. `lint:src`, `check:js` e `arch:check` limpos.
+
+**Decisões de implementação:**
+- Extraí `emitOnce`/`priorOutcome` do `classifier-shadow`: o despacho e o U15 usam o mesmo registro de efeito. Os 14 testes da T6/T7 seguem verdes.
+- As repetições vão para um diretório próprio (`<runs>/_jev-u15` por padrão, ou `--out`), não para os Attempts da Run.
+- A EffectId do U15 é `['U15', envelope, prompt, modelo, rep]`, independente da visita.
+- `OUT_OF_ENUM` conta como resposta distinta: quebra a igualdade, mas não é faltante.
+- A config é avaliada na hora (Authority Ref atual). Sem núcleo 2 efetivo, o CLI sai com 3 e não envia nada.
 
 ## T9: consumidores, documentação e proposta da p2
 
 **Descrição:** garantir que `cost-projection.js` e `routing-run.js` ignorem ou
 mostrem o nó `classifier` sem quebrar; documentar em `docs/consumer-operations.md`
-a ativação (os quatro passos de P-4, como criar o item no Keychain **sem** colar o
-valor em lugar nenhum, e como desligar); gerar a proposta
-`routing-pri205@p2-<data>` em `prisma-evidence/` com o hash.
+a ativação (Authority Ref, item no Keychain **sem** colar o valor em lugar nenhum,
+seleção "Policy + Jev" pelo Dashboard, e como desligar com "Só policy"), e que
+`memory/routing/` fica fora do git do consumidor. ~~Gerar a proposta da p2~~ (Q12:
+não é mais necessária).
 
 **Aceite:**
 - [ ] AC-14: receita oficial verde em Node 22 e 24; `check:js`, `lint:src` e `arch:check` limpos
 - [ ] AC-06: varredura dos arquivos gravados nos testes sem a chave falsa
-- [ ] A proposta p2 valida em `validateRoutedPolicy` e difere da p1 só em `version`, `status`, `approval`, `note` e `classifier`
+- [x] ~~A proposta p2…~~ Não se aplica (Q12)
 
 **Verificação:** `node harness/run-tests.js` (Node 22 e 24)
 **Dependências:** T7, T8
 **Arquivos:** `dashboard/cost-projection.js` (se preciso), `docs/consumer-operations.md`, testes
 **Tamanho:** S
+
+## T10: registro de seleção e writer governado
+
+**Descrição:** `scripts/lib/classifier-selection.js`: `readSelection(root)`,
+`effectiveClassifier(root, policy)` (registro ou policy) e `writeSelection(root,
+{choice, mode, expectedVersion, operationId, by, reason, project, classifierConfig})`
+com as validações 0–5 do B11, na ordem, e gravação atômica com auditoria.
+
+**Aceite:**
+- [ ] AC-15: `policy_only` → `{provider: off}`; `policy_jev` → seção completa da plataforma; sem registro vale a policy
+- [ ] AC-16: um teste por código de recusa, na ordem (idempotência antes do CAS; `active` sempre `CLASSIFIER_NOT_CALIBRATED`; jev sem ref `CLASSIFIER_SCOPE_NOT_AUTHORIZED`)
+- [ ] AC-17: auditoria completa por versão; concorrência com a mesma `expected_version` → um grava, o outro 409
+
+**Verificação:** `node --test scripts/lib/classifier-selection.test.js`
+**Dependências:** T5
+**Arquivos:** `scripts/lib/classifier-selection.js`, `.test.js`
+**Tamanho:** M
+
+## T11: admissão lê o registro
+
+**Descrição:** na admissão, o watcher usa `effectiveClassifier` no lugar de
+`policy.classifier`, fixa `classifier_selection_ref {version, sha256}` no snapshot e o
+`classifier_ref` ganha `selection_version`. Registro ilegível → `off` com
+`CLASSIFIER_SELECTION_INVALID`, sem bloquear.
+
+**Aceite:**
+- [ ] AC-18: trocar a escolha não muda a Run em andamento; a próxima Run usa a versão nova
+- [ ] Sem registro, snapshot e decisão iguais aos de hoje (golden do `mode` OFF e testes da S4 verdes)
+- [ ] Registro quebrado → `off` com motivo, admissão segue
+
+**Verificação:** `node --require ./harness/loopback-only.cjs --test scripts/lib/routing-admission-watcher.test.js scripts/lib/model-routing.test.js`
+**Dependências:** T10
+**Arquivos:** `scripts/readmine-watcher.js`, `scripts/lib/model-routing.js`, testes
+**Tamanho:** S
+
+## T12: API do seletor no Dashboard
+
+**Descrição:** `GET /api/routing/classifier` e `POST /api/routing/classifier` no
+`dashboard/server.js`, no padrão do `routing-override` (`requireApprover`,
+`operation_id`, recusa com código). Contrato enviado à sessão `routing-screens`.
+
+**Aceite:**
+- [ ] AC-19: GET com estado, opções e motivo previsto da recusa; POST aplica, devolve `already_processed` na repetição e recusa com 400/409/422 e o código
+- [ ] Sem aprovador válido → 401/403/429 como hoje; nada é gravado
+- [ ] Testes do dashboard verdes em Node 22 e 24
+
+**Verificação:** receita do pacote `dashboard`
+**Dependências:** T10, T11
+**Arquivos:** `dashboard/server.js`, teste novo em `dashboard/`
+**Tamanho:** M
 
 ## Checkpoint C (fechamento)
 - [ ] Revisão independente G2 (Claude Opus, contexto limpo, sem Codex) com os achados resolvidos

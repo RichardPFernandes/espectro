@@ -127,8 +127,68 @@ function withAnswer(op, hit, answer) {
     };
 }
 
+/** Resultado anterior de uma EffectId (não repetição). */
+function priorOutcome(runDir, effectId) {
+    const prior = findPrior(runDir, effectId);
+    if (!prior) return { found: false };
+    const answer = prior.result === 'COMPLETE' ? parseDetail((prior.effects || []).find(e => e.idempotency_key === effectId)) : null;
+    return {
+        found: true,
+        result: prior.result,
+        attemptId: prior.attempt_id,
+        answer: answer && answer.outcome === 'OK' ? answer : null,
+    };
+}
+
 const OUTCOME_STATUS = { NOT_SENT: 'NOT_SENT', FAILED: 'FAILED', UNCERTAIN: 'UNCERTAIN' };
 const OUTCOME_RESULT = { OK: 'COMPLETE', NOT_SENT: 'FAILED', FAILED: 'FAILED', UNCERTAIN: 'UNCERTAIN' };
+
+/**
+ * Uma chamada ao Jev como Attempt de efeito: intenção durável antes do envio,
+ * desfecho registrado e fechado. Nunca lança.
+ * @returns {Promise<{ status: string, attemptId: string|null, compact: object|null, authRejected: boolean }>}
+ */
+async function emitOnce({ runDir, effectId, snapshotFields, envelope, effective, credential, client = jevClient }) {
+    const begun = dom06.beginAttempt(runDir, {
+        node: NODE,
+        admission: { status: 'ADMITTED', owner: 'dom06', snapshot: { ...snapshotFields, effect_id: effectId } },
+        obligations: [{ id: OBLIGATION }],
+    });
+    const attemptFile = begun.attemptFile;
+    const attemptId = begun.attempt.attempt_id;
+    const auth = dom06.authorizeEffect(dom06.readAttempt(attemptFile), { obligationId: OBLIGATION, idempotencyKey: effectId });
+    if (!auth.ok) {
+        dom06.closeAttempt(attemptFile, { result: 'FAILED', reason: auth.error });
+        return { status: 'NOT_AUTHORIZED', attemptId, compact: null, authRejected: false };
+    }
+    let res;
+    try {
+        res = await client.classify({ envelope, model: effective.model_id, credential, timeoutMs: effective.timeout_ms });
+    } catch {
+        // Não se sabe se saiu: incerto, nunca repetido.
+        dom06.recordEffect(attemptFile, { obligation_id: OBLIGATION, idempotency_key: effectId, status: 'failed', detail: JSON.stringify({ outcome: 'UNCERTAIN', detail: 'CLIENT_ERROR' }) });
+        dom06.closeAttempt(attemptFile, { result: 'UNCERTAIN', reason: 'CLIENT_ERROR' });
+        return { status: 'ERROR', attemptId, compact: null, authRejected: false };
+    }
+    const outcome = OUTCOME_RESULT[res.outcome] ? res.outcome : 'UNCERTAIN';
+    const compact = {
+        outcome, parse: res.parse ?? null, class: res.class ?? null, confidence: res.confidence ?? null,
+        risky: res.risky ?? null, model_reported: res.model_reported ?? null, latency_ms: res.latency_ms ?? null,
+        detail: res.detail ?? null,
+    };
+    dom06.recordEffect(attemptFile, {
+        obligation_id: OBLIGATION, idempotency_key: effectId,
+        status: outcome === 'OK' ? 'fulfilled' : 'failed',
+        detail: JSON.stringify(compact), http_status: res.http_status ?? null,
+    });
+    const authRejected = Boolean(res.auth_rejected);
+    if (authRejected) dom06.revoke(attemptFile, { reason: `http_${res.http_status}` });
+    dom06.closeAttempt(attemptFile, { result: OUTCOME_RESULT[outcome], reason: compact.detail || compact.parse });
+    let status;
+    if (outcome === 'OK') status = compact.parse === 'OK' ? 'OK' : 'OUT_OF_ENUM';
+    else status = OUTCOME_STATUS[outcome];
+    return { status, attemptId, compact, authRejected };
+}
 
 /**
  * @param {{ runDir: string, root: string, snapshot: object, taskId: string, visit: string,
@@ -181,13 +241,12 @@ async function collectOpinions({
             const envelopeSha = sha256(canonical(envelope));
             const effectId = sha256(canonical([taskId, routedNode, visit, g.subtask_key ?? null, envelopeSha, promptSha, repIndex]));
 
-            const prior = findPrior(runDir, effectId);
-            if (prior) {
-                const answer = prior.result === 'COMPLETE' ? parseDetail((prior.effects || []).find(e => e.idempotency_key === effectId)) : null;
-                if (answer && answer.outcome === 'OK' && answer.parse === 'OK') {
-                    opinions.push({ ...withAnswer(op, g.eligibility, answer), status: 'REUSED', effect_attempt_id: prior.attempt_id });
+            const prior = priorOutcome(runDir, effectId);
+            if (prior.found) {
+                if (prior.answer && prior.answer.parse === 'OK') {
+                    opinions.push({ ...withAnswer(op, g.eligibility, prior.answer), status: 'REUSED', effect_attempt_id: prior.attemptId });
                 } else {
-                    opinions.push({ ...op, status: 'NOT_REPEATED', prior_result: prior.result, effect_attempt_id: prior.attempt_id });
+                    opinions.push({ ...op, status: 'NOT_REPEATED', prior_result: prior.result, effect_attempt_id: prior.attemptId });
                 }
                 continue;
             }
@@ -203,63 +262,27 @@ async function collectOpinions({
                 }
             }
 
-            const begun = dom06.beginAttempt(runDir, {
-                node: NODE,
-                admission: {
-                    status: 'ADMITTED', owner: 'dom06',
-                    snapshot: {
-                        task_id: taskId, routed_node: routedNode, visit, subtask_key: g.subtask_key ?? null,
-                        probe: g.eligibility.probe, envelope_sha256: envelopeSha, effect_id: effectId, rep_index: repIndex,
-                        prompt_sha256: promptSha, model_id: effective.model_id,
-                        authority_ref: { id: effective.authority_ref.id, sha256: effective.authority_ref.sha256 },
-                        routing_snapshot_sha256: snapshot.sha256 ?? null,
-                    },
+            const emitted = await emitOnce({
+                runDir, effectId, envelope, effective, credential: credential.value, client,
+                snapshotFields: {
+                    task_id: taskId, routed_node: routedNode, visit, subtask_key: g.subtask_key ?? null,
+                    probe: g.eligibility.probe, envelope_sha256: envelopeSha, rep_index: repIndex,
+                    prompt_sha256: promptSha, model_id: effective.model_id,
+                    authority_ref: { id: effective.authority_ref.id, sha256: effective.authority_ref.sha256 },
+                    routing_snapshot_sha256: snapshot.sha256 ?? null,
                 },
-                obligations: [{ id: OBLIGATION }],
             });
-            const attemptFile = begun.attemptFile;
-            const attemptId = begun.attempt.attempt_id;
-            const auth = dom06.authorizeEffect(dom06.readAttempt(attemptFile), { obligationId: OBLIGATION, idempotencyKey: effectId });
-            if (!auth.ok) {
-                dom06.closeAttempt(attemptFile, { result: 'FAILED', reason: auth.error });
-                opinions.push({ ...op, status: 'NOT_AUTHORIZED', effect_attempt_id: attemptId });
-                continue;
-            }
-
-            let res;
-            try {
-                res = await client.classify({ envelope, model: effective.model_id, credential: credential.value, timeoutMs: effective.timeout_ms });
-            } catch {
-                // Não se sabe se saiu: incerto, nunca repetido.
-                dom06.recordEffect(attemptFile, { obligation_id: OBLIGATION, idempotency_key: effectId, status: 'failed', detail: JSON.stringify({ outcome: 'UNCERTAIN', detail: 'CLIENT_ERROR' }) });
-                dom06.closeAttempt(attemptFile, { result: 'UNCERTAIN', reason: 'CLIENT_ERROR' });
-                opinions.push({ ...op, status: 'ERROR', effect_attempt_id: attemptId });
-                continue;
-            }
-            const outcome = OUTCOME_RESULT[res.outcome] ? res.outcome : 'UNCERTAIN';
-            const compact = {
-                outcome, parse: res.parse ?? null, class: res.class ?? null, confidence: res.confidence ?? null,
-                risky: res.risky ?? null, model_reported: res.model_reported ?? null, latency_ms: res.latency_ms ?? null,
-                detail: res.detail ?? null,
-            };
-            dom06.recordEffect(attemptFile, {
-                obligation_id: OBLIGATION, idempotency_key: effectId,
-                status: outcome === 'OK' ? 'fulfilled' : 'failed',
-                detail: JSON.stringify(compact), http_status: res.http_status ?? null,
-            });
-            if (res.auth_rejected) {
-                dom06.revoke(attemptFile, { reason: `http_${res.http_status}` });
-                writeOnce(disabledFile(runDir), JSON.stringify({ reason: 'JEV_AUTH_REJECTED', at: new Date().toISOString(), attempt_id: attemptId }));
+            if (emitted.authRejected) {
+                writeOnce(disabledFile(runDir), JSON.stringify({ reason: 'JEV_AUTH_REJECTED', at: new Date().toISOString(), attempt_id: emitted.attemptId }));
                 stopped = 'JEV_AUTH_REJECTED';
             }
-            dom06.closeAttempt(attemptFile, { result: OUTCOME_RESULT[outcome], reason: compact.detail || compact.parse });
-
-            if (outcome === 'OK' && compact.parse === 'OK') {
-                opinions.push({ ...withAnswer(op, g.eligibility, compact), status: 'OK', effect_attempt_id: attemptId });
-            } else if (outcome === 'OK') {
-                opinions.push({ ...op, status: 'OUT_OF_ENUM', effect_attempt_id: attemptId, model_reported: compact.model_reported });
+            if (emitted.status === 'OK') {
+                opinions.push({ ...withAnswer(op, g.eligibility, emitted.compact), status: 'OK', effect_attempt_id: emitted.attemptId });
             } else {
-                opinions.push({ ...op, status: OUTCOME_STATUS[outcome], effect_attempt_id: attemptId });
+                opinions.push({
+                    ...op, status: emitted.status, effect_attempt_id: emitted.attemptId,
+                    ...(emitted.status === 'OUT_OF_ENUM' ? { model_reported: emitted.compact.model_reported } : {}),
+                });
             }
         }
         return { status: 'ON', reason: null, opinions };
@@ -268,4 +291,4 @@ async function collectOpinions({
     }
 }
 
-module.exports = { collectOpinions, wouldClass, NODE };
+module.exports = { collectOpinions, wouldClass, emitOnce, priorOutcome, canonical, writeOnce, NODE };
