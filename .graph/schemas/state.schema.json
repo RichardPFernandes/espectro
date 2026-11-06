@@ -1425,6 +1425,45 @@
       "format": "date-time",
       "description": "Lease: início do processo agent_pid (ps lstart, gravado logo depois do spawn). Com agent_pid forma a identidade do agente vivo (scripts/lib/process-identity.js); ausente = lease legado (removido no release)."
     },
+    "routing_snapshot": {
+      "type": "object",
+      "description": "PRI-233 (PRI-205 S4): ligação da task ao snapshot routing fixado na admissão da Run (admission.snapshot.routing do Attempt fetch_ticket em memory/runs/_dom06). Gravado pelo watcher uma vez, só para Run admitida com mode ON; ausente = Run OFF (despacho AS-IS). Nunca é trocado e a config corrente nunca é relida.",
+      "required": ["attempt_id", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "routing_visit": {
+      "type": "object",
+      "description": "PRI-233 (D-4): limite de nó usado no 1º Attempt da visita atual (instante da resolução, anterior ao node_start). Os retries da mesma visita usam o menor entre ele e o node_start, para que uma override gravada no meio da visita nunca valha no retry. Gravado pelo watcher só para Run ON.",
+      "required": ["node", "at"],
+      "properties": { "node": { "type": "string" }, "at": { "type": "string", "format": "date-time" } }
+    },
+    "routing_overrides": {
+      "type": "array",
+      "description": "PRI-233 T8 (P-2): overrides humanas de roteamento, append-only. Gravadas só pelo dashboard (POST /api/runs/:taskId/routing-override → scripts/lib/authorization.js recordRoutingOverride), com aprovador autenticado e CAS; não pausam a Run. O resolver (scripts/lib/model-routing.js) aplica a partir do próximo limite de nó (D-4), com precedência subtarefa > nó > ticket; modelo/esforço fora do snapshot = NOT_STARTED/PROVIDER_NOT_ELIGIBLE.",
+      "items": {
+        "type": "object",
+        "required": ["ref", "scope", "value", "by", "recorded_at"],
+        "properties": {
+          "ref": { "type": "string" },
+          "scope": { "type": "string", "enum": ["ticket", "node", "subtask"] },
+          "node": { "type": "string" },
+          "subtask_key": { "type": "string" },
+          "value": {
+            "type": "object",
+            "required": ["model_id", "effort"],
+            "properties": { "model_id": { "type": "string" }, "effort": { "type": "string" } }
+          },
+          "by": { "type": "string" },
+          "via": { "type": "string" },
+          "recorded_at": { "type": "string", "format": "date-time" },
+          "operation_id": { "type": "string" }
+        }
+      }
+    },
     "recovered_from_orphan": {
       "type": "object",
       "description": "Marcador de redespacho após recuperação de nó órfão (consumido no próximo acquire).",

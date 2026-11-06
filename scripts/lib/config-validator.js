@@ -19,6 +19,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { validateState } = require('../validate-state');
 const { cleanupWorktrees, stopPreviewViaDashboard } = require('./worktree-cleanup');
+const { readRoutingConfig, ROUTING_CONFIG_REL } = require('./model-routing-policy');
 
 let Ajv = null;
 try { Ajv = require('ajv'); } catch { Ajv = null; }
@@ -611,6 +612,30 @@ function ruleWorktreesClean(ctx) {
     return out;
 }
 
+// ── Regra: routing-config (PRI-233, PRI-205 S4) ──────────────────────────────────
+// `.claude/model-routing.json` do consumidor. Ausente ou OFF passa sem ler policy;
+// ON exige policy presente, com sha256 aprovado e envelope roteado. Mesma função que
+// a admissão da Run usa (readRoutingConfig): check e watcher não divergem.
+function ruleRoutingConfig(ctx) {
+    const rule = 'routing-config';
+    const r = readRoutingConfig(ctx.root);
+    if (r.status === 'OFF') {
+        const why = r.source === 'absent' ? `${ROUTING_CONFIG_REL} ausente` : 'mode OFF declarado';
+        return makeResult(ctx, rule, { passed: true, message: `roteamento OFF (${why}): despacho AS-IS` });
+    }
+    if (r.status === 'ON') {
+        const ref = r.policy_ref;
+        return makeResult(ctx, rule, {
+            passed: true,
+            message: `roteamento ON com policy ${ref.id}@${ref.version} (sha256 ${r.policy_hash.slice(0, 12)}…) conferida`,
+        });
+    }
+    return makeResult(ctx, rule, {
+        message: `roteamento ON com configuração inválida (${r.cause}): a admissão de Runs novas deste projeto fica bloqueada`,
+        details: [`cause: ${r.cause}`, `detail: ${r.detail}`, `transient: ${r.transient}`],
+    });
+}
+
 // ── Execução ─────────────────────────────────────────────────────────────────────
 const RULES = [
     { id: 'config-files-schema', run: ruleConfigFilesSchema },
@@ -619,6 +644,7 @@ const RULES = [
     { id: 'state-schema-compat', run: ruleStateSchemaCompat },
     { id: 'env-documented', run: ruleEnvDocumented },
     { id: 'worktrees-clean', run: ruleWorktreesClean },
+    { id: 'routing-config', run: ruleRoutingConfig },
 ];
 
 function summarize(results) {

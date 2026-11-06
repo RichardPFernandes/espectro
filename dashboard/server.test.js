@@ -527,6 +527,37 @@ test('pré-task: gate file com draft pendente vira run sintético só leitura; s
     assert.strictEqual((await get2('/api/runs/93005-spec-gate')).status, 404);
 });
 
+test('PRI-233 T9: admissão recusada por roteamento ON inválido aparece como pré-task bloqueada, só leitura', async () => {
+    const marker = path.join(mainRuns, 'routing-admission-blocked.json');
+    fs.writeFileSync(marker, JSON.stringify({
+        signature: 'POLICY_HASH_MISMATCH|expected:ff', cause: 'POLICY_HASH_MISMATCH', detail: 'expected:ff',
+        transient: false, transient_count: 0, tickets: [93210, 93003], first_blocked_at: t1, notified_at: t1,
+    }));
+    try {
+        const list = (await get2('/api/runs')).body;
+        const r = list.find(x => x.taskId === '93210-spec-gate');
+        assert.ok(r, 'ticket barrado listado');
+        assert.deepStrictEqual([r.pretask, r.status, r.node], [true, 'needs_human_review', 'fetch_ticket']);
+        assert.deepStrictEqual(r.routingBlocked, {
+            scope: 'admission', cause: 'POLICY_HASH_MISMATCH', detail: 'expected:ff', transient: false,
+            firstBlockedAt: t1, notifiedAt: t1, configFile: '.claude/model-routing.json',
+        });
+        // Ticket com run de verdade não ganha a pré-task duplicada.
+        assert.ok(!list.some(x => x.taskId === '93003-spec-gate'));
+        assert.strictEqual((await post2('/api/runs/93210-spec-gate/message', { message: 'oi' })).status, 409);
+        assert.ok(!fs.existsSync(path.join(mainRuns, '93210-spec-gate')), 'nada criado em disco');
+        // Marcador malformado não derruba a listagem nem inventa run.
+        fs.writeFileSync(marker, '{ x');
+        assert.ok(!(await get2('/api/runs')).body.some(x => x.taskId === '93210-spec-gate'));
+    } finally {
+        fs.rmSync(marker, { force: true });
+    }
+    // Sem marcador (config corrigida), a pré-task some.
+    assert.ok(!(await get2('/api/runs')).body.some(x => x.taskId === '93210-spec-gate'));
+    // Runs normais não ganham o campo.
+    assert.ok((await get2('/api/runs')).body.every(x => x.routingBlocked === null));
+});
+
 test('pré-task: spec rascunho (draft: true) do watcher aparece aguardando revisão, com "Ver spec"', async () => {
     fs.mkdirSync(path.join(repo, 'memory/spec'), { recursive: true });
     fs.writeFileSync(path.join(repo, 'memory/spec/93009-spec.md'), '---\nticket: 93009\ndraft: true\n---\n# Ticket #93009 — Frete zerado\n\n## Problema\nFrete some.\n');

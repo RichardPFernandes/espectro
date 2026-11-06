@@ -36,6 +36,14 @@ modules:
   - path: scripts/lib/node-dispatcher.js
     capability: dispatch-delegation
     owner: UNKNOWN
+  # PRI-233 (PRI-205 S4): resolução §4.7 pura; não escreve estado (o Attempt é do DOM06).
+  - path: scripts/lib/model-routing.js
+    capability: model-routing-resolution
+    owner: UNKNOWN
+  # PRI-233 T5: lê o snapshot routing do Attempt de admissão (DOM06); não grava.
+  - path: scripts/lib/routing-run.js
+    capability: model-routing-run-snapshot
+    owner: UNKNOWN
 
   # SDD / evidence (candidatos)
   - path: scripts/lib/spec-change.js

@@ -297,4 +297,6 @@ test('startup: órfão é recuperado e redespachado no MESMO nó, com nota de re
     assert.ok(!claudeCalled(new RegExp(`/commit ${commit.taskId}`)));
 });
 
-test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+// O wrapper destacado do último despacho pode ainda estar gravando o state (release +
+// eventos) quando o hook roda; sem retry o rm falhava com ENOTEMPTY sob carga (PRI-233).
+test.after(() => fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }));

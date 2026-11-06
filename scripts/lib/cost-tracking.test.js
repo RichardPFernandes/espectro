@@ -86,6 +86,25 @@ test('custo US$: preço por modelo da mensagem, cache por TTL, fast mode, modelo
     assert.strictEqual(c.totals.cost_usd, 0.5);
 });
 
+test('PRI-233 T7: Attempt roteado grava RoutingDecision, par pedido e origem; sem routing fica AS-IS', () => {
+    const decision = {
+        node: 'implement', selection_source: 'RULES', subagent: 'UNENFORCED', effort_router_plugin: 'NOT_LOADED',
+        chosen: { model_id: 'm-t2', effort: 'médio', cli_effort: 'medium', tier: 'T2' }, effort_applied: true,
+    };
+    const routed = ct.mergeRun(null, { node: 'implement', agent: 'claude', run: { routing_decision: decision, effort_router_plugin: 'LOADED' }, metrics: { ...tokens(1, 1), duration_ms: 1 } });
+    const a = routed.nodes.implement.attempts[0];
+    assert.strictEqual(a.effort_router_plugin, 'NOT_LOADED', 'o estado provado pela decisão vence o lido da conta');
+    assert.deepStrictEqual(a.routing_decision, decision);
+    assert.deepStrictEqual(a.requested, { model: 'm-t2', effort: 'medium' });
+    // SP-1 revista: roteado só por modelo, o esforço não conta como pedido.
+    const modelOnly = ct.mergeRun(null, { node: 'implement', agent: 'claude', run: { routing_decision: { ...decision, effort_applied: false } }, metrics: { ...tokens(1, 1), duration_ms: 1 } });
+    assert.deepStrictEqual(modelOnly.nodes.implement.attempts[0].requested, { model: 'm-t2', effort: 'UNAVAILABLE' });
+    assert.strictEqual(a.selection_source, 'RULES');
+    const plain = ct.mergeRun(null, { node: 'implement', agent: 'claude', metrics: { ...tokens(1, 1), duration_ms: 1 } }).nodes.implement.attempts[0];
+    assert.deepStrictEqual([plain.routing_decision, plain.selection_source, plain.requested],
+        ['UNAVAILABLE', 'DEFAULT_INHERITED', { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' }]);
+});
+
 test('parseCodexResultTokens: números, "não disponível" e seção ausente', () => {
     const md = (body) => `# Resultado Codex — test — 1-x\n\n## Learnings\nnenhum\n## Tokens\n${body}\n## Outra\ninput_tokens: 999\n`;
     assert.deepStrictEqual(ct.parseCodexResultTokens(md('input_tokens: 12.345\noutput_tokens: 678')), { input_tokens: 12345, output_tokens: 678 });
@@ -116,6 +135,16 @@ fs.writeFileSync(path.join(dir, sid + '.jsonl'), JSON.stringify({ type: 'assista
   message: { id: 'msg-' + sid, model: 'claude-sonnet-5', usage: { input_tokens: 100, cache_read_input_tokens: 900, output_tokens: 100 } } }) + '\\n');
 const stateFile = process.env.FAKE_STATE_FILE;
 fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+// Task já existente: como o agente real, só grava depois que o watcher registrou o
+// agent_pid (recordAgentPid lê, roda ps e regrava o state); antes disso a regravação
+// perdia o avanço de nó sob carga (PRI-233). Teto de 10 s; sem pid registrado, segue.
+if (fs.existsSync(stateFile)) {
+  const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  for (let i = 0; i < 500; i++) {
+    try { if (JSON.parse(fs.readFileSync(stateFile, 'utf8')).agent_pid) break; } catch { /* escrita em curso */ }
+    sleep(20);
+  }
+}
 const s = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8'))
     : { task_id: path.basename(path.dirname(stateFile)), node: 'plan', history: ['fetch_ticket'], status: 'in_progress', started_at: now };
 delete s.cost_tracking; // agente que regrava state.json sem o campo — watcher tem que restaurar
@@ -154,7 +183,11 @@ function writeState(node) {
     }));
 }
 
-async function waitFor(cond, ms = 5000) {
+// Teto de espera pelo agente destacado e pelo release do watcher. 5 s estourava com a
+// suíte inteira em paralelo (PRI-233: "timeout esperando condição" em 2 de 6 rodadas
+// completas, verde sozinho). 30 s = mesmo teto do dom06-dispatch-env.test.js; a
+// condição esperada não muda.
+async function waitFor(cond, ms = 30000) {
     const until = Date.now() + ms;
     while (!cond()) {
         if (Date.now() > until) throw new Error('timeout esperando condição');
