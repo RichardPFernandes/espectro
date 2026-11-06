@@ -383,6 +383,11 @@ async function fetchQaFeedback(id) {
 // antigo). O botão deixa retry-signal.json no run; consumeQaRetrySignals o traz de
 // volta pro worktree e o tick despacha o implement.
 const QA_AUTO_NEW_CYCLE = /^(1|true|sim)$/i.test(process.env.WATCHER_RECUSA_QA_NOVO_CICLO || '');
+// PRI-181 c0b (RRC-PRI181-004 r5.1 §3.2): C1–C3 (identidade, store, diagnóstico) só com
+// WATCHER_QA_DIAGNOSTICO=1. Desligado (padrão, inclusive ausente) = comportamento C0 de
+// 2cb6b89^ (syncQaRejectionC0). Ligar no consumidor é gate próprio (Promotion Gate, DB-06,
+// RRC-PRI263-001) — não basta editar o .env.
+const QA_DIAGNOSTICO = /^(1|true|sim)$/i.test(process.env.WATCHER_QA_DIAGNOSTICO || '');
 const QA_RETRY_SIGNAL = 'retry-signal.json';
 const qaRetryTasks = new Set(); // task-ids cujo sinal foi consumido neste processo (nota no prompt)
 // Motivos estáveis de qa_retry_blocked (PRI-184) — alinhados a .graph/schemas/state.schema.json.
@@ -467,6 +472,37 @@ function latestRunForTicket(ticketId) {
     return best;
 }
 
+// Comportamento C0 (cópia literal de syncQaRejection em 2cb6b89^, PR #50/#60): usado com
+// WATCHER_QA_DIAGNOSTICO desligado. Não grava rejection_key/identity_quality/
+// transition_journal_id/qa_diagnosis, não promove legado e não toma lock de ingestão.
+// Oráculos: lib/qa-rejection-c0-oracle.test.js e lib/qa-retry-watcher-c0-oracle.test.js.
+async function syncQaRejectionC0(ticket) {
+    const name = ticket.status?.name;
+    if (!name) return null;
+    const latest = latestRunForTicket(ticket.id);
+    if (!latest || latest.state.status === 'running' || latest.state.ticket_status === name) return latest;
+    const next = { ...latest.state, ticket_status: name };
+    if (qaJournal.isQaRejectedStatus(name)) {
+        const found = await qaJournal.fetchLastRejectionNote(ticket.id);
+        const rejection = {
+            note: found?.note ?? null,
+            rejected_at: found?.rejected_at || ticket.updated_on || new Date().toISOString(),
+            journal_id: found?.journal_id ?? null,
+        };
+        // Histórico por recusa ANTES de trocar o qa_rejection: o anterior (com
+        // retry_requested_at) é o que diz quando o último retry começou em run antigo.
+        let contextMd = '';
+        try { contextMd = fs.readFileSync(`${latest.dir}/context.md`, 'utf8'); } catch { /* sem context.md */ }
+        next.qa_rejections = qaCycles.recordRejection(latest.state, contextMd, { ...rejection, at: new Date().toISOString() });
+        next.qa_rejection = rejection;
+        console.log(`Ticket #${ticket.id}: Recusa QA detectada — gravada em ${latest.taskId} (retry pelo botão "Corrigir recusa QA" do dashboard).`);
+    }
+    if (DRY_RUN) return { ...latest, state: next };
+    stateWriter.write(latest.dir, next, { operation: 'qa_rejection_detected', actor: 'watcher', base: baseOf(latest.state) });
+    if (latest.valid) checkWrittenState(latest.dir);
+    return { ...latest, state: next };
+}
+
 // Grava a mudança de status do ticket no run mais recente. Não mexe em updated_at
 // (decide findActiveTask/mostRecentArchivedCommit) nem em run com nó rodando (o agente
 // reescreve o state.json ao sair — fica pro próximo tick).
@@ -475,6 +511,7 @@ function latestRunForTicket(ticketId) {
 // (DB-01b / between_polls). Identidade = journal → 13 + rejection_key; N-08 via
 // trava por chave no ingest. Sem Diagnosis Record (C2).
 async function syncQaRejection(ticket) {
+    if (!QA_DIAGNOSTICO) return syncQaRejectionC0(ticket);
     const name = ticket.status?.name;
     if (!name) return null;
     const latest = latestRunForTicket(ticket.id);
@@ -5495,6 +5532,9 @@ function writeWatcherModeFile() {
 }
 
 async function main() {
+    // PRI-181 c0b: valor efetivo da flag a cada tick (sem dado de ticket). Fica em main(),
+    // depois do ramo --health-check, para não sujar testes, node-dispatcher nem o JSON do health.
+    console.log(QA_DIAGNOSTICO ? '[qa-diagnostico] LIGADO (C1–C3)' : '[qa-diagnostico] desligado (C0)');
     // Um writer por REPO_PATH, antes de qualquer escrita do tick (custo, sync, recovery).
     // --dry-run só lê: não trava e não cria arquivo. Recusa = exit 75, sem seguir o tick.
     if (!DRY_RUN && !watcherLock.acquireForProcess({ repoPath: REPO_PATH, role: SIMULATE ? 'simulate' : 'watcher' })) {
@@ -5580,6 +5620,7 @@ module.exports = {
     handleCorruptedState, readStateJson,
     findActiveTask, mostRecentArchivedCommit, dispatchTicket, appendEvent,
     latestRunForTicket, syncQaRejection, consumeQaRetrySignals, qaRetryNote,
+    QA_DIAGNOSTICO, // PRI-181 c0b: valor efetivo da flag (testes)
     NEVER_AUTO_DISPATCH, looksUnavailable, looksLikeSessionLimit, findLocallyActiveTicketIds,
     notifyBlocked, alreadyNotified, markNotified,
     pretaskQuestionPath, pretaskAnswerPending, notifyPretaskBlocked,
