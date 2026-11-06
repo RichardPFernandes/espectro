@@ -29,7 +29,11 @@ for (const d of [binDir, captures, results]) fs.mkdirSync(d, { recursive: true }
 fs.writeFileSync(driver, `
 const fs = require('fs');
 const [watcherPath, id, resultFile] = process.argv.slice(2).filter(a => a !== '--follow');
-global.fetch = async () => ({ ok: true, status: 204, json: async () => ({}), text: async () => '' });
+// fetch do watcher stubado; cada chamada fica registrada para as asserções de aviso.
+global.fetch = async (url, opts = {}) => {
+    fs.appendFileSync(process.env.FETCH_LOG, JSON.stringify({ url: String(url), method: opts.method || 'GET', body: opts.body || null }) + '\\n');
+    return { ok: true, status: 204, json: async () => ({}), text: async () => '' };
+};
 const watcher = require(watcherPath);
 const { description } = require(${JSON.stringify(path.join(PRISMA_ROOT, 'scripts', 'fixtures', 'ticket-example.json'))});
 const ticket = {
@@ -126,7 +130,11 @@ function consumer(setup = () => {}) {
     return repo;
 }
 
-function dispatch(repo, id, scenario) {
+const fetchLog = path.join(tmp, 'fetch.jsonl');
+const redminePuts = id => (fs.existsSync(fetchLog) ? fs.readFileSync(fetchLog, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [])
+    .filter(c => c.method === 'PUT' && c.url.endsWith(`/issues/${id}.json`));
+
+function dispatch(repo, id, scenario, { follow = true } = {}) {
     const resultFile = path.join(results, `${scenario}-${Date.now()}.json`);
     const env = {
         PATH: `${binDir}:${process.env.PATH}`,
@@ -142,9 +150,11 @@ function dispatch(repo, id, scenario) {
         REDMINE_RETRY_MAX_ATTEMPTS: '1',
         REDMINE_MIN_INTERVAL_MS: '0',
         ROUTING_SCENARIO: scenario,
+        FETCH_LOG: fetchLog,
     };
+    const args = [driver, WATCHER, String(id), resultFile, ...(follow ? ['--follow'] : [])];
     return new Promise(resolve => {
-        execFile(process.execPath, [driver, WATCHER, String(id), resultFile, '--follow'], { cwd: repo, env, timeout: 120000 }, (err, stdout, stderr) => {
+        execFile(process.execPath, args, { cwd: repo, env, timeout: 120000 }, (err, stdout, stderr) => {
             const result = fs.existsSync(resultFile) ? JSON.parse(fs.readFileSync(resultFile, 'utf8')) : null;
             resolve({ code: err ? err.code : 0, result, output: `${stdout}\n${stderr}` });
         });
@@ -209,4 +219,34 @@ test('T5/T6: admissão ON inválida recusa antes de worktree, marcador ou Attemp
     assert.ok(!fs.existsSync(path.join(repo, 'memory', 'runs', `${id}-spec-gate.json`)) ||
         !JSON.parse(fs.readFileSync(path.join(repo, 'memory', 'runs', `${id}-spec-gate.json`), 'utf8')).fetch_dispatch,
     'nenhum marcador fetch_dispatch');
+});
+
+test('T6: um aviso por projeto em 3 ticks; outro projeto OFF despacha; corrigir a policy libera no tick seguinte', async () => {
+    const id = 233601;
+    const other = 233602;
+    const repo = consumer(r => writeRouting(r, { badSha: true }));
+    for (let i = 0; i < 3; i++) {
+        const r = await dispatch(repo, id, `t6-tick-${i}`, { follow: false });
+        assert.strictEqual(r.result?.reason, 'routing_admission_blocked', r.output);
+    }
+    // Segundo ticket do mesmo projeto: bloqueado, mas sem segundo aviso.
+    assert.strictEqual((await dispatch(repo, other, 't6-outro-ticket', { follow: false })).result?.reason, 'routing_admission_blocked');
+    const puts = redminePuts(id);
+    assert.strictEqual(puts.length, 1, 'exatamente um comentário no Redmine para o projeto');
+    const note = JSON.parse(puts[0].body).issue.notes;
+    assert.match(note, /POLICY_HASH_MISMATCH/);
+    assert.match(note, /"mode": "OFF"|mode OFF/);
+    assert.strictEqual(redminePuts(other).length, 0);
+    const marker = JSON.parse(fs.readFileSync(path.join(repo, 'memory', 'runs', 'routing-admission-blocked.json'), 'utf8'));
+    assert.deepStrictEqual([marker.cause, marker.tickets], ['POLICY_HASH_MISMATCH', [id, other]]);
+
+    // Projeto OFF na mesma máquina segue admitindo normalmente.
+    const off = consumer();
+    assert.strictEqual((await dispatch(off, 233603, 't6-projeto-off')).result?.action, 'dispatched');
+
+    // Policy corrigida: o próximo tick admite e o marcador some.
+    writeRouting(repo);
+    const fixed = await dispatch(repo, id, 't6-corrigida', { follow: false });
+    assert.strictEqual(fixed.result?.action, 'dispatched', fixed.output);
+    assert.ok(!fs.existsSync(path.join(repo, 'memory', 'runs', 'routing-admission-blocked.json')), 'marcador removido');
 });

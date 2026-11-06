@@ -62,4 +62,35 @@ function loadRunSnapshot(state, fetchRunDir) {
     return { mode: 'ON', ok: true, snapshot };
 }
 
-module.exports = { bindingFor, loadRunSnapshot };
+// ── T6: aviso único da admissão recusada ────────────────────────────────────────
+// Um aviso por projeto e por assinatura (causa|detalhe), não por ticket nem por tick
+// (diretriz R-6 n.º 5). Leitura transitória (E/S passageira) bloqueia sempre, mas só
+// avisa no 3º bloqueio seguido, para não acusar "policy inválida" por I/O (R-6 n.º 6).
+const TRANSIENT_NOTICE_AFTER = 3;
+
+/**
+ * @param {object|null} marker marcador anterior do projeto (ou null)
+ * @param {{ cause: string, detail: string, transient: boolean }} cfg saída INVALID de readRoutingConfig
+ * @param {{ ticketId: number|string, at: string }} ctx
+ * @returns {{ notify: boolean, marker: object }}
+ */
+function blockedNotice(marker, cfg, { ticketId, at }) {
+    const signature = `${cfg.cause}|${cfg.detail}`;
+    const same = marker && marker.signature === signature;
+    const tickets = same && Array.isArray(marker.tickets) ? [...marker.tickets] : [];
+    if (!tickets.includes(ticketId)) tickets.push(ticketId);
+    const transientCount = cfg.transient ? (same ? (marker.transient_count || 0) : 0) + 1 : 0;
+    const alreadyNotified = Boolean(same && marker.notified_at);
+    const notify = !alreadyNotified && (!cfg.transient || transientCount >= TRANSIENT_NOTICE_AFTER);
+    return {
+        notify,
+        marker: {
+            signature, cause: cfg.cause, detail: cfg.detail, transient: Boolean(cfg.transient),
+            transient_count: transientCount, tickets,
+            first_blocked_at: same ? marker.first_blocked_at : at,
+            notified_at: notify ? at : (same ? marker.notified_at || null : null),
+        },
+    };
+}
+
+module.exports = { bindingFor, loadRunSnapshot, blockedNotice, TRANSIENT_NOTICE_AFTER };

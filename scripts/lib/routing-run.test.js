@@ -135,6 +135,47 @@ test('loadRunSnapshot: sha da ligação diverge do snapshot → snapshot_binding
     assert.deepStrictEqual(r, { mode: 'ON', ok: false, detail: 'snapshot_binding_mismatch' });
 });
 
+// ── T6: aviso único da admissão recusada (por projeto) ────────────────────────
+
+const invalidCfg = (over = {}) => ({ status: 'INVALID', cause: 'POLICY_HASH_MISMATCH', detail: 'expected:ff', transient: false, ...over });
+const AT = '2026-11-06T12:00:00.000Z';
+
+test('blockedNotice: primeiro bloqueio não transitório avisa e grava a assinatura', () => {
+    const r = rr.blockedNotice(null, invalidCfg(), { ticketId: 1, at: AT });
+    assert.strictEqual(r.notify, true);
+    assert.deepStrictEqual(r.marker, {
+        signature: 'POLICY_HASH_MISMATCH|expected:ff', cause: 'POLICY_HASH_MISMATCH', detail: 'expected:ff',
+        transient: false, transient_count: 0, tickets: [1], first_blocked_at: AT, notified_at: AT,
+    });
+});
+
+test('blockedNotice: mesma assinatura não avisa de novo; outro ticket entra na lista (um aviso por projeto)', () => {
+    const first = rr.blockedNotice(null, invalidCfg(), { ticketId: 1, at: AT }).marker;
+    const again = rr.blockedNotice(first, invalidCfg(), { ticketId: 1, at: '2026-11-06T12:05:00.000Z' });
+    assert.strictEqual(again.notify, false);
+    const other = rr.blockedNotice(again.marker, invalidCfg(), { ticketId: 2, at: '2026-11-06T12:06:00.000Z' });
+    assert.strictEqual(other.notify, false);
+    assert.deepStrictEqual(other.marker.tickets, [1, 2]);
+    assert.strictEqual(other.marker.notified_at, AT);
+});
+
+test('blockedNotice: assinatura nova (outra causa) avisa de novo', () => {
+    const first = rr.blockedNotice(null, invalidCfg(), { ticketId: 1, at: AT }).marker;
+    const r = rr.blockedNotice(first, invalidCfg({ cause: 'POLICY_MISSING', detail: 'not_found' }), { ticketId: 1, at: AT });
+    assert.strictEqual(r.notify, true);
+    assert.strictEqual(r.marker.signature, 'POLICY_MISSING|not_found');
+});
+
+test('blockedNotice: leitura transitória só avisa no 3º bloqueio seguido (R-6 n.º 6), mas sempre bloqueia', () => {
+    const t = invalidCfg({ cause: 'POLICY_UNREADABLE', detail: 'read:EIO', transient: true });
+    const a = rr.blockedNotice(null, t, { ticketId: 1, at: AT });
+    const b = rr.blockedNotice(a.marker, t, { ticketId: 1, at: AT });
+    const c = rr.blockedNotice(b.marker, t, { ticketId: 1, at: AT });
+    assert.deepStrictEqual([a.notify, b.notify, c.notify], [false, false, true]);
+    assert.deepStrictEqual([a.marker.transient_count, b.marker.transient_count, c.marker.transient_count], [1, 2, 3]);
+    assert.strictEqual(rr.blockedNotice(c.marker, t, { ticketId: 1, at: AT }).notify, false);
+});
+
 test('loadRunSnapshot: attempt_id com caminho (../) é recusado sem ler fora do _dom06', () => {
     const r = rr.loadRunSnapshot({ routing_snapshot: { attempt_id: '../../etc/passwd', sha256: 'a'.repeat(64) } }, fetchRunDir());
     assert.deepStrictEqual(r, { mode: 'ON', ok: false, detail: 'snapshot_unreadable' });

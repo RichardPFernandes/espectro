@@ -156,12 +156,16 @@ padrão de marcador do `notifyPretaskBlocked`), uma vez por assinatura
 a saída humana registrada (`mode: OFF`).
 
 **Critérios de aceite:**
-- [ ] Watcher com stub e um consumidor ON inválido: o stub `claude` não é invocado, nem diretório de task nem `fetch_dispatch` aparecem, e há exatamente um PUT no Redmine falso em 3 ticks.
-- [ ] Um segundo consumidor OFF na mesma suíte despacha normalmente, com argv igual ao golden.
-- [ ] Corrigir a policy remove o bloqueio no tick seguinte, sem intervenção extra.
+- [x] Watcher com stub e um consumidor ON inválido: o stub `claude` não é invocado, não aparece worktree nem `fetch_dispatch`, e há exatamente um PUT no Redmine em 3 ticks mais um segundo ticket do mesmo projeto (um aviso por projeto).
+- [x] Um segundo consumidor OFF despacha normalmente. A igualdade do argv com o golden já é coberta pelo teste da T1.
+- [x] Corrigir a policy libera no tick seguinte e remove o marcador.
+- [x] Leitura transitória bloqueia sempre, mas só avisa no 3º bloqueio seguido (unidade, `blockedNotice`).
+- [ ] Diretriz R-6 n.º 4 (última policy válida como sugestão): **não implementada**. O aviso sugere corrigir o `policy_ref` ou usar `mode: OFF`. Registrar a última policy válida exigiria um estado novo, fora do escopo.
 
-**Verificação:**
-- [ ] `node --test scripts/lib/routing-admission-watcher.test.js`
+**Verificação (2026-11-06):**
+- [x] `routing-run.test.js` 17/17; `routing-admission-watcher.test.js` 4/4.
+- [x] Node 22: scripts 1215 pass / 0 fail / 6 skip (2ª rodada), com o golden inalterado; dashboard 298/0; `check:js`, `lint:src` e `arch:check` limpos.
+- **Instabilidade:** na 1ª rodada completa, falhou `churn-detector.test.js` › "CHURN_THRESHOLD=2 escala na segunda rodada" (sozinho: 14/14; 2ª rodada completa: verde). Junto com o `cost-tracking` (Checkpoint A), são dois arquivos de teste do watcher instáveis sob carga. Os testes novos da S4 sobem cerca de 60 processos do watcher por rodada, o que provavelmente aumenta a disputa. Tratar antes da PR.
 
 **Dependências:** T2, T5.
 **Arquivos:** `scripts/readmine-watcher.js`, `scripts/lib/routing-admission-watcher.test.js`.

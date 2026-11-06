@@ -1458,6 +1458,55 @@ async function notifyPretaskBlocked(ticket, ticketId) {
     markNotified(markerPath, signature);
 }
 
+// PRI-233 (PRI-205 S4, T6): admissão recusada por roteamento ON com configuração
+// inválida. Um aviso por projeto e por assinatura (routing-run.blockedNotice), pelo
+// mesmo canal do bloqueio pré-task: comentário no Redmine (fora de --follow) e
+// notificação local. O marcador em RUNS_DIR guarda os tickets barrados (Dashboard, T9)
+// e sai quando a configuração volta a ser OFF ou ON válida.
+function routingBlockedMarkerPath() {
+    return `${RUNS_DIR}/routing-admission-blocked.json`;
+}
+
+function clearRoutingBlockedMarker() {
+    try { fs.rmSync(routingBlockedMarkerPath(), { force: true }); } catch { /* best-effort */ }
+}
+
+async function notifyRoutingAdmissionBlocked(ticket, cfg) {
+    const markerPath = routingBlockedMarkerPath();
+    let previous = null;
+    try { previous = JSON.parse(fs.readFileSync(markerPath, 'utf8')); } catch { previous = null; }
+    const { notify, marker } = routingRun.blockedNotice(previous, cfg, { ticketId: ticket.id, at: new Date().toISOString() });
+    fs.mkdirSync(RUNS_DIR, { recursive: true });
+    fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+    if (!notify) return;
+
+    const msg =
+        `[Watcher] Roteamento de modelo ligado (mode ON) com configuração inválida neste projeto: ` +
+        `${cfg.cause} (${cfg.detail}${cfg.transient ? ', leitura transitória repetida' : ''}). ` +
+        `Nenhuma Run nova é admitida enquanto isso durar (este ticket #${ticket.id} e os próximos); ` +
+        `Runs já em andamento não mudam.\n\n` +
+        `Saídas: corrigir a policy ou o policy_ref (id, versão, sha256) em ${modelRoutingPolicy.ROUTING_CONFIG_REL}, ` +
+        `ou desligar explicitamente com { "mode": "OFF" } nesse arquivo. ` +
+        `Confira com: node scripts/validate-config.js --severity error. O próximo tick retoma sozinho.`;
+    if (!FOLLOW) {
+        try {
+            await redmineFetch(`${REDMINE_URL}/issues/${ticket.id}.json`, {
+                method: 'PUT',
+                headers: { 'X-Redmine-API-Key': REDMINE_API_KEY, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ issue: { notes: msg } }),
+            });
+        } catch (e) {
+            console.error(`Falha comentando admissão recusada (roteamento) no Redmine #${ticket.id}:`, e.message);
+        }
+    }
+    try {
+        const title = 'Roteamento ON inválido: admissão recusada';
+        execFileSync('osascript', ['-e', `display notification ${JSON.stringify(`${cfg.cause} — ver ${modelRoutingPolicy.ROUTING_CONFIG_REL}`)} with title ${JSON.stringify(title)}`], { stdio: 'ignore' });
+    } catch {
+        // Não é macOS, ou sem permissão de notificação — não bloqueia o tick.
+    }
+}
+
 // ---------------------------------------------------------------------------------
 // Portão de qualidade da spec (scripts/lib/spec-validator.js). Roda ANTES de qualquer
 // despacho que leve ao Plan — spec incompleta (sobretudo sem Critérios de Aceite)
@@ -4140,11 +4189,13 @@ async function dispatchTicketReserved(ticket) {
         const routingConfig = modelRoutingPolicy.readRoutingConfig(REPO_PATH);
         if (routingConfig.status === 'INVALID') {
             console.warn(`Ticket #${id}: roteamento ON com configuração inválida (${routingConfig.cause}: ${routingConfig.detail}) — admissão recusada, nenhuma Run criada.`);
+            if (!DRY_RUN) await notifyRoutingAdmissionBlocked(ticket, routingConfig);
             return {
                 action: 'skip', reason: 'routing_admission_blocked', node: 'fetch_ticket',
                 cause: routingConfig.cause, detail: routingConfig.detail, transient: routingConfig.transient,
             };
         }
+        if (!DRY_RUN) clearRoutingBlockedMarker();
         const routingSnapshot = routingConfig.status === 'ON' ? modelRouting.buildRoutingSnapshot(routingConfig) : undefined;
 
         let qaFeedback = [];
