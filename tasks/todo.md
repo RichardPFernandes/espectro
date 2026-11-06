@@ -201,6 +201,28 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 
 ### Checkpoint B
 - [x] Suítes completas e checks estáticos verdes; golden inalterado (2026-11-06, Node 22).
+- [x] Revisão independente (agente `code-reviewer`, sem contexto da sessão), faixa `829254d..4311575`: **CHANGES_REQUESTED**, sem BLOCKER.
+
+**O que foi feito com cada achado da revisão (2026-11-06):**
+
+| Achado | O que foi feito |
+| -- | -- |
+| MAJOR-1: ligação por timestamp podia cair em OFF | **Corrigido.** Na admissão ON, o watcher grava o ponteiro `_dom06/routing-admission.json` com o id do Attempt; a admissão OFF o apaga. A ligação usa esse ponteiro e o marca como consumido. Ponteiro ilegível, já consumido ou ligação sumida do state levam a `CONFIG_UNVERIFIABLE`, nunca a OFF, e não há religação. Testes no watcher para (a) Attempt apagado, (b) `started_at` no passado, (d) religação e ponteiro de um ciclo ON anterior. O item (e), leitura no caminho OFF, ficou reduzido a um `existsSync` do ponteiro. |
+| MAJOR-2: prova do plugin ignorava o projeto e o managed | **Corrigido.** A prova lê `settings.json` e `settings.local.json` do cwd do despacho e `.claude/skills/` do projeto. Managed presente dá UNKNOWN. 5 testes novos; os antigos passam a injetar o caminho do managed. |
+| MINOR-1: roteamento depois de portões com efeito | **Corrigido.** O bloco foi para logo depois do retorno de `DRY_RUN`, antes de pré-build, churn e `human-input`; a recusa grava no próprio objeto, preservando a base do CAS. Teste: `human-input.md` não é consumido. |
+| MINOR-2: ticket novo cria o worktree antes de recusar | **Aceito e registrado.** O Attempt `NOT_STARTED` precisa do `_dom06` do worktree, por ser o mesmo lugar dos demais Attempts de admissão. Mudar exigiria um local novo. |
+| MINOR-3: aviso calado por marcador antigo | **Corrigido.** A recusa limpa o marcador do nó ao entrar em `blocked`. |
+| MINOR-4: `effort_router_plugin` contraditório | **Corrigido.** O registro de custo usa o valor da decisão. |
+| MINOR-5: policy embutida sem validação estrutural | **Corrigido.** `snapshotIntegrity` roda `validateRoutedPolicy` e devolve `snapshot_policy_invalid`. |
+| MINOR-6: aviso marcado como enviado mesmo com falha no Redmine; `refuseRoutedFetch` sem notificação local | **Aceito como está, igual ao AS-IS.** Notificação local e Dashboard ficam com a T9. |
+| MINOR-7: Attempt duplicado em crash | **Corrigido.** A deduplicação é feita pelo último Attempt `fetch_ticket` antes de gravar outro. |
+| MINOR-8: Authority Ref sempre null (item 11 / A4) | **Parcial, registrado.** `jev` vale como off com `AUTHORITY_REF_ABSENT`, sem chamada de rede. A reavaliação real fica para quando houver Authority Ref durável (DP-7). |
+| NIT: `..policy.json` recusado | **Corrigido**, com teste. |
+| NIT: `json_parse` vaza conteúdo no Redmine | **Corrigido** no caminho de roteamento (só o tipo do erro). O caminho sombra da S3 não mudou. |
+| NIT: conta resolvida duas vezes; `routing-settings.json` em `_dom06` | **Aceito.** Só vale com o esforço verificado, o que não acontece em produção. |
+| Testes: AC-02 sem teste no watcher; golden só cobre argv/env; sem E2E real ON | **Registrado.** O despacho roteado não é alcançável em produção (SP-1) e não há porta dos fundos (AD-5), por isso AC-02, AC-06 e AC-08 ficam como **só em unidade** na matriz da T10. Uma comparação de arquivos no golden fica como sugestão: exigiria regerar o golden na revisão base. |
+
+- [x] Depois das correções, no Node 22: scripts 1241 pass / 0 fail / 6 skip, com o golden inalterado; dashboard 298/0; `check:js`, `lint:src` e `arch:check` limpos. `routing-admission-watcher.test.js` 12/12; `claude-account.test.js` 14/14; `routing-run.test.js` 21/21; `model-routing.test.js` 40/40; `routing-config.test.js` 29/29; `cost-tracking.test.js` 30/30.
 - [ ] Revisão independente intermediária (Claude) do diff no escritor de Attempt e no watcher
 - [ ] Richard decide a P-2 antes da T8
 

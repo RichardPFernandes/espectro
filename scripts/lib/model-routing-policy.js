@@ -194,7 +194,8 @@ function invalid(cause, detail) {
 
 function insideRoot(root, target) {
     const rel = path.relative(root, target);
-    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+    // `..policy.json` é um nome legítimo; só `..` ou `../…` saem da raiz (NIT da revisão).
+    return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
 }
 
 function validPolicyRef(ref) {
@@ -227,7 +228,9 @@ function readRoutingConfig(root, { readFile = fs.readFileSync } = {}) {
     try {
         cfg = JSON.parse(text);
     } catch (e) {
-        return invalid('ROUTING_CONFIG_INVALID', `json_parse:${e.message}`);
+        // Só o tipo do erro: a mensagem do JSON.parse cita trecho do arquivo, e o detalhe
+        // vai para o comentário no Redmine (NIT da revisão).
+        return invalid('ROUTING_CONFIG_INVALID', `json_parse:${e.name}`);
     }
     if (cfg == null || typeof cfg !== 'object' || Array.isArray(cfg)) return invalid('ROUTING_CONFIG_INVALID', 'root_not_object');
     if (cfg.mode === undefined || cfg.mode === 'OFF') return { status: 'OFF', source: 'declared' };
@@ -259,7 +262,7 @@ function readRoutingConfig(root, { readFile = fs.readFileSync } = {}) {
     try {
         raw = JSON.parse(bytes.toString('utf8'));
     } catch (e) {
-        return invalid('POLICY_INVALID', `json_parse:${e.message}`);
+        return invalid('POLICY_INVALID', `json_parse:${e.name}`);
     }
     const checked = validateRoutedPolicy(raw);
     if (!checked.ok) return invalid(checked.cause, checked.detail);

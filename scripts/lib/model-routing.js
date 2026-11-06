@@ -23,6 +23,7 @@
 
 const crypto = require('crypto');
 const wouldRoute = require('./would-route');
+const policyLoader = require('./model-routing-policy');
 
 // SP-1 (PRI-233): o mecanismo de esforço no `claude -p` não foi verificado (U1). Em
 // produção, nesta fatia, ele é sempre UNAVAILABLE; não há env nem flag que o ligue
@@ -80,6 +81,10 @@ function snapshotIntegrity(snapshot) {
     if (typeof declared !== 'string' || sha256(body) !== declared) return { ok: false, detail: 'snapshot_hash_mismatch' };
     if (snapshot.mode !== 'ON') return { ok: false, detail: 'snapshot_mode_not_on' };
     if (!snapshot.policy || !snapshot.default_route || !snapshot.eligible_set) return { ok: false, detail: 'snapshot_incomplete' };
+    // Hash coerente não basta: a policy embutida precisa ser roteável, senão a resolução
+    // quebraria a cada tick sem deixar Attempt (revisão do Checkpoint B, MINOR-5).
+    if (!policyLoader.validateRoutedPolicy(snapshot.policy).ok) return { ok: false, detail: 'snapshot_policy_invalid' };
+    if (!Array.isArray(snapshot.eligible_set.models)) return { ok: false, detail: 'snapshot_incomplete' };
     return { ok: true };
 }
 

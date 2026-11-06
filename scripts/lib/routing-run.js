@@ -6,39 +6,87 @@
 // agente com task-id próprio; o watcher a liga ao snapshot gravando em state.json
 // routing_snapshot = { attempt_id, sha256 }.
 //
-// - bindingFor: qual ligação gravar numa task ainda sem routing_snapshot. Usa o
-//   fetch_ticket mais recente criado até o started_at da task; sem routing nele, a Run
-//   foi admitida OFF e nada é ligado (null).
+// - recordAdmission / clearAdmission: na admissão, o watcher grava (ON) ou apaga (OFF)
+//   o ponteiro _dom06/routing-admission.json com o id do Attempt de admissão que ele
+//   já tem. Revisão do Checkpoint B (MAJOR-1): a ligação não depende de timestamps
+//   gravados pelo agente.
+// - bindingFor: o que fazer com uma task ainda sem routing_snapshot. Sem ponteiro =
+//   Run OFF; ponteiro livre = ligar e marcar consumido; ponteiro já consumido (pela
+//   própria task ou por outra) ou ilegível = recusar. Rastro de ON que não dá para
+//   ligar nunca vira OFF, e não existe religação automática (AGENTS.md, regra 5).
 // - loadRunSnapshot: o snapshot que vale para os Attempts de nó. Só lê o Attempt de
 //   admissão ligado; nunca a config corrente do consumidor (AD-4). Ilegível, ausente,
 //   adulterado ou com sha diferente da ligação → ok:false, que vira CONFIG_UNVERIFIABLE.
 
 const fs = require('fs');
 const path = require('path');
-const dom06 = require('./dom06-attempt');
 const mr = require('./model-routing');
 
 const ATTEMPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+const POINTER = 'routing-admission.json';
 
-function instant(v) {
-    const t = typeof v === 'string' ? Date.parse(v) : NaN;
-    return Number.isFinite(t) ? t : null;
+function pointerPath(fetchRunDir) {
+    return path.join(fetchRunDir, POINTER);
+}
+
+function writePointer(fetchRunDir, pointer) {
+    fs.mkdirSync(fetchRunDir, { recursive: true });
+    const file = pointerPath(fetchRunDir);
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify(pointer, null, 2)}\n`);
+    fs.renameSync(tmp, file);
+}
+
+/** Admissão ON: ponteiro livre para o Attempt fetch_ticket que carrega o snapshot. */
+function recordAdmission(fetchRunDir, attempt) {
+    const sha = attempt?.snapshot?.routing?.sha256;
+    if (!attempt || typeof attempt.attempt_id !== 'string' || typeof sha !== 'string') {
+        throw new Error('ROUTING_ADMISSION_REQUIRES_SNAPSHOT');
+    }
+    writePointer(fetchRunDir, { attempt_id: attempt.attempt_id, sha256: sha, consumed_by: null });
+}
+
+/** Admissão OFF: apaga o ponteiro de uma admissão ON anterior (no-op sem ponteiro). */
+function clearAdmission(fetchRunDir) {
+    fs.rmSync(pointerPath(fetchRunDir), { force: true });
+}
+
+function readPointer(fetchRunDir) {
+    const file = pointerPath(fetchRunDir);
+    if (!fs.existsSync(file)) return { exists: false };
+    try {
+        const p = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const ok = p && typeof p === 'object' && typeof p.attempt_id === 'string' && ATTEMPT_ID.test(p.attempt_id)
+            && typeof p.sha256 === 'string' && SHA256_HEX.test(p.sha256)
+            && (p.consumed_by === null || typeof p.consumed_by === 'string');
+        return ok ? { exists: true, pointer: p } : { exists: true, pointer: null };
+    } catch {
+        return { exists: true, pointer: null };
+    }
+}
+
+/** Depois de gravar state.routing_snapshot: o ponteiro passa a ser desta task. */
+function markConsumed(fetchRunDir, taskId) {
+    const { pointer } = readPointer(fetchRunDir);
+    if (!pointer) throw new Error('ROUTING_ADMISSION_POINTER_UNREADABLE');
+    writePointer(fetchRunDir, { ...pointer, consumed_by: taskId });
 }
 
 /**
  * @param {object} state state.json da task
  * @param {string} fetchRunDir memory/runs/_dom06 do ticket
- * @returns {{ attempt_id: string, sha256: string } | null}
+ * @param {string} taskId
+ * @returns {{ action: 'none' } | { action: 'bind', binding: { attempt_id: string, sha256: string } } | { action: 'refuse', detail: string }}
  */
-function bindingFor(state, fetchRunDir) {
-    if (state && state.routing_snapshot) return null;
-    const startedAt = instant(state && state.started_at);
-    const fetches = dom06.listAttempts(fetchRunDir).filter(a => a.node === 'fetch_ticket' && a.started
-        && (startedAt == null || (instant(a.created_at) ?? Infinity) <= startedAt));
-    const admitted = fetches[fetches.length - 1];
-    const routing = admitted?.snapshot?.routing;
-    if (!routing || typeof routing.sha256 !== 'string') return null;
-    return { attempt_id: admitted.attempt_id, sha256: routing.sha256 };
+function bindingFor(state, fetchRunDir, taskId) {
+    if (state && state.routing_snapshot) return { action: 'none' };
+    const read = readPointer(fetchRunDir);
+    if (!read.exists) return { action: 'none' };
+    if (!read.pointer) return { action: 'refuse', detail: 'admission_pointer_unreadable' };
+    const p = read.pointer;
+    if (p.consumed_by === null) return { action: 'bind', binding: { attempt_id: p.attempt_id, sha256: p.sha256 } };
+    return { action: 'refuse', detail: p.consumed_by === taskId ? 'snapshot_binding_lost' : 'snapshot_binding_ambiguous' };
 }
 
 /**
@@ -93,4 +141,6 @@ function blockedNotice(marker, cfg, { ticketId, at }) {
     };
 }
 
-module.exports = { bindingFor, loadRunSnapshot, blockedNotice, TRANSIENT_NOTICE_AFTER };
+module.exports = {
+    recordAdmission, clearAdmission, markConsumed, bindingFor, loadRunSnapshot, blockedNotice, TRANSIENT_NOTICE_AFTER,
+};

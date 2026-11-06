@@ -60,36 +60,68 @@ test('prepareDispatch: com routing, o snapshot do fetch_ticket carrega o routing
     assert.deepStrictEqual(Object.keys(off.attempt.snapshot).sort(), ['base_branch', 'node', 'spec_hash', 'ticket_id']);
 });
 
-test('bindingFor: Run admitida ON → { attempt_id, sha256 } do fetch_ticket', () => {
+// Revisão do Checkpoint B (MAJOR-1): a ligação vem de um ponteiro gravado na admissão
+// (id do Attempt que o watcher já tem), nunca de timestamps; rastro de ON que não dá
+// para ligar recusa (fail-closed), nunca vira OFF; não há religação automática.
+
+test('recordAdmission + bindingFor: Run admitida ON → bind com o id do Attempt de admissão, sem olhar started_at', () => {
     const dir = fetchRunDir();
     const snap = snapshot();
     const admitted = admitFetch(dir, snap);
-    const state = { started_at: new Date(Date.now() + 1000).toISOString() };
-    assert.deepStrictEqual(rr.bindingFor(state, dir), { attempt_id: admitted.attempt.attempt_id, sha256: snap.sha256 });
+    rr.recordAdmission(dir, admitted.attempt);
+    for (const started_at of ['1999-01-01T00:00:00.000Z', '2999-01-01T00:00:00.000Z', 'ontem', undefined]) {
+        assert.deepStrictEqual(rr.bindingFor({ started_at }, dir, '233-a'),
+            { action: 'bind', binding: { attempt_id: admitted.attempt.attempt_id, sha256: snap.sha256 } });
+    }
 });
 
-test('bindingFor: Run admitida OFF → null (nada é ligado)', () => {
+test('bindingFor: sem ponteiro (Run admitida OFF ou ticket sem admissão ON) → none', () => {
     const dir = fetchRunDir();
     admitFetch(dir);
-    assert.strictEqual(rr.bindingFor({ started_at: new Date(Date.now() + 1000).toISOString() }, dir), null);
-    assert.strictEqual(rr.bindingFor({ started_at: new Date().toISOString() }, fetchRunDir()), null, '_dom06 vazio também é null');
+    assert.deepStrictEqual(rr.bindingFor({}, dir, '233-a'), { action: 'none' });
+    assert.deepStrictEqual(rr.bindingFor({}, fetchRunDir(), '233-a'), { action: 'none' }, '_dom06 vazio também');
 });
 
-test('bindingFor: usa o fetch_ticket mais recente criado até o started_at da task (ciclos anteriores não contam)', async () => {
+test('clearAdmission: admissão OFF posterior apaga o ponteiro ON anterior', () => {
     const dir = fetchRunDir();
-    const old = admitFetch(dir, snapshot('p-velha'));
-    await new Promise(r => setTimeout(r, 5));
-    const between = new Date().toISOString();
-    await new Promise(r => setTimeout(r, 5));
-    const later = admitFetch(dir, snapshot('p-nova'));
-    assert.strictEqual(rr.bindingFor({ started_at: between }, dir).attempt_id, old.attempt.attempt_id);
-    assert.strictEqual(rr.bindingFor({ started_at: new Date(Date.now() + 1000).toISOString() }, dir).attempt_id, later.attempt.attempt_id);
+    rr.recordAdmission(dir, admitFetch(dir, snapshot()).attempt);
+    rr.clearAdmission(dir);
+    assert.deepStrictEqual(rr.bindingFor({}, dir, '233-a'), { action: 'none' });
+    rr.clearAdmission(fetchRunDir()); // sem ponteiro: no-op
 });
 
-test('bindingFor: state já ligado → null (snapshot nunca é trocado)', () => {
+test('bindingFor: state já ligado → none (o snapshot nunca é trocado)', () => {
     const dir = fetchRunDir();
-    admitFetch(dir, snapshot());
-    assert.strictEqual(rr.bindingFor({ routing_snapshot: { attempt_id: 'x', sha256: 'y' } }, dir), null);
+    rr.recordAdmission(dir, admitFetch(dir, snapshot()).attempt);
+    assert.deepStrictEqual(rr.bindingFor({ routing_snapshot: { attempt_id: 'x', sha256: 'y' } }, dir, '233-a'), { action: 'none' });
+});
+
+test('bindingFor: ponteiro consumido pela própria task e ligação sumida do state → refuse (sem religar)', () => {
+    const dir = fetchRunDir();
+    rr.recordAdmission(dir, admitFetch(dir, snapshot()).attempt);
+    rr.markConsumed(dir, '233-a');
+    assert.deepStrictEqual(rr.bindingFor({}, dir, '233-a'), { action: 'refuse', detail: 'snapshot_binding_lost' });
+});
+
+test('bindingFor: ponteiro consumido por outra task → refuse (ambíguo)', () => {
+    const dir = fetchRunDir();
+    rr.recordAdmission(dir, admitFetch(dir, snapshot()).attempt);
+    rr.markConsumed(dir, '233-a');
+    assert.deepStrictEqual(rr.bindingFor({}, dir, '233-b'), { action: 'refuse', detail: 'snapshot_binding_ambiguous' });
+});
+
+test('bindingFor: ponteiro ilegível ou malformado → refuse (rastro de ON nunca vira OFF)', () => {
+    const dir = fetchRunDir();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'routing-admission.json'), '{ x');
+    assert.deepStrictEqual(rr.bindingFor({}, dir, '233-a'), { action: 'refuse', detail: 'admission_pointer_unreadable' });
+    fs.writeFileSync(path.join(dir, 'routing-admission.json'), JSON.stringify({ attempt_id: '../x', sha256: 'z' }));
+    assert.deepStrictEqual(rr.bindingFor({}, dir, '233-a'), { action: 'refuse', detail: 'admission_pointer_unreadable' });
+});
+
+test('recordAdmission recusa Attempt sem snapshot routing', () => {
+    const dir = fetchRunDir();
+    assert.throws(() => rr.recordAdmission(dir, admitFetch(dir).attempt), /ROUTING_ADMISSION_REQUIRES_SNAPSHOT/);
 });
 
 test('loadRunSnapshot: sem routing_snapshot → OFF', () => {

@@ -136,6 +136,18 @@ for (const [name, setup, cause, detail] of INVALID_CASES) {
     });
 }
 
+test('NITs da revisão: json_parse não vaza conteúdo; nome começando com ".." é aceito', () => {
+    const leak = policyLoader.readRoutingConfig(consumer({ routing: '{ "segredo-do-arquivo": ' }));
+    assert.strictEqual(leak.detail, 'json_parse:SyntaxError');
+    const root = consumer({ routing: { mode: 'ON' }, policy: routedPolicy() });
+    const bytes = fs.readFileSync(path.join(root, '.claude', 'routing-policy.json'));
+    fs.writeFileSync(path.join(root, '..policy.json'), bytes);
+    fs.writeFileSync(path.join(root, '.claude', 'model-routing.json'), JSON.stringify({ mode: 'ON', policy_ref: {
+        id: 'routing-sintetica', version: 'p-test-1', sha256: sha(bytes), path: '..policy.json',
+    } }));
+    assert.strictEqual(policyLoader.readRoutingConfig(root).status, 'ON');
+});
+
 test('classifier jev não invalida a policy roteada (A4: a admissão decide o efetivo)', () => {
     const root = consumer({ routing: { mode: 'ON' }, policy: routedPolicy({ classifier: { provider: 'jev' } }) });
     assert.strictEqual(policyLoader.readRoutingConfig(root).status, 'ON');

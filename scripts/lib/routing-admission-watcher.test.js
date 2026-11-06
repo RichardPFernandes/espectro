@@ -17,6 +17,7 @@ const { execFile, execFileSync } = require('child_process');
 const dom06 = require('./dom06-attempt');
 const mr = require('./model-routing');
 const policyLoader = require('./model-routing-policy');
+const routingRun = require('./routing-run');
 
 const PRISMA_ROOT = path.resolve(__dirname, '..', '..');
 const WATCHER = path.join(PRISMA_ROOT, 'scripts', 'readmine-watcher.js');
@@ -178,7 +179,7 @@ test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true
 // Run já admitida ON (o fetch_ticket ON nunca inicia em produção hoje, SP-1): o
 // Attempt de admissão é gravado pelo DOM06 real com o snapshot da config do consumidor,
 // e a task existe como o agente a teria criado. `bound` = state já ligado (T5).
-function seedOnRun(repo, id, { bound = true, node = 'implement' } = {}) {
+function seedOnRun(repo, id, { bound = true, node = 'implement', startedAt = new Date(Date.now() + 1000).toISOString(), retries = {} } = {}) {
     const worktree = worktreeOf(repo, id);
     fs.mkdirSync(worktree, { recursive: true });
     git(worktree, 'init', '-q', '-b', String(id));
@@ -188,12 +189,15 @@ function seedOnRun(repo, id, { bound = true, node = 'implement' } = {}) {
         runDir: fetchRunDirOf(repo, id), node: 'fetch_ticket', ticketId: id, baseBranch: 'development',
         specHash: null, cause: 'dispatch', routing: snapshot,
     });
+    // Mesmo ponteiro que o watcher grava na admissão ON (MAJOR-1).
+    routingRun.recordAdmission(fetchRunDirOf(repo, id), fetch.attempt);
+    if (bound) routingRun.markConsumed(fetchRunDirOf(repo, id), `${id}-rt`);
     const dir = taskDirOf(repo, id);
     fs.mkdirSync(dir, { recursive: true });
     const history = ['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify'];
     fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
         task_id: `${id}-rt`, node, history: history.slice(0, history.indexOf(node)), status: 'in_progress',
-        started_at: new Date(Date.now() + 1000).toISOString(), retries: {},
+        started_at: startedAt, retries,
         ...(bound ? { routing_snapshot: { attempt_id: fetch.attempt.attempt_id, sha256: snapshot.sha256 } } : {}),
     }));
     fs.writeFileSync(path.join(dir, 'context.md'), '# Contexto\n');
@@ -327,4 +331,72 @@ test('T7 / AC-03: ticket novo ON → fetch_ticket+plan no default_route, 1 Attem
     assert.strictEqual(attempts[0].routing.selection_source, 'FIXED_NODE');
     assert.strictEqual(redminePuts(id).length, 1);
     assert.ok(!fs.existsSync(taskDirOf(repo, id)), 'nenhuma task criada');
+});
+
+// ── Revisão do Checkpoint B ────────────────────────────────────────────────────
+
+const onlyAttempt = dir => {
+    const all = dom06.listAttempts(dir);
+    assert.strictEqual(all.length, 1, JSON.stringify(all.map(a => [a.node, a.result])));
+    return all[0];
+};
+
+test('MAJOR-1 (a): Attempt de admissão apagado antes do 1º nó → NOT_STARTED, nunca OFF com modelo herdado', async () => {
+    const id = 233801;
+    const repo = consumer(r => writeRouting(r));
+    const { fetch, dir } = seedOnRun(repo, id, { bound: false });
+    fs.rmSync(path.join(fetchRunDirOf(repo, id), 'dom06', 'attempts', `${fetch.attempt_id}.json`));
+    const r = await dispatch(repo, id, 'b-a-apagado');
+    assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
+    assert.strictEqual(invocations('b-a-apagado'), 0);
+    assert.deepStrictEqual(onlyAttempt(dir).not_started, { cause: 'CONFIG_UNVERIFIABLE', detail: 'snapshot_unreadable' });
+});
+
+test('MAJOR-1 (b): started_at anterior à admissão não esconde o snapshot (liga pelo ponteiro)', async () => {
+    const id = 233802;
+    const repo = consumer(r => writeRouting(r));
+    const { fetch, snapshot, dir } = seedOnRun(repo, id, { bound: false, startedAt: '1999-01-01T00:00:00.000Z' });
+    const r = await dispatch(repo, id, 'b-b-passado');
+    assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
+    assert.deepStrictEqual(readState(repo, id).routing_snapshot, { attempt_id: fetch.attempt_id, sha256: snapshot.sha256 });
+    assert.strictEqual(onlyAttempt(dir).routing.snapshot_sha256, snapshot.sha256);
+});
+
+test('MAJOR-1 (d): ligação apagada do state depois de ligada → recusa, sem religar', async () => {
+    const id = 233803;
+    const repo = consumer(r => writeRouting(r));
+    const { dir } = seedOnRun(repo, id);
+    const statePath = path.join(dir, 'state.json');
+    const s = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    delete s.routing_snapshot;
+    fs.writeFileSync(statePath, JSON.stringify(s));
+    const r = await dispatch(repo, id, 'b-d-religar');
+    assert.deepStrictEqual([r.result?.reason, r.result?.detail], ['routing_not_started', 'snapshot_binding_lost'], r.output);
+    assert.ok(!('routing_snapshot' in readState(repo, id)), 'não religou');
+});
+
+test('MINOR-1 + retry: recusa ON em retry grava cause retry e não consome human-input.md', async () => {
+    const id = 233804;
+    const repo = consumer(r => writeRouting(r));
+    const { dir } = seedOnRun(repo, id, { retries: { implement: 1 } });
+    fs.writeFileSync(path.join(dir, 'human-input.md'), 'pode seguir\n');
+    const r = await dispatch(repo, id, 'b-retry');
+    assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
+    const a = onlyAttempt(dir);
+    assert.deepStrictEqual([a.cause, a.result], ['retry', 'NOT_STARTED']);
+    assert.ok(fs.existsSync(path.join(dir, 'human-input.md')), 'a mensagem humana não foi consumida pela recusa');
+});
+
+test('MAJOR-1: admissão OFF depois de um ciclo ON apaga o ponteiro (a Run nova fica OFF)', async () => {
+    const id = 233805;
+    const repo = consumer();
+    const ptr = path.join(fetchRunDirOf(repo, id), 'routing-admission.json');
+    fs.mkdirSync(path.dirname(ptr), { recursive: true });
+    fs.writeFileSync(ptr, JSON.stringify({ attempt_id: '00000000-0000-4000-8000-000000000000', sha256: 'a'.repeat(64), consumed_by: '233805-velho' }));
+    const r = await dispatch(repo, id, 'b-off-limpa');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    assert.ok(!fs.existsSync(ptr), 'ponteiro do ciclo ON anterior removido');
+    const next = await dispatch(repo, id, 'b-off-limpa-no');
+    assert.strictEqual(next.result?.action, 'dispatched', next.output);
+    assert.ok(!('routing_snapshot' in readState(repo, id)));
 });

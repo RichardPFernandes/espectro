@@ -1513,10 +1513,11 @@ async function notifyRoutingAdmissionBlocked(ticket, cfg) {
 // plugin (SP-2, --settings próprio) só é gerada quando o esforço estiver verificado.
 // Provider: ACTIVE (um provider, sem dono de estado operacional: UNK-AR-005). Override
 // humano: nenhum até a T8 (P-2). Núcleo 2 (Jev): nunca na S4.
-function routingCapabilities(runDir) {
+function routingCapabilities(runDir, projectDir) {
     const effortMechanism = modelRouting.PRODUCTION_EFFORT_MECHANISM;
     if (effortMechanism.status !== 'VERIFIED') return { effortMechanism, pluginProof: { status: 'NOT_EVALUATED' } };
-    return { effortMechanism, pluginProof: routedPluginProof({ accountDir: resolveClaudeAccount().dir, runDir }) };
+    // projectDir = cwd do despacho (worktree do ticket): os settings do projeto também valem.
+    return { effortMechanism, pluginProof: routedPluginProof({ accountDir: resolveClaudeAccount().dir, runDir, projectDir }) };
 }
 
 function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir }) {
@@ -1528,7 +1529,7 @@ function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA,
         : undefined;
     return modelRouting.resolveRoute({
         snapshot: runSnapshot.snapshot, node, signals, provider: { state: 'ACTIVE' },
-        capabilities: routingCapabilities(runDir), overrides: [], nodeBoundaryAt: null, authorityRef: null,
+        capabilities: routingCapabilities(runDir, worktreePath), overrides: [], nodeBoundaryAt: null, authorityRef: null,
     });
 }
 
@@ -1552,11 +1553,18 @@ async function refuseRoutedNode({ ticket, taskId, node, state, dir, resolution }
     });
     const note = routingRefusalNote(node, resolution);
     const at = new Date().toISOString();
-    const next = { ...state, status: 'blocked', agent_log: [...(state.agent_log || []), { agent: 'watcher', nodes: [node], at, note }] };
-    writeTaskState(dir, next, 'routing_not_started');
+    // Mutação no próprio objeto lido: writeTaskState passa a base do CAS e não
+    // sobrescreve o que outro escritor gravou no mesmo tick (MINOR-1).
+    state.status = 'blocked';
+    state.agent_log = [...(state.agent_log || []), { agent: 'watcher', nodes: [node], at, note }];
+    writeTaskState(dir, state, 'routing_not_started');
     appendEvent(taskId, { type: 'checkpoint', node, agent: 'watcher', ts: at, detail: `routing NOT_STARTED: ${resolution.cause} (${resolution.detail})` }, dir);
     console.warn(`Task ${taskId}: ${note}`);
-    await notifyBlocked(ticket, taskId, node, 'blocked', dir, next, note);
+    // A Run acabou de entrar em blocked: um aviso de bloqueio anterior do mesmo nó (ex.:
+    // retomada manual que não limpou o marcador) não pode calar este (MINOR-3). Os ticks
+    // seguintes usam a mesma assinatura nó:blocked e não repetem.
+    try { fs.rmSync(notifiedMarkerPath(dir), { force: true }); } catch { /* best-effort */ }
+    await notifyBlocked(ticket, taskId, node, 'blocked', dir, state, note);
     return { action: 'skip', reason: 'routing_not_started', taskId, node, cause: resolution.cause, detail: resolution.detail };
 }
 
@@ -1567,11 +1575,19 @@ async function refuseRoutedFetch({ ticket, fetchRunDir, resolution, snapshotSha 
     const signature = `${resolution.cause}|${resolution.detail}|${snapshotSha}`;
     const base = { action: 'skip', reason: 'routing_not_started', node: 'fetch_ticket', cause: resolution.cause, detail: resolution.detail };
     if (alreadyNotified(markerPath, signature)) return base;
-    dom06.beginAttempt(fetchRunDir, {
-        node: 'fetch_ticket', cause: 'dispatch',
-        admission: { status: 'NOT_STARTED', cause: resolution.cause, detail: resolution.detail },
-        ...(resolution.decision ? { routing: resolution.decision } : {}),
-    });
+    // Deduplicação pelo próprio Attempt (MINOR-7): se um tick anterior gravou o Attempt e
+    // caiu antes do marcador, não grava outro; só completa o aviso.
+    const last = dom06.listAttempts(fetchRunDir).filter(a => a.node === 'fetch_ticket').at(-1);
+    const sameAttempt = last && last.result === 'NOT_STARTED'
+        && last.not_started?.cause === resolution.cause && last.not_started?.detail === resolution.detail
+        && (last.routing?.snapshot_sha256 ?? null) === (resolution.decision?.snapshot_sha256 ?? null);
+    if (!sameAttempt) {
+        dom06.beginAttempt(fetchRunDir, {
+            node: 'fetch_ticket', cause: 'dispatch',
+            admission: { status: 'NOT_STARTED', cause: resolution.cause, detail: resolution.detail },
+            ...(resolution.decision ? { routing: resolution.decision } : {}),
+        });
+    }
     const note = routingRefusalNote('fetch_ticket', resolution);
     console.warn(`Ticket #${ticket.id}: ${note}`);
     if (!FOLLOW) {
@@ -4374,6 +4390,16 @@ async function dispatchTicketReserved(ticket) {
             console.warn(`Ticket #${id}: admissão DOM06 ${fetchAdmission.attempt.result} — fetch_ticket não despachado e não conta como PASS.`);
             return { action: 'skip', reason: `dom06_${String(fetchAdmission.attempt.result).toLowerCase()}`, node: 'fetch_ticket' };
         }
+        // PRI-233 (MAJOR-1): ponteiro determinístico da admissão para a task que o agente
+        // vai criar. OFF apaga o ponteiro de um ciclo ON anterior (no-op sem ponteiro).
+        try {
+            const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
+            if (routingSnapshot) routingRun.recordAdmission(fetchRunDir, fetchAdmission.attempt);
+            else routingRun.clearAdmission(fetchRunDir);
+        } catch (e) {
+            dropUnspawnedFetchDispatch(id, newTaskLease);
+            throw e;
+        }
         attachDom06Lease(newTaskLease, fetchAdmission, 'fetch_ticket');
         beginCycle({ ticketId: id, node: 'fetch_ticket' });
         logRun(id, '[watcher]', 'iniciando nós: fetch_ticket, plan');
@@ -4608,6 +4634,33 @@ async function dispatchTicketReserved(ticket) {
         return { action: 'dry-run', taskId, node };
     }
 
+    // PRI-233 (PRI-205 S4): roteamento ANTES dos portões com efeito (pré-build, churn,
+    // consumo de human-input), para que uma recusa não os execute nem sobrescreva o que
+    // eles gravaram (revisão do Checkpoint B, MINOR-1).
+    // Ligação: ponteiro da admissão (MAJOR-1). Run admitida OFF não ganha campo nenhum;
+    // rastro de ON que não dá para ligar recusa. Run ON resolve o §4.7 antes do Attempt.
+    let nodeRouting = null;
+    let nodeRoutingSnapshot = null;
+    {
+        const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
+        const binding = routingRun.bindingFor(state, fetchRunDir, taskId);
+        if (binding.action === 'refuse') {
+            return refuseRoutedNode({ ticket, taskId, node, state, dir,
+                resolution: { ok: false, result: 'NOT_STARTED', cause: 'CONFIG_UNVERIFIABLE', detail: binding.detail, decision: null } });
+        }
+        if (binding.action === 'bind') {
+            state.routing_snapshot = binding.binding;
+            writeTaskState(dir, state, 'routing_snapshot_bind');
+            routingRun.markConsumed(fetchRunDir, taskId);
+        }
+        const runSnapshot = routingRun.loadRunSnapshot(state, fetchRunDir);
+        if (runSnapshot.mode === 'ON') {
+            nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir });
+            if (!nodeRouting.ok) return refuseRoutedNode({ ticket, taskId, node, state, dir, resolution: nodeRouting });
+            nodeRoutingSnapshot = runSnapshot.snapshot;
+        }
+    }
+
     // Portão de build entre plan e implement — ver runPreBuildGate. Antes do lease:
     // o Maven roda aqui no watcher, não é o agente que está "running".
     let preBuildNote = '';
@@ -4657,25 +4710,6 @@ async function dispatchTicketReserved(ticket) {
         if (active.hash) executionSpec = invalidate.executionSpec(node, { hash: active.hash, version: active.version });
     } catch (e) {
         console.warn(`Task ${taskId}: execution_spec não registrada (${e.message}) — o carimbo do nó compara só com a spec atual.`);
-    }
-    // PRI-233 (PRI-205 S4): liga a task ao snapshot routing fixado na admissão da Run
-    // (Attempt fetch_ticket em _dom06). Run admitida OFF não ganha campo nenhum.
-    // T7: Run admitida ON resolve o §4.7 antes do Attempt; Run OFF segue o código atual.
-    let nodeRouting = null;
-    let nodeRoutingSnapshot = null;
-    if (!DRY_RUN) {
-        const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
-        const routingBinding = routingRun.bindingFor(state, fetchRunDir);
-        if (routingBinding) {
-            state.routing_snapshot = routingBinding;
-            writeTaskState(dir, state, 'routing_snapshot_bind');
-        }
-        const runSnapshot = routingRun.loadRunSnapshot(state, fetchRunDir);
-        if (runSnapshot.mode === 'ON') {
-            nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir });
-            if (!nodeRouting.ok) return refuseRoutedNode({ ticket, taskId, node, state, dir, resolution: nodeRouting });
-            nodeRoutingSnapshot = runSnapshot.snapshot;
-        }
     }
     const nodeAdmission = dom06.prepareDispatch({
         ...(nodeRouting ? { routing: nodeRoutingSnapshot, routingDecision: nodeRouting.decision } : {}),

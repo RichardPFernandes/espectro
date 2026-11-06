@@ -88,11 +88,12 @@ test('custo US$: preço por modelo da mensagem, cache por TTL, fast mode, modelo
 
 test('PRI-233 T7: Attempt roteado grava RoutingDecision, par pedido e origem; sem routing fica AS-IS', () => {
     const decision = {
-        node: 'implement', selection_source: 'RULES', subagent: 'UNENFORCED',
+        node: 'implement', selection_source: 'RULES', subagent: 'UNENFORCED', effort_router_plugin: 'NOT_LOADED',
         chosen: { model_id: 'm-t2', effort: 'médio', cli_effort: 'medium', tier: 'T2' },
     };
-    const routed = ct.mergeRun(null, { node: 'implement', agent: 'claude', run: { routing_decision: decision }, metrics: { ...tokens(1, 1), duration_ms: 1 } });
+    const routed = ct.mergeRun(null, { node: 'implement', agent: 'claude', run: { routing_decision: decision, effort_router_plugin: 'LOADED' }, metrics: { ...tokens(1, 1), duration_ms: 1 } });
     const a = routed.nodes.implement.attempts[0];
+    assert.strictEqual(a.effort_router_plugin, 'NOT_LOADED', 'o estado provado pela decisão vence o lido da conta');
     assert.deepStrictEqual(a.routing_decision, decision);
     assert.deepStrictEqual(a.requested, { model: 'm-t2', effort: 'medium' });
     assert.strictEqual(a.selection_source, 'RULES');

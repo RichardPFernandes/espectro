@@ -373,7 +373,9 @@ function attemptRecord(run, node, alsoCovers, metrics, outcome) {
         requested: run.routing_decision?.chosen
             ? { model: run.routing_decision.chosen.model_id, effort: run.routing_decision.chosen.cli_effort }
             : { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' },
-        effort_router_plugin: run.effort_router_plugin || 'UNKNOWN',
+        // Despacho roteado: o estado do plugin é o provado pela decisão (--settings do
+        // despacho), não o lido do perfil da conta (revisão do Checkpoint B, MINOR-4).
+        effort_router_plugin: run.routing_decision?.effort_router_plugin || run.effort_router_plugin || 'UNKNOWN',
         first_turn: metrics.first_turn || { cache_read_tokens: null, cache_write_5m_tokens: null, cache_write_1h_tokens: null },
         selection_source: run.routing_decision?.selection_source || 'DEFAULT_INHERITED',
         routing_decision: run.routing_decision || 'UNAVAILABLE', subtask: 'UNAVAILABLE', workspace: 'UNAVAILABLE',

@@ -106,28 +106,53 @@ function detectEffortRouterPlugin(settings, configDir) {
 
 // PRI-233 (PRI-205 S4) SP-2: prova de que o jev-model-router fica desligado num
 // despacho roteado. Gera <runDir>/routing-settings.json com todo plugin do router
-// conhecido em false (o --settings do despacho tem precedência sobre o settings da
-// conta), relê e confere o sha256. Fontes que um --settings não neutraliza (árvore
-// skills/ e pluginConfigs ligados) dão LOADED. Sem observação suficiente: UNKNOWN.
-// Nunca devolve NOT_LOADED sem o arquivo gravado e conferido.
+// conhecido em false (o --settings do despacho tem precedência sobre os settings de
+// usuário, projeto e local), relê e confere o sha256.
+// Fontes lidas (revisão do Checkpoint B, MAJOR-2): settings da conta, settings.json e
+// settings.local.json do projeto (cwd do despacho) e árvores skills/ da conta e do
+// projeto. Fontes que um --settings não neutraliza dão LOADED (skills/, pluginConfigs
+// ligados); managed settings presentes ficam acima do CLI e dão UNKNOWN. Nunca devolve
+// NOT_LOADED sem o arquivo gravado e conferido.
 const ROUTER_SKILLS_DIR_KEY = 'jev-model-router@skills-dir';
+const DEFAULT_MANAGED_PATHS = Object.freeze([
+    '/Library/Application Support/ClaudeCode/managed-settings.json',
+    '/etc/claude-code/managed-settings.json',
+]);
 
-function routedPluginProof({ accountDir = null, runDir, home = os.homedir() } = {}) {
+function readSettings(file) {
+    if (!fs.existsSync(file)) return { ok: true, settings: {} };
+    try { return { ok: true, settings: JSON.parse(fs.readFileSync(file, 'utf8')) || {} }; } catch { return { ok: false }; }
+}
+
+function routedPluginProof({ accountDir = null, runDir, projectDir = null, home = os.homedir(), managedPaths = DEFAULT_MANAGED_PATHS } = {}) {
     const configDir = accountDir || path.join(home, '.claude');
     const isRouterKey = (key) => typeof key === 'string' && /^jev-model-router(?:@|$)/.test(key);
-    let settings = {};
-    const settingsFile = path.join(configDir, 'settings.json');
-    if (fs.existsSync(settingsFile)) {
-        try { settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8')) || {}; } catch { return { status: 'UNKNOWN', reason: 'account_settings_unreadable' }; }
+    try {
+        if (managedPaths.some(p => fs.existsSync(p))) return { status: 'UNKNOWN', reason: 'managed_settings_present' };
+    } catch { return { status: 'UNKNOWN', reason: 'managed_settings_unreadable' }; }
+    const account = readSettings(path.join(configDir, 'settings.json'));
+    if (!account.ok) return { status: 'UNKNOWN', reason: 'account_settings_unreadable' };
+    const sources = [account.settings];
+    if (projectDir) {
+        for (const name of ['settings.json', 'settings.local.json']) {
+            const project = readSettings(path.join(projectDir, '.claude', name));
+            if (!project.ok) return { status: 'UNKNOWN', reason: 'project_settings_unreadable' };
+            sources.push(project.settings);
+        }
     }
     try {
         if (fs.existsSync(path.join(configDir, 'skills', 'jev-model-router'))) return { status: 'LOADED', reason: 'skills_dir_not_neutralizable' };
-    } catch { return { status: 'UNKNOWN', reason: 'account_skills_unreadable' }; }
-    const configs = Object.entries(settings.pluginConfigs || {}).filter(([key]) => isRouterKey(key));
-    if (configs.some(([, value]) => !(value === false || (value && typeof value === 'object' && value.enabled === false)))) {
-        return { status: 'LOADED', reason: 'plugin_config_not_neutralizable' };
+        if (projectDir && fs.existsSync(path.join(projectDir, '.claude', 'skills', 'jev-model-router'))) {
+            return { status: 'LOADED', reason: 'project_skills_dir_not_neutralizable' };
+        }
+    } catch { return { status: 'UNKNOWN', reason: 'skills_unreadable' }; }
+    for (const settings of sources) {
+        const configs = Object.entries(settings.pluginConfigs || {}).filter(([key]) => isRouterKey(key));
+        if (configs.some(([, value]) => !(value === false || (value && typeof value === 'object' && value.enabled === false)))) {
+            return { status: 'LOADED', reason: 'plugin_config_not_neutralizable' };
+        }
     }
-    const keys = new Set([ROUTER_SKILLS_DIR_KEY, ...Object.keys(settings.enabledPlugins || {}).filter(isRouterKey)]);
+    const keys = new Set([ROUTER_SKILLS_DIR_KEY, ...sources.flatMap(s => Object.keys(s.enabledPlugins || {}).filter(isRouterKey))]);
     const generated = { enabledPlugins: Object.fromEntries([...keys].sort().map(k => [k, false])) };
     const target = path.join(runDir, 'routing-settings.json');
     const bytes = Buffer.from(`${JSON.stringify(generated, null, 2)}\n`);

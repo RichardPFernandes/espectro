@@ -116,6 +116,14 @@ for (const [name, mutate] of [
     });
 }
 
+test('passo 1: snapshot com hash coerente mas policy não roteável → snapshot_policy_invalid (sem exceção)', () => {
+    const { sha256: _old, ...body } = mr.buildRoutingSnapshot(loaded());
+    delete body.policy.tiers;
+    const snap = { ...body, sha256: mr.canonicalSha256(body) };
+    const r = mr.resolveRoute({ snapshot: snap, node: 'implement', signals: signalsOf(C1_GROUP), provider: { state: 'ACTIVE' }, capabilities: VERIFIED });
+    assert.deepStrictEqual([r.ok, r.cause, r.detail], [false, 'CONFIG_UNVERIFIABLE', 'snapshot_policy_invalid']);
+});
+
 // ── Passo 2: provider ──────────────────────────────────────────────────────────
 
 for (const state of ['DISABLED', 'DRAINING', 'UNKNOWN', undefined]) {
