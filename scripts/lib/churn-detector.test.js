@@ -184,9 +184,33 @@ function ticket(id) {
         custom_fields: [{ name: 'Branch Liberação', value: 'Dev - Local' }], updated_on: new Date().toISOString(),
     };
 }
+// O despacho é destacado (sem --follow): o watcher marca status="running" e o wrapper
+// do agente, ao sair, faz DUAS escritas no state: releaseNode (devolve o status) e
+// recordNodeExit (acrescenta node_end/node_error, lendo o state de novo). O agente real
+// grava o state ANTES de sair; simular a rodada entre essas escritas fazia a segunda
+// sobrescrever o state (history incluído) sob carga, e o portão via uma rodada a menos
+// (PRI-233: flaky em "CHURN_THRESHOLD=2", log "1 rodada(s) analisada(s)"). Espera o
+// wrapper terminar: status fora de running e todo node_start com seu evento de saída.
+async function waitReleased(dir, ms = 30000) {
+    const until = Date.now() + ms;
+    const done = () => {
+        let s;
+        try { s = readState(dir); } catch { return false; } // escrita em curso
+        const ev = s.events || [];
+        const starts = ev.filter(e => e.type === 'node_start').length;
+        const exits = ev.filter(e => e.type === 'node_end' || e.type === 'node_error').length;
+        return s.status !== 'running' && exits >= starts;
+    };
+    while (!done()) {
+        if (Date.now() > until) throw new Error('timeout esperando o wrapper do agente destacado');
+        await new Promise(r => setTimeout(r, 25));
+    }
+}
+
 // Simula uma rodada do agente: implement mexe nos arquivos e o review reprova
 // (grava node="implement" de novo, com o motivo no agent_log).
-function agentRound(dir, wt, files, round) {
+async function agentRound(dir, wt, files, round) {
+    await waitReleased(dir);
     for (const [f, c] of Object.entries(files)) {
         fs.mkdirSync(path.dirname(path.join(wt, f)), { recursive: true });
         fs.writeFileSync(path.join(wt, f), c);
@@ -217,11 +241,11 @@ test('implement inicial só grava a âncora; arquivo mexido em 3 rodadas => chur
     assert.strictEqual(cd.resolveRef(wt, cd.roundsRef(taskId)), null);
 
     for (let round = 1; round <= 2; round++) {
-        agentRound(dir, wt, { 'src/main/java/br/Pedido.java': `v${round}`, [`src/main/java/br/Outro${round}.java`]: 'x' }, round);
+        await agentRound(dir, wt, { 'src/main/java/br/Pedido.java': `v${round}`, [`src/main/java/br/Outro${round}.java`]: 'x' }, round);
         res = await watcher.dispatchTicket(ticket(94001));
         assert.strictEqual(res.action, 'dispatched', `rodada ${round}: abaixo do limite, re-implement sai`);
     }
-    agentRound(dir, wt, { 'src/main/java/br/Pedido.java': 'v3' }, 3);
+    await agentRound(dir, wt, { 'src/main/java/br/Pedido.java': 'v3' }, 3);
     res = await watcher.dispatchTicket(ticket(94001));
 
     assert.deepStrictEqual([res.action, res.reason, res.status], ['skip', 'churn_escalation', 'churn-escalation']);
@@ -262,7 +286,7 @@ test('implement inicial só grava a âncora; arquivo mexido em 3 rodadas => chur
 
     // Mais uma rodada no mesmo arquivo depois do aceite: 4 - 3 < 3 => segue.
     journals = [];
-    agentRound(dir, wt, { 'src/main/java/br/Pedido.java': 'v4' }, 4);
+    await agentRound(dir, wt, { 'src/main/java/br/Pedido.java': 'v4' }, 4);
     res = await watcher.dispatchTicket(ticket(94001));
     assert.strictEqual(res.action, 'dispatched');
 });
@@ -272,7 +296,7 @@ test('arquivo de teste modificado em 3 rodadas NÃO escala (threshold dobrado)',
     await watcher.dispatchTicket(ticket(94002));
     let res;
     for (let round = 1; round <= 3; round++) {
-        agentRound(dir, wt, { 'src/test/java/br/PedidoTest.java': `t${round}` }, round);
+        await agentRound(dir, wt, { 'src/test/java/br/PedidoTest.java': `t${round}` }, round);
         res = await watcher.dispatchTicket(ticket(94002));
     }
     assert.strictEqual(res.action, 'dispatched');
@@ -285,9 +309,9 @@ test('CHURN_THRESHOLD=2 escala na segunda rodada', async () => {
     process.env.CHURN_THRESHOLD = '2';
     const { dir, wt } = seed(94003);
     await watcher.dispatchTicket(ticket(94003));
-    agentRound(dir, wt, { 'A.java': '1' }, 1);
+    await agentRound(dir, wt, { 'A.java': '1' }, 1);
     assert.strictEqual((await watcher.dispatchTicket(ticket(94003))).action, 'dispatched');
-    agentRound(dir, wt, { 'A.java': '2' }, 2);
+    await agentRound(dir, wt, { 'A.java': '2' }, 2);
     const res = await watcher.dispatchTicket(ticket(94003));
     assert.strictEqual(res.status, 'churn-escalation');
     assert.strictEqual(readState(dir).churnReport.threshold, 2);

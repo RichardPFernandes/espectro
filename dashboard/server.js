@@ -527,6 +527,25 @@ function createDashboard(options = {}) {
             qaRetryCount: Number.isInteger(state?.qa_retry_count) ? state.qa_retry_count : 0,
             qaRetryPending: !run.pretask && fs.existsSync(path.join(run.dir, 'retry-signal.json')),
             // PRI-184: motivo do sinal parado (watcher gravou qa_retry_blocked); null se limpo/ausente.
+            // PRI-233 T8: overrides humanas de roteamento gravadas (append-only); [] sem nenhuma.
+            routingOverrides: !run.pretask && Array.isArray(state?.routing_overrides)
+                ? state.routing_overrides.map(o => ({
+                    ref: o.ref, scope: o.scope, node: o.node || null, subtaskKey: o.subtask_key || null,
+                    value: o.value, by: o.by, recordedAt: o.recorded_at,
+                }))
+                : [],
+            // PRI-233 T9: admissão recusada por roteamento ON inválido (pré-task sintética).
+            routingBlocked: run.pretask && state?.routing_admission_blocked
+                ? {
+                    scope: 'admission',
+                    cause: state.routing_admission_blocked.cause,
+                    detail: state.routing_admission_blocked.detail,
+                    transient: state.routing_admission_blocked.transient,
+                    firstBlockedAt: state.routing_admission_blocked.first_blocked_at,
+                    notifiedAt: state.routing_admission_blocked.notified_at,
+                    configFile: '.claude/model-routing.json',
+                }
+                : null,
             qaRetryBlocked: (!run.pretask && state?.qa_retry_blocked
                 && typeof state.qa_retry_blocked === 'object'
                 && typeof state.qa_retry_blocked.reason === 'string'
@@ -745,6 +764,35 @@ function createDashboard(options = {}) {
                     started_at: pending.posted_at || null,
                 },
             });
+        }
+        // PRI-233 (PRI-205 S4, T9 / diretriz R-6 n.º 7): admissão recusada por roteamento
+        // ON com configuração inválida. O watcher guarda os tickets barrados no marcador do
+        // projeto (memory/runs/routing-admission-blocked.json); cada um sem run vira uma
+        // pré-task bloqueada, só leitura. Some quando o marcador sai (config corrigida).
+        const blocked = readJson(path.join(memoryDir, 'routing-admission-blocked.json'));
+        if (blocked && typeof blocked.cause === 'string' && Array.isArray(blocked.tickets)) {
+            for (const ticketId of blocked.tickets) {
+                if (!Number.isInteger(ticketId) || withRun.has(ticketId)) continue;
+                const taskId = `${ticketId}${PRETASK_SUFFIX}`;
+                if (out.some(r => r.taskId === taskId)) continue;
+                out.push({
+                    taskId, pretask: true, copies: 1,
+                    dir: path.join(memoryDir, taskId),
+                    root: { label: 'pretask', dir: memoryDir },
+                    state: {
+                        task_id: taskId, node: 'fetch_ticket', history: [], status: 'blocked',
+                        redmine_ticket: { id: ticketId },
+                        routing_admission_blocked: {
+                            cause: blocked.cause,
+                            detail: typeof blocked.detail === 'string' ? blocked.detail : null,
+                            transient: blocked.transient === true,
+                            first_blocked_at: typeof blocked.first_blocked_at === 'string' ? blocked.first_blocked_at : null,
+                            notified_at: typeof blocked.notified_at === 'string' ? blocked.notified_at : null,
+                        },
+                        updated_at: blocked.first_blocked_at || null, started_at: blocked.first_blocked_at || null,
+                    },
+                });
+            }
         }
         return out;
     }
@@ -1050,6 +1098,9 @@ function createDashboard(options = {}) {
                     worktree_indisponivel: 'Nenhum worktree livre no momento — tente de novo em instantes.',
                     ja_tratado_neste_ciclo: 'Este ticket já foi tratado neste ciclo (nenhuma mudança nova desde o último commit).',
                     recusa_qa_sem_comentarios: 'Ticket em Recusa QA sem comentário explicando o motivo — não há o que corrigir automaticamente.',
+                    // PRI-233: roteamento de modelo (mode ON).
+                    routing_admission_blocked: 'Roteamento de modelo ligado com configuração inválida — corrija .claude/model-routing.json (ou use mode OFF) para admitir Runs novas.',
+                    routing_not_started: 'Roteamento de modelo ligado: o despacho roteado não pôde iniciar (NOT_STARTED) — veja o motivo no Redmine ou no Attempt.',
                 };
                 return res.status(422).json({ error: messages[result.reason] || `não foi possível disparar (${result.reason})` });
             }
@@ -2103,6 +2154,36 @@ function createDashboard(options = {}) {
         }
         pushRun(run.taskId);
         res.json({ ok: true, taskId: run.taskId, status: 'blocked' });
+    });
+
+    // PRI-233 T8 (P-2): override humano de roteamento. Mesma autoridade das decisões de
+    // autorização (aprovador cadastrado + CAS/operation_id), mesmo writer
+    // (scripts/lib/authorization.js), sem pausar a Run e recusado com nó rodando (como as
+    // demais decisões). Vale a partir do próximo limite de nó; elegibilidade conferida
+    // pelo resolver contra o snapshot da Run.
+    app.post('/api/runs/:taskId/routing-override', async (req, res) => {
+        const ctx = authorizationRun(req, res);
+        if (!ctx) return;
+        const by = await requireApprover(req, res);
+        if (!by) return;
+        const { run, state } = ctx;
+        const expect = humanExpect(req, state);
+        const operationId = operationIdOf(req);
+        const str = v => (typeof v === 'string' ? v.slice(0, 200) : null);
+        try {
+            const out = authorization.recordRoutingOverride(run.dir, {
+                by, scope: str(req.body?.scope), node: str(req.body?.node), subtaskKey: str(req.body?.subtask_key),
+                value: { model_id: str(req.body?.model_id), effort: str(req.body?.effort) },
+                operationId, expectedStateVersion: expect.expected_state_version,
+            });
+            if (out.status === 'already_processed') return res.json({ ok: true, status: 'already_processed', operation_id: operationId });
+            console.log(`[dashboard] override de roteamento ${out.override.ref} em ${run.taskId} por ${by}`);
+            pushRun(run.taskId);
+            return res.json({ ok: true, taskId: run.taskId, override: out.override });
+        } catch (e) {
+            if (sendAuthorizationError(res, e)) return;
+            throw e;
+        }
     });
 
     // "Devolver ao QA": run blocked/authorization-pending resolvido sem código. Reserva o
