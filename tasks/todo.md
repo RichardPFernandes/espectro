@@ -71,14 +71,22 @@ descendo. Também monta o argv roteado (`--model`, esforço, `--settings`) só a
 partir de uma decisão `ok`.
 
 **Critérios de aceite:**
-- [ ] Cada passo tem teste de sucesso e de falha com a causa e o motivo exatos (AC-05 a AC-08 em unidade).
-- [ ] Determinismo: 100 execuções com a mesma entrada dão a mesma saída serializada (AC-12).
-- [ ] O caminho feliz com mecanismo injetado produz a RoutingDecision com todos os campos do AC-02 e `subagent: UNENFORCED`.
-- [ ] R1–R8 não estão duplicados: o módulo importa `classifyByRules`, e um teste confere a identidade.
+- [x] Cada passo tem teste de sucesso e de falha com a causa e o motivo exatos (AC-05 a AC-08 em unidade).
+- [x] Determinismo: 100 execuções com a mesma entrada dão a mesma saída serializada (AC-12).
+- [x] O caminho feliz com mecanismo injetado produz a RoutingDecision com todos os campos do AC-02 e `subagent: UNENFORCED`.
+- [x] R1–R8 não estão duplicados: o módulo reusa `classifySubtask` da S3 (que já aplica o "Plan só sobe" e o C4 conservador), e um teste confere a identidade.
 
-**Verificação:**
-- [ ] `node --test scripts/lib/model-routing.test.js`
-- [ ] `cd scripts && npm run check:js && npm run arch:check`
+**Verificação (2026-11-06):**
+- [x] `model-routing.test.js` 39/39.
+- [x] Node 22: scripts 1187 pass / 0 fail / 6 skip (rodada isolada); dashboard exit 0; `check:js`, `lint:src` e `arch:check` limpos ("no dependency violations"; baseline inalterado).
+- [x] Observação: numa rodada com scripts e dashboard em paralelo, 3 testes de tempo do `cost-tracking` do watcher falharam por timeout. Sozinho, o arquivo passou 29/29, e a suíte inteira isolada passou. A T3 não toca esses arquivos.
+
+**Decisões de implementação:**
+- O snapshot carrega a policy inteira e um `eligible_set` (provider + modelos dos tiers) com o seu próprio ref sha256. O sha256 do snapshot é canônico, com chaves ordenadas.
+- Provider com estado diferente de `ACTIVE` (inclusive `UNKNOWN`) não é elegível. Na S4 o chamador informa `ACTIVE`, porque não existe dono do estado do provider (UNK-AR-005).
+- A vigência da override é `recorded_at ≤ nodeBoundaryAt`; instante inválido fica em `overrides_pending`.
+- Ordem das precondições: primeiro o mecanismo de esforço, depois a prova do plugin. Em produção, hoje, a causa reportada é sempre `EFFORT_MECHANISM_UNAVAILABLE`.
+- A decisão recusada ainda guarda os candidatos e o par que seria usado.
 
 **Dependências:** T2.
 **Arquivos:** `scripts/lib/model-routing.js` (novo, +test), `scripts/lib/would-route.js` (export, se faltar), `ownership.yaml`, baseline do cruiser.
