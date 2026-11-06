@@ -131,12 +131,9 @@ async function resumeFromMarker(a, markerSha, depth) {
         // @else
         // const definitive = st && st.state === 'FAIL';
         // @end R3-01
-        // HP-1 estrito: PR cuja base ficou para trás nunca recebe status nem integra. Sem merge, a
-        // Decision não foi consumida (C-14): fecha e reapresenta sobre o tip, se a geração ainda vale
-        // (EM §3 prop. 4: commit independente não invalida o comando).
-        const tipNow = await host.getRef(`refs/heads/${registryBranch}`);
-        const behind = !st && git.firstParent(open.head) !== tipNow;
-        if (definitive || behind) {
+        // C-21: PR aberto ou na fila → aguardar. PR com base atrasada (HP-1 estrito) também aguarda:
+        // resíduo de liveness declarado (R2-01), a atualizar pelo host/operador ou pela reconciliação.
+        if (definitive) {
             await host.closePR(open.number);
             open.state = 'CLOSED';
         } else {

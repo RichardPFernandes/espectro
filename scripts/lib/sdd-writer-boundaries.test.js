@@ -181,3 +181,14 @@ describe('Matriz de sabotagem: toda proteção marcada tem teste de sabotagem', 
         assert.ok(listGuards().length >= 30);
     });
 });
+
+describe('R2-04 ganchos de teste não são referenciados fora do writer', () => {
+    it('TEST_HOOKS / u0028Decided / chave do Symbol só em scripts/lib/sdd-writer*', () => {
+        const files = [...walk(path.join(ROOT, 'scripts')), ...walk(path.join(ROOT, 'dashboard')), ...walk(path.join(ROOT, 'harness')), ...walk(path.join(ROOT, '.claude'))]
+            .filter(f => CODE_EXT.test(f) || f.endsWith('.md') || f.endsWith('.json'));
+        const hits = files.filter(f => !isWriterFile(path.relative(ROOT, f).split(path.sep).join('/')))
+            .filter(f => /TEST_HOOKS|u0028Decided|prisma\.sdd-writer\.test-hooks/.test(fs.readFileSync(f, 'utf8')))
+            .map(f => path.relative(ROOT, f));
+        assert.deepEqual(hits, []);
+    });
+});

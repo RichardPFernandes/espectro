@@ -524,14 +524,15 @@ test('AC-02: comparação de state_version / execution_id / expected_* só em sc
     for (const file of sources()) {
         if (file === path.join(__dirname, 'cas.js')) continue;
         if (file.includes(`${path.sep}public${path.sep}`)) continue; // dica visual do banner; a decisão é o CAS do servidor
-        // Writer SDD (PRI-266): compara execution_id da PROMOÇÃO em registry_branch (P-1 iii),
-        // não o estado de run; o contrato C-20 o proíbe de usar scripts/cas.js.
-        if (/^sdd-writer[^/\\]*\.js$/.test(path.basename(file)) && file.includes(`${path.sep}lib${path.sep}`)) continue;
         fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
             if (cmp.test(line) && !/^\s*(\/\/|\*)/.test(line)) hits.push(`${path.relative(REPO, file)}:${i + 1}: ${line.trim()}`);
         });
     }
-    assert.deepStrictEqual(hits, []);
+    // Writer SDD (PRI-266): esta linha compara o execution_id da PROMOÇÃO em registry_branch
+    // (P-1 iii), não o estado de run; a C-20 proíbe o writer de usar scripts/cas.js. Exceção
+    // restrita a esta linha (sem número), como a lista `allowed` acima.
+    const writerAllowed = "if (vr.execution_id !== pe.execution_id || pe.execution_id !== execSegment) return fail('P1', 'VALIDATION_EXECUTION');";
+    assert.deepStrictEqual(hits.filter(h => !(h.startsWith('scripts/lib/sdd-writer-decide.js:') && h.endsWith(writerAllowed))), []);
 });
 
 // ── Regressões do /review (O1–O4) ────────────────────────────────────────────────

@@ -35,7 +35,10 @@ async function evalCommitInner({ git, host, c, parent, slug, project, decisionPo
     const oldBytes = git.readBlob(baseId, cmd.logPath(slug));
     const newBytes = git.readBlob(c, cmd.logPath(slug));
     const sp = splitAppend(oldBytes, newBytes);
-    if (!sp.ok && sp.code === 'VIOLATION' && oldBytes !== null) return { state: 'VIOLATION', reason: sp.reason };
+    // Log antes existente e agora removido ou com bytes diferentes que não são append → VIOLATION.
+    // Bytes idênticos (commit que só mexe em outro arquivo) seguem para o status → UNKNOWN (R2-02).
+    const logChanged = oldBytes !== null && (newBytes === null || !newBytes.equals(oldBytes));
+    if (!sp.ok && sp.code === 'VIOLATION' && logChanged) return { state: 'VIOLATION', reason: sp.reason };
     let status;
     try {
         status = await host.getStatus(tree, parent);

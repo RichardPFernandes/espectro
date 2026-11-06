@@ -303,20 +303,18 @@ describe('O-18 tag pré-existente com o nome da âncora é anomalia', () => {
     });
 });
 
-describe('CR-1 PR cuja base ficou para trás é refeito sobre o tip', () => {
-    it('outra capability integra; o W-P fecha o PR atrasado e reapresenta o mesmo comando', async () => {
+describe('CR-1 / R2-01 PR cuja base ficou para trás: aguarda (C-21), resíduo de liveness declarado', () => {
+    it('o W-P não fecha nem refaz o PR; responde PR_OPEN/WAIT', async () => {
         const env = makeEnv();
         const st = env.s.step('INC');
         const r = await prepare(wpArgs(env, st));
-        // outra capability integra direto em main (commit independente, EM §3 prop. 4)
         const other = F.scenario({ slug: 'zeta' }).step('INC');
         const files = withCatalog({ ...env.s.state.files, ...Object.fromEntries(Object.entries(other.files).filter(([k]) => k.startsWith('docs/sdd/capabilities/zeta/'))) });
         env.host.adminPush(env.host.commitFiles(files, [env.host.tip()], 'outra', 'admin'));
         assert.equal((await env.host.runCheck(r.pr, { decisionPort: env.port })).code, 'BEHIND');
         const again = await prepare(wpArgs(env, st));
-        assert.deepEqual([again.state, again.previous], ['PR_OPEN', 'CLOSED_UNMERGED']);
-        assert.equal(env.host.prs[r.pr - 1].state, 'CLOSED');
-        assert.equal(env.git.firstParent(env.host.prs[again.pr - 1].head), env.host.tip());
+        assert.deepEqual([again.state, again.control, again.pr], ['PR_OPEN', 'WAIT', r.pr]);
+        assert.equal(env.host.prs[r.pr - 1].state, 'OPEN');
     });
 });
 
@@ -332,6 +330,16 @@ describe('CR-4 log apagado e recriado por admin, sem âncora', () => {
         env.host.adminPush(env.host.commitFiles({ ...del, [LOG]: fresh.files[LOG] }, [env.host.tip()], 'recria', 'admin'));
         assert.equal(env.host.tags.size, 0);
         assert.equal((await audit(env)).state, 'VIOLATION');
+    });
+});
+
+describe('R2-02 edição de admin só em spec.md, com log presente', () => {
+    it('UNKNOWN (não validado), não VIOLATION', async () => {
+        const env = makeEnv();
+        await env.integrate(env.s.step('INC'));
+        const files = { ...env.s.state.files, [cmd.specPath(SLUG)]: Buffer.from('editada por admin\n') };
+        env.host.adminPush(env.host.commitFiles(files, [env.host.tip()], 'admin', 'admin'));
+        assert.equal((await audit(env)).state, 'UNKNOWN');
     });
 });
 
