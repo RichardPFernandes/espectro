@@ -132,6 +132,11 @@ function blockedNotice(marker, cfg, { ticketId, at }) {
     const notify = !alreadyNotified && (!cfg.transient || transientCount >= TRANSIENT_NOTICE_AFTER);
     // notified_at só é gravado por markNoticeSent, depois que o aviso saiu de fato: um
     // PUT que falhou deixa o marcador sem ele e o próximo tick tenta de novo (Bugbot, PR #97).
+    // Mesma assinatura: preserva o estado de entrega do aviso (incerto, tentativas, local).
+    const delivery = {};
+    if (same) {
+        for (const k of DELIVERY_FIELDS) if (marker[k] !== undefined) delivery[k] = marker[k];
+    }
     return {
         notify,
         marker: {
@@ -139,9 +144,12 @@ function blockedNotice(marker, cfg, { ticketId, at }) {
             transient_count: transientCount, tickets,
             first_blocked_at: same ? marker.first_blocked_at : at,
             notified_at: same ? marker.notified_at || null : null,
+            ...delivery,
         },
     };
 }
+
+const DELIVERY_FIELDS = ['local_notified_at', 'notice_attempts', 'notice_uncertain_at', 'notice_failed_at'];
 
 function markNoticeSent(marker, at) {
     return { ...marker, notified_at: at };

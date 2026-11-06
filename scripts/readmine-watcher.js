@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const { execSync, execFileSync, spawn } = require('child_process');
 const specValidator = require('./lib/spec-validator');
 const specRepairer = require('./lib/spec-repairer');
-const { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, accountCostMetadata, routedPluginProof } = require('./lib/claude-account');
+const { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, accountCostMetadata, routedPluginProof, evaluatePluginProof } = require('./lib/claude-account');
 const nodeLease = require('./lib/node-lease');
 const invalidate = require('./invalidate');
 const nodeEvents = require('./lib/node-events');
@@ -1525,52 +1525,122 @@ async function notifyRoutingAdmissionBlocked(ticket, cfg) {
         `Saídas: corrigir a policy ou o policy_ref (id, versão, sha256) em ${modelRoutingPolicy.ROUTING_CONFIG_REL}, ` +
         `ou desligar explicitamente com { "mode": "OFF" } nesse arquivo. ` +
         `Confira com: node scripts/validate-config.js --severity error. O próximo tick retoma sozinho.`;
-    const sent = await sendRoutingNotice(ticket.id, msg, 'Roteamento ON inválido: admissão recusada',
-        `${cfg.cause} — ver ${modelRoutingPolicy.ROUTING_CONFIG_REL}`);
-    // Só agora o aviso conta como dado; falhou = sem notified_at e o próximo tick tenta de novo.
-    if (sent) fs.writeFileSync(markerPath, JSON.stringify(routingRun.markNoticeSent(marker, new Date().toISOString()), null, 2));
+    const delivered = await deliverRoutingNotice(marker, {
+        ticketId: ticket.id, msg, title: 'Roteamento ON inválido: admissão recusada',
+        localBody: `${cfg.cause} — ver ${modelRoutingPolicy.ROUTING_CONFIG_REL}`,
+    });
+    fs.writeFileSync(markerPath, JSON.stringify(delivered, null, 2));
 }
 
 // Aviso de roteamento pelo canal existente: comentário no Redmine (fora de --follow, como
 // notifyBlocked) e notificação local. Devolve true só se o aviso saiu: com --follow o canal
 // é a notificação local (o Redmine fica de fora de propósito); sem --follow, o PUT tem que
 // voltar 2xx. Falha de rede ou HTTP de erro = false, para o chamador tentar no próximo tick.
-async function sendRoutingNotice(ticketId, msg, title, localBody) {
-    let sent = FOLLOW;
-    if (!FOLLOW) {
+// Revisão independente (MAJOR-1, AGENTS.md regra 5): um PUT com resultado incerto
+// (timeout, ECONNRESET, 5xx exceto 503) pode ter gravado a nota; repetir duplicaria o
+// comentário (mesma razão de lib/redmine-fetch.js não repetir não-GET). Três desfechos:
+// - sent (2xx) → notified_at;
+// - failed (certeza de que não gravou: conexão recusada/sem DNS, 429, 503, 4xx) → tenta de
+//   novo nos próximos ticks até NOTICE_MAX_ATTEMPTS, depois desiste com notice_failed_at;
+// - uncertain → notice_uncertain_at; antes de reenviar, confere nos journals do ticket o
+//   token único da nota; achou = dado; não achou = reenvia; não deu para conferir = espera.
+// A notificação local sai uma vez por assinatura (local_notified_at).
+const NOTICE_MAX_ATTEMPTS = 5;
+const CERTAIN_NETWORK_FAILURES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']);
+
+function noticeToken(signature) {
+    return `[aviso-roteamento ${crypto.createHash('sha256').update(String(signature)).digest('hex').slice(0, 12)}]`;
+}
+
+async function putRoutingNote(ticketId, notes) {
+    try {
+        const res = await redmineFetch(`${REDMINE_URL}/issues/${ticketId}.json`, {
+            method: 'PUT',
+            headers: { 'X-Redmine-API-Key': REDMINE_API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ issue: { notes } }),
+        });
+        if (res && res.ok) return 'sent';
+        const status = res?.status;
+        if (status === 503 || status === 429 || (status >= 400 && status < 500)) return 'failed';
+        return 'uncertain';
+    } catch (e) {
+        const code = e?.code || e?.cause?.code;
+        return CERTAIN_NETWORK_FAILURES.has(code) ? 'failed' : 'uncertain';
+    }
+}
+
+// true = a nota com o token está no ticket; false = não está; null = não deu para conferir.
+async function journalHasToken(ticketId, token) {
+    try {
+        const res = await redmineFetch(`${REDMINE_URL}/issues/${ticketId}.json?include=journals`, {
+            headers: { 'X-Redmine-API-Key': REDMINE_API_KEY },
+        });
+        if (!res || !res.ok) return null;
+        const body = await res.json();
+        const journals = Array.isArray(body?.issue?.journals) ? body.issue.journals : null;
+        if (!journals) return null;
+        return journals.some(j => typeof j?.notes === 'string' && j.notes.includes(token));
+    } catch {
+        return null;
+    }
+}
+
+/** Entrega o aviso conforme o estado do marcador; devolve o marcador atualizado (o chamador grava). */
+async function deliverRoutingNotice(marker, { ticketId, msg, title, localBody }) {
+    const now = new Date().toISOString();
+    const m = { ...marker };
+    if (!m.local_notified_at) {
         try {
-            const res = await redmineFetch(`${REDMINE_URL}/issues/${ticketId}.json`, {
-                method: 'PUT',
-                headers: { 'X-Redmine-API-Key': REDMINE_API_KEY, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ issue: { notes: msg } }),
-            });
-            sent = Boolean(res && res.ok);
-            if (!sent) console.error(`Aviso de roteamento não chegou ao Redmine #${ticketId}: HTTP ${res?.status} — tento de novo no próximo tick.`);
-        } catch (e) {
-            console.error(`Falha comentando aviso de roteamento no Redmine #${ticketId}:`, e.message);
+            execFileSync('osascript', ['-e', `display notification ${JSON.stringify(localBody)} with title ${JSON.stringify(title)}`], { stdio: 'ignore' });
+        } catch {
+            // Não é macOS, ou sem permissão de notificação — não bloqueia o tick.
+        }
+        m.local_notified_at = now;
+    }
+    // --follow: o canal é a notificação local (Redmine fora de propósito, como notifyBlocked).
+    if (FOLLOW) return { ...m, notified_at: now };
+    if (m.notice_failed_at) return m;
+    const token = noticeToken(m.signature);
+    if (m.notice_uncertain_at) {
+        const found = await journalHasToken(ticketId, token);
+        if (found === true) return { ...m, notified_at: now, notice_uncertain_at: null };
+        if (found === null) {
+            console.warn(`Aviso de roteamento #${ticketId}: resultado anterior incerto e journals ilegíveis — não reenvio (sem duplicar); confiro no próximo tick.`);
+            return m;
         }
     }
-    try {
-        execFileSync('osascript', ['-e', `display notification ${JSON.stringify(localBody)} with title ${JSON.stringify(title)}`], { stdio: 'ignore' });
-    } catch {
-        // Não é macOS, ou sem permissão de notificação — não bloqueia o tick.
+    m.notice_attempts = (m.notice_attempts || 0) + 1;
+    const outcome = await putRoutingNote(ticketId, `${msg}\n\n${token}`);
+    if (outcome === 'sent') return { ...m, notified_at: now, notice_uncertain_at: null };
+    if (outcome === 'uncertain') {
+        console.error(`Aviso de roteamento #${ticketId}: resultado incerto — confiro os journals antes de reenviar.`);
+        return { ...m, notice_uncertain_at: now };
     }
-    return sent;
+    if (m.notice_attempts >= NOTICE_MAX_ATTEMPTS) {
+        console.error(`Aviso de roteamento #${ticketId}: Redmine recusou ${m.notice_attempts} vezes — desisto (a recusa segue visível no Dashboard e no log).`);
+        return { ...m, notice_failed_at: now };
+    }
+    console.error(`Aviso de roteamento #${ticketId}: Redmine recusou (tentativa ${m.notice_attempts}/${NOTICE_MAX_ATTEMPTS}) — tento de novo no próximo tick.`);
+    return m;
 }
 
 // PRI-233 (PRI-205 S4, T7): resolução do §4.7 no início de cada Attempt de uma Run
-// admitida com mode ON. Capacidades de produção: mecanismo de esforço UNAVAILABLE (SP-1),
-// então todo despacho roteado termina em NOT_STARTED/CONFIG_UNVERIFIABLE; a prova do
-// plugin (SP-2, --settings próprio) só é gerada quando o esforço estiver verificado.
-// Provider: ACTIVE (um provider, sem dono de estado operacional: UNK-AR-005). Override
-// humano: nenhum até a T8 (P-2). Núcleo 2 (Jev): nunca na S4.
+// admitida com mode ON. Capacidades de produção: mecanismo de esforço UNAVAILABLE (U1), e
+// o despacho roteado vai só com --model (SP-1 revista); a prova do plugin (SP-2,
+// --settings próprio) roda em todo despacho roteado e é obrigatória. Provider: ACTIVE (um
+// provider, sem dono de estado operacional: UNK-AR-005). Override humano: T8, de
+// state.routing_overrides. Núcleo 2 (Jev): nunca na S4.
 function routingCapabilities(runDir, projectDir) {
     const effortMechanism = modelRouting.PRODUCTION_EFFORT_MECHANISM;
-    // runDir null = pré-checagem sem worktree (ticket novo): a prova grava o --settings,
-    // então fica para a resolução completa, depois do worktree. Com runDir, a prova roda
-    // sempre: o despacho roteado só por modelo (SP-1 revista) também exige o plugin
-    // desligado (SP-2).
-    if (!runDir) return { effortMechanism, pluginProof: { status: 'NOT_EVALUATED' } };
+    // runDir null = pré-checagem sem worktree (ticket novo): só a avaliação de leitura
+    // (conta, managed e settings do projeto em projectDir). Neutralizável → DEFERRED (a
+    // gravação do --settings fica para depois do worktree); LOADED/UNKNOWN recusa já,
+    // antes de qualquer branch/worktree (revisão independente, MAJOR-2). Com runDir, a
+    // prova completa roda sempre: o despacho só por modelo também exige o plugin desligado.
+    if (!runDir) {
+        const ev = evaluatePluginProof({ accountDir: resolveClaudeAccount().dir, projectDir });
+        return { effortMechanism, pluginProof: ev.status === 'NEUTRALIZABLE' ? { status: 'DEFERRED' } : { status: ev.status, reason: ev.reason } };
+    }
     // projectDir = cwd do despacho (worktree do ticket): os settings do projeto também valem.
     return { effortMechanism, pluginProof: routedPluginProof({ accountDir: resolveClaudeAccount().dir, runDir, projectDir }) };
 }
@@ -1578,7 +1648,7 @@ function routingCapabilities(runDir, projectDir) {
 // state = state.json da task (null no ticket novo, que ainda não tem Run nem override).
 // T8 (P-2): overrides humanas de state.routing_overrides, vigentes a partir do início da
 // visita atual ao nó (D-4; routing-run.nodeVisitStart).
-function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir, state = null }) {
+function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir, state = null, stateReadAt = null }) {
     if (!runSnapshot.ok) {
         return { ok: false, result: 'NOT_STARTED', cause: 'CONFIG_UNVERIFIABLE', detail: runSnapshot.detail, decision: null };
     }
@@ -1586,7 +1656,9 @@ function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA,
         ? prospectiveSignalsForRun('claude', [node], { ticket, worktreePath, base: signalBaseBranch(ticket), isRecusaQA }).signals_prospective
         : undefined;
     const overrides = Array.isArray(state?.routing_overrides) ? state.routing_overrides : [];
-    const now = new Date().toISOString();
+    // MINOR-1: o "agora" da visita nova é o instante da leitura do state (não o fim da
+    // resolução), senão uma override gravada entre a leitura e aqui valeria no retry.
+    const now = stateReadAt || new Date().toISOString();
     const boundary = state ? routingRun.nodeVisitStart(state, node, now) : null;
     const resolution = modelRouting.resolveRoute({
         snapshot: runSnapshot.snapshot, node, signals, provider: { state: 'ACTIVE' },
@@ -1659,9 +1731,11 @@ async function refuseRoutedFetch({ ticket, resolution, snapshotSha }) {
     }
     const note = routingRefusalNote('fetch_ticket', resolution);
     console.warn(`Ticket #${ticket.id}: ${note}`);
-    const sent = await sendRoutingNotice(ticket.id, `[Watcher] Ticket #${ticket.id}: ${note}`,
-        `Ticket #${ticket.id}: roteamento não iniciou`, `${resolution.cause} (${resolution.detail})`);
-    if (sent) fs.writeFileSync(markerPath, JSON.stringify({ ...marker, notified_at: new Date().toISOString() }, null, 2));
+    const delivered = await deliverRoutingNotice(marker, {
+        ticketId: ticket.id, msg: `[Watcher] Ticket #${ticket.id}: ${note}`,
+        title: `Ticket #${ticket.id}: roteamento não iniciou`, localBody: `${resolution.cause} (${resolution.detail})`,
+    });
+    fs.writeFileSync(markerPath, JSON.stringify(delivered, null, 2));
     return base;
 }
 
@@ -4252,6 +4326,10 @@ function dropUnspawnedFetchDispatch(id, lease) {
 }
 
 async function dispatchTicketReserved(ticket) {
+    // PRI-233 (revisão independente, MINOR-1): instante da leitura do state neste tick. É o
+    // limite D-4 do 1º Attempt de uma visita: override gravada depois dele (no meio da
+    // resolução) não entra neste Attempt e também não pode entrar no retry da mesma visita.
+    const stateReadAt = new Date().toISOString();
     const id = ticket.id;
     const isRecusaQA = ticket.status?.name === 'Recusa QA';
     const liberacao = branchLiberacao(ticket);
@@ -4373,17 +4451,18 @@ async function dispatchTicketReserved(ticket) {
             return { action: 'dry-run', node: 'fetch_ticket' };
         }
 
-        // PRI-233 (Bugbot, PR #97): pré-checagem do roteamento ANTES de qualquer branch ou
-        // worktree. Toda recusa que não depende da prova do plugin (hoje sempre
-        // EFFORT_MECHANISM_UNAVAILABLE, SP-1) sai aqui, sem tocar no git. Só a prova do
-        // plugin precisa do worktree (settings do projeto e --settings gravado): com
-        // esforço verificado, a resolução completa acontece depois do worktree, abaixo.
+        // PRI-233 (Bugbot, PR #97; revisão independente MAJOR-2): pré-checagem do
+        // roteamento ANTES de qualquer branch ou worktree, com a avaliação de leitura do
+        // plugin (conta, managed e settings do REPO_PATH). Toda recusa sai aqui, sem tocar no
+        // git; só a gravação/conferência do --settings fica para depois do worktree.
         if (routingSnapshot) {
             const pre = resolveNodeRoute({
                 runSnapshot: { ok: true, snapshot: routingSnapshot }, node: 'fetch_ticket', ticket,
                 worktreePath: REPO_PATH, isRecusaQA, runDir: null,
             });
-            if (!pre.ok && pre.detail !== 'PLUGIN_NOT_PROVEN_OFF') {
+            // DEFERRED = plugin neutralizável, só falta gravar o --settings (depois do worktree).
+            const deferredProofOnly = pre.detail === 'PLUGIN_NOT_PROVEN_OFF' && pre.decision?.effort_router_plugin === 'DEFERRED';
+            if (!pre.ok && !deferredProofOnly) {
                 return refuseRoutedFetch({ ticket, resolution: pre, snapshotSha: routingSnapshot.sha256 });
             }
         } else {
@@ -4408,7 +4487,8 @@ async function dispatchTicketReserved(ticket) {
 
         // PRI-233 (PRI-205 S4, T7): com mode ON, o segmento fetch_ticket+plan (nós fixos,
         // D6) é resolvido por inteiro (com a prova do plugin) antes do marcador/lease.
-        // Só chega aqui com o esforço verificado; recusa = NOT_STARTED sem Run.
+        // Depois da pré-checagem só resta gravar/conferir o --settings no worktree (e
+        // reavaliar os settings dele); recusa = NOT_STARTED sem Run.
         let fetchRouting = null;
         if (routingSnapshot) {
             const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
@@ -4733,7 +4813,7 @@ async function dispatchTicketReserved(ticket) {
         }
         const runSnapshot = routingRun.loadRunSnapshot(state, fetchRunDir);
         if (runSnapshot.mode === 'ON') {
-            nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state });
+            nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt });
             if (nodeRouting.visit) state.routing_visit = nodeRouting.visit;
             if (!nodeRouting.ok) return refuseRoutedNode({ ticket, taskId, node, state, dir, resolution: nodeRouting });
             if (nodeRouting.visit) writeTaskState(dir, state, 'routing_visit');

@@ -125,7 +125,11 @@ function readSettings(file) {
     try { return { ok: true, settings: JSON.parse(fs.readFileSync(file, 'utf8')) || {} }; } catch { return { ok: false }; }
 }
 
-function routedPluginProof({ accountDir = null, runDir, projectDir = null, home = os.homedir(), managedPaths = DEFAULT_MANAGED_PATHS } = {}) {
+// Avaliação só de leitura (revisão independente, MAJOR-2): diz se o router PODE ser
+// desligado pelo --settings, sem gravar nada. A pré-checagem do ticket novo usa isto antes
+// de qualquer branch/worktree; routedPluginProof grava e confere depois.
+// → { status: 'NEUTRALIZABLE', generated } | { status: 'LOADED'|'UNKNOWN', reason }
+function evaluatePluginProof({ accountDir = null, projectDir = null, home = os.homedir(), managedPaths = DEFAULT_MANAGED_PATHS } = {}) {
     const configDir = accountDir || path.join(home, '.claude');
     const isRouterKey = (key) => typeof key === 'string' && /^jev-model-router(?:@|$)/.test(key);
     try {
@@ -156,8 +160,16 @@ function routedPluginProof({ accountDir = null, runDir, projectDir = null, home 
         enabledPlugins: Object.fromEntries([...keys].sort().map(k => [k, false])),
         skillOverrides: { 'jev-model-router': 'off' },
     };
+    return { status: 'NEUTRALIZABLE', generated };
+}
+
+// Conferido no CLI real 2.1.319 para skill solta em .claude/skills/ do projeto
+// (~/Workspace/prisma-evidence/2026-11-06-pri-233/cli-plugin-proof.md).
+function routedPluginProof({ runDir, ...opts } = {}) {
+    const evaluation = evaluatePluginProof(opts);
+    if (evaluation.status !== 'NEUTRALIZABLE') return evaluation;
     const target = path.join(runDir, 'routing-settings.json');
-    const bytes = Buffer.from(`${JSON.stringify(generated, null, 2)}\n`);
+    const bytes = Buffer.from(`${JSON.stringify(evaluation.generated, null, 2)}\n`);
     const expected = crypto.createHash('sha256').update(bytes).digest('hex');
     try {
         fs.writeFileSync(target, bytes);
@@ -170,7 +182,7 @@ function routedPluginProof({ accountDir = null, runDir, projectDir = null, home 
 }
 
 module.exports = {
-    routedPluginProof,
+    routedPluginProof, evaluatePluginProof,
     accountCostMetadata, detectEffortRouterPlugin, withClaudeAccount, resolveClaudeAccount,
     listClaudeAccounts, expandHome, DEFAULT_ACCOUNT, DEFAULT_PREFS_FILE,
 };
