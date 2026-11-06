@@ -10,6 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const sel = require('./classifier-selection');
 const jevClient = require('./jev-client');
+const cas = require('../cas');
 
 const tmpBase = process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp') : os.tmpdir();
 const roots = [];
@@ -40,7 +41,7 @@ function consumer({ authority = false } = {}) {
 function write(c, overrides = {}) {
     return sel.writeSelection(c.root, {
         choice: 'policy_only', expectedVersion: 0, operationId: `op-${crypto.randomUUID()}`, by: 'richard',
-        reason: 'teste', project: c.project, classifierConfig: c.config, now: NOW, ...overrides,
+        reason: 'teste', project: c.project, classifierConfig: c.config, now: NOW, cas, ...overrides,
     });
 }
 
@@ -204,4 +205,9 @@ test('.gitignore: o registro deve ficar fora do git (Q11); conferido sem ler dad
     assert.strictEqual(sel.registryGitIgnored(c.root), true);
     fs.writeFileSync(path.join(c.root, '.gitignore'), '/memory\n');
     assert.strictEqual(sel.registryGitIgnored(c.root), true);
+});
+
+test('cas é obrigatório: sem ele o writer não roda (a comparação de versão mora em scripts/cas.js)', () => {
+    const c = consumer();
+    assert.throws(() => sel.writeSelection(c.root, { choice: 'policy_only', expectedVersion: 0, operationId: 'op-sem-cas-1', by: 'r', reason: 'x', project: c.project }), /cas/);
 });

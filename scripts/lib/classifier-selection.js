@@ -9,6 +9,7 @@
 //   versão do registro. Não há policy p2.
 // - Q13: escopo por projeto consumidor. Q14: só aprovador autenticado troca (o
 //   chamador, Dashboard, autentica; aqui chega o nome).
+// - A comparação de versão (CAS) usa scripts/cas.js, injetado pelo chamador (AC-02).
 //
 // writeSelection é o ÚNICO writer. Valida na ordem do §4.8 e recusa com código:
 //   (pedido) 400 CLASSIFIER_REQUEST_INVALID
@@ -25,6 +26,7 @@ const path = require('path');
 const crypto = require('crypto');
 const jevClient = require('./jev-client');
 const classifierAuthority = require('./classifier-authority');
+const policyLoader = require('./model-routing-policy');
 
 const REGISTRY_REL = path.join('memory', 'routing', 'classifier-selection.json');
 const EXPERIMENT_REL = path.join('memory', 'routing', 'experiment-units.json');
@@ -137,12 +139,12 @@ function authorization(root, { project, classifierConfig, now }) {
     return eff && eff.provider === 'jev' ? { ok: true } : { ok: false, detail: (eff && eff.reason) || 'NOT_AUTHORIZED' };
 }
 
-function validateRequest({ choice, mode, expectedVersion, operationId, by, reason }) {
+function validateRequest({ choice, mode, expectedVersion, operationId, by, reason }, casLib) {
     const bad = msg => new SelectionError('CLASSIFIER_REQUEST_INVALID', 400, msg);
     if (!CHOICES.has(choice)) return bad('choice deve ser policy_only ou policy_jev');
     if (choice === 'policy_only' && mode != null) return bad('mode só vale com policy_jev');
     if (choice === 'policy_jev' && mode != null && !JEV_MODES.has(mode)) return bad('mode deve ser shadow ou active');
-    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) return bad('expected_version inválida');
+    if (!casLib.isCounter(expectedVersion)) return bad('expected_version inválida');
     if (typeof operationId !== 'string' || !OPERATION_ID.test(operationId)) return bad('operation_id inválido');
     if (typeof by !== 'string' || !by.trim()) return bad('autor ausente');
     if (typeof reason !== 'string' || !reason.trim() || reason.length > MAX_REASON) return bad(`motivo obrigatório, até ${MAX_REASON} caracteres`);
@@ -170,12 +172,17 @@ function acquireLock(lockPath) {
 /**
  * @param {string} root raiz do consumidor
  * @param {{ choice: string, mode?: string|null, expectedVersion: number, operationId: string, by: string,
- *   reason: string, project: string, classifierConfig?: object, now?: string }} input
+ *   reason: string, project: string, classifierConfig?: object, now?: string, cas: object }} input
+ *   `cas` = scripts/cas.js, injetado pelo chamador: a comparação de versão mora só lá
+ *   (AC-02 de state-concurrency) e scripts/lib não importa scripts/ (no-lib-upward).
  * @returns {{ status: 'applied'|'already_processed', current: object }}
  * @throws {SelectionError}
  */
-function writeSelection(root, { choice, mode = null, expectedVersion, operationId, by, reason, project, classifierConfig, now = new Date().toISOString() } = {}) {
-    const invalid = validateRequest({ choice, mode, expectedVersion, operationId, by, reason });
+function writeSelection(root, { choice, mode = null, expectedVersion, operationId, by, reason, project, classifierConfig, now = new Date().toISOString(), cas: casLib } = {}) {
+    if (!casLib || typeof casLib.compareCounter !== 'function' || typeof casLib.isCounter !== 'function') {
+        throw new TypeError('writeSelection: cas (scripts/cas.js) é obrigatório');
+    }
+    const invalid = validateRequest({ choice, mode, expectedVersion, operationId, by, reason }, casLib);
     if (invalid) throw invalid;
     const effMode = choice === 'policy_jev' ? (mode || 'shadow') : null;
     const payloadSha = sha256(canonical({ choice, mode: effMode, expected_version: expectedVersion, reason: reason.trim(), by: by.trim() }));
@@ -197,7 +204,7 @@ function writeSelection(root, { choice, mode = null, expectedVersion, operationI
             throw new SelectionError('CLASSIFIER_IDEMPOTENCY_MISMATCH', 409, 'operation_id já usado com outro pedido');
         }
         // 1. CAS.
-        if (expectedVersion !== reg.current_version) {
+        if (!casLib.compareCounter(expectedVersion, reg.current_version).ok) {
             throw new SelectionError('CLASSIFIER_VERSION_CONFLICT', 409, `a escolha mudou (versão vigente ${reg.current_version}); recarregue e tente de novo`);
         }
         const checks = { idempotency: 'NEW', version: 'OK', authorization: 'NOT_REQUIRED', calibration: 'NOT_REQUIRED', experiment_lock: null };
@@ -268,11 +275,73 @@ function registryGitIgnored(root) {
         .some(l => patterns.has(l.replace(/^\//, '')));
 }
 
+function currentView(r, policyClassifier) {
+    if (!r.ok) return { version: null, choice: null, provider: 'off', mode: null, source: 'INVALID', by: null, at: null, reason: r.reason };
+    if (!r.current) {
+        return { version: 0, choice: null, provider: (policyClassifier && policyClassifier.provider) || null, mode: null, source: 'POLICY', by: null, at: null, reason: null };
+    }
+    const v = r.current;
+    return { version: v.version, choice: v.choice, provider: v.classifier.provider, mode: v.mode ?? null, source: 'SELECTION', by: v.by, at: v.at, reason: v.reason };
+}
+
+/**
+ * Estado para a API do Dashboard (GET /api/routing/classifier e resposta do POST). Só
+ * leitura; nenhum segredo (a credencial é só o nome do item, e nem ele sai daqui).
+ * @param {string} root
+ * @param {{ routingConfig: object, project: string, now?: string }} input saída de readRoutingConfig
+ */
+function apiState(root, { routingConfig, project, now = new Date().toISOString() } = {}) {
+    const on = routingConfig && routingConfig.status === 'ON';
+    const r = readSelection(root);
+    let history = [];
+    if (r.ok && r.current) {
+        try {
+            const reg = JSON.parse(fs.readFileSync(registryPath(root), 'utf8'));
+            history = reg.versions.slice(-20).reverse()
+                .map(v => ({ version: v.version, choice: v.choice, mode: v.mode ?? null, by: v.by, at: v.at, reason: v.reason }));
+        } catch { history = []; }
+    }
+    return {
+        project,
+        routing_mode: routingConfig ? routingConfig.status : 'UNKNOWN',
+        current: currentView(r, on ? routingConfig.policy.classifier : null),
+        options: previewOptions(root, { project, classifierConfig: on ? routingConfig.classifier_config : null, now }),
+        history,
+        registry_git_ignored: registryGitIgnored(root),
+    };
+}
+
+// ── API do Dashboard (T12) ──────────────────────────────────────────────────────
+// O dashboard importa só este módulo de scripts/lib (exceção explícita na lista de
+// violações conhecidas, decisão do Richard em 2026-11-06, dívida da F12).
+
+/** Estado para GET /api/routing/classifier. */
+function classifierState(root) {
+    const routingConfig = policyLoader.readRoutingConfig(root);
+    return apiState(root, { routingConfig, project: path.basename(path.resolve(root)) });
+}
+
+/** POST /api/routing/classifier. Recusa com SelectionError. */
+function changeClassifier(root, { choice, mode = null, expectedVersion, operationId, by, reason, cas } = {}) {
+    const routingConfig = policyLoader.readRoutingConfig(root);
+    const project = path.basename(path.resolve(root));
+    const out = writeSelection(root, {
+        choice, mode, expectedVersion, operationId, by, reason, project, cas,
+        classifierConfig: routingConfig.status === 'ON' ? routingConfig.classifier_config : null,
+    });
+    const state = apiState(root, { routingConfig, project });
+    return { status: out.status, current: state.current, version: out.current.version, choice: out.current.choice };
+}
+
 module.exports = {
     readSelection,
     effectiveClassifier,
     writeSelection,
     previewOptions,
+    apiState,
+    classifierState,
+    changeClassifier,
+    currentView,
     platformJevSection,
     registryPath,
     registryGitIgnored,

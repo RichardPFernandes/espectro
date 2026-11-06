@@ -1294,5 +1294,19 @@
       "severity": "error",
       "name": "no-lib-upward"
     }
+  },
+  {
+    "type": "dependency",
+    "from": "dashboard/server.js",
+    "to": "scripts/lib/classifier-selection.js",
+    "unresolvedTo": "../scripts/lib/classifier-selection",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-dashboard-scripts-internals"
+    }
   }
 ]

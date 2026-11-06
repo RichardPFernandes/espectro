@@ -83,7 +83,7 @@ Ref (Q9), a policy p2 (Q2) e o item no Keychain.
 ### Fase 4: seletor "Só policy" × "Policy + Jev" (R-SEL, SPEC §B11; Q11–Q14)
 - [x] T10: registro de seleção e writer governado (`classifier-selection.js`)
 - [x] T11: admissão lê o registro (snapshot `classifier_selection_ref`, `selection_version` no `classifier_ref`)
-- [ ] T12: `GET`/`POST /api/routing/classifier` no Dashboard; contrato enviado à sessão `routing-screens`
+- [x] T12: `GET`/`POST /api/routing/classifier` no Dashboard (exceção explícita na lista de violações conhecidas, decisão do Richard; CAS em `scripts/cas.js`); contrato enviado à sessão `routing-screens`
 
 ### Checkpoint C (fechamento)
 - [ ] Receita oficial em Node 22 e 24, mais `check:js`, `lint:src` e `arch:check`

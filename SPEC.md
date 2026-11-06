@@ -1,7 +1,7 @@
 # Spec: PRI-205 S3b — núcleo 2 da classificação com o Jev (TypeSafe) em modo SOMBRA
 
 > **Status:** APROVADA pelo Richard em 2026-11-06 ("Approve, start plan"). Q0 a Q10 decididas (tabela
-> "Decisões tomadas nesta spec"). **Ampliada em 2026-11-06 pela R-SEL (seletor, B11) com Q11–Q14 decididas pelo Richard.** Plano em `tasks/pri-205-s3b/plan.md`. A spec
+> "Decisões tomadas nesta spec"). **Ampliada em 2026-11-06 pela R-SEL (seletor, B11) com Q11–Q14 decididas pelo Richard; Q14 revista e ARQ-1 no mesmo dia.** Plano em `tasks/pri-205-s3b/plan.md`. A spec
 > não é Ready da issue, não aplica RC-1 a RC-6 (todos NOT APPLIED), não altera o
 > desenho v9, a F13 nem a policy aprovada `routing-pri205@p1-2026-11-06`.
 > `roadmap-ref: UNKNOWN` (D-3: registro no Linear, sem Roadmap).
@@ -92,7 +92,8 @@ visita ao nó, sem efeito no despacho; (3) o comando U15 produz, para cada entra
 | Q11 | A escolha fica num **registro próprio** do consumidor, append-only, em `memory/routing/classifier-selection.json`, fora do git e fora da policy (o hash da p1 não muda). Entra no snapshot da Run e no `classifier_ref` (B11) |
 | Q12 | Os parâmetros do Jev (modelo, timeout, prompt, enum, destino) vêm **da plataforma** (constantes do `jev-client` desta versão) e são gravados em cada versão do registro. **A p2 deixa de ser necessária** (substitui a Q2) |
 | Q13 | Escopo **por projeto consumidor**, como o `mode` do roteamento (SP-3) |
-| Q14 | Quem troca: **aprovador autenticado**, como no override de roteamento (nome e senha, bloqueio após tentativas, CAS, `operation_id`) |
+| Q14 | ~~Quem troca: aprovador autenticado~~ **Revista pelo Richard em 2026-11-06:** sem aprovador nem senha em todo o Dashboard, até existirem roles ("se eu tenho acesso ja posso executar"). Autoria = usuário do sistema que roda o Dashboard (`actorOf`); acesso restrito ao filtro de localhost. CAS e `operation_id` continuam |
+| ARQ-1 | **Fronteira (Richard, 2026-11-06):** o dashboard importa só `scripts/lib/classifier-selection.js`, como **exceção explícita** em `.dependency-cruiser-known-violations.json` (77 → 78), dívida da F12. A camada `scripts/src/application/` foi tentada e descartada: quebra o build TS (`TS5055`). A comparação de versão do registro mora em `scripts/cas.js` (`isCounter`/`compareCounter`, regra AC-02), com o `cas` injetado no writer |
 
 ## Fora de escopo
 
@@ -338,9 +339,10 @@ bloquear a admissão. O `classifier_ref` ganha `selection_version`.
   modo, autoria e motivo, as opções com `allowed` e o código de recusa previsto, o `mode` do
   roteamento e as 20 últimas versões.
 - `POST /api/routing/classifier` com `{choice, mode?, expected_version, operation_id,
-  reason, approver, approver_password}` → `200 {ok, status: "applied" | "already_processed",
-  current}`, ou `{ok: false, code, error}` com 400 (pedido inválido), 401/403/429 (aprovador,
-  como hoje), 409 (`CLASSIFIER_VERSION_CONFLICT`, `CLASSIFIER_IDEMPOTENCY_MISMATCH`) ou 422
+  reason}` (Q14 revista: sem aprovador; autoria = usuário local, nada do corpo) → `200 {ok,
+  status: "applied" | "already_processed", current}`, ou `{ok: false, code, error, detail?}`
+  com 400 (`CLASSIFIER_REQUEST_INVALID`), 409 (`CLASSIFIER_VERSION_CONFLICT`,
+  `CLASSIFIER_IDEMPOTENCY_MISMATCH`, `CLASSIFIER_SELECTION_INVALID`) ou 422
   (`CLASSIFIER_SCOPE_NOT_AUTHORIZED`, `CLASSIFIER_NOT_CALIBRATED`,
   `CLASSIFIER_LOCKED_BY_EXPERIMENT`).
 
@@ -395,8 +397,8 @@ bloquear a admissão. O `classifier_ref` ganha `selection_version`.
   → uma grava e a outra recebe 409.
 - **AC-18 (só Runs novas):** trocar a escolha não muda o snapshot nem a decisão de uma Run em
   andamento; a Run seguinte usa a versão nova; o `classifier_ref` traz `selection_version`.
-- **AC-19 (API):** `GET` e `POST /api/routing/classifier` com aprovador autenticado, CAS e
-  `operation_id`; a recusa sai com o código, nunca 500.
+- **AC-19 (API):** `GET` e `POST /api/routing/classifier` com CAS e `operation_id`; autoria
+  = usuário local (Q14 revista), nunca um campo do corpo; a recusa sai com o código, nunca 500.
 
 ## Conformidade com o DOM-07 (R-4: "a SDD verifica a adequação")
 

@@ -78,3 +78,14 @@ AC-15, AC-16 e AC-17 cobertos no módulo `classifier-selection.js` (21/21 em Nod
 - Unidade: `selection_version` vai para o `classifier_ref`.
 
 Sem registro, o snapshot fica igual ao da S4. Registro quebrado: a Run é admitida e o núcleo 2 fica `off` com o motivo. 422/422 em Node 22 e 24; `lint:src`, `check:js` e `arch:check` limpos.
+
+## T12 (2026-11-06)
+
+**AC-19 coberto** (`dashboard/classifier-selector-api.test.js`, 6/6):
+- GET: estado e opções com o código previsto; registro ilegível devolve INVALID, nunca 500.
+- POST: aplica, `already_processed` na repetição, recusas 400/409/422 com o código.
+- Autoria = usuário local (Q14 revista); `approver` no corpo é ignorado.
+
+**Arquitetura (ARQ-1):** exceção explícita `dashboard/server.js → scripts/lib/classifier-selection.js` na lista de violações conhecidas (77 → 78). A regra AC-02 do CAS é respeitada via `scripts/cas.js` (`isCounter`/`compareCounter`).
+
+Suíte oficial final (`t12-final/`): `dashboard` 307/0 e `scripts` 1519/0 (6 skip de ambiente) em Node 22.23.2 e 24.22.1; lint, check:js e arch:check limpos.

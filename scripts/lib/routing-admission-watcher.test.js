@@ -663,14 +663,14 @@ test('S3b T11 / AC-18: seleção "Só policy" entra no snapshot da Run nova; tro
     const sel = require('./classifier-selection');
     const id = 205801;
     const repo = consumer(r => writeRouting(r));
-    sel.writeSelection(repo, { choice: 'policy_only', expectedVersion: 0, operationId: 'op-t11-0001', by: 'richard', reason: 'só núcleo 1', project: 'app-back' });
+    sel.writeSelection(repo, { choice: 'policy_only', expectedVersion: 0, operationId: 'op-t11-0001', by: 'richard', reason: 'só núcleo 1', project: 'app-back', cas: require('../cas') });
     const r = await dispatch(repo, id, 's3b-t11-sel');
     assert.strictEqual(r.result?.action, 'dispatched', r.output);
     const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
     const before = fetch.snapshot.routing;
     assert.deepStrictEqual([before.classifier_selection.source, before.classifier_selection.version, before.classifier_selection.provider], ['SELECTION', 1, 'off']);
     // Troca depois da admissão: a Run admitida guarda o snapshot dela.
-    sel.writeSelection(repo, { choice: 'policy_only', expectedVersion: 1, operationId: 'op-t11-0002', by: 'richard', reason: 'troca de teste', project: 'app-back' });
+    sel.writeSelection(repo, { choice: 'policy_only', expectedVersion: 1, operationId: 'op-t11-0002', by: 'richard', reason: 'troca de teste', project: 'app-back', cas: require('../cas') });
     const [again] = dom06.listAttempts(fetchRunDirOf(repo, id));
     assert.strictEqual(again.snapshot.routing.classifier_selection.version, 1);
     assert.strictEqual(again.snapshot.routing.sha256, before.sha256);

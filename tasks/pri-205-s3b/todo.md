@@ -330,20 +330,50 @@ Conjunto: 369/369. `lint:src`, `check:js` e `arch:check` limpos.
 ## T12: API do seletor no Dashboard
 
 **Descrição:** `GET /api/routing/classifier` e `POST /api/routing/classifier` no
-`dashboard/server.js`, no padrão do `routing-override` (`requireApprover`,
-`operation_id`, recusa com código). Contrato enviado à sessão `routing-screens`.
+`dashboard/server.js`, com `operation_id`, CAS e recusa com código. Autoria pelo
+`actorOf` (Q14 revista: sem aprovador). Contrato enviado à sessão `routing-screens`.
 
 **Aceite:**
-- [ ] AC-19: GET com estado, opções e motivo previsto da recusa; POST aplica, devolve `already_processed` na repetição e recusa com 400/409/422 e o código
-- [ ] Sem aprovador válido → 401/403/429 como hoje; nada é gravado
+- [x] AC-19: GET com estado, opções e motivo previsto da recusa; POST aplica, devolve `already_processed` na repetição e recusa com 400/409/422 e o código
+- [x] ~~Sem aprovador válido → 401/403/429~~ Q14 revista: sem aprovador; autoria = usuário local (`actorOf`), `approver` no corpo é ignorado
 - [ ] Testes do dashboard verdes em Node 22 e 24
 
 **Verificação:** receita do pacote `dashboard`
 **Dependências:** T10, T11
-**Arquivos:** `dashboard/server.js`, teste novo em `dashboard/`
+**Arquivos:** `dashboard/server.js`, `dashboard/classifier-selector-api.test.js` (registrado no `npm test` do pacote), `.dependency-cruiser-known-violations.json` (+1 exceção explícita), `scripts/cas.js` (`isCounter`/`compareCounter`)
 **Tamanho:** M
+
+**Decisões do Richard (2026-11-06), fronteira de arquitetura:**
+
+1. A regra `no-dashboard-scripts-internals` recusou o import de `scripts/lib` pelo dashboard. Ela funciona como ratchet: as exceções antigas só diminuem. Primeira escolha: uma porta em `scripts/src/application/`. **Não deu certo:** o `scripts/tsconfig.json` compila `src/**` com `rootDir: src`, então um JS ali que importa `scripts/lib` arrasta a `lib` para o build TS (`TS5055`) e quebra a "fundação TS" dos dois pacotes. A porta foi desfeita.
+2. Segunda escolha: **exceção explícita.** O dashboard importa só `scripts/lib/classifier-selection.js`, que concentra `classifierState` e `changeClassifier`. A aresta entrou em `.dependency-cruiser-known-violations.json` (77 → 78) como **dívida da F12**, visível no diff. O teste do ratchet compara o arquivo versionado com a regeneração (78 = 78).
+
+**CAS (AC-02 de `state-concurrency`):** a comparação de versão do registro mora em `scripts/cas.js` (`isCounter`, `compareCounter`, funções puras novas). Como `scripts/lib` não pode importar `scripts/` (`no-lib-upward`), o `cas` é injetado no `writeSelection`. O dashboard passa o `cas` que já importava, e os testes passam o mesmo módulo. Sem `cas`, o writer não roda.
+
+**Feito (2026-11-06):** `classifier-selector-api.test.js` 6/6 (Node 22). Cobre:
+- GET sem registro: origem POLICY, opções com o código previsto;
+- POST sem aprovador → 401, senha errada → 403, nada gravado;
+- "Só policy" aplica; repetir o mesmo `operation_id` → `already_processed`;
+- recusas: 409 versão velha, 409 `operation_id` reaproveitado, 422 jev sem ref, 400 pedido inválido;
+- com Authority Ref: `active` → 422 NOT_CALIBRATED, sombra aplica;
+- registro ilegível: GET devolve INVALID (nunca 500), POST → 409.
+
+`arch:check` sem violações (com a exceção explícita); `architecture-boundaries`, `state-concurrency` (AC-02) e `platform-roots` (fundação TS) verdes nos dois pacotes. Suíte completa: ver abaixo.
 
 ## Checkpoint C (fechamento)
 - [ ] Revisão independente G2 (Claude Opus, contexto limpo, sem Codex) com os achados resolvidos
 - [ ] `tasks/pri-205-s3b/evidence.md` com o estado de cada AC
 - [ ] Handoff (`templates/handoff.yaml.template`) validado; commit; PR em draft; o merge é exclusivo do Richard
+
+### T12 — atualização (2026-11-06)
+
+- **Q14 revista pelo Richard:** sem aprovador nem senha no Dashboard, até existirem roles. A autoria é o usuário do sistema (`actorOf`), e o acesso continua restrito ao filtro de localhost.
+- Copiei literalmente o bloco `LOCAL_ACTOR`/`actorOf` da sessão `routing-screens` (branch `claude/loving-gauss-012c73`), mas a posição no `server.js` difere. **Espere um conflito trivial no merge** entre os dois branches.
+- Só o endpoint do seletor usa `actorOf` aqui; os outros endpoints ficam com a mudança da sessão das telas.
+- `classifier-selector-api.test.js` 6/6 (Node 22). O teste de aprovador virou: autoria = usuário local, e `approver` no corpo é ignorado.
+- Suíte oficial antes dessa troca:
+  - `dashboard` 307/0 nos dois Nodes;
+  - `scripts` Node 24 1519/0;
+  - `scripts` Node 22 1518/1: `cycle-replayer.test.js`, flutuação de tempo, arquivo inalterado, passou 2/2 sozinho.
+  - TAPs em `prisma-evidence/2026-11-06-pri-205-s3b-jev/t12/`.
+- **Não reexecutada** depois da troca para `actorOf`. Sem commit.
