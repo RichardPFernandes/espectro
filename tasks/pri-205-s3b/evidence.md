@@ -45,3 +45,13 @@ Cobertos no módulo `classifier-shadow.js` (falta só a ligação no watcher, T7
 ## Checkpoint B (2026-11-06)
 
 Receita oficial da suíte `scripts`: Node 22.23.2 1470/0 (6 skip de ambiente); Node 24.22.1 1470/1, a falha é o hook `after` de `routing-off-golden.test.js` (ENOTEMPTY no rmSync do tmp, sob carga), com o teste do golden passando. Sozinho no Node 24: 2/2. Arquivo inalterado desde 4d39a3c. TAPs: `checkpoint-b/nodev22.23.2-scripts.tap` (0d8aff908243…), `nodev24.22.1-scripts.tap` (be3b3fb32bd5…), `node24-routing-off-golden-rerun{1,2}.tap`. Pendência do Checkpoint A fechada: o preload loopback vem por `NODE_OPTIONS` e o teste do destino real rodou na suíte.
+
+## T7 (2026-11-06)
+
+**Cobertos:**
+- AC-01: no watcher, `cheap_rule` e Jev sem credencial não criam Attempt `classifier`. A inércia sem ref já vinha da T5.
+- AC-02: igualdade da decisão e do argv com e sem núcleo 2, em unidade. No watcher, o argv segue a escolha do núcleo 1.
+- AC-04: o envelope sai de `plan-signals.classifierEnvelopes` com só os três campos, e um passo com bloco de código não sai. O cliente já provava o corpo.
+- AC-12: os 8 campos e a igualdade entre Attempts.
+
+**Resultado:** 385/385 em Node 22 e 24; `lint:src`, `check:js` e `arch:check` limpos.

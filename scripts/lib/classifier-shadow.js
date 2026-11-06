@@ -166,6 +166,10 @@ async function collectOpinions({
             const op = opinionBase(g);
             if (g.status !== 'SELECTED') { opinions.push({ ...op, status: g.status }); continue; }
             if (stopped) { opinions.push({ ...op, status: 'DISABLED', reason: stopped }); continue; }
+            if (!g.envelope) {
+                opinions.push({ ...op, status: 'NO_ENVELOPE', reason: g.envelope_reason || 'ENVELOPE_MISSING' });
+                continue;
+            }
             const envelope = g.envelope && {
                 step_text: g.envelope.step_text, ac_texts: g.envelope.ac_texts, declared_paths: g.envelope.declared_paths,
             };

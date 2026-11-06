@@ -216,13 +216,13 @@ test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true
 // Run já admitida ON: o Attempt de admissão é gravado pelo DOM06 real com o snapshot da
 // config do consumidor, e a task existe como o agente a teria criado. `bound` = state já
 // ligado (T5); `pluginBlocked` = worktree com o plugin não neutralizável (recusa SP-2).
-function seedOnRun(repo, id, { bound = true, node = 'implement', startedAt = new Date(Date.now() + 1000).toISOString(), retries = {}, pluginBlocked = false } = {}) {
+function seedOnRun(repo, id, { bound = true, node = 'implement', startedAt = new Date(Date.now() + 1000).toISOString(), retries = {}, pluginBlocked = false, classifierEffective = null, planText = null } = {}) {
     const worktree = worktreeOf(repo, id);
     fs.mkdirSync(worktree, { recursive: true });
     git(worktree, 'init', '-q', '-b', String(id));
     git(worktree, 'commit', '-q', '--allow-empty', '-m', `Melhoria #${id}`);
     if (pluginBlocked) blockPluginIn(worktree);
-    const snapshot = mr.buildRoutingSnapshot(policyLoader.readRoutingConfig(repo));
+    const snapshot = mr.buildRoutingSnapshot(policyLoader.readRoutingConfig(repo), { classifierEffective });
     const fetch = dom06.prepareDispatch({
         runDir: fetchRunDirOf(repo, id), node: 'fetch_ticket', ticketId: id, baseBranch: 'development',
         specHash: null, cause: 'dispatch', routing: snapshot,
@@ -239,7 +239,7 @@ function seedOnRun(repo, id, { bound = true, node = 'implement', startedAt = new
         ...(bound ? { routing_snapshot: { attempt_id: fetch.attempt.attempt_id, sha256: snapshot.sha256 } } : {}),
     }));
     fs.writeFileSync(path.join(dir, 'context.md'), '# Contexto\n');
-    fs.writeFileSync(path.join(dir, 'plan.md'), '# Plano\n\n## Passos\n\n1. Passo único.\n');
+    fs.writeFileSync(path.join(dir, 'plan.md'), planText || '# Plano\n\n## Passos\n\n1. Passo único.\n');
     return { fetch: fetch.attempt, snapshot, dir };
 }
 
@@ -608,4 +608,52 @@ test('S3b T5 / AC-07: policy jev sem Authority Ref → admitida, snapshot com n�
     const eff = fetch.snapshot.routing.classifier_effective;
     assert.deepStrictEqual([eff.provider, eff.declared, eff.reason, eff.credential], ['off', 'jev', 'AUTHORITY_REF_ABSENT', null]);
     assert.strictEqual(flag(argvOf('s3b-t5-sem-ref'), '--model'), 'm-t3', 'o despacho segue igual');
+});
+
+// PRI-205 S3b T7: Run ON com o Jev efetivo no snapshot. O item do Keychain não existe
+// (nome de teste), então nada é enviado: o núcleo 2 fica registrado na decisão, sem
+// Attempt de efeito, e o despacho é o do núcleo 1.
+test('S3b T7 / AC-01 / AC-02: jev efetivo sem credencial → núcleo 2 registrado, nenhum Attempt classifier, mesmo modelo', async () => {
+    const jevClient = require('./jev-client');
+    const id = 205701;
+    const classifier = {
+        provider: 'jev', mode: 'shadow', model_id: 'jev-latest', timeout_ms: 3000,
+        prompt_ref: { id: 'p', version: '1', sha256: jevClient.promptSha256() },
+        enum_version: jevClient.ENUM_VERSION, destination: jevClient.DESTINATION_ID,
+    };
+    const repo = consumer(r => writeRouting(r, { classifier }));
+    const mirrorBytes = Buffer.from(JSON.stringify({ id: 'ref-teste', revoked_at: null }));
+    fs.writeFileSync(path.join(repo, '.claude', 'classifier-authority.json'), mirrorBytes);
+    const eff = {
+        provider: 'jev', declared: 'jev', mode: 'shadow', reason: null, detail: null,
+        authority_ref: { id: 'ref-teste', sha256: crypto.createHash('sha256').update(mirrorBytes).digest('hex'), path: '.claude/classifier-authority.json' },
+        credential: { keychain: 'prisma-jev-teste-inexistente', account: 'teste' },
+        model_id: 'jev-latest', timeout_ms: 3000, guard_version: 'classifier-guard@1',
+    };
+    const planText = '# Plano\n\n## Plano de execução\n1. Ajustar a listagem\n   - Arquivo: `backend/svc-a/src/a.js`\n   - Critérios: AC-01\n   - Verificação: teste.\n';
+    const { dir } = seedOnRun(repo, id, { classifierEffective: eff, planText });
+    fs.mkdirSync(path.join(worktreeOf(repo, id), 'memory', 'spec'), { recursive: true });
+    fs.writeFileSync(path.join(worktreeOf(repo, id), 'memory', 'spec', `${id}-spec.md`), '## Critérios de Aceite\n- AC-01: a listagem aparece.\n');
+    const r = await dispatch(repo, id, 's3b-t7-jev');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const attempts = dom06.listAttempts(dir);
+    assert.strictEqual(attempts.filter(a => a.node === 'classifier').length, 0, 'sem credencial nada é emitido');
+    const [impl] = attempts.filter(a => a.node === 'implement');
+    assert.strictEqual(impl.routing.classifier_ref.provider, 'jev');
+    assert.strictEqual(impl.routing.nucleus2.status, 'ON');
+    assert.ok(impl.routing.nucleus2.groups.length >= 1);
+    assert.deepStrictEqual(impl.routing.nucleus2.groups.map(g => [g.status, g.probe]), [['CREDENTIAL_UNAVAILABLE', 'UPGRADE_PROBE']], JSON.stringify(impl.routing.nucleus2.groups));
+    assert.strictEqual(flag(argvOf('s3b-t7-jev'), '--model'), impl.routing.chosen.model_id, 'argv = escolha do núcleo 1');
+});
+
+test('S3b T7 / AC-01: Run ON cheap_rule → sem núcleo 2 na decisão e sem Attempt classifier', async () => {
+    const id = 205702;
+    const repo = consumer(r => writeRouting(r));
+    const { dir } = seedOnRun(repo, id);
+    const r = await dispatch(repo, id, 's3b-t7-cheap');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const attempts = dom06.listAttempts(dir);
+    assert.strictEqual(attempts.filter(a => a.node === 'classifier').length, 0);
+    const [impl] = attempts.filter(a => a.node === 'implement');
+    assert.deepStrictEqual([impl.routing.nucleus2, impl.routing.classifier_ref.provider], [null, 'cheap_rule']);
 });

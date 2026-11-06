@@ -76,7 +76,7 @@ Ref (Q9), a policy p2 (Q2) e o item no Keychain.
 - [x] Suíte `scripts` inteira passa; AC-07 a AC-11 automatizados (Node 22: 1470/0; Node 24: 1470/1, só a limpeza preexistente do golden, que passa sozinha)
 
 ### Fase 3: integração, U15 e fechamento
-- [ ] T7: `nucleus2` e `classifier_ref` na RoutingDecision, com a ligação no watcher
+- [x] T7: `nucleus2` e `classifier_ref` na RoutingDecision, com a ligação no watcher
 - [ ] T8: comando U15 `jev-calibrate.js`
 - [ ] T9: consumidores dos Attempts, documentação do consumidor e proposta da p2
 

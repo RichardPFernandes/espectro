@@ -176,14 +176,32 @@ antes da `resolveNodeRoute` do Implement (`readmine-watcher.js:4816`), dentro da
 reserva do nó.
 
 **Aceite:**
-- [ ] AC-02: `class`, `selection_source`, `candidates`, `chosen` e argv são iguais com e sem núcleo 2, inclusive com resposta C1 e confiança 0,99
-- [ ] AC-01: com `provider ≠ jev` ou sem ref, o fake não recebe nada e não nasce Attempt `classifier` (teste de watcher)
-- [ ] AC-12: os 8 campos estão iguais no snapshot e em cada Attempt; sem versão reportada, `UNKNOWN`
+- [x] AC-02: `class`, `selection_source`, `candidates`, `chosen` e argv são iguais com e sem núcleo 2, inclusive com resposta C1 e confiança 0,99
+- [x] AC-01: com `provider ≠ jev` ou sem ref, o fake não recebe nada e não nasce Attempt `classifier` (teste de watcher)
+- [x] AC-12: os 8 campos estão iguais no snapshot e em cada Attempt; sem versão reportada, `UNKNOWN`
 
 **Verificação:** `node --require ./harness/loopback-only.cjs --test scripts/lib/model-routing.test.js scripts/lib/routing-admission-watcher.test.js`
 **Dependências:** T5, T6
 **Arquivos:** `scripts/lib/model-routing.js`, `scripts/readmine-watcher.js`, testes
 **Tamanho:** M
+
+**Feito (2026-11-06):**
+- `model-routing.test.js`: 6 testes novos, mais os testes A3/A4 da S4 ajustados ao formato novo de `classifier_ref`, que mantém `declared`, `nucleus2_effective` e `reason`.
+  - AC-12: os 8 campos aparecem em toda decisão. Com Jev efetivo, são iguais entre Attempts; o alias vira `model_version = UNKNOWN`; com efetivo `off`, vale o motivo do snapshot.
+  - AC-02: classe, origem, candidatos, escolhido e argv iguais com e sem núcleo 2, mesmo com uma resposta C1 de confiança 0,99.
+  - B8: `nucleus2` por grupo e `nucleus2_would_node_class`. Ficam `null` sem núcleo 2 e em nó fixo.
+- `plan-signals.test.js`: 3 testes novos de `classifierEnvelopes`. O passo com bloco de código vira `STEP_HAS_CODE_BLOCK`; AC fora da spec não entra no envelope.
+- `classifier-shadow.test.js`: +1 (`NO_ENVELOPE`).
+- `routing-admission-watcher.test.js`: +2.
+  - Jev efetivo e item do Keychain inexistente: o grupo elegível (sonda) fica `CREDENTIAL_UNAVAILABLE`, nenhum Attempt `classifier` é criado, e o argv segue a escolha do núcleo 1.
+  - `cheap_rule`: `nucleus2` fica `null` e nenhum Attempt `classifier` é criado.
+- Conjunto: 385/385 em Node 22.23.2 e 24.22.1. `lint:src`, `check:js` e `arch:check` limpos.
+
+**Decisões de implementação:**
+- A coleta (`collectNucleus2` no watcher) roda antes de `resolveNodeRoute`, só no Implement e só com o Jev efetivo no snapshot. Ela nunca roda em `--dry-run` nem em simulação, e fica sob a reserva do ticket (`dispatchTicket`).
+- A visita é `implement@<início da visita>` (`routingRun.nodeVisitStart`).
+- O parâmetro `authorityRef` saiu da `resolveRoute`: a autoridade agora vem do snapshot.
+- O envelope é gravado na Run antes da leitura da credencial, para o U15.
 
 ## T8: comando U15
 

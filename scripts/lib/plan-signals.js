@@ -301,7 +301,38 @@ function declaredUnion(prospective) {
     return [...new Set(all)];
 }
 
+// PRI-205 S3b (T7): envelope por grupo para o núcleo 2 (Jev em sombra). Só o texto
+// dos passos, o texto dos ACs citados que existem na spec e os caminhos declarados
+// (R-2). Passo com bloco de código (``` ou ~~~) não vira envelope: nada de código sai.
+// Devolve Map subtask_key → { ok: true, envelope } | { ok: false, reason }.
+const CODE_BLOCK = /```|~~~/;
+function classifierEnvelopes(planContent, specContent) {
+    const out = new Map();
+    const { plan_version, steps } = extractPlanSteps(planContent);
+    if (!plan_version) return out;
+    const specAcs = acTexts(specContent);
+    for (const g of groupSteps(plan_version, steps)) {
+        if (g.members.some(m => CODE_BLOCK.test(m.text))) {
+            out.set(g.subtask_key, { ok: false, reason: 'STEP_HAS_CODE_BLOCK' });
+            continue;
+        }
+        const known = !g.members.some(m => m.paths_decl === UNKNOWN);
+        const paths = known ? [...new Set(g.members.flatMap(m => m.paths_decl))].sort() : [];
+        const acIds = [...new Set(g.members.flatMap(m => m.acs))].sort().filter(id => specAcs.has(id));
+        out.set(g.subtask_key, {
+            ok: true,
+            envelope: {
+                step_text: g.members.map(m => m.text).join('\n\n'),
+                ac_texts: acIds.map(id => `${id}: ${specAcs.get(id)}`),
+                declared_paths: paths,
+            },
+        });
+    }
+    return out;
+}
+
 module.exports = {
     UNKNOWN, DEFAULT_POLICY, KIND_ORDER, kindOfPath, maxKind, serviceBuckets, matchesAny,
     extractPlanSteps, groupSteps, prospectiveSignals, buildProspective, retrospectiveSignals, declaredUnion, isFlowArtifact,
+    classifierEnvelopes,
 };

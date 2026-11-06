@@ -20,7 +20,9 @@
 //   uma resolução ok.
 //
 // Recusa nunca troca modelo em silêncio e nunca cai para o modelo herdado (guarda 3).
-// Subagente fica UNENFORCED (RC-1/DP-4b). O núcleo 2 (Jev) não roda na S4 (A4).
+// Subagente fica UNENFORCED (RC-1/DP-4b). O núcleo 2 (Jev, PRI-205 S3b) entra só como
+// registro (input.nucleus2, coletado antes por classifier-shadow): nunca muda classe,
+// candidatos, escolhido ou argv.
 
 const crypto = require('crypto');
 const wouldRoute = require('./would-route');
@@ -145,12 +147,55 @@ function classifyImplement(signals, planClasses) {
     return { class: best.class, selection_source: best.selection_source, rule: best.rule };
 }
 
-function classifierRef(policy, authorityRef) {
-    const declared = policy.classifier?.provider || 'off';
-    let reason = 'NUCLEUS1_ONLY';
-    if (declared === 'off') reason = 'DECLARED_OFF';
-    if (declared === 'jev') reason = authorityRef && authorityRef.valid === true ? 'NUCLEUS2_NOT_IN_S4' : 'AUTHORITY_REF_ABSENT';
-    return { declared, nucleus2_effective: 'off', reason };
+// classifier_ref (V7-02, PRI-205 S3b T7): os 8 campos explícitos em toda decisão, mais
+// declared/nucleus2_effective/reason (compatíveis com a S4). Derivado só do snapshot:
+// igual em todos os Attempts da Run. model_version = UNKNOWN quando o modelo pedido é
+// alias (`*latest*`); a versão reportada pelo servidor fica em cada opinião (Q10).
+function classifierRef(snapshot, nucleus2) {
+    const declared = snapshot.policy.classifier?.provider || 'off';
+    const base = {
+        provider: null, model_id: null, model_version: null, prompt_sha256: null, enum_version: null,
+        mode: null, classifier_version: null, policy_sha256: snapshot.policy_ref?.sha256 ?? null,
+        declared, nucleus2_effective: 'off', reason: null,
+    };
+    if (declared !== 'jev') return { ...base, provider: declared, reason: declared === 'off' ? 'DECLARED_OFF' : 'NUCLEUS1_ONLY' };
+    const eff = snapshot.classifier_effective;
+    if (!eff) return { ...base, provider: 'off', reason: 'AUTHORITY_REF_ABSENT' };
+    if (eff.provider !== 'jev') return { ...base, provider: 'off', reason: eff.reason ?? null };
+    const jevClient = require('./jev-client');
+    const on = Boolean(nucleus2 && nucleus2.status === 'ON');
+    return {
+        ...base,
+        provider: 'jev',
+        model_id: eff.model_id,
+        model_version: /latest/i.test(String(eff.model_id)) ? 'UNKNOWN' : eff.model_id,
+        prompt_sha256: jevClient.promptSha256(),
+        enum_version: jevClient.ENUM_VERSION,
+        mode: 'shadow',
+        classifier_version: jevClient.CLIENT_VERSION,
+        nucleus2_effective: on ? 'shadow' : 'off',
+        reason: nucleus2 && !on ? (nucleus2.reason ?? null) : (eff.reason ?? null),
+    };
+}
+
+// Núcleo 2 só no nó roteado. A classe de nó hipotética é o máximo, por grupo, do
+// would_class da opinião (ou da classe do núcleo 1, sem opinião). Só registro.
+function nucleus2Record(routed, nucleus2, signals, planClasses) {
+    if (!routed || !nucleus2) return { record: null, wouldNode: null };
+    const opinions = Array.isArray(nucleus2.opinions) ? nucleus2.opinions : [];
+    const record = { status: nucleus2.status, reason: nucleus2.reason ?? null, groups: structuredClone(opinions) };
+    if (nucleus2.status !== 'ON') return { record, wouldNode: null };
+    const groups = signals && signals.status === 'COMPLETE' && Array.isArray(signals.groups) ? signals.groups : [];
+    if (!groups.length) return { record, wouldNode: null };
+    let wouldNode = null;
+    for (const g of groups) {
+        const planClass = g.plan_class || (planClasses && planClasses[g.subtask_key]) || null;
+        const own = wouldRoute.classifySubtask(g.signals || {}, planClass).class;
+        const op = opinions.find(o => o && o.subtask_key === g.subtask_key && CLASS_RANK[o.would_class]);
+        const w = op ? op.would_class : own;
+        if (!wouldNode || CLASS_RANK[w] > CLASS_RANK[wouldNode]) wouldNode = w;
+    }
+    return { record, wouldNode };
 }
 
 function refuse(cause, detail, decision = null) {
@@ -163,7 +208,7 @@ function refuse(cause, detail, decision = null) {
  *   overrides?: object[], subtaskKey?: string|null, nodeBoundaryAt?: string|null,
  *   provider?: { state?: string }, ineligibleModels?: string[],
  *   capabilities?: { effortMechanism?: { status?: string, flag?: string }, pluginProof?: { status?: string, settings_path?: string, settings_sha256?: string } },
- *   authorityRef?: { ref?: string, valid?: boolean } | null,
+ *   nucleus2?: { status: 'ON'|'OFF', reason: string|null, opinions: object[] } | null,
  * }} input
  */
 function resolveRoute(input = {}) {
@@ -183,6 +228,7 @@ function resolveRoute(input = {}) {
     const routed = node === ROUTED_NODE;
     const classified = routed ? classifyImplement(signals, planClasses) : { class: null, selection_source: 'FIXED_NODE', rule: null };
     const { override, pending } = pickOverride(overrides, { node, subtaskKey, nodeBoundaryAt });
+    const n2 = nucleus2Record(routed, input.nucleus2, signals, planClasses);
 
     const decision = {
         node,
@@ -192,7 +238,9 @@ function resolveRoute(input = {}) {
         class: classified.class,
         class_rule: classified.rule,
         signals_sha256: routed ? sha256(signals ?? null) : null,
-        classifier_ref: classifierRef(policy, input.authorityRef),
+        classifier_ref: classifierRef(snapshot, routed ? input.nucleus2 : null),
+        nucleus2: n2.record,
+        nucleus2_would_node_class: n2.wouldNode,
         candidates: [],
         chosen: null,
         selection_source: classified.selection_source,

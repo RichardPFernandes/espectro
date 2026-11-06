@@ -267,3 +267,13 @@ test('nunca lança: cliente que explode vira ERROR e o Attempt fecha UNCERTAIN',
     assert.strictEqual(r.opinions[0].status, 'ERROR');
     assert.strictEqual(effectAttempts(ctx.runDir)[0].result, 'UNCERTAIN');
 });
+
+test('T7: grupo sem envelope (ex.: passo com bloco de código) → NO_ENVELOPE com o motivo, sem chamada nem Attempt', async () => {
+    const ctx = setup();
+    const client = scriptedClient([OK('C3')]);
+    const g = { ...group('a', GRAY), envelope: undefined, envelope_reason: 'STEP_HAS_CODE_BLOCK' };
+    const r = await run(ctx, { groups: [g], client });
+    assert.deepStrictEqual([r.opinions[0].status, r.opinions[0].reason], ['NO_ENVELOPE', 'STEP_HAS_CODE_BLOCK']);
+    assert.strictEqual(client.calls.length, 0);
+    assert.strictEqual(effectAttempts(ctx.runDir).length, 0);
+});
