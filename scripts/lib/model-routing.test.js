@@ -410,3 +410,33 @@ test('S3b B8: sem núcleo 2, nó fixo ou núcleo 2 OFF → nucleus2 registrado s
     assert.deepStrictEqual([off.decision.nucleus2.status, off.decision.nucleus2.reason, off.decision.nucleus2_would_node_class], ['OFF', 'AUTHORITY_REF_REVOKED', null]);
     assert.strictEqual(off.decision.classifier_ref.nucleus2_effective, 'off');
 });
+
+// ── PRI-205 S3b T11: seleção do classificador no snapshot e no classifier_ref ──────
+test('S3b T11: sem registro de seleção o snapshot fica igual ao da S4 e selection_version é null', () => {
+    const plain = mr.buildRoutingSnapshot(loaded());
+    assert.deepStrictEqual(mr.buildRoutingSnapshot(loaded(), { classifierSelection: { source: 'POLICY', selection_ref: null, reason: null, classifier: { provider: 'cheap_rule' } } }), plain);
+    assert.strictEqual(resolve({ signals: signalsOf(C2_GROUP) }).decision.classifier_ref.selection_version, null);
+});
+
+test('S3b T11 / AC-18: "Só policy" no registro → declared off, selection_version no classifier_ref e no hash do snapshot', () => {
+    const selection = { source: 'SELECTION', selection_ref: { version: 2, sha256: 'e'.repeat(64) }, reason: null, classifier: { provider: 'off' } };
+    const snap = mr.buildRoutingSnapshot(loaded(), { classifierSelection: selection });
+    assert.deepStrictEqual(snap.classifier_selection, { source: 'SELECTION', version: 2, sha256: 'e'.repeat(64), provider: 'off', mode: null, reason: null });
+    assert.notStrictEqual(snap.sha256, mr.buildRoutingSnapshot(loaded()).sha256);
+    const ref = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
+    assert.deepStrictEqual([ref.declared, ref.provider, ref.reason, ref.selection_version], ['off', 'off', 'DECLARED_OFF', 2]);
+});
+
+test('S3b T11: "Policy + Jev" no registro + efetivo jev → classifier_ref jev com a versão da seleção', () => {
+    const selection = { source: 'SELECTION', selection_ref: { version: 3, sha256: 'f'.repeat(64) }, reason: null, classifier: { provider: 'jev', mode: 'shadow' } };
+    const snap = mr.buildRoutingSnapshot(loaded(), { classifierSelection: selection, classifierEffective: EFF() });
+    const ref = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
+    assert.deepStrictEqual([ref.declared, ref.provider, ref.mode, ref.selection_version], ['jev', 'jev', 'shadow', 3]);
+});
+
+test('S3b T11: registro inválido → off com CLASSIFIER_SELECTION_INVALID, mesmo com a policy declarando jev', () => {
+    const selection = { source: 'INVALID', selection_ref: null, reason: 'CLASSIFIER_SELECTION_INVALID', classifier: { provider: 'off' } };
+    const snap = mr.buildRoutingSnapshot(loaded(JEV_POLICY()), { classifierSelection: selection });
+    const ref = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
+    assert.deepStrictEqual([ref.declared, ref.provider, ref.reason, ref.selection_version], ['off', 'off', 'CLASSIFIER_SELECTION_INVALID', null]);
+});

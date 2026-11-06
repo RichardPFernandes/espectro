@@ -70,3 +70,11 @@ Receita oficial da suíte `scripts`: Node 22.23.2 1470/0 (6 skip de ambiente); N
 ## T10 (2026-11-06)
 
 AC-15, AC-16 e AC-17 cobertos no módulo `classifier-selection.js` (21/21 em Node 22 e 24): opções, as seis validações do §4.8 na ordem com os códigos, auditoria por versão, append-only, concorrência por CAS e trava. A admissão (T11) e a API (T12) ainda não usam o registro.
+
+## T11 (2026-11-06)
+
+**AC-18 coberto:**
+- Watcher: a seleção entra no snapshot da Run nova; uma troca posterior não muda a Run admitida (snapshot e hash iguais).
+- Unidade: `selection_version` vai para o `classifier_ref`.
+
+Sem registro, o snapshot fica igual ao da S4. Registro quebrado: a Run é admitida e o núcleo 2 fica `off` com o motivo. 422/422 em Node 22 e 24; `lint:src`, `check:js` e `arch:check` limpos.

@@ -657,3 +657,42 @@ test('S3b T7 / AC-01: Run ON cheap_rule → sem núcleo 2 na decisão e sem Atte
     const [impl] = attempts.filter(a => a.node === 'implement');
     assert.deepStrictEqual([impl.routing.nucleus2, impl.routing.classifier_ref.provider], [null, 'cheap_rule']);
 });
+
+// PRI-205 S3b T11 / AC-18: a admissão lê o registro de seleção; a troca só vale para Runs novas.
+test('S3b T11 / AC-18: seleção "Só policy" entra no snapshot da Run nova; trocar depois não muda a Run em andamento', async () => {
+    const sel = require('./classifier-selection');
+    const id = 205801;
+    const repo = consumer(r => writeRouting(r));
+    sel.writeSelection(repo, { choice: 'policy_only', expectedVersion: 0, operationId: 'op-t11-0001', by: 'richard', reason: 'só núcleo 1', project: 'app-back' });
+    const r = await dispatch(repo, id, 's3b-t11-sel');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    const before = fetch.snapshot.routing;
+    assert.deepStrictEqual([before.classifier_selection.source, before.classifier_selection.version, before.classifier_selection.provider], ['SELECTION', 1, 'off']);
+    // Troca depois da admissão: a Run admitida guarda o snapshot dela.
+    sel.writeSelection(repo, { choice: 'policy_only', expectedVersion: 1, operationId: 'op-t11-0002', by: 'richard', reason: 'troca de teste', project: 'app-back' });
+    const [again] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    assert.strictEqual(again.snapshot.routing.classifier_selection.version, 1);
+    assert.strictEqual(again.snapshot.routing.sha256, before.sha256);
+});
+
+test('S3b T11: registro de seleção quebrado → Run admitida, núcleo 2 off com CLASSIFIER_SELECTION_INVALID', async () => {
+    const sel = require('./classifier-selection');
+    const id = 205802;
+    const repo = consumer(r => writeRouting(r));
+    fs.mkdirSync(path.dirname(sel.registryPath(repo)), { recursive: true });
+    fs.writeFileSync(sel.registryPath(repo), '{quebrado');
+    const r = await dispatch(repo, id, 's3b-t11-invalido');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    assert.deepStrictEqual([fetch.snapshot.routing.classifier_selection.source, fetch.snapshot.routing.classifier_selection.reason], ['INVALID', 'CLASSIFIER_SELECTION_INVALID']);
+});
+
+test('S3b T11: sem registro de seleção o snapshot da Run nova não ganha campo (igual à S4)', async () => {
+    const id = 205803;
+    const repo = consumer(r => writeRouting(r));
+    const r = await dispatch(repo, id, 's3b-t11-sem');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    assert.ok(!('classifier_selection' in fetch.snapshot.routing));
+});

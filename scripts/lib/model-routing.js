@@ -57,10 +57,12 @@ function tierOf(policy, modelId) {
 
 /**
  * @param {{ status: string, policy?: object, policy_ref?: object }} loaded saída de readRoutingConfig
- * @param {{ classifierEffective?: object|null }} [opts] núcleo 2 efetivo decidido na admissão
- *   (classifier-authority.evaluateClassifier, PRI-205 S3b). null/ausente = snapshot igual ao da S4.
+ * @param {{ classifierEffective?: object|null, classifierSelection?: object|null }} [opts] núcleo 2
+ *   efetivo decidido na admissão (classifier-authority.evaluateClassifier) e a seleção do
+ *   classificador lida do registro (classifier-selection.effectiveClassifier), PRI-205 S3b.
+ *   Ausentes, ou seleção vinda da policy (sem registro) = snapshot igual ao da S4.
  */
-function buildRoutingSnapshot(loaded, { classifierEffective = null } = {}) {
+function buildRoutingSnapshot(loaded, { classifierEffective = null, classifierSelection = null } = {}) {
     if (!loaded || loaded.status !== 'ON' || !loaded.policy || !loaded.policy_ref) {
         throw new Error('ROUTING_SNAPSHOT_REQUIRES_ON');
     }
@@ -76,6 +78,17 @@ function buildRoutingSnapshot(loaded, { classifierEffective = null } = {}) {
         eligible_set,
         eligible_set_ref: sha256(eligible_set),
     };
+    if (classifierSelection && classifierSelection.source !== 'POLICY') {
+        const invalid = classifierSelection.source === 'INVALID';
+        body.classifier_selection = {
+            source: classifierSelection.source,
+            version: classifierSelection.selection_ref?.version ?? null,
+            sha256: classifierSelection.selection_ref?.sha256 ?? null,
+            provider: invalid ? 'off' : (classifierSelection.classifier?.provider ?? 'off'),
+            mode: invalid ? null : (classifierSelection.classifier?.mode ?? null),
+            reason: classifierSelection.reason ?? null,
+        };
+    }
     if (classifierEffective) body.classifier_effective = structuredClone(classifierEffective);
     return { ...body, sha256: sha256(body) };
 }
@@ -152,12 +165,15 @@ function classifyImplement(signals, planClasses) {
 // igual em todos os Attempts da Run. model_version = UNKNOWN quando o modelo pedido é
 // alias (`*latest*`); a versão reportada pelo servidor fica em cada opinião (Q10).
 function classifierRef(snapshot, nucleus2) {
-    const declared = snapshot.policy.classifier?.provider || 'off';
+    // Com registro de seleção (B11) o declarado é o do registro; sem ele, o da policy.
+    const sel = snapshot.classifier_selection || null;
+    const declared = sel ? sel.provider : (snapshot.policy.classifier?.provider || 'off');
     const base = {
         provider: null, model_id: null, model_version: null, prompt_sha256: null, enum_version: null,
         mode: null, classifier_version: null, policy_sha256: snapshot.policy_ref?.sha256 ?? null,
-        declared, nucleus2_effective: 'off', reason: null,
+        declared, nucleus2_effective: 'off', reason: null, selection_version: sel ? sel.version : null,
     };
+    if (sel && sel.source === 'INVALID') return { ...base, provider: 'off', reason: sel.reason };
     if (declared !== 'jev') return { ...base, provider: declared, reason: declared === 'off' ? 'DECLARED_OFF' : 'NUCLEUS1_ONLY' };
     const eff = snapshot.classifier_effective;
     if (!eff) return { ...base, provider: 'off', reason: 'AUTHORITY_REF_ABSENT' };

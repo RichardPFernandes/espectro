@@ -305,14 +305,27 @@ Conjunto: 369/369. `lint:src`, `check:js` e `arch:check` limpos.
 `CLASSIFIER_SELECTION_INVALID`, sem bloquear.
 
 **Aceite:**
-- [ ] AC-18: trocar a escolha não muda a Run em andamento; a próxima Run usa a versão nova
-- [ ] Sem registro, snapshot e decisão iguais aos de hoje (golden do `mode` OFF e testes da S4 verdes)
-- [ ] Registro quebrado → `off` com motivo, admissão segue
+- [x] AC-18: trocar a escolha não muda a Run em andamento; a próxima Run usa a versão nova
+- [x] Sem registro, snapshot e decisão iguais aos de hoje (golden do `mode` OFF e testes da S4 verdes)
+- [x] Registro quebrado → `off` com motivo, admissão segue
 
 **Verificação:** `node --require ./harness/loopback-only.cjs --test scripts/lib/routing-admission-watcher.test.js scripts/lib/model-routing.test.js`
 **Dependências:** T10
 **Arquivos:** `scripts/readmine-watcher.js`, `scripts/lib/model-routing.js`, testes
 **Tamanho:** S
+
+**Feito (2026-11-06):**
+- `model-routing.test.js`: 4 testes novos.
+  - Sem registro, o snapshot fica igual ao da S4 e `selection_version` é `null`.
+  - "Só policy": `declared` é `off`, `selection_version` vai para o `classifier_ref` e o snapshot entra no hash.
+  - "Policy + Jev" com efetivo `jev`: `classifier_ref` jev com a versão da seleção.
+  - Registro inválido: `off` com `CLASSIFIER_SELECTION_INVALID`, mesmo com a policy declarando jev.
+- `routing-admission-watcher.test.js`: 3 testes novos.
+  - AC-18: a seleção entra no snapshot da Run nova; uma troca depois não muda nem o snapshot nem o hash da Run admitida.
+  - Registro quebrado: a Run é admitida com `INVALID`.
+  - Sem registro: nenhum campo novo no snapshot.
+- Conjunto: 422/422 em Node 22 e 24, incluindo o golden do `mode` OFF. `lint:src`, `check:js` e `arch:check` limpos.
+- O CLI `jev-calibrate` também passou a ler a seleção.
 
 ## T12: API do seletor no Dashboard
 

@@ -30,6 +30,7 @@ const modelRoutingPolicy = require('./lib/model-routing-policy');
 const modelRouting = require('./lib/model-routing');
 const classifierAuthority = require('./lib/classifier-authority');
 const classifierShadow = require('./lib/classifier-shadow');
+const classifierSelection = require('./lib/classifier-selection');
 const routingRun = require('./lib/routing-run');
 const schemaWatcher = require('./lib/schema-watcher');
 const prStatusPoll = require('./lib/pr-status-poll');
@@ -4463,16 +4464,24 @@ async function dispatchTicketReserved(ticket) {
         if (!DRY_RUN) clearRoutingBlockedMarker();
         // PRI-205 S3b (T5): núcleo 2 efetivo decidido aqui e fixado no snapshot. Nunca
         // bloqueia a admissão: sem Authority Ref (hoje) fica off com o motivo.
-        const classifierEffective = routingConfig.status === 'ON'
+        // Seleção do classificador (B11): registro próprio do consumidor; sem registro,
+        // vale a policy. Registro ilegível = núcleo 2 off, sem bloquear.
+        const classifierSel = routingConfig.status === 'ON'
+            ? classifierSelection.effectiveClassifier(REPO_PATH, routingConfig.policy)
+            : null;
+        if (classifierSel && classifierSel.source === 'INVALID') {
+            console.warn(`Ticket #${id}: registro de seleção do classificador ilegível — núcleo 2 off nesta Run (${classifierSel.reason}).`);
+        }
+        const classifierEffective = classifierSel
             ? classifierAuthority.evaluateClassifier({
-                classifier: routingConfig.policy.classifier, classifierConfig: routingConfig.classifier_config,
+                classifier: classifierSel.classifier, classifierConfig: routingConfig.classifier_config,
                 root: REPO_PATH, project: path.basename(REPO_PATH),
             })
             : null;
         if (classifierEffective && classifierEffective.provider === 'off') {
             console.warn(`Ticket #${id}: núcleo 2 (jev) declarado na policy, efetivo off nesta Run (${classifierEffective.reason}${classifierEffective.detail ? `: ${classifierEffective.detail}` : ''}).`);
         }
-        const routingSnapshot = routingConfig.status === 'ON' ? modelRouting.buildRoutingSnapshot(routingConfig, { classifierEffective }) : undefined;
+        const routingSnapshot = routingConfig.status === 'ON' ? modelRouting.buildRoutingSnapshot(routingConfig, { classifierEffective, classifierSelection: classifierSel }) : undefined;
 
         let qaFeedback = [];
         if (isRecusaQA) {

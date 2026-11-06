@@ -4,7 +4,8 @@
 //   node "$PRISMA_ROOT/scripts/jev-calibrate.js" --runs <dir> --max-calls <k> [--n 5] [--out <dir>]
 //   node "$PRISMA_ROOT/scripts/jev-calibrate.js" --synthetic --out <dir> --max-calls 1 [--n 2]
 //
-// A configuração vem do consumidor (REPO_PATH ou cwd): a policy roteada e o espelho da
+// A configuração vem do consumidor (REPO_PATH ou cwd): a seleção do classificador (registro
+// próprio, ou a policy sem registro) e o espelho da
 // Authority Ref são avaliados AGORA (classifier-authority). Sem núcleo 2 efetivo
 // (ex.: sem Authority Ref) nada é enviado. A chave é lida do Keychain pelo nome do item
 // declarado no config; nunca por argumento nem env. Imprime só agregados (JSON).
@@ -15,6 +16,7 @@ const path = require('path');
 const policyLoader = require('./lib/model-routing-policy');
 const classifierAuthority = require('./lib/classifier-authority');
 const calibration = require('./lib/jev-calibration');
+const classifierSelection = require('./lib/classifier-selection');
 
 const USAGE = 'Uso: jev-calibrate.js --runs <dir> --max-calls <k> [--n 5] [--out <dir>] | --synthetic --out <dir> --max-calls <k> [--n 2]\n'
     + '--max-calls é obrigatório (cada chamada gasta o saldo da conta do Jev).\n';
@@ -44,7 +46,8 @@ async function main(argv) {
     const cfg = policyLoader.readRoutingConfig(root);
     const effective = cfg.status === 'ON'
         ? classifierAuthority.evaluateClassifier({
-            classifier: cfg.policy.classifier, classifierConfig: cfg.classifier_config, root, project: path.basename(root),
+            classifier: classifierSelection.effectiveClassifier(root, cfg.policy).classifier,
+            classifierConfig: cfg.classifier_config, root, project: path.basename(root),
         })
         : { provider: 'off', reason: cfg.status === 'OFF' ? 'ROUTING_OFF' : `ROUTING_${cfg.cause}` };
 
