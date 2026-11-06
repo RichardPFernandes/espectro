@@ -483,11 +483,32 @@ test('C4: db-targets secret recria o item com ACL vazia (-T "") por /usr/bin/sec
 // pausar a Run: a override só vale a partir do próximo limite de nó (D-4), aplicada
 // pelo resolver (scripts/lib/model-routing.js).
 
-const BOUND = { routing_snapshot: { attempt_id: '00000000-0000-4000-8000-000000000000', sha256: 'a'.repeat(64) } };
+// Run admitida ON de verdade: Attempt fetch_ticket com snapshot routing em _dom06 (DOM06
+// real) e state ligado a ele. A override é conferida contra esse snapshot (MINOR-3).
+const mr = require('./model-routing');
+const ROUTED_POLICY = {
+    id: 'routing-sintetica', version: 'p-test-1', mode: 'ROUTED', classifier: { provider: 'cheap_rule' },
+    class_to_tier: {
+        C1: { tier: 'T1', effort: 'baixo' }, C2: { tier: 'T2', effort: 'médio' }, C3: { tier: 'T2', effort: 'alto' },
+        C4: { tier: 'T3', effort: 'alto' }, C5: { tier: 'T3', effort: 'máximo' },
+    },
+    tiers: { T1: { models: ['claude-sonnet-5-5'] }, T2: { models: ['claude-sonnet-5-5'] }, T3: { models: ['claude-opus-5-5'] } },
+    default_route: { model_id: 'claude-opus-5-5', effort: 'alto' },
+    effort_map: { baixo: 'low', 'médio': 'medium', alto: 'high', 'máximo': 'max' },
+};
+function seedRouted() {
+    const seeded = seedRun();
+    const snap = mr.buildRoutingSnapshot({ status: 'ON', policy: ROUTED_POLICY,
+        policy_ref: { id: ROUTED_POLICY.id, version: ROUTED_POLICY.version, sha256: 'a'.repeat(64), path: '.claude/routing-policy.json' } });
+    const fetch = dom06.prepareDispatch({ runDir: path.join(path.dirname(seeded.dir), '_dom06'), node: 'fetch_ticket', ticketId: 42359,
+        baseBranch: 'development', specHash: null, cause: 'dispatch', routing: snap });
+    writeState(seeded.dir, { ...readState(seeded.dir), routing_snapshot: { attempt_id: fetch.attempt.attempt_id, sha256: snap.sha256 } });
+    return seeded;
+}
 const ov = (extra = {}) => ({ scope: 'node', node: 'implement', value: { model_id: 'claude-opus-5-5', effort: 'alto' }, ...extra });
 
 test('PRI-233 T8: recordRoutingOverride grava append-only com quem/quando, sem mudar status nem node', () => {
-    const { dir } = seedRun(BOUND);
+    const { dir } = seedRouted();
     const before = readState(dir);
     const out = authorization.recordRoutingOverride(dir, {
         by: 'richard', ...ov(), operationId: 'op-routing-1', expectedStateVersion: cas.effectiveVersion(before),
@@ -512,7 +533,7 @@ test('PRI-233 T8: recordRoutingOverride grava append-only com quem/quando, sem m
 });
 
 test('PRI-233 T8: mesmo operation_id é idempotente; CAS velho é conflito', () => {
-    const { dir } = seedRun(BOUND);
+    const { dir } = seedRouted();
     const v = cas.effectiveVersion(readState(dir));
     const args = { by: 'richard', ...ov(), operationId: 'op-routing-idem', expectedStateVersion: v };
     assert.strictEqual(authorization.recordRoutingOverride(dir, args).status, 'applied');
@@ -532,9 +553,13 @@ for (const [name, extra, code] of [
     ['modelo vazio', { args: { value: { model_id: '', effort: 'alto' } } }, 'OVERRIDE_INVALID'],
     ['esforço vazio', { args: { value: { model_id: 'claude-opus-5-5', effort: '' } } }, 'OVERRIDE_INVALID'],
     ['sem aprovador', { args: { by: '' } }, 'OVERRIDE_INVALID'],
+    // Revisão independente (MINOR-3): conferido contra o snapshot da Run na gravação.
+    ['modelo fora do conjunto elegível', { args: { value: { model_id: 'claude-mythos', effort: 'alto' } } }, 'OVERRIDE_INELIGIBLE'],
+    ['esforço fora do effort_map', { args: { value: { model_id: 'claude-opus-5-5', effort: 'turbo' } } }, 'OVERRIDE_INELIGIBLE'],
+    ['ligação a snapshot ilegível', { state: { routing_snapshot: { attempt_id: '00000000-0000-4000-8000-000000000000', sha256: 'a'.repeat(64) } } }, 'ROUTING_UNVERIFIABLE'],
 ]) {
     test(`PRI-233 T8: ${name} → ${code}, nada gravado`, () => {
-        const { dir } = seedRun(extra.state ?? BOUND);
+        const { dir } = extra.state ? seedRun(extra.state) : seedRouted();
         const v = cas.effectiveVersion(readState(dir));
         assert.throws(() => authorization.recordRoutingOverride(dir, {
             by: 'richard', ...ov(), operationId: `op-${code}-${name.length}`, expectedStateVersion: v, ...(extra.args || {}),

@@ -202,6 +202,8 @@ function resolveRoute(input = {}) {
             ? { status: 'VERIFIED', flag: input.capabilities.effortMechanism.flag }
             : { status: 'UNAVAILABLE' },
     };
+    // Gravado já aqui (NIT da revisão): toda decisão, inclusive recusada, diz se o esforço iria.
+    decision.effort_applied = decision.effort_mechanism.status === 'VERIFIED' && typeof decision.effort_mechanism.flag === 'string';
     const choose = (model_id, effort, tier) => {
         decision.chosen = { model_id, effort, cli_effort: policy.effort_map[effort], tier };
     };
@@ -245,9 +247,8 @@ function resolveRoute(input = {}) {
     }
 
     // Esforço (SP-1 revista pelo Richard em 2026-11-06: "o esforço pode ser adiado"): sem
-    // mecanismo verificado o despacho roteia SÓ o modelo e registra o esforço como não
-    // aplicado; nunca bloqueia por isso. Com mecanismo verificado, o par vai inteiro.
-    decision.effort_applied = decision.effort_mechanism.status === 'VERIFIED' && typeof decision.effort_mechanism.flag === 'string';
+    // mecanismo verificado o despacho roteia SÓ o modelo (effort_applied: false, acima);
+    // nunca bloqueia por isso. Com mecanismo verificado, o par vai inteiro.
     // Precondição do despacho roteado (SP-2): plugin de roteamento provado desligado.
     const proof = input.capabilities?.pluginProof;
     if (!proof || proof.status !== 'NOT_LOADED' || typeof proof.settings_path !== 'string') {

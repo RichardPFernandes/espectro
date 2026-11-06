@@ -210,7 +210,7 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 | MAJOR-1: ligação por timestamp podia cair em OFF | **Corrigido.** Na admissão ON, o watcher grava o ponteiro `_dom06/routing-admission.json` com o id do Attempt; a admissão OFF o apaga. A ligação usa esse ponteiro e o marca como consumido. Ponteiro ilegível, já consumido ou ligação sumida do state levam a `CONFIG_UNVERIFIABLE`, nunca a OFF, e não há religação. Testes no watcher para (a) Attempt apagado, (b) `started_at` no passado, (d) religação e ponteiro de um ciclo ON anterior. O item (e), leitura no caminho OFF, ficou reduzido a um `existsSync` do ponteiro. |
 | MAJOR-2: prova do plugin ignorava o projeto e o managed | **Corrigido.** A prova lê `settings.json` e `settings.local.json` do cwd do despacho e `.claude/skills/` do projeto. Managed presente dá UNKNOWN. 5 testes novos; os antigos passam a injetar o caminho do managed. |
 | MINOR-1: roteamento depois de portões com efeito | **Corrigido.** O bloco foi para logo depois do retorno de `DRY_RUN`, antes de pré-build, churn e `human-input`; a recusa grava no próprio objeto, preservando a base do CAS. Teste: `human-input.md` não é consumido. |
-| MINOR-2: ticket novo cria o worktree antes de recusar | **Aceito e registrado.** O Attempt `NOT_STARTED` precisa do `_dom06` do worktree, por ser o mesmo lugar dos demais Attempts de admissão. Mudar exigiria um local novo. |
+| MINOR-2: ticket novo cria o worktree antes de recusar | ~~Aceito e registrado.~~ **Corrigido na 2ª revisão (MAJOR-2):** o pré-teste do ticket novo avalia a prova do plugin só por leitura, antes de qualquer git; na recusa não há branch nem worktree, e o aviso usa o marcador `RUNS_DIR/<id>-routing-not-started.json`. |
 | MINOR-3: aviso calado por marcador antigo | **Corrigido.** A recusa limpa o marcador do nó ao entrar em `blocked`. |
 | MINOR-4: `effort_router_plugin` contraditório | **Corrigido.** O registro de custo usa o valor da decisão. |
 | MINOR-5: policy embutida sem validação estrutural | **Corrigido.** `snapshotIntegrity` roda `validateRoutedPolicy` e devolve `snapshot_policy_invalid`. |
@@ -219,7 +219,7 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 | MINOR-8: Authority Ref sempre null (item 11 / A4) | **Parcial, registrado.** `jev` vale como off com `AUTHORITY_REF_ABSENT`, sem chamada de rede. A reavaliação real fica para quando houver Authority Ref durável (DP-7). |
 | NIT: `..policy.json` recusado | **Corrigido**, com teste. |
 | NIT: `json_parse` vaza conteúdo no Redmine | **Corrigido** no caminho de roteamento (só o tipo do erro). O caminho sombra da S3 não mudou. |
-| NIT: conta resolvida duas vezes; `routing-settings.json` em `_dom06` | **Aceito.** Só vale com o esforço verificado, o que não acontece em produção. |
+| NIT: conta resolvida duas vezes; `routing-settings.json` em `_dom06` | **Aceito.** Com a SP-1 revista o caminho roda em produção; o custo é uma leitura a mais por despacho, sem efeito externo. |
 | Testes: AC-02 sem teste no watcher; golden só cobre argv/env; sem E2E real ON | **Registrado.** O despacho roteado não é alcançável em produção (SP-1) e não há porta dos fundos (AD-5), por isso AC-02, AC-06 e AC-08 ficam como **só em unidade** na matriz da T10. Uma comparação de arquivos no golden fica como sugestão: exigiria regerar o golden na revisão base. |
 
 - [x] Depois das correções, no Node 22: scripts 1241 pass / 0 fail / 6 skip, com o golden inalterado; dashboard 298/0; `check:js`, `lint:src` e `arch:check` limpos. `routing-admission-watcher.test.js` 12/12; `claude-account.test.js` 14/14; `routing-run.test.js` 21/21; `model-routing.test.js` 40/40; `routing-config.test.js` 29/29; `cost-tracking.test.js` 30/30.
@@ -241,6 +241,21 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 **Medição (Node 22, suíte scripts completa):** antes, 4 de 13 rodadas com falha nesta sessão. Depois das correções, 9 de 10 verdes: a única falha foi o `transcript-writer`, corrigido em seguida, e as 5 rodadas seguintes saíram verdes. Node 24: scripts 1241/0 e dashboard 299/0.
 
 **Risco remanescente (fora do escopo):** a mesma janela entre `recordAgentPid` e uma escrita imediata do agente existe no código de produção. Só seria atingida por um agente que gravasse o state em milissegundos. Fica registrada como observação, sem mudança no watcher.
+
+### 2ª revisão independente (Claude, depois da SP-1 revista, 2026-11-06)
+
+| Achado | O que foi feito |
+| -- | -- |
+| MAJOR-1: aviso de bloqueio repetido ou marcado como enviado sem certeza | **Corrigido.** Entrega com três resultados: enviado, falha certa (503/429/4xx/erro de rede certo, até 5 tentativas e `notice_failed_at`) e incerto (antes de reenviar, procura o token `[aviso-roteamento …]` nos journals; nunca repete efeito incerto, regra 5 do AGENTS.md). Testes no watcher para PUT incerto e 503. |
+| MAJOR-2: ticket novo criava branch e worktree antes de recusar | **Corrigido.** Avaliação só por leitura no pré-teste (`evaluatePluginProof`); prova completa depois do worktree. |
+| MINOR-1: limite D-4 lido depois de escritas do próprio tick | **Corrigido.** O limite usa `stateReadAt`, capturado no início do despacho. |
+| MINOR-2: ponteiro de admissão velho com tarefa OFF anterior | **Pendente, registrado.** |
+| MINOR-3: override inelegível só recusada na resolução | **Corrigido.** `recordRoutingOverride` carrega o snapshot e recusa com `OVERRIDE_INELIGIBLE` (modelo fora do `eligible_set`, esforço fora do `effort_map`) ou `ROUTING_UNVERIFIABLE`. |
+| MINOR-4: fontes managed limitadas a 2 caminhos | **Pendente, registrado.** |
+| MINOR-5: ticket novo recusado não aparece no Dashboard | **Pendente, registrado.** O aviso sai no Redmine e na notificação local. |
+| MINOR-6: docs e comentários desatualizados | **Corrigido** (matriz de evidência, este arquivo, comentário da T7 no watcher). |
+| NIT: `effort_applied` calculado tarde | **Corrigido.** |
+| Pedido: teste real do CLI | **Feito, parcial.** Ver AC-08 em `tasks/evidence.md`. |
 
 ## Fase 3: override, visibilidade e fechamento
 
