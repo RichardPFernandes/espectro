@@ -285,8 +285,8 @@
   .cost-usage caption { text-align: left; color: var(--muted); padding: 4px 0 8px; }
   .cost-usage td.n { white-space: nowrap; }
   /* Recusas QA separadas do ciclo principal (run.qaCycles — scripts/lib/qa-cycles.js). */
-  .qa-cycles { display: grid; gap: 10px; }
-  .qa-cycle { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .qa-cycles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .qa-cycle { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
   .qa-cycle.main { background: color-mix(in srgb, var(--line) 25%, transparent); }
   .qa-cycle.rej { border-left: 3px solid var(--risk); }
   .qa-cycle.pending { border-left: 3px dashed var(--risk); }

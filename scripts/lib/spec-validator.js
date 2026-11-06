@@ -554,7 +554,9 @@ function formatContextWarnings(result, { sourceLabel, accepted = false }) {
 
 // Insere, substitui ou (sem warnings) remove o bloco de avisos num texto de
 // context.md. Retorna o novo texto (igual ao original se nada mudou).
-function upsertContextWarnings(existing, result, opts) {
+function upsertContextWarnings(existing, rawResult, opts) {
+    // Gate gravado pela aprovação do draft do auto-repair não tem errors/warnings.
+    const result = { ...rawResult, warnings: rawResult?.warnings || [] };
     const text = existing || '';
     const begin = text.indexOf(CONTEXT_BEGIN);
     const end = begin === -1 ? -1 : text.indexOf(CONTEXT_END, begin);

@@ -147,7 +147,7 @@
     recent.append(recentHead);
     const rows = Array.isArray(data.recent) ? data.recent : [];
     if (!rows.length) {
-      recent.append(el('p', 'Nenhuma decisão sombra ainda. Com classificador off, would_route fica sem decisões; ligue a regra barata na policy de sombra para medir.', 'wr-empty muted'));
+      recent.append(el('p', 'Nenhuma decisão sombra ainda. Com a policy em cheap_rule, feche novos Implements (Attempts antigos com CLASSIFIER_OFF não reclassificam). S4 continua desligado.', 'wr-empty muted'));
     } else {
       const wrap = el('div', null, 'table-wrap wr-table-wrap');
       const table = el('table', null, 'table wr-table');
