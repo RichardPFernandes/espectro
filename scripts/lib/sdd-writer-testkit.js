@@ -61,3 +61,167 @@ function tmpDir(prefix = 'sdd-test-') {
 }
 
 module.exports = { loadMutant, applyGuard, listGuards, writerFiles, tmpDir, LIB };
+
+// ---------------------------------------------------------------------------
+// Fixtures sintéticas (nenhum dado de consumidor). Constroem operações VÁLIDAS;
+// cada teste estraga exatamente uma coisa.
+
+const W = () => ({
+    cmd: require('./sdd-writer-command'),
+    jcs: require('./sdd-writer-jcs'),
+    log: require('./sdd-writer-log'),
+    catalog: require('./sdd-writer-catalog'),
+    git: require('./sdd-writer-git'),
+    specHash: require('./spec-hash'),
+});
+
+const ROOT = process.env.PRISMA_ROOT || path.resolve(LIB, '..', '..');
+const H = c => c.repeat(64);
+const AT = '2026-11-06T12:00:00Z';
+
+function hashConfigBytes() {
+    return fs.readFileSync(path.join(ROOT, '.claude', 'spec-hash-config.json'));
+}
+
+function specText(label) {
+    return `# Capability de teste\n\n## Objetivo\n${label}\n\n## Referências\n- nota fora do HASH_SCOPE\n`;
+}
+
+function contractHashOf(text) {
+    const { specHash } = W();
+    const cfg = specHash.parseConfig(JSON.parse(hashConfigBytes().toString('utf8')));
+    return specHash.contractHash(text, { scope: 'contract_sections_v1', config: cfg });
+}
+
+function admittedFiles(project = 'prisma', { registryBranch = 'main', extra = null } = {}) {
+    const { jcs, cmd } = W();
+    const projectObj = { schema: 'sdd-admitted-project-v1', project, registry_branch: registryBranch, activation: { promote_change: false, write_docs_sdd: false } };
+    const policyObj = { schema: 'sdd-admitted-policy-v1', incorporation_rule: 'DS-03b' };
+    if (extra) Object.assign(policyObj, extra);
+    return {
+        [cmd.ADMITTED_PROJECT]: jcs.canonicalBytes(projectObj),
+        [cmd.ADMITTED_POLICY]: jcs.canonicalBytes(policyObj),
+    };
+}
+
+/** Promoção sintética em docs/sdd/changes/<ticket>/ (EM §2; RRC-SDD-004 §4.3). */
+function promotionFiles({ ticket = 'PRI-900', exec = 'exec-1', n = 1, specBytes = Buffer.from('spec do ticket\n'), overrides = {} } = {}) {
+    const { cmd } = W();
+    const specSha = cmd.sha256hex(specBytes);
+    const entry = {
+        promotion_id: `${ticket}:${exec}:${n}`, n, cycle: 1, task_id: ticket, execution_id: exec, spec_version: 1,
+        hash_scope: 'contract_sections_v1', sealed_contract_hash: H('e'), observed_contract_hash: H('e'),
+        spec_sha256: specSha, changelog: { status: 'ABSENT_LEGACY' }, provenance: { status: 'ABSENT_LEGACY' },
+        post_verify_contract_change: false, contract: 'contract_sections_v1', base_branch: 'main', promoted_at: AT,
+        ...overrides,
+    };
+    return {
+        promotion: entry,
+        files: {
+            [`docs/sdd/changes/${ticket}/promotions.json`]: Buffer.from(JSON.stringify([entry], null, 2)),
+            [`docs/sdd/changes/${ticket}/blobs/${specSha}`]: specBytes,
+        },
+    };
+}
+
+const approving = (entry, over = {}) => ({
+    state: 'DECIDED', approving: true, command_sha256: entry.command_sha256, authorized_op_id: entry.op_id,
+    approver_id: 'richard', approver_current_right: true, record_digest: H('f'), ...over,
+});
+
+/**
+ * Construtor de cenário em memória. Cada passo devolve {baseTree, resultTree, entry, ctx};
+ * `commit(step)` torna o resultado a nova base.
+ */
+function scenario({ project = 'prisma', slug = 'spec-change', ticket = 'PRI-900', exec = 'exec-1', extraFiles = {} } = {}) {
+    const { cmd, log, catalog, git } = W();
+    const prom = promotionFiles({ ticket, exec });
+    const files = {
+        [cmd.SPEC_HASH_CONFIG]: hashConfigBytes(),
+        ...admittedFiles(project),
+        ...prom.files,
+        ...extraFiles,
+    };
+    const state = { files: { ...files }, entries: [], state: log.emptyState(), records: {}, seq: 0 };
+    const capability = `cap:${project}:${slug}`;
+    const tree = (f = state.files, id = 'mem') => git.memTree(f, id);
+
+    function basisOf(f) {
+        return {
+            project_binding_ref: { path: cmd.ADMITTED_PROJECT, sha256: cmd.sha256hex(f[cmd.ADMITTED_PROJECT]) },
+            policy_ref: { path: cmd.ADMITTED_POLICY, sha256: cmd.sha256hex(f[cmd.ADMITTED_POLICY]) },
+        };
+    }
+
+    /** Monta o passo. `mutate(cmdObj)` antes do hash; `mutateEntry(entry)` depois. */
+    function step(op, opts = {}) {
+        const n = ++state.seq;
+        const head = state.state.version_head;
+        let payload;
+        let specBytes = null;
+        if (op === 'INC') {
+            const text = opts.specText || specText(`versão ${n}`);
+            specBytes = Buffer.from(text, 'utf8');
+            const th = contractHashOf(text);
+            const noop = head && th === head.cap_hash;
+            payload = {
+                base_version: head ? head.cap_version : null, base_hash: head ? head.cap_hash : null,
+                delta_sha256: H('d'), target_version: noop ? head.cap_version : (head ? head.cap_version : 0) + 1,
+                target_hash: th, target_spec_sha256: cmd.sha256hex(specBytes),
+                source_promotion: { promotion_id: prom.promotion.promotion_id, spec_sha256: prom.promotion.spec_sha256, observed_contract_hash: prom.promotion.observed_contract_hash },
+                validation_ref: { kind: project === 'prisma' ? 'verify_pass' : 'qa_approved', ref: `verify:${exec}`, promotion_id: prom.promotion.promotion_id, execution_id: exec },
+                validation_basis: basisOf(state.files),
+            };
+        } else if (op === 'ACTIVATE' || op === 'REACTIVATE') {
+            const v = opts.target || state.state.version_head;
+            payload = { expected_active: state.state.active, target_version: v.cap_version, target_hash: v.cap_hash };
+        } else if (op === 'ARCHIVE') {
+            payload = { expected_active: state.state.active };
+        } else if (op === 'EDIT_ALIASES_SOURCES') {
+            payload = { edit_sha256: opts.editSha || H('a') };
+        }
+        const command = { canon: 'sdd-cmd-v1', op, project, capability, expected_generation: state.state.generation, approved_payload: payload };
+        if (opts.mutate) opts.mutate(command);
+        const opId = opts.opId || `op:${project}:${slug}:${op}:req-${n}`;
+        const applied = log.applyCommand(state.state, command, { editResolver: opts.editResolver || null, strictEdit: false });
+        let entry = {
+            op_id: opId, command, command_sha256: cmd.commandSha256(command), decision_ref: opts.decisionRef || `D-${n}`,
+            actor: opts.actor || 'richard', at: AT,
+            result_generation: state.state.generation + 1, result: applied.ok ? applied.result : 'activated',
+        };
+        if (opts.mutateEntry) opts.mutateEntry(entry);
+        const oldBytes = state.files[cmd.logPath(slug)] || null;
+        const result = { ...state.files, [cmd.logPath(slug)]: log.appendBytes(oldBytes, entry) };
+        if (specBytes) {
+            result[cmd.specPath(slug)] = specBytes;
+            result[cmd.versionPath(slug, cmd.sha256hex(specBytes))] = specBytes;
+        }
+        const cat = catalog.generateCatalog(tree(result), { editResolver: opts.editResolver || null });
+        if (cat) result[cmd.CATALOG_PATH] = cat; else delete result[cmd.CATALOG_PATH];
+        if (opts.mutateFiles) opts.mutateFiles(result);
+        const records = { ...state.records, [entry.decision_ref]: approving(entry, opts.record || {}) };
+        return {
+            op, entry, files: result, records,
+            baseTree: tree(state.files, 'base'), resultTree: tree(result, 'result'),
+            ctx: {
+                mode: 'new', project, slug, baseTree: tree(state.files, 'base'), resultTree: tree(result, 'result'),
+                entry, oldEntries: [...state.entries], oldState: state.state, auditState: 'OK', atCommit: 'base-sha',
+                editResolver: opts.editResolver || null,
+            },
+        };
+    }
+
+    function commit(s) {
+        const r = log.applyCommand(state.state, s.entry.command, { editResolver: s.ctx.editResolver, strictEdit: false });
+        if (!r.ok) throw new Error(`fixture: passo inválido ${r.code} ${r.reason}`);
+        state.files = s.files;
+        state.entries = [...state.entries, s.entry];
+        state.state = r.next;
+        state.records = s.records;
+        return s;
+    }
+
+    return { state, step, commit, tree, project, slug, capability, promotion: prom.promotion, basisOf };
+}
+
+module.exports.fixtures = { H, AT, ROOT, specText, contractHashOf, hashConfigBytes, admittedFiles, promotionFiles, approving, scenario };
