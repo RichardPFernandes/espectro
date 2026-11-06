@@ -1,0 +1,21 @@
+# NÃO AUTORITATIVO — ensaio P1-b; formato documental candidato.
+# Índice derivado. Não determina versão vigente, aprovação ou estado ativo.
+# Esta branch não contém a entrada do P1 (cap:prisma:spec-change), que vive na branch do P1.
+catalog_format: "p1-example-v1"
+project: prisma
+capabilities:
+  - id: "cap:prisma:concurrency-authority"
+    title: "Autoridade de escrita, concorrência e idempotência do estado do run"
+    slug: concurrency-authority
+    status: Candidate
+    path: capabilities/concurrency-authority/spec.md
+    aliases: [task-76]
+    owner: Richard
+    source_commit: "d1dfd2bae499911994decf8b340e0aefe18f886e"
+    source_refs:
+      - kind: roadmap_card
+        id: task-76
+        project: prisma
+        version: "1793717367-596d"
+        hash: "4ab82b702363b746c777cedafb3fc8a56296e367bf118b14be15370f52fad560"
+        locator: "task-76"
