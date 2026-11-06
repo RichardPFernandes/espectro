@@ -255,11 +255,13 @@ listar o bloqueio de admissão por projeto (causa, sha esperado e observado,
 saída `mode: OFF`), lendo o marcador da T6. Sem tela nova.
 
 **Critérios de aceite:**
-- [ ] O teste de API do dashboard devolve o bloqueio quando o marcador existe e nada quando ele não existe.
-- [ ] A suíte do dashboard passa.
+- [x] O teste de API do dashboard devolve o bloqueio quando o marcador existe e nada quando ele não existe. Cada ticket barrado sem run vira uma pré-task sintética `<ticket>-spec-gate`, `blocked` (status `needs_human_review`) e só leitura, com `routingBlocked { scope, cause, detail, transient, firstBlockedAt, notifiedAt, configFile }`. Ticket com run real não duplica, e marcador malformado não inventa run.
+- [x] A suíte do dashboard passa.
+- [x] Lista: badge "⚠ ADMISSÃO BLOQUEADA" com o estilo existente (`qa-blocked-badge`, sem CSS novo), com a causa e a saída no tooltip. O "▶ Disparar" passa a explicar `routing_admission_blocked` e `routing_not_started`.
 
-**Verificação:**
-- [ ] `cd dashboard && npm test`
+**Verificação (2026-11-06):**
+- [x] Node 22: dashboard 299 pass / 0 fail; `check:js` do dashboard limpo. O render do badge foi conferido fora do repo, porque o retry QA também não tem teste de UI.
+- **Fora da T9:** a Run admitida que parou em `NOT_STARTED` (T7) aparece como `blocked` comum. O motivo fica no `agent_log` e no Attempt DOM06, mas o Dashboard ainda não mostra um badge específico para ela.
 
 **Dependências:** T6.
 **Arquivos:** `dashboard/server.js` ou o módulo da rota existente, `public/` correspondente, teste de API.
