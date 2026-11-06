@@ -175,8 +175,10 @@ async function runAudit({ git, host, registryBranch, project, decisionPort, iden
         const opId = (/^op_id: (.+)$/m.exec(git.commitMessage(m.oid)) || [])[1];
         const parsed = parseLog(tipTree.read(cmd.logPath(slug)));
         const inLog = parsed.status === 'OK' && parsed.entries.some(e => e.op_id === opId);
-        const prs = await host.prsByBranch(cmd.markerBranch(project, slug));
-        const outcome = inLog ? 'MERGED_APPLIED' : (prs.length && prs.every(p => p.state === 'CLOSED') ? 'CLOSED' : 'OPEN_OR_NONE');
+        const prs = (await host.prsByBranch(cmd.markerBranch(project, slug))).filter(p => p.head === m.oid);
+        // Desfecho certo: op_id no log, PR do marcador integrado, ou todos os PRs dele fechados sem merge.
+        const outcome = inLog || prs.some(p => p.state === 'MERGED') ? 'MERGED_APPLIED'
+            : (prs.length && prs.every(p => p.state === 'CLOSED') ? 'CLOSED' : 'OPEN_OR_NONE');
         if (DEFINITIVE_MARKER_OUTCOME.has(outcome)) {
             await host.deleteRef(m.name, identities.wa);
             report.markersRemoved.push(m.name);

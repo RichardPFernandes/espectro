@@ -43,6 +43,7 @@ describe('WT-F2-03 append e primeira operação (RRC-SDD-002 §4.5)', () => {
         const b2 = log.appendBytes(b1, e2);
         assert.ok(b2.subarray(0, b1.length - 1).equals(b1.subarray(0, b1.length - 1)), 'prefixo byte a byte exceto o ]');
         assert.equal(log.splitAppend(null, b1).ok, true);
+        assert.equal(log.splitAppend(null, log.appendBytes(b1, e2)).code, 'LOG_BYTES', 'primeira operação com duas entradas');
         const sp = log.splitAppend(b1, b2);
         assert.equal(sp.ok, true);
         assert.equal(sp.entry.op_id, e2.op_id);

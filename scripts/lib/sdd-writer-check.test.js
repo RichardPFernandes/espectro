@@ -226,6 +226,16 @@ describe('WT-F5-11 sabotagens (uma de cada vez): o caso ruim correspondente pass
         assert.equal(code(await directCheck(real, env, c.files, { testOnly: TEST_ONLY })), 'DERIVED');
         assert.equal(code(await directCheck(loadMutant(['sdd-writer-decide.js', 'V-9-CATALOG']), env, c.files, { testOnly: TEST_ONLY })), 'PASS');
     });
+    it('V-1: duas capabilities no mesmo delta', async () => {
+        const env = makeEnv();
+        const st = env.s.step('INC');
+        Object.assign(env.records, st.records);
+        const other = F.scenario({ slug: 'zeta' }).step('INC');
+        const files = { ...st.files, ...Object.fromEntries(Object.entries(other.files).filter(([k]) => k.startsWith('docs/sdd/capabilities/zeta/'))) };
+        files[cmd.CATALOG_PATH] = require('./sdd-writer-catalog').generateCatalog(require('./sdd-writer-git').memTree(files));
+        assert.equal(code(await directCheck(real, env, files)), 'SCOPE');
+        assert.equal(code(await directCheck(loadMutant(['sdd-writer-check.js', 'V-1-ONE-CAP']), env, files)), 'PASS');
+    });
     it('V-11: actor ≠ autor', async () => {
         const env = makeEnv();
         const st = env.s.step('INC');

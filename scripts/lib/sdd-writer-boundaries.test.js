@@ -170,3 +170,14 @@ describe('WT-F0-06 sabotagem: require("../cas") no writer', () => {
         assert.ok(scanWriterImports(root).some(p => p.includes('transitivo')));
     });
 });
+
+describe('Matriz de sabotagem: toda proteção marcada tem teste de sabotagem', () => {
+    it('cada // @guard <ID> é referenciado por algum teste do writer', () => {
+        const { listGuards } = require('./sdd-writer-testkit');
+        const lib = path.join(ROOT, 'scripts', 'lib');
+        const tests = fs.readdirSync(lib).filter(f => /^sdd-writer.*\.test\.js$/.test(f)).map(f => fs.readFileSync(path.join(lib, f), 'utf8')).join('\n');
+        const missing = listGuards().filter(([, g]) => !tests.includes(`'${g}'`)).map(([f, g]) => `${f}:${g}`);
+        assert.deepEqual(missing, []);
+        assert.ok(listGuards().length >= 30);
+    });
+});

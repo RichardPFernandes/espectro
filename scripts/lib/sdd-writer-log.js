@@ -58,9 +58,8 @@ function splitAppend(oldBytes, newBytes) {
     const parsedNew = parseLog(newBytes);
     if (parsedNew.status !== 'OK') return { ok: false, code: 'LOG_BYTES', reason: parsedNew.reason };
     if (oldBytes === null) {
-        // @guard APPEND-ONE-FIRST
+        // Defesa em profundidade: sem esta linha, V-8/V-9 ainda recusam (sem sabotagem isolável).
         if (parsedNew.entries.length !== 1) return { ok: false, code: 'LOG_BYTES', reason: 'FIRST_APPEND_NOT_SINGLE' };
-        // @end APPEND-ONE-FIRST
         return { ok: true, entry: parsedNew.entries[parsedNew.entries.length - 1], entries: parsedNew.entries };
     }
     const parsedOld = parseLog(oldBytes);

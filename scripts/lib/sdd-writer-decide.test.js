@@ -331,6 +331,8 @@ describe('WT-F4-13 sabotagens (uma de cada vez): o caso ruim correspondente pass
         ['V-0', 'sdd-writer-decide.js', 'V-0', s => ({ ...s.step('INC'), audit: 'UNKNOWN' })],
         ['R4-02 UNVERIFIABLE como OK', 'sdd-writer-decide.js', 'R4-02', s => ({ ...s.step('INC'), audit: 'UNVERIFIABLE' })],
         ['U-002-8', 'sdd-writer-decide.js', 'U0028', s => s.step('ACTIVATE')],
+        ['V-5 direito atual', 'sdd-writer-decide.js', 'V-5-RIGHT', s => s.step('INC', { record: { approver_current_right: false } })],
+        ['V-9 result', 'sdd-writer-decide.js', 'V-9-RESULT', s => s.step('INC', { mutateEntry: e => { e.result = 'inc_no_contract_change'; } })],
     ];
     for (const [name, file, guard, mk] of cases) {
         it(name, async () => {
@@ -364,5 +366,21 @@ describe('WT-F4-19 sabotagem do modo histórico: exigir direito atual', () => {
         const m = loadMutant(['sdd-writer-decide.js', 'HIST-RIGHT']);
         const r = await run(st, { over: { mode: 'historical', auditState: undefined, atCommit: 'append-sha' }, impl: decideOf(m) });
         assert.deepEqual([r.ok, r.code], [false, 'DECISION']);
+    });
+});
+
+describe('WT-F4-13 sabotagem V-10: alias duplicado no projeto passa', () => {
+    it('sem V-10, o segundo vínculo vigente é aceito', async () => {
+        const a = F.scenario({ slug: 'alpha' });
+        a.commit(a.step('INC'));
+        const resolver = sha => ({ [F.H('a')]: editAdd('task-76@v80'), [F.H('b')]: editAdd('task-76@v80') }[sha] || null);
+        a.commit(a.step('EDIT_ALIASES_SOURCES', { editResolver: resolver, editSha: F.H('a') }));
+        const capFiles = Object.fromEntries(Object.entries(a.state.files).filter(([k]) => k.startsWith('docs/sdd/capabilities/alpha/')));
+        const b = F.scenario({ slug: 'beta', extraFiles: capFiles });
+        b.commit(b.step('INC', { editResolver: resolver }));
+        const st = b.step('EDIT_ALIASES_SOURCES', { editResolver: resolver, editSha: F.H('b') });
+        assert.equal((await run(st, { over: { conditions: TEST_ONLY } })).code, 'ALIAS');
+        const m = loadMutant(['sdd-writer-decide.js', 'V-10']);
+        assert.equal((await run(st, { over: { conditions: TEST_ONLY }, impl: decideOf(m) })).ok, true);
     });
 });
