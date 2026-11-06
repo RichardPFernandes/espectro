@@ -23,14 +23,23 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { parseHeading, normalizeHeading, stripComments } = require('./spec-validator');
+const { parseHeading, normalizeHeading, stripComments } = require('./spec-headings');
 
 const CONFIG_PATH = path.join(process.env.REPO_PATH || process.cwd(), '.claude', 'spec-hash-config.json');
 
 let cached = null;
 function loadConfig(file = path.join(process.env.REPO_PATH || process.cwd(), '.claude', 'spec-hash-config.json')) {
     if (cached && cached.file === file) return cached;
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const config = parseConfig(JSON.parse(fs.readFileSync(file, 'utf8')), file);
+    cached = config;
+    return config;
+}
+
+/**
+ * Config já lido (objeto JSON) → forma usada por scopeOf/contractHash. Permite a quem
+ * lê o config de um objeto Git (writer SDD, PRI-266) usar a mesma regra sem tocar o disco.
+ */
+function parseConfig(raw, file = '<memória>') {
     if (!raw || typeof raw !== 'object' || !raw.scopes || !raw.current || !raw.scopes[raw.current]) {
         throw new Error(`${file}: config inválido — precisa de "current" apontando para um id em "scopes"`);
     }
@@ -42,9 +51,7 @@ function loadConfig(file = path.join(process.env.REPO_PATH || process.cwd(), '.c
             exclude: (s.exclude_sections || []).map(h => new RegExp(h)),
         };
     }
-    const config = { file, algorithm: raw.algorithm || 'sha256', current: raw.current, scopes };
-    cached = config;
-    return config;
+    return { file, algorithm: raw.algorithm || 'sha256', current: raw.current, scopes };
 }
 
 function currentScope(config = loadConfig()) {
@@ -178,7 +185,7 @@ function diffSummary(before, after) {
 }
 
 module.exports = {
-    CONFIG_PATH, loadConfig, currentScope, scopeOf, contractSections, canonicalContract,
+    CONFIG_PATH, loadConfig, parseConfig, currentScope, scopeOf, contractSections, canonicalContract,
     contractHash, fingerprint, diffSummary,
 };
 

@@ -47,6 +47,7 @@
 
 const fs = require('fs');
 const crypto = require('crypto');
+const { normalizeHeading, parseHeading, stripComments } = require('./spec-headings');
 const acIdsLib = require('./ac-ids');
 const specTemplate = require('./spec-template');
 
@@ -112,30 +113,6 @@ const TEMPLATE_REQUIRED_SECTIONS = [
 const TEMPLATE_OPTIONAL_SECTIONS = ['Dependências Técnicas', 'Restrições', 'Referências'];
 const PENDING_CLARIFICATION_MARKER = '[PENDING_CLARIFICATION]';
 const TEMPLATE_VERSION_POLICIES = ['ignore', 'warn'];
-
-function normalizeHeading(text) {
-    return text
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .toLowerCase()
-        .replace(/[*_`]/g, '')
-        .trim();
-}
-
-// Retorna {level, text} se a linha for cabeçalho Markdown (#..####) ou Textile (h1.-h4.).
-function parseHeading(line) {
-    const md = /^\s{0,3}(#{1,4})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (md) return { level: md[1].length, text: md[2] };
-    const textile = /^\s*h([1-4])\.\s+(.+?)\s*$/.exec(line);
-    if (textile) return { level: Number(textile[1]), text: textile[2] };
-    return null;
-}
-
-function stripComments(content) {
-    // Instruções inline do template ficam em comentário HTML — não contam como
-    // conteúdo (senão um template copiado sem preencher passaria no portão).
-    return content.replace(/<!--[\s\S]*?-->/g, '');
-}
 
 // Quebra a spec em seções: cada cabeçalho reconhecido vira {heading, level, body[]},
 // com corpo indo até o próximo cabeçalho de nível igual ou superior.
