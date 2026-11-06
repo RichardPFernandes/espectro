@@ -31,6 +31,7 @@
 //                          (padrão: _archive + memory/archive/<YYYY-MM>/)
 //   --fill-even-if-spent   cria mesmo se o ticket já tiver spent_hours > 0
 //                          (ainda pula se o marcador [prisma-hours:task] existir)
+//   --max-entry-hours=N    skip entry se hours > N (remediação; não arredonda)
 //   --runs-dir=<path>      override de memory/runs (default: $REPO_PATH/memory/runs)
 //   --report=<path>        grava JSON {summary,results}
 //   --help
@@ -75,6 +76,7 @@ function parseArgs(argv) {
         fillEvenIfSpent: false,
         activityId: DEFAULT_ACTIVITY_ID,
         minHours: DEFAULT_MIN_HOURS,
+        maxEntryHours: null,
         limit: null,
         since: null,
         runsDir: null,
@@ -126,6 +128,9 @@ function parseArgs(argv) {
             case '--fill-even-if-spent':
                 out.fillEvenIfSpent = true;
                 break;
+            case '--max-entry-hours':
+                out.maxEntryHours = Number(value());
+                break;
             case '--runs-dir':
                 out.runsDir = value();
                 break;
@@ -149,6 +154,9 @@ function parseArgs(argv) {
     if (!Number.isFinite(out.activityId) || out.activityId < 1) {
         throw new Error('--activity-id inválido');
     }
+    if (out.maxEntryHours != null && (!Number.isFinite(out.maxEntryHours) || out.maxEntryHours <= 0)) {
+        throw new Error('--max-entry-hours exige número > 0');
+    }
     if (out.since) {
         const d = new Date(`${out.since}T00:00:00.000Z`);
         if (Number.isNaN(d.getTime())) throw new Error(`--since inválido: ${out.since}`);
@@ -160,10 +168,13 @@ function parseArgs(argv) {
 const USAGE = `uso: node scripts/backfill-redmine-hours.js [--dry-run|--apply]
        [--ticket=ID]... [--since=YYYY-MM-DD] [--limit=N] [--min-hours=0.5]
        [--activity-id=9] [--include-active] [--fill-even-if-spent]
-       [--runs-dir=path] [--report=path.json]
+       [--max-entry-hours=N] [--runs-dir=path] [--report=path.json]
 
 REPO_PATH aponta o consumidor (app-back). REDMINE_URL + REDMINE_API_KEY vêm do
-.env do consumidor (ou do ambiente). Dry-run é o padrão.`;
+.env do consumidor (ou do ambiente). Dry-run é o padrão.
+Actionable do mesmo ticket sincroniza do maior wall-clock para o menor
+(sem --fill-even-if-spent, o maior vence). --max-entry-hours skipa entries
+acima do teto (útil na remediação de wall-clock idle).`;
 
 async function main(argv) {
     let args;
@@ -214,6 +225,7 @@ async function main(argv) {
         limit: args.limit,
         fillEvenIfSpent: args.fillEvenIfSpent,
         activityId: args.activityId,
+        maxEntryHours: args.maxEntryHours,
         onProgress: r => {
             const tag = r.action || 'skip';
             const tid = r.ticketId != null ? `#${r.ticketId}` : '-';

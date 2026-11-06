@@ -16,6 +16,7 @@ const {
     syncRunHoursLive,
     runsDirOf,
     runBackfill,
+    orderCandidatesForSync,
     presumedHoursFromComplexity,
     countPrsFromState,
     countJournalMoves,
@@ -697,19 +698,32 @@ test('collectCandidates inclui memory/archive/<YYYY-MM>/ (rotação cleanup-runs
     assert.ok(!byId['43732-lixo'], 'ignora mês inválido');
 });
 
+test('orderCandidatesForSync coloca maior hours antes (mesmo ticket)', () => {
+    const ordered = orderCandidatesForSync([
+        { ok: false, reason: 'no_ticket', taskId: 'x' },
+        { ok: true, taskId: 't-small', ticketId: 1, hours: 0.5 },
+        { ok: true, taskId: 't-big', ticketId: 1, hours: 6.5 },
+        { ok: true, taskId: 't-mid', ticketId: 2, hours: 2 },
+    ]);
+    const ok = ordered.filter(c => c.ok).map(c => c.taskId);
+    assert.deepStrictEqual(ok, ['t-big', 't-mid', 't-small']);
+    assert.strictEqual(ordered[0].reason, 'no_ticket');
+});
+
 test('runBackfill dry-run = apply em vários runs do mesmo ticket (sem fillEvenIfSpent)', async t => {
     const { runs, archive } = tmpRuns();
+    // Grava o menor ANTES na pasta — sem orderCandidates o 0,5h/1h ganharia.
     writeRun(archive, '43740-ciclo-a', {
         status: 'fully_merged',
         updated_at: '2026-10-01T12:00:00.000Z',
         redmine_ticket: { id: 43740 },
-        cost_tracking: { totals: { duration_ms: 3_600_000 } },
+        cost_tracking: { totals: { duration_ms: 3_600_000 } }, // 1h
     });
     writeRun(archive, '43740-ciclo-b', {
         status: 'fully_merged',
         updated_at: '2026-10-02T12:00:00.000Z',
         redmine_ticket: { id: 43740 },
-        cost_tracking: { totals: { duration_ms: 7_200_000 } },
+        cost_tracking: { totals: { duration_ms: 7_200_000 } }, // 2h
     });
 
     const rmDry = await fakeRedmine({ entriesByIssue: { 43740: [] } });
@@ -738,22 +752,58 @@ test('runBackfill dry-run = apply em vários runs do mesmo ticket (sem fillEvenI
 
     const dryActions = dry.results.filter(r => r.ok).map(r => `${r.taskId}:${r.action}:${r.reason || ''}`);
     const applyActions = apply.results.filter(r => r.ok).map(r => `${r.taskId}:${r.action}:${r.reason || ''}`);
-    // Mesma ordem de candidatos → 1 actionable + 1 skip spent; totais iguais.
+    // Maior wall-clock vence: 2h (ciclo-b), não 1h (ciclo-a).
     assert.strictEqual(dry.summary.actionable, 1);
     assert.strictEqual(apply.summary.actionable, 1);
+    assert.strictEqual(dry.summary.hoursWouldSync, 2);
+    assert.strictEqual(apply.summary.hoursWouldSync, 2);
     assert.strictEqual(dry.summary.hoursWouldSync, apply.summary.hoursWouldSync);
     assert.strictEqual(dry.summary.skipped, apply.summary.skipped);
+    const created = apply.results.find(r => r.action === 'created');
+    assert.strictEqual(created.taskId, '43740-ciclo-b');
+    assert.strictEqual(created.hours, 2);
     assert.ok(dry.results.some(r => r.action === 'would_create'));
     assert.ok(dry.results.some(r => r.action === 'skip' && r.reason === 'issue_already_has_spent'));
     assert.ok(apply.results.some(r => r.action === 'created'));
     assert.ok(apply.results.some(r => r.action === 'skip' && r.reason === 'issue_already_has_spent'));
     assert.strictEqual(rmApply.posts.length, 1);
     assert.strictEqual(rmDry.posts.length, 0);
-    // Ações espelhadas (would_create ↔ created).
     assert.deepStrictEqual(
         dryActions.map(s => s.replace('would_create', 'created')),
         applyActions,
     );
+});
+
+test('syncCandidateHours skipa exceeds_max_entry_hours', async t => {
+    const rm = await fakeRedmine({ entriesByIssue: { 43760: [] } });
+    t.after(rm.close);
+    const c = {
+        ok: true,
+        taskId: '43760-idle',
+        ticketId: 43760,
+        hours: 27.5,
+        spentOn: '2026-10-02',
+        source: 'state.cost_tracking',
+        marker: hoursMarker('43760-idle'),
+        comments: `x ${hoursMarker('43760-idle')}`,
+        payload: buildTimeEntryPayload({
+            issueId: 43760,
+            hours: 27.5,
+            spentOn: '2026-10-02',
+            comments: `x ${hoursMarker('43760-idle')}`,
+        }),
+    };
+    const r = await syncCandidateHours(c, {
+        dryRun: true,
+        redmineFetch: rm.fetch,
+        baseUrl: rm.baseUrl,
+        apiKey: 'k',
+        fillEvenIfSpent: true,
+        maxEntryHours: 8,
+    });
+    assert.strictEqual(r.action, 'skip');
+    assert.strictEqual(r.reason, 'exceeds_max_entry_hours');
+    assert.strictEqual(rm.posts.length, 0);
 });
 
 test('listTimeEntries pagina além de limit=100 (marcador na 2ª página)', async t => {
