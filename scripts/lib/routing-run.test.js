@@ -186,6 +186,15 @@ test('blockedNotice: primeiro bloqueio não transitório avisa; notified_at só 
     assert.strictEqual(sent(r).notified_at, AT);
 });
 
+test('blockedNotice: mesma assinatura preserva o estado de entrega (incerto, tentativas, local)', () => {
+    const first = rr.blockedNotice(null, invalidCfg(), { ticketId: 1, at: AT }).marker;
+    const withDelivery = { ...first, local_notified_at: AT, notice_attempts: 2, notice_uncertain_at: AT };
+    const next = rr.blockedNotice(withDelivery, invalidCfg(), { ticketId: 2, at: AT }).marker;
+    assert.deepStrictEqual([next.local_notified_at, next.notice_attempts, next.notice_uncertain_at], [AT, 2, AT]);
+    const other = rr.blockedNotice(withDelivery, invalidCfg({ cause: 'POLICY_MISSING', detail: 'x' }), { ticketId: 1, at: AT }).marker;
+    assert.strictEqual(other.notice_attempts, undefined, 'assinatura nova começa do zero');
+});
+
 test('blockedNotice: aviso que falhou (sem markNoticeSent) é tentado de novo no tick seguinte', () => {
     const failed = rr.blockedNotice(null, invalidCfg(), { ticketId: 1, at: AT });
     const retry = rr.blockedNotice(failed.marker, invalidCfg(), { ticketId: 1, at: '2026-11-06T12:05:00.000Z' });

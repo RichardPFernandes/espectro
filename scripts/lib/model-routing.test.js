@@ -210,6 +210,7 @@ test('passo 5: sem candidato no tier, sobe de tier e nunca desce', () => {
 
 test('passo 5: nenhum candidato em tier ≥ da classe → PROVIDER_NOT_ELIGIBLE (AC-06)', () => {
     const r = resolve({ signals: signalsOf(C2_GROUP), ineligibleModels: ['m-t2a', 'm-t2b', 'm-t3'] });
+    assert.strictEqual(r.decision.effort_applied, true, 'a decisão recusada também registra se o esforço iria');
     assert.deepStrictEqual([r.ok, r.result, r.cause, r.detail], [false, 'NOT_STARTED', 'PROVIDER_NOT_ELIGIBLE', 'no_eligible_candidate']);
     assert.strictEqual(r.decision.candidates.length, 3, 'a decisão recusada guarda os candidatos e os motivos');
 });

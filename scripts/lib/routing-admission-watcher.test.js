@@ -33,11 +33,25 @@ fs.writeFileSync(driver, `
 const fs = require('fs');
 const [watcherPath, id, resultFile] = process.argv.slice(2).filter(a => a !== '--follow');
 // fetch do watcher stubado; cada chamada fica registrada para as asserções de aviso.
+// Redmine falso: PUT que "gravou" vira journal; GET ?include=journals devolve os journals.
+// FAIL_PUT=1 → 503 (certeza de que não gravou); FAIL_PUT=timeout → grava e cai a conexão
+// (resultado incerto, como um proxy que estoura o tempo depois do Redmine gravar).
 global.fetch = async (url, opts = {}) => {
-    fs.appendFileSync(process.env.FETCH_LOG, JSON.stringify({ url: String(url), method: opts.method || 'GET', body: opts.body || null }) + '\\n');
-    // FAIL_PUT=1: o Redmine responde 500 aos PUTs (aviso que não chegou).
-    if (process.env.FAIL_PUT === '1' && opts.method === 'PUT') return { ok: false, status: 500, json: async () => ({}), text: async () => '' };
-    return { ok: true, status: 204, json: async () => ({}), text: async () => '' };
+    const u = String(url);
+    fs.appendFileSync(process.env.FETCH_LOG, JSON.stringify({ url: u, method: opts.method || 'GET', body: opts.body || null }) + '\\n');
+    const m = /\\/issues\\/(\\d+)\\.json/.exec(u);
+    const ok = (body = {}, status = 204) => ({ ok: true, status, json: async () => body, text: async () => '' });
+    if (opts.method === 'PUT') {
+        if (process.env.FAIL_PUT === '1') return { ok: false, status: 503, json: async () => ({}), text: async () => '' };
+        if (m) fs.appendFileSync(process.env.JOURNAL_LOG, JSON.stringify({ id: m[1], notes: JSON.parse(opts.body).issue.notes }) + '\\n');
+        if (process.env.FAIL_PUT === 'timeout') throw Object.assign(new Error('timeout simulado'), { code: 'ETIMEDOUT' });
+        return ok();
+    }
+    if (m && u.includes('include=journals')) {
+        const all = fs.existsSync(process.env.JOURNAL_LOG) ? fs.readFileSync(process.env.JOURNAL_LOG, 'utf8').split('\\n').filter(Boolean).map(l => JSON.parse(l)) : [];
+        return ok({ issue: { id: Number(m[1]), journals: all.filter(j => j.id === m[1]).map(j => ({ notes: j.notes })) } }, 200);
+    }
+    return ok();
 };
 const watcher = require(watcherPath);
 const { description } = require(${JSON.stringify(path.join(PRISMA_ROOT, 'scripts', 'fixtures', 'ticket-example.json'))});
@@ -139,6 +153,8 @@ const fetchLog = path.join(tmp, 'fetch.jsonl');
 const redminePuts = id => (fs.existsSync(fetchLog) ? fs.readFileSync(fetchLog, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [])
     .filter(c => c.method === 'PUT' && c.url.endsWith(`/issues/${id}.json`));
 
+const journalLog = path.join(tmp, 'journals.jsonl');
+
 function dispatch(repo, id, scenario, { follow = true, failPut = false } = {}) {
     const resultFile = path.join(results, `${scenario}-${Date.now()}.json`);
     const env = {
@@ -156,7 +172,8 @@ function dispatch(repo, id, scenario, { follow = true, failPut = false } = {}) {
         REDMINE_MIN_INTERVAL_MS: '0',
         ROUTING_SCENARIO: scenario,
         FETCH_LOG: fetchLog,
-        ...(failPut ? { FAIL_PUT: '1' } : {}),
+        JOURNAL_LOG: journalLog,
+        ...(failPut ? { FAIL_PUT: failPut === true ? '1' : String(failPut) } : {}),
     };
     const args = [driver, WATCHER, String(id), resultFile, ...(follow ? ['--follow'] : [])];
     return new Promise(resolve => {
@@ -400,6 +417,10 @@ test('T7: ticket novo ON com plugin não neutralizável → recusa sem Run e 1 a
     assert.ok(marker.notified_at, 'aviso marcado depois de enviado');
     assert.strictEqual(redminePuts(id).length, 1);
     assert.ok(!fs.existsSync(taskDirOf(repo, id)), 'nenhuma task criada');
+    // Revisão independente (MAJOR-2): a recusa sai na pré-checagem, sem tocar no git.
+    assert.ok(!fs.existsSync(worktreeOf(repo, id)), 'nenhum worktree criado para ticket recusado');
+    assert.strictEqual(git(repo, 'branch', '--list', String(id)), '', 'nenhuma branch do ticket criada');
+    assert.strictEqual(marker.routing.effort_router_plugin, 'LOADED');
 });
 
 test('Bugbot (PR #97): aviso que não chegou ao Redmine é tentado de novo no tick seguinte', async () => {
@@ -422,6 +443,31 @@ test('Bugbot (PR #97): aviso que não chegou ao Redmine é tentado de novo no ti
     await dispatch(invalido, 233707, 'b-falha-adm-2', { follow: false });
     assert.strictEqual(redminePuts(233707).length, 2);
     assert.ok(JSON.parse(fs.readFileSync(blocked, 'utf8')).notified_at);
+});
+
+// Revisão independente (MAJOR-1, AGENTS.md regra 5): resultado incerto não é reenviado às
+// cegas; falha certa é tentada de novo até o teto e depois desiste.
+test('MAJOR-1: PUT com resultado incerto (gravou e caiu) não duplica a nota: confere journals e marca como dado', async () => {
+    const id = 233708;
+    const repo = blockedConsumer();
+    await dispatch(repo, id, 'm1-incerto-1', { follow: false, failPut: 'timeout' });
+    const m1 = JSON.parse(fs.readFileSync(notStartedMarker(repo, id), 'utf8'));
+    assert.deepStrictEqual([m1.notified_at, Boolean(m1.notice_uncertain_at)], [null, true]);
+    await dispatch(repo, id, 'm1-incerto-2', { follow: false });
+    await dispatch(repo, id, 'm1-incerto-3', { follow: false });
+    assert.strictEqual(redminePuts(id).length, 1, 'a nota que já tinha gravado não é repetida');
+    const m2 = JSON.parse(fs.readFileSync(notStartedMarker(repo, id), 'utf8'));
+    assert.ok(m2.notified_at, 'achou o token nos journals e marcou como dado');
+    assert.match(JSON.parse(redminePuts(id)[0].body).issue.notes, /\[aviso-roteamento [0-9a-f]{12}\]/);
+});
+
+test('MAJOR-1: falha certa (503) é tentada até o teto e depois desiste, sem repetir para sempre', async () => {
+    const id = 233709;
+    const repo = blockedConsumer();
+    for (let i = 0; i < 7; i++) await dispatch(repo, id, `m1-certa-${i}`, { follow: false, failPut: true });
+    assert.strictEqual(redminePuts(id).length, 5, 'teto de 5 tentativas');
+    const m = JSON.parse(fs.readFileSync(notStartedMarker(repo, id), 'utf8'));
+    assert.deepStrictEqual([m.notified_at, m.notice_attempts, Boolean(m.notice_failed_at)], [null, 5, true]);
 });
 
 // ── Revisão do Checkpoint B ────────────────────────────────────────────────────
