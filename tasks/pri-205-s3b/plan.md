@@ -70,10 +70,10 @@ Ref (Q9), a policy p2 (Q2) e o item no Keychain.
 ### Fase 2: config, autoridade e efeito
 - [x] T4: seção `classifier` do jev na policy roteada e `classifier_credential` no config
 - [x] T5: Authority Ref e `classifier_effective` na admissão
-- [ ] T6: orquestração em sombra com Attempt de efeito (`classifier-shadow.js`)
+- [x] T6: orquestração em sombra com Attempt de efeito (`classifier-shadow.js`)
 
 ### Checkpoint B
-- [ ] Suíte `scripts` inteira passa; AC-07 a AC-11 automatizados
+- [x] Suíte `scripts` inteira passa; AC-07 a AC-11 automatizados (Node 22: 1470/0; Node 24: 1470/1, só a limpeza preexistente do golden, que passa sozinha)
 
 ### Fase 3: integração, U15 e fechamento
 - [ ] T7: `nucleus2` e `classifier_ref` na RoutingDecision, com a ligação no watcher

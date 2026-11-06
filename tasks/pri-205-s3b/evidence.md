@@ -37,3 +37,11 @@
 ## T5 (2026-11-06)
 
 AC-07 **coberto** em unidade (`classifier-authority.test.js`, cada linha do B2, `active` → sombra) e no watcher (policy `jev` sem ref → admitida, snapshot com `off`/`AUTHORITY_REF_ABSENT`, despacho igual). Q4: `checkStillAuthorized` testada; a chamada a cada Attempt entra na T6/T7. Snapshot de Run `cheap_rule` idêntico ao da S4 (teste). 313/313 em Node 22 e 24; lint, check:js e arch:check limpos.
+
+## T6 (2026-11-06)
+
+Cobertos no módulo `classifier-shadow.js` (falta só a ligação no watcher, T7): AC-05 (bloqueio sem chamada nem Attempt), AC-08 (intenção durável antes do envio, provada com o cliente real e um fake HTTP), AC-09, AC-10, AC-11 e a parte de gravação do AC-06 (varredura dos arquivos da Run sem a chave). AC-03b: `would_class`/`DOWN_IGNORED` registrados. 13/13; conjunto 326/326 em Node 22 e 24.
+
+## Checkpoint B (2026-11-06)
+
+Receita oficial da suíte `scripts`: Node 22.23.2 1470/0 (6 skip de ambiente); Node 24.22.1 1470/1, a falha é o hook `after` de `routing-off-golden.test.js` (ENOTEMPTY no rmSync do tmp, sob carga), com o teste do golden passando. Sozinho no Node 24: 2/2. Arquivo inalterado desde 4d39a3c. TAPs: `checkpoint-b/nodev22.23.2-scripts.tap` (0d8aff908243…), `nodev24.22.1-scripts.tap` (be3b3fb32bd5…), `node24-routing-off-golden-rerun{1,2}.tap`. Pendência do Checkpoint A fechada: o preload loopback vem por `NODE_OPTIONS` e o teste do destino real rodou na suíte.

@@ -125,17 +125,46 @@ aplica, por grupo elegível e priorizado: envelope → verificador → `beginAtt
 401/403.
 
 **Aceite:**
-- [ ] O Attempt de efeito existe antes de o fake receber a requisição; o fecho corresponde ao B7 (AC-08)
-- [ ] Timeout → `UNCERTAIN` e nenhuma segunda requisição, nem no retry da mesma visita (AC-09)
-- [ ] 401/403 → efeito revogado e a Run fica `off` daí em diante (AC-10); em todos os desfechos o `summarize` do Implement fica sem obrigação nova (AC-11)
+- [x] O Attempt de efeito existe antes de o fake receber a requisição; o fecho corresponde ao B7 (AC-08)
+- [x] Timeout → `UNCERTAIN` e nenhuma segunda requisição, nem no retry da mesma visita (AC-09)
+- [x] 401/403 → efeito revogado e a Run fica `off` daí em diante (AC-10); em todos os desfechos o `summarize` do Implement fica sem obrigação nova (AC-11)
 
 **Verificação:** `node --require ./harness/loopback-only.cjs --test scripts/lib/classifier-shadow.test.js`
 **Dependências:** T1, T2, T3, T5
 **Arquivos:** `scripts/lib/classifier-shadow.js`, `.test.js`
 **Tamanho:** M
 
+**Feito (2026-11-06):** `classifier-shadow.test.js` 13/13. Cobre:
+- caminho feliz (zona cinzenta e sonda);
+- `wouldClass` com as regras do §4.8 só como registro;
+- AC-08 com o cliente real contra um fake HTTP: o servidor vê o Attempt `classifier` em `STARTED` antes de responder;
+- guarda bloqueando sem chamada nem Attempt (AC-05);
+- os quatro desfechos do B7;
+- AC-09: `UNCERTAIN` não se repete, `COMPLETE` é reusado, visita nova chama de novo;
+- `rep_index` dando efeitos distintos;
+- AC-10: revoga, grava o marcador e desliga a Run;
+- AC-11: o Attempt do Implement fica byte a byte igual nos quatro desfechos;
+- efetivo `off`, Q4 revogado, sem credencial;
+- Q6/AC-06: o envelope fica só na Run, a chave não é gravada;
+- teto de 3;
+- cliente que lança vira `ERROR` e o Attempt fecha `UNCERTAIN`.
+
+Conjunto de roteamento, DOM-06 e núcleo 2: 326/326 em Node 22.23.2 e 24.22.1. `lint:src`, `check:js` e `arch:check` limpos.
+
+**Decisões de implementação:**
+- A resposta compacta do Jev vai no `detail` do efeito, em JSON. Assim o contrato do `dom06-attempt` não muda.
+- A credencial é lida uma vez por coleta, e antes de qualquer Attempt. Se faltar, nada é emitido.
+
 ## Checkpoint B
-- [ ] Suíte `scripts` inteira verde; AC-03 a AC-11 automatizados
+- [x] Suíte `scripts` inteira verde; AC-03 a AC-11 automatizados
+
+**Feito (2026-11-06):** receita oficial (`env -i`, HOME/TMPDIR sintéticos, `NODE_OPTIONS=--require=harness/loopback-only.cjs`).
+- **Node 22.23.2:** 1470 pass, 0 fail, 6 skip de ambiente (docker, poppler, template).
+- **Node 24.22.1:** 1470 pass, 1 fail no `after` de `routing-off-golden.test.js` (`ENOTEMPTY` ao apagar o tmp depois de um teste de 97 s). O teste do golden em si passou. Sozinho, o arquivo passou 2/2 (~23 s). Ele não mudou desde `4d39a3c`: corrida de limpeza sob carga, preexistente.
+- A primeira rodada teve 6 falhas porque o worktree estava sem `dashboard/node_modules` (`express`, `typescript`). Rodou de novo depois de `npm ci` no dashboard.
+- O teste do destino real sob loopback (`jev-client`) rodou na suíte oficial: o preload vem por `NODE_OPTIONS`. Isso fecha a pendência do Checkpoint A.
+
+TAPs em `prisma-evidence/2026-11-06-pri-205-s3b-jev/checkpoint-b/`.
 
 ## T7: RoutingDecision e ligação no watcher
 
