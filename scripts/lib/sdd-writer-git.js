@@ -16,6 +16,8 @@ class UnverifiableError extends Error {
 }
 
 const NUL = '\0';
+const STDIN_ATTEMPTS = 4;
+const STDIN_TIMEOUT_MS = 3000;
 
 function makeGit(repoDir, { identity } = {}) {
     const baseEnv = {
@@ -23,9 +25,21 @@ function makeGit(repoDir, { identity } = {}) {
         GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C',
     };
     function run(args, { input, allow = [0], env } = {}) {
-        const r = spawnSync('git', ['-C', repoDir, ...args], {
-            input, env: { ...baseEnv, ...env }, maxBuffer: 512 * 1024 * 1024,
-        });
+        // Medido nesta máquina (git 2.52, macOS): ~1% das chamadas que leem stdin não
+        // terminam. Só hash-object/mktree/commit-tree leem stdin, e os objetos são
+        // endereçados por conteúdo: repetir é seguro. Esgotado o limite → falha de obtenção.
+        const attempts = input === undefined ? 1 : STDIN_ATTEMPTS;
+        let r;
+        for (let i = 0; i < attempts; i++) {
+            r = spawnSync('git', ['-C', repoDir, ...args], {
+                input, env: { ...baseEnv, ...env }, maxBuffer: 512 * 1024 * 1024,
+                // Sem entrada explícita, o git nunca herda nem espera stdin.
+                stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+                timeout: input === undefined ? undefined : STDIN_TIMEOUT_MS,
+            });
+            if (!(r.error && r.error.code === 'ETIMEDOUT') && r.signal === null) break;
+        }
+        if (r.error && r.error.code === 'ETIMEDOUT') throw new UnverifiableError('GIT_TIMEOUT', `git ${args[0]} sem resposta`);
         if (r.error) throw new UnverifiableError('GIT_SPAWN', r.error.message);
         if (!allow.includes(r.status)) {
             throw new UnverifiableError('GIT', `git ${args[0]} saiu ${r.status}: ${String(r.stderr).trim().slice(0, 300)}`);
@@ -111,7 +125,10 @@ function makeGit(repoDir, { identity } = {}) {
             return s ? s.split('\n').map(l => { const [name, oid] = l.split(' '); return { name, oid }; }) : [];
         },
         // ---- escrita de objetos (sem mover ref) ----
-        hashBlob(buf) { return out(['hash-object', '-w', '--stdin'], { input: buf }); },
+        hashBlob(buf) {
+            if (!Buffer.isBuffer(buf)) throw new TypeError('hashBlob: conteúdo deve ser Buffer');
+            return out(['hash-object', '-w', '--stdin'], { input: buf });
+        },
         /** Nova árvore = `baseTreeish` + `changes` {path: Buffer|null(remove)}. */
         buildTree(baseTreeish, changes) {
             const files = new Map();

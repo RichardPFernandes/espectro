@@ -18,4 +18,5 @@ module.exports = {
     replay: require('./sdd-writer-replay'),
     audit: require('./sdd-writer-audit'),
     check: require('./sdd-writer-check'),
+    prepare: require('./sdd-writer-prepare'),
 };
