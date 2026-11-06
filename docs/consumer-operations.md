@@ -1,12 +1,64 @@
 # Consumo, diagnóstico, cutover e retorno
 
 Procedimento do recorte entregue na PRI-63, documentado pela PRI-64 em 2026-10-08.
-O app-back consome a revisão Prisma `a50ff9fec1b44382eb6c97940b31a5bb42632a40`,
-tree `97fe983cdbb51c91e639c8266819398800d67a64`, em `../prisma-wt/pri-63`.
-A main posterior não substitui esse pin. O [handoff](extraction-handoff.md)
-identifica provas e limites; este texto não executa uma troca.
+A seção «Modo vigente» foi acrescentada pela PRI-263 em 2026-11-06. O hash em
+`provenance/pri-64-documentation.json` (`4b7ea98…`) corresponde à versão anterior
+e não foi atualizado, porque é registro histórico da PRI-64. O
+[handoff](extraction-handoff.md) identifica provas e limites; este texto não
+executa uma troca.
 
-## Preparação e configuração
+## Modo vigente: checkout de desenvolvimento
+
+Desde 2026-11-05 às 20:53 o app-back roda o dashboard a partir do checkout de
+trabalho `~/Workspace/prisma`, e não de uma revisão fixada. O Richard ratificou
+esse modo em sessão em 2026-11-06 ([PRI-263](https://linear.app/prisma-app/issue/PRI-263)).
+Isso diverge da DB-13 da PRI-181 (pin explícito aprovado). A divergência fica
+registrada para reconciliação (AGENTS.md, regra 8), e este documento não revoga
+a DB-13.
+
+| Item | Valor observado em 2026-11-06 |
+| --- | --- |
+| Launcher | `app-back/scripts/prisma-start-dev.sh` (ignorado pelo git do app-back) |
+| PRISMA_ROOT | `~/Workspace/prisma`, na branch em que o checkout estiver |
+| REPO_PATH / MEMORY_DIR | `app-back` / `app-back/memory/runs` |
+| Painel Versão | `prisma-start-dev.sh bump <sha>`: confere a trava e faz `git merge --ff-only --autostash` no próprio checkout, só na main |
+| Salvaguardas ausentes | Diferente do launcher pinado, não carrega `prisma-consumer.env`, não exporta `DISABLE_AUTO_CLEANUP`, `WORKTREES_DIR` nem `RUNS_ARCHIVE_DIR`, não remove o override `BITBUCKET_API_TOKEN` e não confere `auto_start: false` |
+| Launcher pinado | `app-back/scripts/prisma-start.sh` (`prisma-wt/consumer@80181db`, também ignorado pelo git do app-back), inativo: faltam no app-back os dois arquivos admitidos listados em «Preparação e configuração» |
+
+Consequências, enquanto este modo valer:
+
+1. **Todo commit, merge, checkout ou edição em `~/Workspace/prisma` chega ao
+   consumidor.** O dashboard carrega o código ao subir. Com o laço ligado, o
+   watcher-manager sobe um processo novo a cada tick
+   (`scripts/watcher-manager.js:197-230`). Trocar de branch nesse checkout é uma
+   mudança de execução, não um gesto local. Trabalho de desenvolvimento vai
+   para um worktree próprio (`git worktree add`), nunca para uma troca de branch
+   no checkout vivo.
+2. Conforme a decisão registrada na PRI-263, um merge na main só deve deixar a
+   main em estado que rode no app-back sozinho, sem a fatia seguinte. Quando a
+   fatia não atender isso, ela precisa de contenção declarada na própria spec.
+   O gate formal continua dependendo da reconciliação da DB-13.
+3. Alterações não commitadas no checkout estão em uso. O drift observado em
+   2026-11-06 está preservado na branch `fix/pri-263-drift-checkout-vivo`
+   (`bdfae26`). Não limpar, resetar ou fazer stash sem antes preservar essas
+   alterações e sem uma janela livre, conferida na trava comum (ver «Diagnóstico
+   antes de alterar execução»). Exceção conhecida: o bump do painel Versão faz
+   `--autostash`; se a reaplicação conflitar, as alterações ficam em
+   `git stash list`.
+4. O primeiro passo de qualquer diagnóstico é registrar a branch, o HEAD e o
+   drift do checkout, porque não existe pin para comparar.
+
+Para voltar ao modo pinado, é preciso restaurar os dois arquivos admitidos (ou
+re-baselinar os hashes por decisão governada) e seguir «Nova janela de cutover».
+O pin anterior a50ff9f, tree 97fe983, em `../prisma-wt/pri-63`, não existia no
+disco em 2026-11-06.
+
+## Modo pinado (referência, inativo)
+
+As subseções abaixo descrevem o launcher pinado e valem só quando ele estiver
+ativo. No modo vigente, use-as como referência, com as exceções anotadas.
+
+### Preparação e configuração
 
 Dois pacotes Node separados, `scripts/` e `dashboard/`, com locks próprios. O
 ambiente da extração foi Node 20.20.2/npm 10.8.2; isso é ambiente observado, não
@@ -37,13 +89,15 @@ O launcher remove o override herdado BITBUCKET_API_TOKEN para reler o .env atual
 
 Não criar Configuration Service, registry ou engine adicional para esses seams.
 
-## Uso no consumidor após admissão
+### Uso no consumidor após admissão
 
 Antes de qualquer início vivo, conferir e remover DRY_RUN=true herdado; o launcher
 só recusa essa variável no modo watcher. Conferir modo e logs após o início, sem
 interpretar simulação como consumo vivo.
 
 No app-back/dashboard, `npm start` chama `bash ../scripts/prisma-start.sh dashboard`.
+(Em 2026-11-06, `app-back/dashboard` não tinha `package.json`; o equivalente
+direto é `bash scripts/prisma-start.sh dashboard` a partir do app-back.)
 O servidor atende `127.0.0.1:3333`. O launcher exige prefs efetivas com
 `auto_start: false`; Start no painel é uma operação humana global, sem filtro.
 Em 08/10, o loop global foi restaurado explicitamente, e o primeiro tick terminou
@@ -63,9 +117,10 @@ rotação, não todas as formas de cleanup. Para planejamento somente leitura, o
 watcher oferece `--dry-run`, distinto da simulação DRY_RUN=true; simulação exige
 fixture sintética admitida e ambiente isolado, sem estado/credenciais vivos.
 
-## Diagnóstico antes de alterar execução
+### Diagnóstico antes de alterar execução
 
-1. Conferir HEAD e tracked drift da candidata, sem atualizar para latest.
+1. Conferir HEAD e tracked drift da candidata, sem atualizar para latest. No modo
+   vigente, registrar branch, HEAD e drift de `~/Workspace/prisma`.
 2. Conferir hashes da config, roots absolutos e prefs efetivas no consumidor.
 3. Consultar a trava comum: `node "$PRISMA_ROOT/scripts/lib/watcher-lock.js" status --repo="$REPO_PATH"`.
    Exit 0 significa nenhum watcher/agente destacado vivo; exit 1 indica presença.
@@ -75,7 +130,7 @@ fixture sintética admitida e ambiente isolado, sem estado/credenciais vivos.
 5. Em 401/403, drift, sujeito inesperado, efeito incerto ou estado ilegível, parar a
    operação dependente e levar o resultado ao Richard. Não repetir POST/commit cegamente.
 
-## Nova janela de cutover
+### Nova janela de cutover
 
 Uma nova revisão exige revalidação do delta: mesma candidata/config nas provas de
 integração e retorno, autorização da janela, inventário dos runs em voo, drenagem
@@ -88,7 +143,11 @@ Start global é decisão separada do tick filtrado. Registrar APPLIED/REVERTED o
 pendência com provas; build verde não é cutover. DOM06 não foi provado na janela
 histórica, conforme waiver delimitado, e permanece UNKNOWN para essa revisão.
 
-## Retorno autorizado à fonte
+### Retorno autorizado à fonte
+
+Este retorno vale ao sair de qualquer modo Prisma, pinado ou checkout de
+desenvolvimento. **Não executável em 2026-11-06:** `app-back/dashboard` não tem `package.json` nem
+`server.js`, então os passos com `npm` abaixo não rodam até a reconciliação.
 
 O snapshot selecionado de 236 arquivos (sha256
 `1191361d93f1a3dbe609a45bd881c0c8633bf8e491b99b5036b7d251aeda5731`)
