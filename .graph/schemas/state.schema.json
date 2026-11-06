@@ -1435,6 +1435,29 @@
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
+    "routing_overrides": {
+      "type": "array",
+      "description": "PRI-233 T8 (P-2): overrides humanas de roteamento, append-only. Gravadas só pelo dashboard (POST /api/runs/:taskId/routing-override → scripts/lib/authorization.js recordRoutingOverride), com aprovador autenticado e CAS; não pausam a Run. O resolver (scripts/lib/model-routing.js) aplica a partir do próximo limite de nó (D-4), com precedência subtarefa > nó > ticket; modelo/esforço fora do snapshot = NOT_STARTED/PROVIDER_NOT_ELIGIBLE.",
+      "items": {
+        "type": "object",
+        "required": ["ref", "scope", "value", "by", "recorded_at"],
+        "properties": {
+          "ref": { "type": "string" },
+          "scope": { "type": "string", "enum": ["ticket", "node", "subtask"] },
+          "node": { "type": "string" },
+          "subtask_key": { "type": "string" },
+          "value": {
+            "type": "object",
+            "required": ["model_id", "effort"],
+            "properties": { "model_id": { "type": "string" }, "effort": { "type": "string" } }
+          },
+          "by": { "type": "string" },
+          "via": { "type": "string" },
+          "recorded_at": { "type": "string", "format": "date-time" },
+          "operation_id": { "type": "string" }
+        }
+      }
+    },
     "recovered_from_orphan": {
       "type": "object",
       "description": "Marcador de redespacho após recuperação de nó órfão (consumido no próximo acquire).",

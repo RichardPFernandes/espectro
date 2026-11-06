@@ -1536,16 +1536,22 @@ function routingCapabilities(runDir, projectDir) {
     return { effortMechanism, pluginProof: routedPluginProof({ accountDir: resolveClaudeAccount().dir, runDir, projectDir }) };
 }
 
-function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir }) {
+// state = state.json da task (null no ticket novo, que ainda não tem Run nem override).
+// T8 (P-2): overrides humanas de state.routing_overrides, vigentes a partir do início da
+// visita atual ao nó (D-4; routing-run.nodeVisitStart).
+function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir, state = null }) {
     if (!runSnapshot.ok) {
         return { ok: false, result: 'NOT_STARTED', cause: 'CONFIG_UNVERIFIABLE', detail: runSnapshot.detail, decision: null };
     }
     const signals = node === modelRouting.ROUTED_NODE
         ? prospectiveSignalsForRun('claude', [node], { ticket, worktreePath, base: signalBaseBranch(ticket), isRecusaQA }).signals_prospective
         : undefined;
+    const overrides = Array.isArray(state?.routing_overrides) ? state.routing_overrides : [];
     return modelRouting.resolveRoute({
         snapshot: runSnapshot.snapshot, node, signals, provider: { state: 'ACTIVE' },
-        capabilities: routingCapabilities(runDir, worktreePath), overrides: [], nodeBoundaryAt: null, authorityRef: null,
+        capabilities: routingCapabilities(runDir, worktreePath), overrides,
+        nodeBoundaryAt: state ? routingRun.nodeVisitStart(state, node, new Date().toISOString()) : null,
+        authorityRef: null,
     });
 }
 
@@ -4685,7 +4691,7 @@ async function dispatchTicketReserved(ticket) {
         }
         const runSnapshot = routingRun.loadRunSnapshot(state, fetchRunDir);
         if (runSnapshot.mode === 'ON') {
-            nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir });
+            nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state });
             if (!nodeRouting.ok) return refuseRoutedNode({ ticket, taskId, node, state, dir, resolution: nodeRouting });
             nodeRoutingSnapshot = runSnapshot.snapshot;
         }

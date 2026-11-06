@@ -433,3 +433,50 @@ test('MAJOR-1: admissão OFF depois de um ciclo ON apaga o ponteiro (a Run nova 
     assert.strictEqual(next.result?.action, 'dispatched', next.output);
     assert.ok(!('routing_snapshot' in readState(repo, id)));
 });
+
+// ── T8: override humano no watcher ─────────────────────────────────────────────
+
+function addToState(dir, extra) {
+    const p = path.join(dir, 'state.json');
+    fs.writeFileSync(p, JSON.stringify({ ...JSON.parse(fs.readFileSync(p, 'utf8')), ...extra }));
+}
+const override = (ref, value, recordedAt, extra = {}) => ({
+    ref, scope: 'node', node: 'implement', value, by: 'richard', via: 'dashboard', recorded_at: recordedAt, ...extra,
+});
+
+test('T8 / AC-09: override vigente entra na decisão (HUMAN_OVERRIDE); inelegível vira PROVIDER_NOT_ELIGIBLE', async () => {
+    const id = 233901;
+    const repo = consumer(r => writeRouting(r));
+    const { dir } = seedOnRun(repo, id);
+    addToState(dir, { routing_overrides: [override('RO-1', { model_id: 'm-t2', effort: 'médio' }, '2026-11-06T10:00:00.000Z')] });
+    await dispatch(repo, id, 't8-vigente');
+    const [a] = dom06.listAttempts(dir);
+    // Em produção ainda para no esforço (SP-1), mas a decisão registrada já é a da override.
+    assert.deepStrictEqual([a.result, a.not_started.detail], ['NOT_STARTED', 'EFFORT_MECHANISM_UNAVAILABLE']);
+    assert.deepStrictEqual([a.routing.selection_source, a.routing.override_ref.ref, a.routing.chosen.model_id], ['HUMAN_OVERRIDE', 'RO-1', 'm-t2']);
+
+    const bad = 233902;
+    const repo2 = consumer(r => writeRouting(r));
+    const seeded = seedOnRun(repo2, bad);
+    addToState(seeded.dir, { routing_overrides: [override('RO-1', { model_id: 'm-fora-da-policy', effort: 'alto' }, '2026-11-06T10:00:00.000Z')] });
+    const r = await dispatch(repo2, bad, 't8-inelegivel');
+    assert.deepStrictEqual([r.result?.reason, r.result?.cause, r.result?.detail], ['routing_not_started', 'PROVIDER_NOT_ELIGIBLE', 'override_ineligible'], r.output);
+});
+
+test('T8 / D-4: override gravada no meio da visita ao nó não vale no retry do mesmo nó', async () => {
+    const id = 233903;
+    const repo = consumer(r => writeRouting(r));
+    const { dir } = seedOnRun(repo, id, { retries: { implement: 1 } });
+    addToState(dir, {
+        events: [
+            { type: 'node_start', node: 'implement', ts: '2026-11-06T11:00:00.000Z', agent: 'claude' },
+            { type: 'node_error', node: 'implement', ts: '2026-11-06T11:20:00.000Z', agent: 'claude', exit_code: 1 },
+        ],
+        routing_overrides: [override('RO-1', { model_id: 'm-t2', effort: 'médio' }, '2026-11-06T11:10:00.000Z')],
+    });
+    await dispatch(repo, id, 't8-meio-do-no');
+    const [a] = dom06.listAttempts(dir);
+    assert.strictEqual(a.cause, 'retry');
+    assert.strictEqual(a.routing.override_ref, null, 'override do meio do nó não vale neste Attempt');
+    assert.deepStrictEqual(a.routing.overrides_pending, ['RO-1']);
+});

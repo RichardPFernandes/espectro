@@ -147,7 +147,26 @@ function markNoticeSent(marker, at) {
     return { ...marker, notified_at: at };
 }
 
+// ── T8: limite de nó (D-4) ──────────────────────────────────────────────────────
+// A override humana vale a partir do próximo limite de nó: retry/timeout/resume do mesmo
+// nó não é limite. Limite = início da visita atual ao nó, achado voltando pelos eventos
+// de ciclo de vida (node_start/node_end/node_error/node_retry) enquanto forem deste nó.
+// Sem node_start nessa sequência, a visita começa agora (1º Attempt dela).
+const LIFECYCLE = new Set(['node_start', 'node_end', 'node_error', 'node_retry']);
+
+function nodeVisitStart(state, node, now) {
+    const events = Array.isArray(state?.events) ? state.events : [];
+    let start = null;
+    for (let i = events.length - 1; i >= 0; i--) {
+        const e = events[i];
+        if (!e || !LIFECYCLE.has(e.type)) continue;
+        if (e.node !== node) break;
+        if (e.type === 'node_start' && typeof (e.ts || e.at) === 'string') start = e.ts || e.at;
+    }
+    return start || now;
+}
+
 module.exports = {
-    recordAdmission, clearAdmission, markConsumed, bindingFor, loadRunSnapshot, blockedNotice, markNoticeSent,
+    recordAdmission, clearAdmission, markConsumed, bindingFor, loadRunSnapshot, blockedNotice, markNoticeSent, nodeVisitStart,
     TRANSIENT_NOTICE_AFTER,
 };

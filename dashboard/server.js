@@ -527,6 +527,13 @@ function createDashboard(options = {}) {
             qaRetryCount: Number.isInteger(state?.qa_retry_count) ? state.qa_retry_count : 0,
             qaRetryPending: !run.pretask && fs.existsSync(path.join(run.dir, 'retry-signal.json')),
             // PRI-184: motivo do sinal parado (watcher gravou qa_retry_blocked); null se limpo/ausente.
+            // PRI-233 T8: overrides humanas de roteamento gravadas (append-only); [] sem nenhuma.
+            routingOverrides: !run.pretask && Array.isArray(state?.routing_overrides)
+                ? state.routing_overrides.map(o => ({
+                    ref: o.ref, scope: o.scope, node: o.node || null, subtaskKey: o.subtask_key || null,
+                    value: o.value, by: o.by, recordedAt: o.recorded_at,
+                }))
+                : [],
             // PRI-233 T9: admissão recusada por roteamento ON inválido (pré-task sintética).
             routingBlocked: run.pretask && state?.routing_admission_blocked
                 ? {
@@ -2147,6 +2154,36 @@ function createDashboard(options = {}) {
         }
         pushRun(run.taskId);
         res.json({ ok: true, taskId: run.taskId, status: 'blocked' });
+    });
+
+    // PRI-233 T8 (P-2): override humano de roteamento. Mesma autoridade das decisões de
+    // autorização (aprovador cadastrado + CAS/operation_id), mesmo writer
+    // (scripts/lib/authorization.js), sem pausar a Run e recusado com nó rodando (como as
+    // demais decisões). Vale a partir do próximo limite de nó; elegibilidade conferida
+    // pelo resolver contra o snapshot da Run.
+    app.post('/api/runs/:taskId/routing-override', async (req, res) => {
+        const ctx = authorizationRun(req, res);
+        if (!ctx) return;
+        const by = await requireApprover(req, res);
+        if (!by) return;
+        const { run, state } = ctx;
+        const expect = humanExpect(req, state);
+        const operationId = operationIdOf(req);
+        const str = v => (typeof v === 'string' ? v.slice(0, 200) : null);
+        try {
+            const out = authorization.recordRoutingOverride(run.dir, {
+                by, scope: str(req.body?.scope), node: str(req.body?.node), subtaskKey: str(req.body?.subtask_key),
+                value: { model_id: str(req.body?.model_id), effort: str(req.body?.effort) },
+                operationId, expectedStateVersion: expect.expected_state_version,
+            });
+            if (out.status === 'already_processed') return res.json({ ok: true, status: 'already_processed', operation_id: operationId });
+            console.log(`[dashboard] override de roteamento ${out.override.ref} em ${run.taskId} por ${by}`);
+            pushRun(run.taskId);
+            return res.json({ ok: true, taskId: run.taskId, override: out.override });
+        } catch (e) {
+            if (sendAuthorizationError(res, e)) return;
+            throw e;
+        }
     });
 
     // "Devolver ao QA": run blocked/authorization-pending resolvido sem código. Reserva o

@@ -244,7 +244,7 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 
 ## Fase 3: override, visibilidade e fechamento
 
-## Tarefa 8: override humano (BLOQUEADA até a P-2)
+## Tarefa 8: override humano (P-2 aprovada pelo Richard em 2026-11-06: opção a)
 
 **Descrição:** ler as overrides do writer escolhido na P-2 e aplicar a precedência
 subtarefa > nó > ticket, valendo a partir do próximo limite de nó, na mesma Run e
@@ -253,9 +253,11 @@ RoutingDecision. Override inelegível → `PROVIDER_NOT_ELIGIBLE`, nunca troca
 silenciosa.
 
 **Critérios de aceite:**
-- [ ] A precedência e a vigência têm testes: override gravado no meio de um nó não altera aquele Attempt e altera o seguinte (AC-09).
-- [ ] O escopo subtarefa só casa com `subtask_key` presente; sem ele, não tem efeito e o motivo é registrado.
-- [ ] Nenhum endpoint, arquivo de estado ou canal novo fora do que a P-2 decidir.
+- [x] A precedência e a vigência têm testes: override gravada no meio de um nó não altera o retry daquele nó (D-4; o limite é o 1º `node_start` da visita, `routing-run.nodeVisitStart`), e a gravada antes vale (AC-09).
+- [x] O escopo subtarefa só casa com `subtask_key` presente (resolver, já coberto na T3); na S4 não há `subtask_key` no Attempt.
+- [x] Canal e writer: os da P-2. `authorization.recordRoutingOverride` grava `state.routing_overrides[]` (append-only, com quem/quando/escopo/valor e evento `routing_override`) pelo `POST /api/runs/:taskId/routing-override`, com aprovador autenticado, CAS e `operation_id` idempotente, sem mudar status ou nó. É recusado para Run OFF (`ROUTING_OFF`), entrada inválida e nó rodando. O schema do state documenta o campo.
+
+**Verificação (2026-11-06):** `authorization.test.js` 35/35; `authorization-api.test.js` 14/14; `routing-run.test.js` 25/25; `routing-admission-watcher.test.js` 15/15. Node 22: scripts 1257/0, dashboard 301/0; `check:js` (scripts e dashboard), `lint:src` e `arch:check` limpos. **Ainda não existe:** formulário no Dashboard (só a API) e revogação de override.
 
 **Verificação:**
 - [ ] `node --test scripts/lib/model-routing.test.js` + o teste do writer escolhido

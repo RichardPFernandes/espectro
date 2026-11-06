@@ -8,8 +8,13 @@
 >
 > Este arquivo **não** declara Done nem aceite: a regra por AC de
 > `docs/handoff-contract.md` exige Verify PASS da versão vigente ou evidência
-> conferida pelo revisor de outro runtime. O Verify e a revisão Codex (G3) ainda
-> não rodaram.
+> conferida em revisão independente. O Verify e a revisão independente dos commits
+> posteriores a `4311575` ainda não rodaram.
+>
+> **Atualização (T8):** depois desta revisão, a T8 entrou (override humano). A linha do
+> AC-09 cita os testes novos; a tabela de execução abaixo continua sendo a de `ea9e42d`.
+> Execução da T8 no Node 22: scripts 1257/0, dashboard 301/0, `check:js`, `lint:src` e
+> `arch:check` limpos. A evidência persistida será refeita na revisão final.
 
 ## Execução
 
@@ -42,7 +47,7 @@ na linha). **PENDENTE** = sem implementação. Nenhum AC tem exceção humana re
 | AC-06 | SÓ UNIDADE | `model-routing.test.js` › "passo 2: provider …" (4 estados), "passo 5: nenhum candidato…", "passo 3: override inelegível…" (2) | No watcher o provider é `ACTIVE` fixo, porque não existe dono do estado do provider (UNK-AR-005). |
 | AC-07 | AUTOMATIZADO | `routing-admission-watcher.test.js` › "T7 / AC-07: Run ON em andamento em produção…", "MINOR-1 + retry: …"; `model-routing.test.js` › "mecanismo de esforço UNAVAILABLE…" | 1 Attempt NOT_STARTED, Run `blocked`, 1 aviso em 3 ticks, agente nunca roda, sem cair para `--model` sozinho. |
 | AC-08 | SÓ UNIDADE | `claude-account.test.js` › "PRI-233 SP-2…" (6) e "PRI-233 MAJOR-2…" (5); `model-routing.test.js` › "plugin … → CONFIG_UNVERIFIABLE/PLUGIN_NOT_PROVEN_OFF" (3) | No watcher, a prova do plugin só roda com o esforço verificado (SP-1, AD-5). A precedência do `--settings` sobre os settings do projeto não foi conferida contra o CLI real (premissa registrada). |
-| AC-09 | PENDENTE | `model-routing.test.js` › "passo 3: precedência subtarefa > nó > ticket (AC-09)", "passo 3: override gravado depois do limite do nó…" (só a lógica pura) | Não existe override real no watcher (passa `overrides: []`): a T8 depende da P-2 (writer da override). |
+| AC-09 | AUTOMATIZADO (T8, depois desta revisão) | `routing-admission-watcher.test.js` › "T8 / AC-09: override vigente entra na decisão…", "T8 / D-4: override gravada no meio da visita…"; `authorization.test.js` › "PRI-233 T8: …" (9); `authorization-api.test.js` › "PRI-233 T8: …" (2); `routing-run.test.js` › "nodeVisitStart: …" (3); `model-routing.test.js` › "passo 3: …" | Writer: `authorization.recordRoutingOverride` (P-2 aprovada), via `POST /api/runs/:taskId/routing-override` com aprovador e CAS, sem pausar a Run. Escopo subtarefa só casa com `subtask_key` (S5). Ainda não há formulário no Dashboard, só a API. |
 | AC-10 | AUTOMATIZADO | `dom06-attempt.test.js` › "AC-10: causa escalation é recusada…", "escalation_proposal: …", "causa desconhecida continua virando dispatch…" | |
 | AC-11 | AUTOMATIZADO (parcial) | `model-routing.test.js` › "A4: jev sem Authority Ref…", "A4: jev com Authority Ref continua off…"; suíte sob `loopback-only` | Nenhuma chamada de rede ao Jev; o efetivo é off com motivo. A reavaliação real da Authority Ref na admissão não existe: o watcher passa `authorityRef: null` (MINOR-8 da revisão, que depende de Authority Ref durável, DP-7). |
 | AC-12 | AUTOMATIZADO | `model-routing.test.js` › "determinismo: 100 resoluções da mesma entrada são idênticas (AC-12)" | |
@@ -51,7 +56,7 @@ na linha). **PENDENTE** = sem implementação. Nenhum AC tem exceção humana re
 ## O que ainda falta para o Done (G3, Implementação)
 
 - **Verify** da versão vigente (`/verify`, ou o equivalente do ciclo interativo).
-- **Revisão Codex** (G3 exige Claude **e** Codex). A revisão Claude rodou em `829254d..4311575`; os commits posteriores (`488cea8`, `afdd121`, `ea9e42d`) ainda não foram revisados.
-- **AC-09 / T8:** decisão P-2 e implementação.
-- **PR Draft** (G3).
+- **Revisão independente** (contexto limpo, Claude; o Codex não é mais usado, e o contrato foi atualizado na `main` em #93). A revisão rodou em `829254d..4311575`; os commits posteriores (`488cea8`, `afdd121`, `ea9e42d`, as correções do Bugbot e a T8) ainda não foram revisados.
+- **Evidência persistida** refeita na revisão final.
+- PR Draft: aberto (#97).
 - Aceite dos ACs pelo owner e confirmação do Done pelo Richard; o merge é exclusivo do Richard.

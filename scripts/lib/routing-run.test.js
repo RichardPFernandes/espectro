@@ -220,6 +220,38 @@ test('blockedNotice: leitura transitória só avisa no 3º bloqueio seguido (R-6
     assert.strictEqual(rr.blockedNotice(sent(c), t, { ticketId: 1, at: AT }).notify, false);
 });
 
+// ── T8: limite de nó (D-4) para a vigência da override ──────────────────────────
+
+const ev = (type, node, ts) => ({ type, node, ts });
+const NOW = '2026-11-06T16:00:00.000Z';
+
+test('nodeVisitStart: primeiro Attempt de uma visita nova ao nó → agora', () => {
+    const state = { events: [ev('node_start', 'plan', '2026-11-06T10:00:00.000Z'), ev('node_end', 'plan', '2026-11-06T10:30:00.000Z')] };
+    assert.strictEqual(rr.nodeVisitStart(state, 'implement', NOW), NOW);
+    assert.strictEqual(rr.nodeVisitStart({}, 'implement', NOW), NOW, 'sem eventos');
+});
+
+test('nodeVisitStart: retry do mesmo nó → início do 1º Attempt da visita (override no meio não vale)', () => {
+    const state = { events: [
+        ev('node_end', 'plan', '2026-11-06T10:30:00.000Z'),
+        ev('node_start', 'implement', '2026-11-06T11:00:00.000Z'),
+        { type: 'routing_override', node: 'review', ts: '2026-11-06T11:10:00.000Z' },
+        ev('node_error', 'implement', '2026-11-06T11:20:00.000Z'),
+        ev('node_start', 'implement', '2026-11-06T11:30:00.000Z'),
+        ev('node_error', 'implement', '2026-11-06T11:40:00.000Z'),
+    ] };
+    assert.strictEqual(rr.nodeVisitStart(state, 'implement', NOW), '2026-11-06T11:00:00.000Z');
+});
+
+test('nodeVisitStart: nó revisitado depois de outro (implement → review → implement) → visita nova', () => {
+    const state = { events: [
+        ev('node_start', 'implement', '2026-11-06T11:00:00.000Z'), ev('node_end', 'implement', '2026-11-06T11:20:00.000Z'),
+        ev('node_start', 'review', '2026-11-06T11:30:00.000Z'), ev('node_end', 'review', '2026-11-06T11:40:00.000Z'),
+        ev('node_retry', 'review', '2026-11-06T11:40:00.000Z'),
+    ] };
+    assert.strictEqual(rr.nodeVisitStart(state, 'implement', NOW), NOW);
+});
+
 test('loadRunSnapshot: attempt_id com caminho (../) é recusado sem ler fora do _dom06', () => {
     const r = rr.loadRunSnapshot({ routing_snapshot: { attempt_id: '../../etc/passwd', sha256: 'a'.repeat(64) } }, fetchRunDir());
     assert.deepStrictEqual(r, { mode: 'ON', ok: false, detail: 'snapshot_unreadable' });
