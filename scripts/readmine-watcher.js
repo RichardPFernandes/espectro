@@ -1530,8 +1530,10 @@ async function sendRoutingNotice(ticketId, msg, title, localBody) {
 function routingCapabilities(runDir, projectDir) {
     const effortMechanism = modelRouting.PRODUCTION_EFFORT_MECHANISM;
     // runDir null = pré-checagem sem worktree (ticket novo): a prova grava o --settings,
-    // então fica para a resolução completa, depois do worktree.
-    if (effortMechanism.status !== 'VERIFIED' || !runDir) return { effortMechanism, pluginProof: { status: 'NOT_EVALUATED' } };
+    // então fica para a resolução completa, depois do worktree. Com runDir, a prova roda
+    // sempre: o despacho roteado só por modelo (SP-1 revista) também exige o plugin
+    // desligado (SP-2).
+    if (!runDir) return { effortMechanism, pluginProof: { status: 'NOT_EVALUATED' } };
     // projectDir = cwd do despacho (worktree do ticket): os settings do projeto também valem.
     return { effortMechanism, pluginProof: routedPluginProof({ accountDir: resolveClaudeAccount().dir, runDir, projectDir }) };
 }

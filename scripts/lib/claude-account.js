@@ -109,9 +109,10 @@ function detectEffortRouterPlugin(settings, configDir) {
 // conhecido em false (o --settings do despacho tem precedência sobre os settings de
 // usuário, projeto e local), relê e confere o sha256.
 // Fontes lidas (revisão do Checkpoint B, MAJOR-2): settings da conta, settings.json e
-// settings.local.json do projeto (cwd do despacho) e árvores skills/ da conta e do
-// projeto. Fontes que um --settings não neutraliza dão LOADED (skills/, pluginConfigs
-// ligados); managed settings presentes ficam acima do CLI e dão UNKNOWN. Nunca devolve
+// settings.local.json do projeto (cwd do despacho). O --settings gerado desliga toda
+// chave do router e esconde a skill (skillOverrides "off"), o que cobre também árvores
+// skills/ da conta e do projeto. pluginConfigs ligado (não coberto pela doc) dá LOADED;
+// managed settings presentes ficam acima do CLI e dão UNKNOWN. Nunca devolve
 // NOT_LOADED sem o arquivo gravado e conferido.
 const ROUTER_SKILLS_DIR_KEY = 'jev-model-router@skills-dir';
 const DEFAULT_MANAGED_PATHS = Object.freeze([
@@ -140,12 +141,10 @@ function routedPluginProof({ accountDir = null, runDir, projectDir = null, home 
             sources.push(project.settings);
         }
     }
-    try {
-        if (fs.existsSync(path.join(configDir, 'skills', 'jev-model-router'))) return { status: 'LOADED', reason: 'skills_dir_not_neutralizable' };
-        if (projectDir && fs.existsSync(path.join(projectDir, '.claude', 'skills', 'jev-model-router'))) {
-            return { status: 'LOADED', reason: 'project_skills_dir_not_neutralizable' };
-        }
-    } catch { return { status: 'UNKNOWN', reason: 'skills_unreadable' }; }
+    // Árvore skills/ (conta ou projeto): neutralizável pelo próprio --settings, que tem
+    // precedência sobre user/projeto/local e faz merge por chave em enabledPlugins. Plugin
+    // em skills/ usa a chave <nome>@skills-dir; skill solta é escondida por skillOverrides
+    // "off" (docs oficiais: code.claude.com/docs/en/plugins/loading.md e skills.md).
     for (const settings of sources) {
         const configs = Object.entries(settings.pluginConfigs || {}).filter(([key]) => isRouterKey(key));
         if (configs.some(([, value]) => !(value === false || (value && typeof value === 'object' && value.enabled === false)))) {
@@ -153,7 +152,10 @@ function routedPluginProof({ accountDir = null, runDir, projectDir = null, home 
         }
     }
     const keys = new Set([ROUTER_SKILLS_DIR_KEY, ...sources.flatMap(s => Object.keys(s.enabledPlugins || {}).filter(isRouterKey))]);
-    const generated = { enabledPlugins: Object.fromEntries([...keys].sort().map(k => [k, false])) };
+    const generated = {
+        enabledPlugins: Object.fromEntries([...keys].sort().map(k => [k, false])),
+        skillOverrides: { 'jev-model-router': 'off' },
+    };
     const target = path.join(runDir, 'routing-settings.json');
     const bytes = Buffer.from(`${JSON.stringify(generated, null, 2)}\n`);
     const expected = crypto.createHash('sha256').update(bytes).digest('hex');

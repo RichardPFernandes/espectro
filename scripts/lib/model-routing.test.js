@@ -290,15 +290,20 @@ test('A4: jev com Authority Ref continua off na S4 (núcleo 2 fora desta fatia)'
 
 // ── Precondições do despacho roteado (SP-1, SP-2) ──────────────────────────────
 
-test('mecanismo de esforço UNAVAILABLE (produção hoje) → CONFIG_UNVERIFIABLE/EFFORT_MECHANISM_UNAVAILABLE (AC-07)', () => {
+// SP-1 revista (Richard, 2026-11-06): esforço adiado. Sem mecanismo verificado, roteia
+// só o modelo e registra o esforço como não aplicado (AC-07 revisto).
+test('mecanismo de esforço UNAVAILABLE (produção hoje) → roteia só o modelo, esforço não aplicado (AC-07)', () => {
     const r = resolve({ capabilities: { ...VERIFIED, effortMechanism: { status: 'UNAVAILABLE' } } });
-    assert.deepStrictEqual([r.ok, r.result, r.cause, r.detail], [false, 'NOT_STARTED', 'CONFIG_UNVERIFIABLE', 'EFFORT_MECHANISM_UNAVAILABLE']);
-    assert.ok(r.decision.chosen, 'a decisão recusada ainda registra o par que seria usado');
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.strictEqual(r.decision.effort_applied, false);
+    assert.deepStrictEqual(r.decision.effort_mechanism, { status: 'UNAVAILABLE' });
+    assert.deepStrictEqual(mr.routedArgs([], r), ['--model', 'm-t1', '--settings', '/run/routing-settings.json'], 'sem --effort');
 });
 
-test('capacidades ausentes valem como UNAVAILABLE/UNKNOWN, nunca como verificadas', () => {
+test('capacidades ausentes: esforço não aplicado e plugin UNKNOWN → recusa pelo plugin, nunca como verificado', () => {
     const r = resolve({ capabilities: undefined });
-    assert.deepStrictEqual([r.cause, r.detail], ['CONFIG_UNVERIFIABLE', 'EFFORT_MECHANISM_UNAVAILABLE']);
+    assert.deepStrictEqual([r.ok, r.cause, r.detail], [false, 'CONFIG_UNVERIFIABLE', 'PLUGIN_NOT_PROVEN_OFF']);
+    assert.strictEqual(r.decision.effort_applied, false);
 });
 
 for (const status of ['LOADED', 'UNKNOWN', undefined]) {
@@ -316,7 +321,7 @@ test('routedArgs acrescenta --model, esforço e --settings só a partir de decis
     const r = resolve();
     assert.deepStrictEqual(mr.routedArgs(base, r), [...base, '--model', 'm-t1', '--effort', 'low', '--settings', '/run/routing-settings.json']);
     assert.deepStrictEqual(base, ['-p', 'prompt', '--session-id', 'x'], 'não muta o argv recebido');
-    const refused = resolve({ capabilities: { ...VERIFIED, effortMechanism: { status: 'UNAVAILABLE' } } });
+    const refused = resolve({ capabilities: { ...VERIFIED, pluginProof: { status: 'LOADED' } } });
     assert.throws(() => mr.routedArgs(base, refused), /ROUTED_ARGS_REQUIRE_OK_DECISION/);
 });
 

@@ -84,7 +84,9 @@ test('PRI-233 SP-2: conta sem rastro do plugin → --settings gerado desliga e a
     assert.equal(p.status, 'NOT_LOADED');
     assert.equal(p.settings_path, path.join(run, 'routing-settings.json'));
     const bytes = fs.readFileSync(p.settings_path);
-    assert.deepEqual(JSON.parse(bytes), { enabledPlugins: { 'jev-model-router@skills-dir': false } });
+    assert.deepEqual(JSON.parse(bytes), {
+        enabledPlugins: { 'jev-model-router@skills-dir': false }, skillOverrides: { 'jev-model-router': 'off' },
+    });
     assert.equal(p.settings_sha256, crypto.createHash('sha256').update(bytes).digest('hex'));
 });
 
@@ -97,8 +99,27 @@ test('PRI-233 SP-2: plugin habilitado em enabledPlugins é sobrescrito como fals
         { 'jev-model-router@mkt': false, 'jev-model-router@skills-dir': false });
 });
 
+// Docs oficiais (plugins/loading.md, skills.md): plugin em skills/ usa <nome>@skills-dir e
+// a skill solta some com skillOverrides "off"; os dois vão no --settings gerado, que
+// tem precedência sobre user/projeto/local. A árvore deixa de ser "não neutralizável".
+for (const [name, setup] of [
+    ['árvore skills/ da conta', ({ acc }) => fs.mkdirSync(path.join(acc, 'skills', 'jev-model-router'), { recursive: true })],
+    ['árvore skills/ do projeto', ({ proj }) => fs.mkdirSync(path.join(proj, '.claude', 'skills', 'jev-model-router'), { recursive: true })],
+]) {
+    test(`PRI-233 SP-2: ${name} é neutralizada pelo --settings (@skills-dir false + skillOverrides off)`, () => {
+        const { acc, run } = proofCase(name.replace(/\W+/g, '-'), () => {});
+        const proj = path.join(root, `${name.replace(/\W+/g, '-')}-wt`);
+        fs.mkdirSync(path.join(proj, '.claude'), { recursive: true });
+        setup({ acc, proj });
+        const p = routedPluginProof({ accountDir: acc, runDir: run, projectDir: proj, managedPaths: NO_MANAGED });
+        assert.equal(p.status, 'NOT_LOADED');
+        const generated = JSON.parse(fs.readFileSync(p.settings_path));
+        assert.equal(generated.enabledPlugins['jev-model-router@skills-dir'], false);
+        assert.deepEqual(generated.skillOverrides, { 'jev-model-router': 'off' });
+    });
+}
+
 for (const [name, setup, reason] of [
-    ['árvore skills/', a => { fs.mkdirSync(path.join(a, 'skills', 'jev-model-router'), { recursive: true }); }, 'skills_dir_not_neutralizable'],
     ['pluginConfigs ligado', a => fs.writeFileSync(path.join(a, 'settings.json'),
         JSON.stringify({ pluginConfigs: { 'jev-model-router@skills-dir': { enabled: true } } })), 'plugin_config_not_neutralizable'],
 ]) {
@@ -132,7 +153,6 @@ test('PRI-233 MAJOR-2: chave do router no settings do PROJETO entra no --setting
 });
 
 for (const [name, setup, expected] of [
-    ['skills/ do projeto', proj => fs.mkdirSync(path.join(proj, '.claude', 'skills', 'jev-model-router'), { recursive: true }), ['LOADED', 'project_skills_dir_not_neutralizable']],
     ['pluginConfigs ligado no projeto', proj => fs.writeFileSync(path.join(proj, '.claude', 'settings.local.json'),
         JSON.stringify({ pluginConfigs: { 'jev-model-router@skills-dir': { enabled: true } } })), ['LOADED', 'plugin_config_not_neutralizable']],
     ['settings do projeto ilegível', proj => fs.writeFileSync(path.join(proj, '.claude', 'settings.json'), '{ x'), ['UNKNOWN', 'project_settings_unreadable']],

@@ -370,8 +370,9 @@ function attemptRecord(run, node, alsoCovers, metrics, outcome) {
         provider: run.agent === 'claude' ? 'anthropic' : run.agent === 'codex' ? 'openai' : 'UNKNOWN',
         account: run.account || { source: 'UNKNOWN', label: 'UNKNOWN' },
         // PRI-233 T7: despacho roteado grava o par fixado (modelo, esforço do CLI) e a decisão.
+        // Esforço só conta como pedido se foi de fato para o argv (SP-1 revista: só modelo).
         requested: run.routing_decision?.chosen
-            ? { model: run.routing_decision.chosen.model_id, effort: run.routing_decision.chosen.cli_effort }
+            ? { model: run.routing_decision.chosen.model_id, effort: run.routing_decision.effort_applied ? run.routing_decision.chosen.cli_effort : 'UNAVAILABLE' }
             : { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' },
         // Despacho roteado: o estado do plugin é o provado pela decisão (--settings do
         // despacho), não o lido do perfil da conta (revisão do Checkpoint B, MINOR-4).

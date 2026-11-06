@@ -13,9 +13,10 @@
 //   (4) classificadora R1–R8 da S3 (Implement = classe máxima dos grupos, A1;
 //       demais nós = default_route fixo, A2/D6);
 //   (5) candidatos do tier na ordem da policy, subindo de tier e nunca descendo;
-//   depois, as precondições do despacho roteado: mecanismo de esforço verificado
-//   (SP-1) e plugin de roteamento provado desligado (SP-2) → senão CONFIG_UNVERIFIABLE.
-// - routedArgs: acrescenta --model, o esforço e --settings ao argv, só a partir de
+//   depois, a precondição do despacho roteado: plugin de roteamento provado desligado
+//   (SP-2) → senão CONFIG_UNVERIFIABLE. O esforço só vai no argv com mecanismo
+//   verificado (SP-1 revista); sem ele, roteia só o modelo.
+// - routedArgs: acrescenta --model, o esforço (se aplicado) e --settings ao argv, só a partir de
 //   uma resolução ok.
 //
 // Recusa nunca troca modelo em silêncio e nunca cai para o modelo herdado (guarda 3).
@@ -25,9 +26,10 @@ const crypto = require('crypto');
 const wouldRoute = require('./would-route');
 const policyLoader = require('./model-routing-policy');
 
-// SP-1 (PRI-233): o mecanismo de esforço no `claude -p` não foi verificado (U1). Em
-// produção, nesta fatia, ele é sempre UNAVAILABLE; não há env nem flag que o ligue
-// (AD-5). Consequência: todo despacho com mode ON termina em CONFIG_UNVERIFIABLE.
+// SP-1 revista (Richard, 2026-11-06: foco no modelo, esforço adiado): o mecanismo de
+// esforço no `claude -p` não foi verificado (U1). Em produção ele é UNAVAILABLE, sem env
+// nem flag que o ligue (AD-5), e o despacho roteado vai SÓ com --model; o esforço fica
+// registrado como não aplicado (decision.effort_applied = false).
 const PRODUCTION_EFFORT_MECHANISM = Object.freeze({ status: 'UNAVAILABLE', reason: 'U1_UNVERIFIED' });
 
 const TIER_ORDER = ['T1', 'T2', 'T3'];
@@ -242,10 +244,11 @@ function resolveRoute(input = {}) {
         if (!decision.chosen) return refuse('PROVIDER_NOT_ELIGIBLE', 'no_eligible_candidate', decision);
     }
 
-    // Precondições do despacho roteado (SP-1, SP-2).
-    if (decision.effort_mechanism.status !== 'VERIFIED' || typeof decision.effort_mechanism.flag !== 'string') {
-        return refuse('CONFIG_UNVERIFIABLE', 'EFFORT_MECHANISM_UNAVAILABLE', decision);
-    }
+    // Esforço (SP-1 revista pelo Richard em 2026-11-06: "o esforço pode ser adiado"): sem
+    // mecanismo verificado o despacho roteia SÓ o modelo e registra o esforço como não
+    // aplicado; nunca bloqueia por isso. Com mecanismo verificado, o par vai inteiro.
+    decision.effort_applied = decision.effort_mechanism.status === 'VERIFIED' && typeof decision.effort_mechanism.flag === 'string';
+    // Precondição do despacho roteado (SP-2): plugin de roteamento provado desligado.
     const proof = input.capabilities?.pluginProof;
     if (!proof || proof.status !== 'NOT_LOADED' || typeof proof.settings_path !== 'string') {
         return refuse('CONFIG_UNVERIFIABLE', 'PLUGIN_NOT_PROVEN_OFF', decision);
@@ -262,7 +265,7 @@ function routedArgs(baseArgs, resolution) {
     return [
         ...baseArgs,
         '--model', d.chosen.model_id,
-        d.effort_mechanism.flag, d.chosen.cli_effort,
+        ...(d.effort_applied ? [d.effort_mechanism.flag, d.chosen.cli_effort] : []),
         '--settings', d.plugin_proof.settings_path,
     ];
 }

@@ -38,17 +38,17 @@ uma RoutingDecision completa fica gravada. Se uma pré-condição não puder ser
 provada, o Attempt não inicia, com uma causa da F13, e nenhuma Run nova é
 admitida sobre uma policy inválida.
 
-**Consequência esperada e aceita:** enquanto o U1 estiver aberto e a policy não
-tiver ids de modelo aprovados, `mode = ON` em produção resulta em
-`NOT_STARTED / CONFIG_UNVERIFIABLE` em todo despacho roteado. A S4 entrega a
-infraestrutura, provada com policy e mecanismo sintéticos. Ativar em um consumidor
-real depende da policy aprovada (antes da S6) e do U1, fora desta fatia.
+**Consequência (revista em 2026-11-06, SP-1):** com o U1 aberto, o despacho roteado
+vai só com `--model` e `--settings`; o esforço fica registrado como não aplicado.
+Ativar em um consumidor real depende da policy aprovada (antes da S6), fora desta
+fatia. ~~Antes: `mode = ON` resultava em `NOT_STARTED / CONFIG_UNVERIFIABLE` em todo
+despacho roteado.~~
 
 ## Decisões tomadas nesta spec (Richard, 2026-11-06)
 
 | ID | Pergunta | Decisão |
 | -- | -- | -- |
-| SP-1 | Esforço com o U1 sem solução | **Bloquear o despacho roteado.** Se o mecanismo de esforço não estiver disponível e verificado, o resultado é `NOT_STARTED / CONFIG_UNVERIFIABLE`. Nunca roteia só o modelo. |
+| SP-1 | Esforço com o U1 sem solução | **Revista pelo Richard em 2026-11-06:** "o esforço hoje é menos relevante que o modelo; pode ser adiado". Sem mecanismo de esforço verificado, o despacho roteado vai **só com o modelo** (`--model`) e registra o esforço como não aplicado (`effort_applied: false`, `requested.effort = UNAVAILABLE`). O plugin provado desligado (SP-2) continua obrigatório. ~~Antes: bloquear o despacho roteado; nunca rotear só o modelo.~~ |
 | SP-2 | Prova do plugin desligado | **`--settings` próprio do despacho**, gerado pelo Prisma, que desliga o `jev-model-router`. O Prisma verifica esse arquivo, e a prova não depende do perfil da conta. |
 | SP-3 | Onde fica `mode` e qual é o raio | **Por projeto consumidor**, em `routing` na configuração versionada do consumidor, validada pelo check de configuração existente (`config-contract`). A policy inválida bloqueia a admissão de novas Runs só daquele projeto. |
 | SP-4 | Pedido humano de Run não admitida (R-5) | **Canal existente de pendência humana**: comentário no Redmine, notificação e visibilidade no Dashboard. Um aviso por escopo, sem vocabulário novo e sem estado de Run novo. |
@@ -146,10 +146,12 @@ tem um provider só).
 - AC-06: Provider desabilitado, override inelegível ou nenhum candidato elegível
   em tier igual ou acima do da classe resultam em
   `NOT_STARTED / PROVIDER_NOT_ELIGIBLE`, sem spawn e sem troca silenciosa de modelo.
-- AC-07: Sem mecanismo de esforço verificado (o estado de produção hoje, U1), um
-  despacho com `mode = ON` termina em `NOT_STARTED / CONFIG_UNVERIFIABLE` com o
-  motivo `EFFORT_MECHANISM_UNAVAILABLE`, sem spawn e sem cair para despacho só com
-  `--model`.
+- AC-07 (revisto em 2026-11-06, SP-1): Sem mecanismo de esforço verificado (o estado
+  de produção hoje, U1), um despacho com `mode = ON` e plugin provado desligado sai
+  com `--model` e `--settings`, sem `--effort`; a RoutingDecision registra
+  `effort_applied: false` e o registro de custo `requested.effort = UNAVAILABLE`.
+  ~~Texto original: termina em `NOT_STARTED / CONFIG_UNVERIFIABLE` com o motivo
+  `EFFORT_MECHANISM_UNAVAILABLE`, sem cair para despacho só com `--model`.~~
 - AC-08: Se o `--settings` gerado não puder ser escrito ou verificado, ou se a
   prova de que ele neutraliza as três fontes de carga do plugin (`enabledPlugins`,
   `pluginConfigs`, árvore `skills/jev-model-router`) não valer para a conta do
@@ -264,7 +266,7 @@ function verifyRoutedPreconditions(snapshot, probe) {
   `mode = OFF`; qualquer impacto além da baseline (volta para a reconciliação).
 - **Nunca:** chamar o Jev/TypeSafe; criar Attempt `escalation`; reler a
   configuração corrente para reconstruir um snapshot; trocar o modelo
-  silenciosamente; rotear só o modelo sem esforço verificado; fazer rebind
+  silenciosamente; despachar roteado sem o plugin provado desligado; fazer rebind
   automático ou repetir efeito de resultado incerto; tratar RC-1 a RC-6 ou
   RRC-F31-001/002 como aplicados; editar o Roadmap; commitar dado ou credencial
   do consumidor.

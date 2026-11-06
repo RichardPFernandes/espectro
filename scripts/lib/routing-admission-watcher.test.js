@@ -176,17 +176,34 @@ const invocations = scenario => {
     return fs.existsSync(dir) ? fs.readdirSync(dir).length : 0;
 };
 
+const argvOf = scenario => {
+    const dir = path.join(captures, scenario);
+    const [first] = fs.existsSync(dir) ? fs.readdirSync(dir).sort() : [];
+    return first ? JSON.parse(fs.readFileSync(path.join(dir, first), 'utf8')).argv : null;
+};
+const flag = (argv, name) => { const i = argv.indexOf(name); return i === -1 ? null : argv[i + 1]; };
+
+// Recusa que segue existindo em produção depois da SP-1 revista (só modelo): o plugin de
+// roteamento não pode ser provado desligado. pluginConfigs ligado no settings do projeto
+// (cwd do despacho = worktree) dá LOADED na prova (SP-2) → CONFIG_UNVERIFIABLE.
+function blockPluginIn(dir) {
+    fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'),
+        JSON.stringify({ pluginConfigs: { 'jev-model-router@skills-dir': { enabled: true } } }));
+}
+
 test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
-// Run já admitida ON (o fetch_ticket ON nunca inicia em produção hoje, SP-1): o
-// Attempt de admissão é gravado pelo DOM06 real com o snapshot da config do consumidor,
-// e a task existe como o agente a teria criado. `bound` = state já ligado (T5).
-function seedOnRun(repo, id, { bound = true, node = 'implement', startedAt = new Date(Date.now() + 1000).toISOString(), retries = {} } = {}) {
+// Run já admitida ON: o Attempt de admissão é gravado pelo DOM06 real com o snapshot da
+// config do consumidor, e a task existe como o agente a teria criado. `bound` = state já
+// ligado (T5); `pluginBlocked` = worktree com o plugin não neutralizável (recusa SP-2).
+function seedOnRun(repo, id, { bound = true, node = 'implement', startedAt = new Date(Date.now() + 1000).toISOString(), retries = {}, pluginBlocked = false } = {}) {
     const worktree = worktreeOf(repo, id);
     fs.mkdirSync(worktree, { recursive: true });
     git(worktree, 'init', '-q', '-b', String(id));
     git(worktree, 'commit', '-q', '--allow-empty', '-m', `Melhoria #${id}`);
+    if (pluginBlocked) blockPluginIn(worktree);
     const snapshot = mr.buildRoutingSnapshot(policyLoader.readRoutingConfig(repo));
     const fetch = dom06.prepareDispatch({
         runDir: fetchRunDirOf(repo, id), node: 'fetch_ticket', ticketId: id, baseBranch: 'development',
@@ -215,11 +232,11 @@ test('T5: a task liga-se ao snapshot da admissão; mudar a config depois não tr
     // Config muda depois da admissão: outra policy válida, outro sha.
     writeRouting(repo, { version: 'p-test-2' });
     const r = await dispatch(repo, id, 't5-on-no');
-    assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
     assert.deepStrictEqual(readState(repo, id).routing_snapshot, { attempt_id: fetch.attempt_id, sha256: snapshot.sha256 });
     assert.strictEqual(dom06.listAttempts(fetchRunDirOf(repo, id))[0].snapshot.routing.policy_ref.version, 'p-test-1');
-    const [notStarted] = dom06.listAttempts(taskDirOf(repo, id));
-    assert.strictEqual(notStarted.routing.snapshot_sha256, snapshot.sha256, 'a resolução usou o snapshot da admissão, não a config nova');
+    const [attempt] = dom06.listAttempts(taskDirOf(repo, id));
+    assert.strictEqual(attempt.routing.snapshot_sha256, snapshot.sha256, 'a resolução usou o snapshot da admissão, não a config nova');
 });
 
 test('T5: Run admitida OFF (config ausente) não ganha snapshot nem campo no state', async () => {
@@ -272,34 +289,51 @@ test('T6: um aviso por projeto em 3 ticks; outro projeto OFF despacha; corrigir 
     const off = consumer();
     assert.strictEqual((await dispatch(off, 233603, 't6-projeto-off')).result?.action, 'dispatched');
 
-    // Policy corrigida: o próximo tick passa da admissão (marcador some). Em produção o
-    // fetch_ticket roteado ainda para em NOT_STARTED (SP-1, coberto pelos testes T7).
+    // Policy corrigida: o próximo tick passa da admissão (marcador some) e o ticket novo é
+    // despachado roteado (SP-1 revista: só modelo).
     writeRouting(repo);
     const fixed = await dispatch(repo, id, 't6-corrigida', { follow: false });
-    assert.strictEqual(fixed.result?.reason, 'routing_not_started', fixed.output);
+    assert.strictEqual(fixed.result?.action, 'dispatched', fixed.output);
     assert.ok(!fs.existsSync(path.join(repo, 'memory', 'runs', 'routing-admission-blocked.json')), 'marcador removido');
 });
 
 // ── T7: resolução no despacho por nó ──────────────────────────────────────────
 
-test('T7 / AC-07: Run ON em andamento em produção → 1 Attempt NOT_STARTED, Run blocked e 1 aviso em 3 ticks; agente nunca roda', async () => {
-    const id = 233701;
+test('T7 / AC-02 / AC-07: Run ON em andamento → despacho roteado só por modelo (--model e --settings, sem --effort)', async () => {
+    const id = 233704;
     const repo = consumer(r => writeRouting(r));
     const { dir, snapshot } = seedOnRun(repo, id);
+    const r = await dispatch(repo, id, 't7-roteado');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const argv = argvOf('t7-roteado');
+    assert.strictEqual(flag(argv, '--model'), 'm-t3', 'C4 conservador → T3');
+    assert.ok(!argv.includes('--effort'), 'esforço adiado (SP-1 revista)');
+    const settings = flag(argv, '--settings');
+    assert.ok(settings && settings.startsWith(dir), '--settings gerado no diretório da Run');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(settings, 'utf8')).enabledPlugins['jev-model-router@skills-dir'], false);
+    const [a] = dom06.listAttempts(dir);
+    assert.deepStrictEqual([a.started, a.routing.snapshot_sha256, a.routing.effort_applied, a.routing.effort_router_plugin],
+        [true, snapshot.sha256, false, 'NOT_LOADED']);
+    assert.strictEqual(a.routing.subagent, 'UNENFORCED');
+});
+
+test('T7 / AC-08: plugin não neutralizável → 1 Attempt NOT_STARTED, Run blocked e 1 aviso em 3 ticks; agente nunca roda', async () => {
+    const id = 233701;
+    const repo = consumer(r => writeRouting(r));
+    const { dir, snapshot } = seedOnRun(repo, id, { pluginBlocked: true });
     for (let i = 0; i < 3; i++) await dispatch(repo, id, `t7-andamento-${i}`, { follow: false });
     for (let i = 0; i < 3; i++) assert.strictEqual(invocations(`t7-andamento-${i}`), 0, 'o stub do claude não rodou');
     const attempts = dom06.listAttempts(dir);
     assert.deepStrictEqual(attempts.map(a => [a.node, a.started, a.result]), [['implement', false, 'NOT_STARTED']]);
     const [a] = attempts;
-    assert.deepStrictEqual(a.not_started, { cause: 'CONFIG_UNVERIFIABLE', detail: 'EFFORT_MECHANISM_UNAVAILABLE' });
+    assert.deepStrictEqual(a.not_started, { cause: 'CONFIG_UNVERIFIABLE', detail: 'PLUGIN_NOT_PROVEN_OFF' });
     assert.strictEqual(a.routing.snapshot_sha256, snapshot.sha256);
     assert.strictEqual(a.routing.class, 'C4', 'sinais do Plano sintético sem grupos completos → C4 conservador');
     assert.deepStrictEqual(a.routing.chosen, { model_id: 'm-t3', effort: 'alto', cli_effort: 'high', tier: 'T3' });
-    assert.deepStrictEqual(a.routing.effort_mechanism, { status: 'UNAVAILABLE' });
-    assert.strictEqual(a.routing.subagent, 'UNENFORCED');
+    assert.strictEqual(a.routing.effort_router_plugin, 'LOADED');
     assert.strictEqual(readState(repo, id).status, 'blocked');
     assert.strictEqual(redminePuts(id).length, 1, 'um único aviso');
-    assert.match(JSON.parse(redminePuts(id)[0].body).issue.notes, /EFFORT_MECHANISM_UNAVAILABLE/);
+    assert.match(JSON.parse(redminePuts(id)[0].body).issue.notes, /PLUGIN_NOT_PROVEN_OFF/);
 });
 
 test('T7 / AC-05: snapshot adulterado → NOT_STARTED/CONFIG_UNVERIFIABLE, sem reler a config corrente (OFF)', async () => {
@@ -320,25 +354,49 @@ test('T7 / AC-05: snapshot adulterado → NOT_STARTED/CONFIG_UNVERIFIABLE, sem r
     assert.strictEqual(ns.routing, undefined, 'sem snapshot íntegro não há decisão');
 });
 
-// Bugbot (PR #97): ticket novo recusado não cria branch nem worktree; sem Run não há
-// Attempt, a recusa fica no marcador RUNS_DIR/<ticket>-routing-not-started.json.
+// Ticket novo recusado: sem Run não há Attempt; a recusa fica no marcador
+// RUNS_DIR/<ticket>-routing-not-started.json. Recusas que não dependem do plugin saem
+// antes de branch/worktree (Bugbot, PR #97); a do plugin (settings do worktree) depois.
 const notStartedMarker = (repo, id) => path.join(repo, 'memory', 'runs', `${id}-routing-not-started.json`);
 
-test('T7 / AC-03: ticket novo ON → fetch_ticket+plan no default_route, recusa sem worktree e 1 aviso em 3 ticks', async () => {
+// Consumidor com o plugin não neutralizável já na base (o worktree do ticket herda).
+function blockedConsumer() {
+    return consumer(r => {
+        writeRouting(r);
+        blockPluginIn(r);
+        git(r, 'add', '.claude/settings.local.json');
+        git(r, 'commit', '-q', '-m', 'plugin router ligado');
+        git(r, 'push', '-q', 'origin', 'development');
+    });
+}
+
+test('T7 / AC-03: ticket novo ON → fetch_ticket+plan no default_route, roteado só por modelo', async () => {
     const id = 233703;
     const repo = consumer(r => writeRouting(r));
+    const r = await dispatch(repo, id, 't7-novo');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const argv = argvOf('t7-novo');
+    assert.match(argv[argv.indexOf('-p') + 1], /\/fetch-ticket 233703/);
+    assert.strictEqual(flag(argv, '--model'), 'm-t3', 'nós fixos no default_route (D6)');
+    assert.ok(!argv.includes('--effort'));
+    assert.ok(flag(argv, '--settings'));
+    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    assert.deepStrictEqual([fetch.started, fetch.routing.selection_source, fetch.routing.chosen.model_id], [true, 'FIXED_NODE', 'm-t3']);
+    assert.ok(!fs.existsSync(notStartedMarker(repo, id)));
+});
+
+test('T7: ticket novo ON com plugin não neutralizável → recusa sem Run e 1 aviso em 3 ticks', async () => {
+    const id = 233705;
+    const repo = blockedConsumer();
     for (let i = 0; i < 3; i++) {
-        const r = await dispatch(repo, id, `t7-novo-${i}`, { follow: false });
+        const r = await dispatch(repo, id, `t7-novo-bloq-${i}`, { follow: false });
         assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
-        assert.strictEqual(invocations(`t7-novo-${i}`), 0);
+        assert.strictEqual(invocations(`t7-novo-bloq-${i}`), 0);
     }
-    assert.ok(!fs.existsSync(worktreeOf(repo, id)), 'nenhum worktree criado para ticket recusado');
-    assert.strictEqual(git(repo, 'branch', '--list', String(id)), '', 'nenhuma branch do ticket criada');
     const marker = JSON.parse(fs.readFileSync(notStartedMarker(repo, id), 'utf8'));
     assert.deepStrictEqual([marker.node, marker.result, marker.cause, marker.detail],
-        ['fetch_ticket', 'NOT_STARTED', 'CONFIG_UNVERIFIABLE', 'EFFORT_MECHANISM_UNAVAILABLE']);
+        ['fetch_ticket', 'NOT_STARTED', 'CONFIG_UNVERIFIABLE', 'PLUGIN_NOT_PROVEN_OFF']);
     assert.deepStrictEqual(marker.routing.chosen, { model_id: 'm-t3', effort: 'alto', cli_effort: 'high', tier: 'T3' });
-    assert.strictEqual(marker.routing.selection_source, 'FIXED_NODE');
     assert.ok(marker.notified_at, 'aviso marcado depois de enviado');
     assert.strictEqual(redminePuts(id).length, 1);
     assert.ok(!fs.existsSync(taskDirOf(repo, id)), 'nenhuma task criada');
@@ -346,7 +404,7 @@ test('T7 / AC-03: ticket novo ON → fetch_ticket+plan no default_route, recusa 
 
 test('Bugbot (PR #97): aviso que não chegou ao Redmine é tentado de novo no tick seguinte', async () => {
     const recusado = 233706;
-    const repo = consumer(r => writeRouting(r));
+    const repo = blockedConsumer();
     await dispatch(repo, recusado, 'b-falha-1', { follow: false, failPut: true });
     assert.strictEqual(redminePuts(recusado).length, 1);
     assert.strictEqual(JSON.parse(fs.readFileSync(notStartedMarker(repo, recusado), 'utf8')).notified_at, null);
@@ -390,7 +448,7 @@ test('MAJOR-1 (b): started_at anterior à admissão não esconde o snapshot (lig
     const repo = consumer(r => writeRouting(r));
     const { fetch, snapshot, dir } = seedOnRun(repo, id, { bound: false, startedAt: '1999-01-01T00:00:00.000Z' });
     const r = await dispatch(repo, id, 'b-b-passado');
-    assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
     assert.deepStrictEqual(readState(repo, id).routing_snapshot, { attempt_id: fetch.attempt_id, sha256: snapshot.sha256 });
     assert.strictEqual(onlyAttempt(dir).routing.snapshot_sha256, snapshot.sha256);
 });
@@ -411,7 +469,7 @@ test('MAJOR-1 (d): ligação apagada do state depois de ligada → recusa, sem r
 test('MINOR-1 + retry: recusa ON em retry grava cause retry e não consome human-input.md', async () => {
     const id = 233804;
     const repo = consumer(r => writeRouting(r));
-    const { dir } = seedOnRun(repo, id, { retries: { implement: 1 } });
+    const { dir } = seedOnRun(repo, id, { retries: { implement: 1 }, pluginBlocked: true });
     fs.writeFileSync(path.join(dir, 'human-input.md'), 'pode seguir\n');
     const r = await dispatch(repo, id, 'b-retry');
     assert.strictEqual(r.result?.reason, 'routing_not_started', r.output);
@@ -449,10 +507,11 @@ test('T8 / AC-09: override vigente entra na decisão (HUMAN_OVERRIDE); inelegív
     const repo = consumer(r => writeRouting(r));
     const { dir } = seedOnRun(repo, id);
     addToState(dir, { routing_overrides: [override('RO-1', { model_id: 'm-t2', effort: 'médio' }, '2026-11-06T10:00:00.000Z')] });
-    await dispatch(repo, id, 't8-vigente');
+    const res = await dispatch(repo, id, 't8-vigente');
+    assert.strictEqual(res.result?.action, 'dispatched', res.output);
+    assert.strictEqual(flag(argvOf('t8-vigente'), '--model'), 'm-t2', 'o despacho usa o modelo da override');
     const [a] = dom06.listAttempts(dir);
-    // Em produção ainda para no esforço (SP-1), mas a decisão registrada já é a da override.
-    assert.deepStrictEqual([a.result, a.not_started.detail], ['NOT_STARTED', 'EFFORT_MECHANISM_UNAVAILABLE']);
+    assert.strictEqual(a.started, true);
     assert.deepStrictEqual([a.routing.selection_source, a.routing.override_ref.ref, a.routing.chosen.model_id], ['HUMAN_OVERRIDE', 'RO-1', 'm-t2']);
     // Bugbot (PR #97): o limite do 1º Attempt da visita fica gravado para os retries.
     const visit = readState(repo, id).routing_visit;
