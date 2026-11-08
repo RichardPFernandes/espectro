@@ -169,3 +169,21 @@ test('CLI: sem --max-calls sai com código 2 e a mensagem de uso, sem chamar nad
     assert.strictEqual(code, 2);
     assert.match(stderr, /--max-calls/);
 });
+
+test('CLI --synthetic sem Authority Ref: sai com 3 e não envia (a seção da plataforma não dispensa a autoridade)', () => {
+    const repo = fs.mkdtempSync(path.join(tmpBase, 'jev-cal-cli-'));
+    dirs.push(repo);
+    const cli = path.join(__dirname, '..', 'jev-calibrate.js');
+    let code = 0;
+    let stderr = '';
+    try {
+        execFileSync(process.execPath, [cli, '--synthetic', '--out', path.join(repo, 'out'), '--max-calls', '1'], {
+            encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, REPO_PATH: repo },
+        });
+    } catch (e) {
+        code = e.status;
+        stderr = String(e.stderr);
+    }
+    assert.strictEqual(code, 3);
+    assert.match(stderr, /Nada foi enviado/);
+});

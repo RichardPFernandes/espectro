@@ -46,7 +46,12 @@ async function main(argv) {
     const cfg = policyLoader.readRoutingConfig(root);
     const effective = cfg.status === 'ON'
         ? classifierAuthority.evaluateClassifier({
-            classifier: classifierSelection.effectiveClassifier(root, cfg.policy).classifier,
+            // --synthetic (teste de fumaça P-3): envelope embutido, sem dado de ticket. Usa a
+            // seção do Jev da plataforma, para provar a API ANTES de ligar "Policy + Jev";
+            // Authority Ref e credencial continuam exigidas.
+            classifier: synthetic
+                ? classifierSelection.platformJevSection('shadow')
+                : classifierSelection.effectiveClassifier(root, cfg.policy).classifier,
             classifierConfig: cfg.classifier_config, root, project: path.basename(root),
         })
         : { provider: 'off', reason: cfg.status === 'OFF' ? 'ROUTING_OFF' : `ROUTING_${cfg.cause}` };

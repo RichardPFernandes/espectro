@@ -277,3 +277,18 @@ test('T7: grupo sem envelope (ex.: passo com bloco de código) → NO_ENVELOPE c
     assert.strictEqual(client.calls.length, 0);
     assert.strictEqual(effectAttempts(ctx.runDir).length, 0);
 });
+
+test('T9 / AC-14: Attempts classifier não confundem os consumidores (latestBound por nó, idempotência do db-effect)', async () => {
+    const ctx = setup();
+    const impl = dom06.beginAttempt(ctx.runDir, { node: 'implement', admission: { status: 'ADMITTED', owner: 'dom06', snapshot: { ticket_id: 1, node: 'implement' } }, obligations: [{ id: 'execute_node' }] });
+    await run(ctx, { groups: [group('a', GRAY), group('b', PROBE)], client: scriptedClient([OK('C3'), OK('C4')]) });
+    assert.strictEqual(dom06.listAttempts(ctx.runDir).length, 3);
+    // retry do Implement se liga ao Attempt anterior DO IMPLEMENT (latestBound filtra por nó),
+    // mesmo com Attempts classifier mais novos no mesmo diretório.
+    const retry = dom06.retryAttempt(ctx.runDir, { node: 'implement', cause: 'retry', proposed: { owner: 'dom06', snapshot: { ticket_id: 1, node: 'implement' } } });
+    assert.deepStrictEqual([retry.dispatch, retry.attempt.snapshot, retry.attempt.rebind_refused], [true, impl.attempt.snapshot, null]);
+    assert.deepStrictEqual(retry.attempt.obligations.map(o => o.id), ['execute_node']);
+    // db-effect procura a própria chave (db-apply:<job>:<sha>:<alias>): nenhuma chave do Jev colide.
+    const keys = dom06.listAttempts(ctx.runDir).flatMap(a => (a.effects || []).map(e => e.idempotency_key));
+    assert.ok(keys.every(k => /^[0-9a-f]{64}$/.test(k)));
+});

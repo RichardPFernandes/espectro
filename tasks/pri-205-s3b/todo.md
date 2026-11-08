@@ -248,14 +248,20 @@ seleção "Policy + Jev" pelo Dashboard, e como desligar com "Só policy"), e qu
 não é mais necessária).
 
 **Aceite:**
-- [ ] AC-14: receita oficial verde em Node 22 e 24; `check:js`, `lint:src` e `arch:check` limpos
-- [ ] AC-06: varredura dos arquivos gravados nos testes sem a chave falsa
+- [x] AC-14: receita oficial verde em Node 22 e 24; `check:js`, `lint:src` e `arch:check` limpos
+- [x] AC-06: varredura dos arquivos gravados nos testes sem a chave falsa
 - [x] ~~A proposta p2…~~ Não se aplica (Q12)
 
 **Verificação:** `node harness/run-tests.js` (Node 22 e 24)
 **Dependências:** T7, T8
 **Arquivos:** `dashboard/cost-projection.js` (se preciso), `docs/consumer-operations.md`, testes
 **Tamanho:** S
+
+**Feito (2026-11-08):**
+- **Consumidores dos Attempts:** `latestBound` filtra por nó, o `db-effect` usa a própria chave, o `cost-projection` só resolve referências explícitas e o `routing-run` lê só o Attempt da admissão. Teste novo em `classifier-shadow.test.js`: o retry do Implement se liga ao Implement anterior mesmo com Attempts `classifier` mais novos, e nenhuma chave do Jev colide com as do `db-effect`.
+- **AC-06:** varredura dos arquivos gravados sem a chave (T6, `classifier-shadow.test.js` › Q6).
+- **Documentação:** `docs/classifier-nucleus2.md` (contenção desligada por padrão, os passos de ativação, como desligar, onde ficam os dados, `.gitignore` de `memory/routing/`, U15, falhas), com link em `docs/consumer-operations.md`.
+- **Correção de ordem achada ao escrever a documentação:** o teste de fumaça (`--synthetic`) exigia a seleção "Policy + Jev" ligada, o que deixaria texto real de ticket sair antes de o formato da API estar provado. Agora `--synthetic` usa a seção do Jev da plataforma e continua exigindo Authority Ref e credencial (teste novo: sem ref, sai com 3 e não envia).
 
 ## T10: registro de seleção e writer governado
 
@@ -377,3 +383,13 @@ Conjunto: 369/369. `lint:src`, `check:js` e `arch:check` limpos.
   - `scripts` Node 22 1518/1: `cycle-replayer.test.js`, flutuação de tempo, arquivo inalterado, passou 2/2 sozinho.
   - TAPs em `prisma-evidence/2026-11-06-pri-205-s3b-jev/t12/`.
 - **Não reexecutada** depois da troca para `actorOf`. Sem commit.
+
+## Merge com o PR #104 (sessão `routing-screens`, telas de roteamento)
+
+A sessão das telas integrou `c7be422` com o branch dela (PR #104, Draft) numa worktree temporária. Resultado: testes do dashboard verdes no Node 22, e o seletor funcionou de ponta a ponta no navegador contra o endpoint real.
+
+Armadilhas para quem fizer o segundo merge:
+1. **`const os = require('os')` duplicado** no topo do `dashboard/server.js`. Os dois branches o acrescentam (este em `c7be422`), o git junta **sem conflito**, e o arquivo deixa de carregar (`SyntaxError: Identifier 'os' has already been declared`). Remover a duplicata.
+2. **Conflito no bloco `requireApprover`/`actorOf`:** fica uma cópia só do `actorOf`, e o `requireApprover` sai inteiro.
+3. **Conflito na lista de testes de `dashboard/package.json`:** unir as duas listas.
+4. **Baseline de violações:** o #104 baixa para 76 (sai `server → approvers`) e a ARQ-1 daqui soma 1. O total esperado depois do merge é **77**.

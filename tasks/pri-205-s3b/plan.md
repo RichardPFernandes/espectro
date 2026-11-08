@@ -78,7 +78,7 @@ Ref (Q9), a policy p2 (Q2) e o item no Keychain.
 ### Fase 3: integração, U15 e fechamento
 - [x] T7: `nucleus2` e `classifier_ref` na RoutingDecision, com a ligação no watcher
 - [x] T8: comando U15 `jev-calibrate.js`
-- [ ] T9: consumidores dos Attempts, documentação do consumidor e proposta da p2
+- [x] T9: consumidores dos Attempts e documentação do consumidor (p2 dispensada pela Q12)
 
 ### Fase 4: seletor "Só policy" × "Policy + Jev" (R-SEL, SPEC §B11; Q11–Q14)
 - [x] T10: registro de seleção e writer governado (`classifier-selection.js`)
