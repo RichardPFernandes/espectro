@@ -1676,7 +1676,7 @@ function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA,
 // resolução. Só roda com o núcleo 2 efetivo no snapshot da Run e sob a reserva do
 // ticket; nunca em --dry-run/simulação (nada externo). Nunca lança e nunca bloqueia: o
 // resultado só entra como registro na RoutingDecision (classifier-shadow).
-async function collectNucleus2({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir, state, stateReadAt, taskId }) {
+async function collectNucleus2({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir, state, taskId }) {
     try {
         const signals = prospectiveSignalsForRun('claude', [node], { ticket, worktreePath, base: signalBaseBranch(ticket), isRecusaQA }).signals_prospective;
         const active = findActiveTask(ticket.id);
@@ -1684,11 +1684,12 @@ async function collectNucleus2({ runSnapshot, node, ticket, worktreePath, isRecu
         const envelopes = planSignals.classifierEnvelopes(planContent, specContent);
         const groups = (signals && Array.isArray(signals.groups) ? signals.groups : []).map(g => {
             const e = envelopes.get(g.subtask_key);
-            return { ...g, envelope: e && e.ok ? e.envelope : undefined, envelope_reason: e && !e.ok ? e.reason : 'ENVELOPE_MISSING' };
+            return e && e.ok ? { ...g, envelope: e.envelope } : { ...g, envelope: undefined, envelope_reason: e ? e.reason : 'ENVELOPE_MISSING' };
         });
-        const visitStart = routingRun.nodeVisitStart(state, node, stateReadAt || new Date().toISOString());
+        // Chave estável da visita (achado MAJOR 1 da revisão): não depende do instante do
+        // tick, então um re-despacho antes do node_start não reenvia um pedido UNCERTAIN.
         return await classifierShadow.collectOpinions({
-            runDir, root: REPO_PATH, snapshot: runSnapshot.snapshot, taskId, visit: `${node}@${visitStart}`, groups,
+            runDir, root: REPO_PATH, snapshot: runSnapshot.snapshot, taskId, visit: routingRun.nucleus2VisitKey(state, node), groups,
         });
     } catch (e) {
         console.error(`[núcleo 2] #${ticket.id}: falha coletando opiniões (seguindo sem elas):`, e.message);
@@ -4861,7 +4862,7 @@ async function dispatchTicketReserved(ticket) {
         if (runSnapshot.mode === 'ON') {
             const nucleus2 = node === modelRouting.ROUTED_NODE && !DRY_RUN && !SIMULATE
                 && runSnapshot.snapshot?.classifier_effective?.provider === 'jev'
-                ? await collectNucleus2({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt, taskId })
+                ? await collectNucleus2({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, taskId })
                 : null;
             nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt, nucleus2 });
             if (nodeRouting.visit) state.routing_visit = nodeRouting.visit;

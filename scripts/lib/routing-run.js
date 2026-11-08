@@ -185,12 +185,29 @@ function nodeVisitStart(state, node, now) {
     return ok ? v.at : start;
 }
 
+// PRI-205 S3b (achado MAJOR 1 da revisão G2): chave da visita para a EffectId do núcleo 2.
+// Não usa `now` nem o node_start: a visita é identificada pelo fim da visita anterior
+// (último evento de ciclo de vida de OUTRO nó), que não muda entre ticks antes do
+// node_start nem nos retries da mesma visita, e muda numa visita nova. Sem eventos, a
+// chave é constante na Run: conservador, o mesmo envelope nunca é reenviado.
+// Não altera nodeVisitStart (overrides, D-4).
+function nucleus2VisitKey(state, node) {
+    const events = Array.isArray(state?.events) ? state.events : [];
+    for (let i = events.length - 1; i >= 0; i--) {
+        const e = events[i];
+        if (!e || !LIFECYCLE.has(e.type) || e.node === node) continue;
+        const ts = typeof (e.ts || e.at) === 'string' ? (e.ts || e.at) : null;
+        return `${node}@after:${e.node}:${ts || 'UNKNOWN'}`;
+    }
+    return `${node}@after:run-start`;
+}
+
 /** O watcher grava o limite do 1º Attempt da visita (só quando a visita é nova). */
 function visitToRecord(state, node, boundary, now) {
     return boundary === now ? { node, at: now } : null;
 }
 
 module.exports = {
-    recordAdmission, clearAdmission, markConsumed, bindingFor, loadRunSnapshot, blockedNotice, markNoticeSent, nodeVisitStart, visitToRecord,
+    recordAdmission, clearAdmission, markConsumed, bindingFor, loadRunSnapshot, blockedNotice, markNoticeSent, nodeVisitStart, visitToRecord, nucleus2VisitKey,
     TRANSIENT_NOTICE_AFTER,
 };

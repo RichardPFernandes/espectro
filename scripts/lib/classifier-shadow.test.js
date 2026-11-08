@@ -292,3 +292,17 @@ test('T9 / AC-14: Attempts classifier não confundem os consumidores (latestBoun
     const keys = dom06.listAttempts(ctx.runDir).flatMap(a => (a.effects || []).map(e => e.idempotency_key));
     assert.ok(keys.every(k => /^[0-9a-f]{64}$/.test(k)));
 });
+
+test('achado MAJOR 1: UNCERTAIN e novo tick antes do node_start (pré-build falho, reinício) → nenhuma requisição nova', async () => {
+    const rr = require('./routing-run');
+    const ctx = setup();
+    const client = scriptedClient([{ outcome: 'UNCERTAIN', certain: false, detail: 'TIMEOUT' }, OK('C3')]);
+    const events = [{ type: 'node_start', node: 'plan', ts: '2026-11-06T10:00:00.000Z' }, { type: 'node_end', node: 'plan', ts: '2026-11-06T10:05:00.000Z' }];
+    // Tick 1: a coleta acontece e o Implement não chega ao node_start.
+    await run(ctx, { groups: [group('a', GRAY)], client, visit: rr.nucleus2VisitKey({ events }, 'implement') });
+    // Tick 2, minutos depois: o estado só ganhou routing_visit novo; ainda sem node_start.
+    const later = { events, routing_visit: { node: 'implement', at: '2026-11-06T10:30:00.000Z' } };
+    const r = await run(ctx, { groups: [group('a', GRAY)], client, visit: rr.nucleus2VisitKey(later, 'implement') });
+    assert.strictEqual(client.calls.length, 1);
+    assert.deepStrictEqual([r.opinions[0].status, r.opinions[0].prior_result], ['NOT_REPEATED', 'UNCERTAIN']);
+});

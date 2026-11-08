@@ -98,6 +98,9 @@ function readSelection(root) {
         if (!v || v.version !== i + 1 || !CHOICES.has(v.choice) || !v.classifier || typeof v.classifier !== 'object') {
             return invalidRegistry(`version_${i + 1}`);
         }
+        // Coerência (NIT da revisão): "Só policy" nunca liga o Jev, e vice-versa.
+        const expected = v.choice === 'policy_jev' ? 'jev' : 'off';
+        if (v.classifier.provider !== expected) return invalidRegistry(`version_${i + 1}_choice_mismatch`);
     }
     const current = reg.versions[reg.versions.length - 1];
     if (reg.current_version !== current.version) return invalidRegistry('current_version');
@@ -163,7 +166,12 @@ function acquireLock(lockPath) {
             let stale = false;
             try { stale = Date.now() - fs.statSync(lockPath).mtimeMs > STALE_LOCK_MS; } catch { stale = true; }
             if (!stale || attempt > 0) break;
-            try { fs.unlinkSync(lockPath); } catch { /* outro escritor levou */ }
+            // Retomada atômica (achado MINOR 3 da revisão): renomear a trava velha para um
+            // nome único. Só um escritor consegue o rename; o outro cai no `wx` e vê a trava
+            // nova (não abandonada) → 409. Nunca apaga a trava recém-criada por outro.
+            const aside = `${lockPath}.stale.${process.pid}.${Date.now()}`;
+            try { fs.renameSync(lockPath, aside); } catch { continue; }
+            try { fs.unlinkSync(aside); } catch { /* já removida */ }
         }
     }
     throw new SelectionError('CLASSIFIER_VERSION_CONFLICT', 409, 'outra troca do classificador está em andamento; recarregue e tente de novo');

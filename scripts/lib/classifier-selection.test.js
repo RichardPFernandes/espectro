@@ -211,3 +211,27 @@ test('cas é obrigatório: sem ele o writer não roda (a comparação de versão
     const c = consumer();
     assert.throws(() => sel.writeSelection(c.root, { choice: 'policy_only', expectedVersion: 0, operationId: 'op-sem-cas-1', by: 'r', reason: 'x', project: c.project }), /cas/);
 });
+
+test('achado MINOR 3: trava abandonada (> 60 s) é retomada por rename atômico e a escrita segue', () => {
+    const c = consumer();
+    const lock = `${sel.registryPath(c.root)}.lock`;
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, '99999');
+    const old = new Date(Date.now() - 5 * 60 * 1000);
+    fs.utimesSync(lock, old, old);
+    assert.strictEqual(write(c).status, 'applied');
+    assert.ok(!fs.existsSync(lock), 'a trava é liberada no fim');
+    const leftovers = fs.readdirSync(path.dirname(lock)).filter(f => f.includes('.lock'));
+    assert.deepStrictEqual(leftovers, [], 'nenhum resto da trava abandonada');
+});
+
+test('NIT da revisão: registro adulterado ("Só policy" com provider jev) → inválido, núcleo 2 off', () => {
+    const c = consumer();
+    write(c);
+    const file = sel.registryPath(c.root);
+    const reg = JSON.parse(fs.readFileSync(file, 'utf8'));
+    reg.versions[0].classifier = sel.platformJevSection('shadow');
+    fs.writeFileSync(file, JSON.stringify(reg));
+    assert.deepStrictEqual([sel.readSelection(c.root).ok, sel.readSelection(c.root).detail], [false, 'version_1_choice_mismatch']);
+    assert.deepStrictEqual(sel.effectiveClassifier(c.root, { classifier: P1 }).classifier, { provider: 'off' });
+});

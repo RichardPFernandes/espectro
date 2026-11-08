@@ -296,3 +296,23 @@ test('loadRunSnapshot: attempt_id com caminho (../) é recusado sem ler fora do 
     const r = rr.loadRunSnapshot({ routing_snapshot: { attempt_id: '../../etc/passwd', sha256: 'a'.repeat(64) } }, fetchRunDir());
     assert.deepStrictEqual(r, { mode: 'ON', ok: false, detail: 'snapshot_unreadable' });
 });
+
+// PRI-205 S3b, achado MAJOR 1 da revisão G2: a chave de visita da EffectId do núcleo 2
+// não pode mudar entre ticks antes do node_start (pré-build falho, churn, admissão sem
+// despacho, reinício do watcher), senão um pedido UNCERTAIN seria reenviado.
+test('S3b: nucleus2VisitKey é estável antes do node_start e nos retries; muda numa visita nova', () => {
+    const ev = (type, node, ts) => ({ type, node, ts });
+    const plan = [ev('node_start', 'plan', '2026-11-06T10:00:00.000Z'), ev('node_end', 'plan', '2026-11-06T10:05:00.000Z')];
+    const k0 = rr.nucleus2VisitKey({ events: plan }, 'implement');
+    // Ticks seguintes sem node_start (implement nunca começou): mesma chave.
+    assert.strictEqual(rr.nucleus2VisitKey({ events: plan, routing_visit: { node: 'implement', at: '2026-11-06T10:06:00.000Z' } }, 'implement'), k0);
+    // Implement começou, falhou e vai para retry na mesma visita: mesma chave.
+    const started = [...plan, ev('node_start', 'implement', '2026-11-06T10:10:00.000Z'), ev('node_end', 'implement', '2026-11-06T10:20:00.000Z')];
+    assert.strictEqual(rr.nucleus2VisitKey({ events: started, retries: { implement: 1 } }, 'implement'), k0);
+    // Review → implement de novo: visita nova, chave nova.
+    const loop = [...started, ev('node_start', 'review', '2026-11-06T10:30:00.000Z'), ev('node_end', 'review', '2026-11-06T10:40:00.000Z')];
+    assert.notStrictEqual(rr.nucleus2VisitKey({ events: loop }, 'implement'), k0);
+    // Sem eventos: chave constante da Run (conservador: nunca reenvia o mesmo envelope).
+    assert.strictEqual(rr.nucleus2VisitKey({}, 'implement'), rr.nucleus2VisitKey({ events: [] }, 'implement'));
+    assert.match(k0, /^implement@after:/);
+});

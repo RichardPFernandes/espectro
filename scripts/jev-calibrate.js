@@ -64,6 +64,10 @@ async function main(argv) {
         process.stderr.write(`${result.reason}\n${USAGE}`);
         return 2;
     }
+    if (result.status === 'BUSY') {
+        process.stderr.write('Outra calibração está rodando neste --out. Nada foi enviado.\n');
+        return 2;
+    }
     if (result.status === 'OFF') {
         process.stderr.write(`Núcleo 2 off: ${result.reason}. Nada foi enviado.\n`);
         return 3;

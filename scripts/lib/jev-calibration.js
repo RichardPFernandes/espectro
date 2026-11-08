@@ -113,6 +113,24 @@ async function calibrate({
 
     const out = path.resolve(outDir || path.join(runsDir, '_jev-u15'));
     fs.mkdirSync(out, { recursive: true });
+    // Uma execução por diretório de saída (achado MINOR 4 da revisão): duas execuções
+    // simultâneas no mesmo --out enviariam em dobro. A não repetição entre execuções
+    // depende de usar SEMPRE o mesmo --out (documentado).
+    const lockPath = path.join(out, '.calibration.lock');
+    try {
+        fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+    } catch (e) {
+        if (e && e.code === 'EEXIST') return { status: 'BUSY', reason: 'CALIBRATION_IN_PROGRESS', report: null };
+        throw e;
+    }
+    try {
+        return await runCalibration({ runsDir, out, n, maxCalls, effective, synthetic, client, credentialProvider, guard });
+    } finally {
+        try { fs.unlinkSync(lockPath); } catch { /* já removida */ }
+    }
+}
+
+async function runCalibration({ runsDir, out, n, maxCalls, effective, synthetic, client, credentialProvider, guard }) {
     const discovered = synthetic
         ? { envelopes: [[sha256(shadow.canonical(plainEnvelope(SYNTHETIC_ENVELOPE))), plainEnvelope(SYNTHETIC_ENVELOPE)]], skipped: 0 }
         : discoverEnvelopes(runsDir, out);

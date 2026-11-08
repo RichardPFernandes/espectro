@@ -1,0 +1,106 @@
+handoff_version: "1.1"
+
+task:
+  id: "PRI-205"
+  objective: "Especificar o núcleo 2 da classificação de roteamento com o Jev (TypeSafe) em modo sombra, como nova fatia (S3b) da PRI-205, e parar para aprovação do Richard antes de planejar ou codar."
+  specification_ref: "/Users/richardfernandes/Workspace/prisma/.claude/worktrees/pri-205-jev-sombra/SPEC.md"
+  acceptance_criteria:
+    - "Issue nova no Linear (time PRI, filha da PRI-205) criada com a confirmação do Richard."
+    - "SPEC.md da fatia escrito e apresentado para aprovação, com as perguntas em aberto."
+
+routing:
+  from: "sessão coordenadora local_03545630-1bc2-4616-9861-5aea4693fca8"
+  to: "Richard (aprovação do SPEC e criação da issue)"
+  runtime: "claude"
+  fallback_reason: null
+
+risk:
+  level: "MEDIUM"
+  signals:
+    - "G2: chamada externa a terceiro (TypeSafe) com texto de ticket; só especificação nesta etapa"
+  classified_by: "Claude (sessão S3b)"
+
+execution:
+  agent: "Claude Opus 5.5"
+  status: "COMPLETED"
+  summary: "Fatia S3b implementada (T1–T12 e T9) no branch spec/pri-205-jev-sombra: núcleo 2 do Jev em sombra, sem efeito no despacho, desligado por padrão, mais seletor Só policy × Policy + Jev com writer governado e API no Dashboard. Revisão independente G2 (Opus, contexto limpo): CHANGES_REQUESTED com 1 MAJOR e 4 MINOR, corrigidos ou com resíduo declarado. Suíte oficial verde (Node 24 com o flake preexistente do routing-off-golden). Verify por AC em tasks/pri-205-s3b/evidence.md. PR em draft; merge exclusivo do Richard."
+  branch: "spec/pri-205-jev-sombra"
+  commit: null
+
+artifacts:
+  - path: "/Users/richardfernandes/Workspace/prisma/.claude/worktrees/pri-205-jev-sombra/SPEC.md"
+    action: "MODIFIED"
+    description: "Substitui, só neste branch, o SPEC.md da PRI-233 (convenção de um SPEC.md por fatia na raiz). Não commitado."
+  - path: "/Users/richardfernandes/Workspace/prisma-evidence/2026-11-06-pri-205-s3b-jev/SPEC.rascunho.md"
+    action: "CREATED"
+    description: "Cópia do rascunho apresentado (SHA-256 f8b3ad57…811a7; Q0–Q10 decididas)."
+  - path: "/Users/richardfernandes/Workspace/prisma-evidence/2026-11-06-pri-205-s3b-jev/issue-draft.md"
+    action: "CREATED"
+    description: "Texto da issue confirmada e não criada."
+
+decisions:
+  approved:
+    - "Richard, 2026-11-06: SPEC e plano da S3b aprovados; Q0 = (b) tudo em sombra + sonda de subida em sombra nos grupos C1–C3 (Q0'), ampliação do §4.8 a reconciliar (regra 8)."
+    - "Richard, 2026-11-06: Q1–Q10 nas recomendações do SPEC (tabela de decisões)."
+    - "Richard, 2026-11-06: R-SEL, seletor Só policy × Policy + Jev no escopo; Q11 registro próprio no consumidor, Q12 parâmetros da plataforma (p2 dispensada), Q13 por projeto."
+    - "Richard, 2026-11-06: Q14 revista, sem aprovador no Dashboard até existirem roles; autoria = usuário local (actorOf)."
+    - "Richard, 2026-11-06: ARQ-1, exceção explícita dashboard → scripts/lib/classifier-selection na lista de violações conhecidas (77 → 78), dívida da F12; camada application descartada por quebrar o build TS."
+    - "Richard, 2026-11-06: criar a issue como proposta (filha da PRI-205); recusada pelo limite do Linear, registro no comentário df603cff da PRI-205."
+  proposed: []
+
+validation:
+  executed:
+    - command: "env -i … NODE_OPTIONS=--require=harness/loopback-only.cjs npm --prefix scripts test (Node 22.23.2)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "prisma-evidence/2026-11-06-pri-205-s3b-jev/checkpoint-c/nodev22.23.2-scripts.tap (1527 pass, 0 fail, 6 skip)"
+    - command: "env -i … npm --prefix dashboard test (Node 22.23.2 e 24.22.1)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "checkpoint-c/nodev22.23.2-dashboard.tap e nodev24.22.1-dashboard.tap (307 pass, 0 fail cada)"
+    - command: "env -i … npm --prefix scripts test (Node 24.22.1)"
+      result: "FAILED"
+      expected: "PASSED"
+      evidence: "checkpoint-c/nodev24.22.1-scripts.tap: 1527 pass, 1 fail no hook after de routing-off-golden.test.js (ENOTEMPTY, preexistente); o arquivo sozinho passa: checkpoint-c/node24-routing-off-golden-rerun.tap"
+    - command: "npm run lint:src, check:js (scripts e dashboard), arch:check (Node 22.23.2)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "saída limpa registrada em tasks/pri-205-s3b/evidence.md (Checkpoint C)"
+  not_executed:
+    - "Nenhum teste: etapa só de especificação."
+    - "Formato real da API TypeSafe não verificado contra documentação oficial: conhecido só pela leitura do plugin thinkdial (hooks/policy.ts)."
+
+open_issues:
+  - "Resíduos da revisão: ids do Redmine (#123) no texto do passo não são filtrados (decisão do Richard); U15 com outro --out de propósito não alcança o diretório anterior."
+  - "Flake preexistente: hook after de scripts/lib/routing-off-golden.test.js com ENOTEMPTY sob carga no Node 24 (2 vezes); fora da fatia."
+  - "Merge com o PR #104 (routing-screens): const os duplicado no topo do dashboard/server.js (o git junta sem conflito e o arquivo não carrega), conflito requireApprover/actorOf, união das listas de teste do dashboard/package.json, baseline de violações esperada em 77. Detalhes em tasks/pri-205-s3b/todo.md."
+  - "Issue própria PENDENTE: o Linear recusou de novo em 2026-11-06 (limite do plano gratuito, requestId a565c3a21b0b7ff9). Por decisão do Richard, o texto ficou no comentário df603cff-ab3b-4096-bbeb-663ba777760a da PRI-205. Criar a issue quando o limite permitir."
+  - "Authority Ref durável inexistente (DP-7); sem ela a fatia fica dormente (AUTHORITY_REF_ABSENT)."
+  - "Classe de dado e teto do destino TypeSafe UNKNOWN (U-A4, UNK-SEC-005): voltam à reconciliação do RC-6."
+  - "O R-7 exige o aceite do Richard para o verificador de conteúdo (Q7)."
+
+next:
+  recommended_agent: "Richard, depois Claude"
+  action: "Richard: revisar o PR em draft e decidir o merge (cuidados com o PR #104 em tasks/pri-205-s3b/todo.md); decidir o resíduo dos ids do Redmine no envelope; ativação (Authority Ref pelo Coordenador, Keychain, teste de fumaça, seleção); criar a issue própria quando o Linear permitir."
+  prerequisites:
+    - "Aprovação do SPEC."
+    - "Issue criada."
+
+context_refs:
+  - "/Users/richardfernandes/Workspace/prisma-evidence/pri-205/desenho-selecao-modelo.md"
+  - "/Users/richardfernandes/Workspace/prisma-evidence/pri-205/hd-ativacao-final-proposta.md"
+  - "/Users/richardfernandes/Workspace/prisma-evidence/pri-205/recomendacao-dp9-jev.md"
+  - "/Users/richardfernandes/Workspace/prisma-evidence/2026-11-06-pri-233/policy-aprovada/aprovacao.md"
+  - "https://linear.app/prisma-app/issue/PRI-205"
+
+facts:
+  - "origin/main = 4d39a3c (PR #99 já mergeado)."
+  - "model-routing.js:145-150 devolve nucleus2_effective off e AUTHORITY_REF_ABSENT com authorityRef null (readmine-watcher.js:1665)."
+  - "recordEffect no Attempt do nó cria obrigação pendente em falha; por isso o SPEC usa Attempt de efeito separado (padrão db-effect.js:366-404)."
+assumptions:
+  - "A1–A3 do SPEC."
+
+usage:
+  duration: "UNKNOWN"
+  retries: 0
+  tokens: "UNKNOWN"

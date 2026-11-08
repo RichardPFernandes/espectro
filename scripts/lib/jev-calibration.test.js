@@ -187,3 +187,14 @@ test('CLI --synthetic sem Authority Ref: sai com 3 e não envia (a seção da pl
     assert.strictEqual(code, 3);
     assert.match(stderr, /Nada foi enviado/);
 });
+
+test('achado MINOR 4: duas execuções no mesmo --out ao mesmo tempo → a segunda recusa (BUSY), sem chamar', async () => {
+    const runs = runsWith([envelope(1)]);
+    const out = path.join(runs, '_jev-u15');
+    fs.mkdirSync(out, { recursive: true });
+    fs.writeFileSync(path.join(out, '.calibration.lock'), String(process.pid));
+    const client = fakeClient(() => 'C3');
+    const r = await go(runs, { maxCalls: 5, client });
+    assert.deepStrictEqual([r.status, r.reason], ['BUSY', 'CALIBRATION_IN_PROGRESS']);
+    assert.strictEqual(client.calls.length, 0);
+});

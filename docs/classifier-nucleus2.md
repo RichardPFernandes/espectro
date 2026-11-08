@@ -138,6 +138,8 @@ REPO_PATH=<raiz do consumidor> node "$PRISMA_ROOT/scripts/jev-calibrate.js" --ru
 - `--max-calls` é obrigatório: cada chamada gasta o saldo da conta.
 - Com dado faltante, o veredito é `UNKNOWN`, nunca `PASS`. Rodar de novo completa só o que faltou.
 - As repetições ficam em `<runs>/_jev-u15/` (ou `--out`), fora dos Attempts das Runs.
+- **Use sempre o mesmo `--out`** (ou nunca o passe): a não repetição de pedidos incertos é conferida nesse diretório. Uma segunda execução simultânea no mesmo `--out` é recusada (código 2).
+- O `--synthetic` envia mesmo com a seleção em "Só policy" (é o teste de fumaça), mas continua exigindo Authority Ref e credencial.
 
 ## Falhas
 
@@ -147,6 +149,7 @@ REPO_PATH=<raiz do consumidor> node "$PRISMA_ROOT/scripts/jev-calibrate.js" --ru
 | Passo com bloco de código | grupo `NO_ENVELOPE` (`STEP_HAS_CODE_BLOCK`) |
 | Timeout (3 s) ou conexão caída depois do envio | efeito `UNCERTAIN`, **nunca** repetido |
 | 401/403 | núcleo 2 `off` no resto da Run |
-| Registro de seleção ilegível | núcleo 2 `off` (`CLASSIFIER_SELECTION_INVALID`); o writer recusa sobrescrever |
+| Registro de seleção ilegível ou adulterado (escolha × provider) | núcleo 2 `off` (`CLASSIFIER_SELECTION_INVALID`); o writer recusa sobrescrever |
+| Prompt do Jev mudou numa versão nova do Prisma | a seção gravada na seleção deixa de bater (`classifier_prompt_mismatch`): núcleo 2 `off` até alguém salvar "Policy + Jev" de novo no Dashboard |
 
 Em nenhum caso o despacho é bloqueado, e em nenhum caso a classe muda.

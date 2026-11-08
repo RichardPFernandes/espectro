@@ -2182,7 +2182,9 @@ function createDashboard(options = {}) {
         res.json(classifierSelection.classifierState(repoRoot));
     });
 
-    app.post('/api/routing/classifier', async (req, res) => {
+    // Síncrono de propósito (achado MINOR 2 da revisão): o Express 4 só captura `throw`
+    // síncrono; erro inesperado (EACCES, ENOSPC) vira 500, nunca derruba o Dashboard.
+    app.post('/api/routing/classifier', (req, res) => {
         const by = actorOf();
         const b = req.body || {};
         try {

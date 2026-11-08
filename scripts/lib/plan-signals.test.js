@@ -322,3 +322,13 @@ test('S3b T7: AC citado fora da spec fica fora do envelope; plano sem passos dev
     assert.deepStrictEqual(entry.envelope.ac_texts, []);
     assert.strictEqual(ps.classifierEnvelopes('sem plano', SPEC).size, 0);
 });
+
+test('achado MINOR 5: bloco de código indentado no passo ou código no AC não vira envelope; sub-itens de lista passam', () => {
+    const indented = '## Plano de execução\n1. Trocar a função\n   - Arquivo: `a.js`\n   - Critérios: AC-01\n\n        const x = soma(a, b);\n        return x;\n';
+    assert.deepStrictEqual([...ps.classifierEnvelopes(indented, SPEC).values()][0], { ok: false, reason: 'STEP_HAS_CODE_BLOCK' });
+    const nested = '## Plano de execução\n1. Ajustar listagem\n   - Arquivo: `a.js`\n   - Critérios: AC-01\n     - detalhe: ordenar por nome\n     * outro detalhe\n';
+    assert.strictEqual([...ps.classifierEnvelopes(nested, SPEC).values()][0].ok, true);
+    const specWithCode = '## Critérios de Aceite\n- AC-01: retorna ```{"ok":true}```.\n';
+    const plan = '## Plano de execução\n1. Algo\n   - Arquivo: `a.js`\n   - Critérios: AC-01\n';
+    assert.deepStrictEqual([...ps.classifierEnvelopes(plan, specWithCode).values()][0], { ok: false, reason: 'AC_HAS_CODE_BLOCK' });
+});
