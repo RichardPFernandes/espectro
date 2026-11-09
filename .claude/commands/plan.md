@@ -194,10 +194,19 @@ profundidade do diagnóstico (arquivos a tocar, dependências, riscos) não muda
     ```markdown
     ## Plano de execução
     1. Filtrar transportadoras pelo resultado atual da tela.
-       - Arquivo: `app-core/src/main/java/.../TorreControleViagensService.java`
+       - Arquivo: `app-core/src/main/java/br/com/mosistemas/app/core/TorreControleViagensService.java`, `app-core/src/test/java/br/com/mosistemas/app/core/TorreControleViagensServiceTest.java`
        - Critérios: AC-01, AC-02
        - Verificação: teste unitário novo retorna só as transportadoras do resultado.
     ```
+
+    **Linha `Arquivo:` = só caminhos.** O classificador de modelo (S2) lê essa linha
+    para decidir a faixa do passo; linha ilegível vira sinal `UNKNOWN` e o passo sobe
+    para Opus. Escreva cada caminho **concreto e completo** entre crases, separados
+    por vírgula (sem `...`, curinga, diretório ou lista dentro de uma crase só) e use
+    uma única linha `Arquivo:` por passo. Anotação, nome de método ou classe,
+    annotation (`@Path`), branch e comentário como "(novo)" **não** ficam nessa
+    linha: vão no texto do passo ou em outra linha (`- Detalhe: ...`). O plan-scorer
+    avisa quando a linha não é legível.
 
     **A spec define O QUÊ; o Plan define COMO.** Use os IDs `AC-XX` da seção
     `## Critérios de Aceite` da spec exatamente como estão: todo AC precisa de ao
