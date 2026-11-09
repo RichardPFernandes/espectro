@@ -163,7 +163,7 @@ test('AC-06: abrir Versão, confirmar Atualizar, pin na revisão nova e PID novo
     try {
         await ui.open();
         assert.match(ui.tabsHtml(), /data-view="versao"/);
-        assert.match(ui.tabsHtml(), /Versão/);
+        assert.match(ui.tabsHtml(), /Sistema/);
         ui.setView('versao');
         await until(() => ui.button() && ui.button().disabled === false);
         assert.equal(ui.viewName(), 'versao');

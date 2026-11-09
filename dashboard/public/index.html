@@ -514,8 +514,8 @@
   .seg-ctl .count { color: var(--faint); font-weight: 500; }
   .lamp { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--idle); flex-shrink: 0; }
 
-  /* Quadro, Tabela, Linha do tempo, Métricas e Tickets e PRs (views.js): screens/run-views.css. */
-  /* Tabela genérica rolável (coordination.js). */
+  /* Quadro, Tabela, Linha do tempo, Relatório semanal e Tickets e PRs (views.js): screens/run-views.css. */
+  /* Tabela genérica rolável (would-route-metrics.js). */
   .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 
   /* Badge de status do TICKET Redmine (ticketStatusBadge, index.html) — reusado na
@@ -575,7 +575,6 @@
 <link rel="stylesheet" href="screens/prs.css">
 <link rel="stylesheet" href="screens/graph.css">
 <link rel="stylesheet" href="screens/patterns.css">
-<link rel="stylesheet" href="screens/coordination.css">
 <link rel="stylesheet" href="screens/would-route.css">
 <link rel="stylesheet" href="screens/routing.css">
 <link rel="stylesheet" href="screens/run-subtasks.css">
@@ -589,7 +588,7 @@
     <svg width="28" height="28" viewBox="0 0 48 48" aria-hidden="true"><path d="M6.1 15 A20 20 0 0 1 41.9 15 Z" style="fill: var(--accent)"/><path d="M4.9 18 H43.1 A20 20 0 0 1 43.1 30 H4.9 A20 20 0 0 1 4.9 18 Z" style="fill: var(--state-done)"/><path d="M6.1 33 H41.9 A20 20 0 0 1 6.1 33 Z" style="fill: var(--state-waiting)"/></svg>
     <span class="app-brand-name"><b>Espectro</b><span>dashboard local</span></span>
   </a>
-  <div id="tabs" class="nav-groups" role="tablist" aria-orientation="vertical" aria-label="Visões"></div>
+  <div id="tabs" class="nav-groups"></div>
   <div id="navFoot" class="nav-foot"></div>
 </nav>
 
@@ -606,7 +605,8 @@
     <div id="live" class="live" role="status"><i></i><span id="liveText">Conectando</span></div>
     <a id="exportRuns" class="icon-btn" href="/api/export" download title="Exportar relatório (memory/runs/ em JSON)" aria-label="Exportar Relatório"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></a>
     <button id="theme" class="icon-btn" type="button" title="Alternar tema" aria-label="Alternar tema claro/escuro">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <svg data-pfx-theme-icon="moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <svg data-pfx-theme-icon="sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
     </button>
   </div>
 </header>
@@ -3214,9 +3214,6 @@ function connect() {
     if (msg.type === 'hello') {
       setRuns(msg.runs); if (selected) loadContext(false);
       window.ContextMd?.refresh(); // reconexão: pode ter perdido context_update
-      if (window.Views?.current() === 'coordenacao') window.CoordinationView?.load();
-    } else if (msg.type === 'coordination_update') {
-      if (window.Views?.current() === 'coordenacao') window.CoordinationView?.load();
     } else if (msg.type === 'state_update') {
       const prev = runs.get(msg.taskId);
       runs.set(msg.taskId, msg.run || { ...(prev || {}), taskId: msg.taskId, state: msg.state });
@@ -3275,13 +3272,13 @@ document.addEventListener('click', async e => {
   renderDetail();
 });
 </script>
+<script src="ui-kit.js"></script>
 <script src="node-clock.js"></script>
 <script src="schema-checklist.js"></script>
 <script src="markdown.js"></script>
 <script src="views.js"></script>
 <script src="graph.js"></script>
 <script src="patterns.js"></script>
-<script src="coordination.js"></script>
 <script src="would-route-metrics.js"></script>
 <script src="routing.js"></script>
 <script src="version.js"></script>

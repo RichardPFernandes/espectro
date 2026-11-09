@@ -5,11 +5,14 @@
    3. Shell: navegação lateral (.app-nav, 248 px) + coluna principal (.app-main).
    4. Componentes compartilhados (.pill, .btn, .panel, .seg, .kpi, .label...): as telas usam
       estas classes em vez de recriar estado, botão ou painel. CSS específico de tela vai
-      em screens/<tela>.css. */
+      em screens/<tela>.css.
+   5. Padrões de tela do design (card de indicador com sparkline, filtro removível, ações em lote,
+      painel de detalhe): HTML em ui-kit.js (window.UIKit), estilo aqui. */
 
 /* ------------------------------------------------------------ 1. Aliases */
 :root {
-  --bg: var(--ground); --sunken: var(--ground); --line: var(--border); --line-soft: var(--border);
+  /* --sunken, --divider, --edge, --tangle* e --shadow-pop são tokens do design (prisma-theme.css): não redefinir aqui. */
+  --bg: var(--ground); --line: var(--border); --line-soft: var(--divider);
   --ink: var(--text); --ink-2: var(--text-secondary); --faint: var(--muted);
   --signal: var(--accent); --signal-soft: var(--state-running-bg);
   --attention: var(--state-waiting-fg); --attention-bg: var(--state-waiting-bg); --attention-line: var(--state-waiting);
@@ -18,9 +21,8 @@
   --clear: var(--state-done); --clear-bg: var(--state-done-bg);
   --idle: var(--state-queued);
   --warm: #F7A97A; --warm-bg: #2E1B12;
-  --session-limit: #B79CFF; --session-limit-bg: #241C3A;
+  --session-limit: var(--tangle); --session-limit-bg: var(--tangle-bg);
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .28);
-  --shadow-pop: 0 16px 40px rgba(0, 0, 0, .45);
   /* Rampa ordinal das fases e série única: acompanham a rampa --heat do design. */
   --ph0: var(--heat-2); --ph1: var(--heat-3); --ph2: var(--heat-4); --ph3: var(--heat-5); --bar: var(--accent);
   --svc0-bg: #1B2540; --svc0-fg: #A9C3FF; --svc1-bg: #122A20; --svc1-fg: #7BE3AE; --svc2-bg: #2E2412; --svc2-fg: #F7C37A;
@@ -36,9 +38,7 @@
 }
 :root[data-theme="light"] {
   --warm: #8C4409; --warm-bg: #FFEAE0;
-  --session-limit: #785FBC; --session-limit-bg: #F5F3FF;
   --shadow: 0 1px 2px rgba(20, 24, 38, .06), 0 8px 24px rgba(20, 24, 38, .08);
-  --shadow-pop: 0 16px 40px rgba(20, 24, 38, .16);
   --svc0-bg: #E2EAFE; --svc0-fg: #234AA8; --svc1-bg: #DBF3E6; --svc1-fg: #12643D; --svc2-bg: #FCEFD7; --svc2-fg: #8A5200;
   --svc3-bg: #F5F3FF; --svc3-fg: #614C90; --svc4-bg: #D9EDF2; --svc4-fg: #0B6674; --svc5-bg: #FFF1F2; --svc5-fg: #B65784;
 }
@@ -84,9 +84,19 @@ body.app { display: flex; height: 100vh; overflow: hidden; }
 .app-brand-name b { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
 .app-brand-name span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 
-.nav-groups { display: flex; flex-direction: column; gap: 12px; }
-.nav-group { display: flex; flex-direction: column; gap: 2px; }
-.nav-group-label { display: flex; align-items: center; min-height: 28px; padding: 0 12px; }
+.nav-groups { display: flex; flex-direction: column; gap: 4px; }
+.nav-group, .nav-group-items { display: flex; flex-direction: column; gap: 2px; }
+.nav-group-items[hidden] { display: none; }
+/* Cabeçalho de grupo (AppNav): botão que recolhe, chevron gira 90° aberto. */
+.nav-group-label {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 12px;
+  border: 0; background: transparent; cursor: pointer; text-align: left;
+}
+.nav-group-label > span:first-of-type { flex: 1 1 auto; }
+.nav-group-label:hover { color: var(--text); }
+.nav-group-label svg { flex: 0 0 auto; transition: transform var(--dur-micro) var(--ease-out); }
+.nav-group-label[aria-expanded="true"] svg { transform: rotate(90deg); }
+.nav-group-label .nav-count { letter-spacing: 0; padding: 0 7px; }
 .nav-item {
   display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 0 12px;
   border: 0; border-radius: var(--radius-control); background: transparent;
@@ -128,7 +138,7 @@ body.app { display: flex; height: 100vh; overflow: hidden; }
 .live.off i { background: var(--state-failed); }
 .icon-btn {
   width: 40px; height: 40px; display: inline-grid; place-items: center; cursor: pointer;
-  border: 1px solid var(--border); border-radius: var(--radius-control); background: transparent; color: var(--text-secondary);
+  border: 1px solid var(--c-252a3d); border-radius: var(--radius-control); background: transparent; color: var(--text-secondary);
 }
 .icon-btn:hover { background: var(--surface-hover); color: var(--text); }
 
@@ -214,17 +224,90 @@ body.app { display: flex; height: 100vh; overflow: hidden; }
 .empty { padding: 32px; text-align: center; color: var(--muted); }
 .source-note { font-size: 12px; line-height: 16px; color: var(--muted); }
 
+/* ------------------------------------------------------------ 5. Padrões de tela (ui-kit.js)
+   Medidas dos artboards Main e Tickets. O HTML sai de UIKit.kcard/filterChip/bulkBar/drawerClose. */
+
+/* Card de indicador que filtra: clicar liga o filtro (aria-pressed), o hint muda para link. */
+.kcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.kcard {
+  display: grid; grid-template-columns: minmax(0, 1fr) 56px; align-items: end; column-gap: 6px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-control);
+  background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.kcard.no-spark { grid-template-columns: minmax(0, 1fr); }
+.kcard[aria-pressed="true"] { border-color: var(--link); background: var(--raised); }
+.kcard-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kcard-label { font-size: 11px; line-height: 14px; color: var(--muted); }
+.kcard-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.kcard-value { font-size: 16px; line-height: 22px; font-weight: 600; }
+.kcard-delta { font-size: 11px; line-height: 14px; color: var(--muted); }
+.kcard-hint { grid-column: 1 / -1; font-size: 10px; line-height: 14px; color: var(--muted); }
+.kcard[aria-pressed="true"] .kcard-hint { color: var(--link); }
+.tone-up { color: var(--state-done-fg); } .tone-waiting { color: var(--state-waiting-fg); }
+.tone-failed, .tone-down { color: var(--state-failed-fg); } .tone-flat { color: var(--muted); }
+
+.spark { width: 56px; height: 28px; overflow: visible; --spark: var(--accent); }
+.spark-up { --spark: var(--state-done); } .spark-waiting { --spark: var(--state-waiting-stroke); }
+.spark-down, .spark-failed { --spark: var(--state-failed); }
+.spark-line { fill: none; stroke: var(--spark); stroke-width: 1.6; stroke-linejoin: round; }
+.spark-area { fill: color-mix(in srgb, var(--spark) 16%, transparent); }
+
+/* Barra de filtros de uma tela (visões salvas, busca, layout). */
+.screen-toolbar {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--ground);
+}
+
+/* Filtro ativo vindo de um card, removível. */
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 4px 0 10px;
+  border: 1px solid var(--link); border-radius: var(--radius-control);
+  background: var(--state-running-bg); color: var(--state-running-fg); font-size: 12px;
+}
+.filter-chip > button {
+  display: inline-grid; place-items: center; min-width: 28px; min-height: 28px; padding: 0;
+  border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer;
+}
+.filter-chip > button:hover { background: var(--raised); }
+
+/* Ações em lote: aparece só com seleção. */
+.bulk-bar {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--state-running-bg);
+  animation: pfx-fade 200ms var(--ease-out) both;
+}
+.bulk-count { font-size: 13px; font-weight: 600; color: var(--state-running-fg); }
+.bulk-hint { font-size: 12px; color: var(--state-running-fg); }
+
+/* Painel de detalhe à direita da lista (420 px), fecha com Esc. */
+.drawer {
+  flex: 0 0 420px; width: 420px; min-height: 0; overflow-y: auto;
+  border-left: 1px solid var(--border); background: var(--rail);
+}
+.drawer-close-wrap { position: sticky; top: 0; z-index: 3; height: 0; display: flex; justify-content: flex-end; }
+.drawer-close {
+  margin: 12px 12px 0 0; width: 40px; height: 40px; display: inline-grid; place-items: center;
+  border: 1px solid var(--border-control); border-radius: var(--radius-control);
+  background: var(--ground); color: var(--text-secondary); cursor: pointer;
+}
+.drawer-close:hover { background: var(--surface-hover); color: var(--text); }
+.drawer-head { display: flex; flex-direction: column; gap: 6px; padding: 16px 64px 16px 20px; border-bottom: 1px solid var(--border); }
+.drawer-head h2 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; }
+
 @media (max-width: 820px) {
   body.app { display: block; height: auto; overflow: visible; }
   .app-nav { width: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--border); padding: 12px 16px; }
   .nav-groups { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
   .nav-group { flex-direction: row; flex-wrap: wrap; align-items: center; }
   .nav-group-label { display: none; }
+  .nav-group-items[hidden] { display: flex !important; }
+  .nav-group-items { flex-direction: row; flex-wrap: wrap; }
   .nav-item { width: auto; }
   .nav-foot { display: none; }
   .topbar { padding: 8px 16px; }
   .search { order: 3; flex: 1 1 100%; margin-left: 0; }
   .view { padding: 16px; }
+  .drawer { flex: none; width: auto; border-left: 0; border-top: 1px solid var(--border); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

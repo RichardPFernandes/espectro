@@ -4,7 +4,7 @@
 (() => {
   const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const MOD = IS_MAC ? '⌘' : 'Ctrl';
-  const VIEW_KEYS = [['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'], ['timeline', 'Linha do tempo'], ['metricas', 'Métricas'], ['tickets', 'Tickets e PRs']];
+  const VIEW_KEYS = [['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'], ['timeline', 'Linha do tempo'], ['metricas', 'Relatório semanal'], ['tickets', 'Tickets e PRs']];
   const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const currentView = () => document.body.dataset.view || 'runs';
   // Resposta do watcher à sua mensagem (state.human_input_interpretations) vence a nota do
@@ -228,7 +228,7 @@
       <table>
         ${row([MOD, 'K'], 'Ir para qualquer run, ticket, visão ou ação')}
         ${row(['/'], 'Filtrar a lista e as visões')}
-        ${row(['1', '…', '6'], 'Trocar de aba (Runs, Quadro, Tabela, Linha do tempo, Métricas, Tickets e PRs)')}
+        ${row(['1', '…', '6'], 'Trocar de aba (Runs, Quadro, Tabela, Linha do tempo, Relatório semanal, Tickets e PRs)')}
         ${row(['↑', '↓'], 'Trocar de run na lista (também j e k)')}
         ${row([MOD, '↵'], 'Enviar a mensagem ao agente')}
         ${row([MOD, 'clique'], 'Começar a selecionar vários runs')}
