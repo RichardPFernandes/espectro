@@ -53,8 +53,6 @@ const cycleReplayer = require('./lib/cycle-replayer');
 const qaJournal = require('./lib/redmine-journal-fetcher');
 const qaCycles = require('./lib/qa-cycles');
 const qaIngest = require('./lib/qa-rejection-ingest');
-const qaDiagnosisPublish = require('./lib/qa-diagnosis-publish');
-const qaDiagnosisAnalyze = require('./lib/qa-diagnosis-analyze');
 const { GracefulShutdown } = require('./lib/graceful-shutdown');
 const watcherLock = require('./lib/watcher-lock');
 const dispatchReservation = require('./lib/dispatch-reservation');
@@ -556,48 +554,10 @@ async function syncQaRejection(ticket) {
             if (result.ingested.length) {
                 console.log(`Ticket #${ticket.id}: Recusa QA C1 — ${result.ingested.length} identidade(s) em ${latest.taskId} (retry pelo botão "Corrigir recusa QA" do dashboard).`);
             }
-            // PRI-181 C2+C3: coletor/predicados (metadados de plataforma) → Diagnosis Record.
-            // Consultivo (DB-05): falha de publish não desfaz a ingestão. Sem piloto.
-            const idn = next.qa_rejection;
-            if (idn?.rejection_key) {
-                try {
-                    const analyzed = qaDiagnosisAnalyze.analyzeRejection({
-                        identity: idn,
-                        state: next,
-                        ticketId: ticket.id,
-                        repoPath: REPO_PATH,
-                        taskId: latest.taskId,
-                        at,
-                    });
-                    const pub = qaDiagnosisPublish.publishDiagnosisRecord({
-                        repoPath: REPO_PATH,
-                        identity: idn,
-                        ticketId: ticket.id,
-                        at,
-                        evidence_refs: analyzed.evidence_refs,
-                        findings: analyzed.findings,
-                        findings_status: analyzed.findings_status,
-                        taxonomy_version: analyzed.taxonomy_version,
-                        corporate_content_included: analyzed.corporate_content_included,
-                        enrich: true,
-                    });
-                    if (pub.ok) {
-                        const ptr = qaDiagnosisPublish.statePointer(pub);
-                        if (ptr) {
-                            next.qa_diagnosis = ptr;
-                            changed = true;
-                        }
-                        if (pub.promoted) {
-                            const tag = pub.enriched ? 'C3 enrich' : 'C2/C3';
-                            console.log(`Ticket #${ticket.id}: Diagnosis Record ${tag} em ${pub.authority_path} (findings=${ptr?.findings_count ?? 0})`);
-                        }
-                    } else {
-                        console.warn(`Ticket #${ticket.id}: C3 publish não promoveu (${pub.reason}) — ingestão C1 preservada`);
-                    }
-                } catch (e) {
-                    console.warn(`Ticket #${ticket.id}: C3 analyze/publish falhou (${e.message}) — ingestão C1 preservada`);
-                }
-            }
+            // PRI-181 c2b-1 (Q1=A): o store por repo (memory/qa-diagnosis/) e o ponteiro
+            // state.qa_diagnosis deixam de ter writer. O Diagnosis Record passa ao store por
+            // run (qa-diagnosis-store/-model), que a c2b-2 liga com reserva e commit (SDD §4.3).
+            // Até lá, com a flag ligada, só a ingestão C1 roda; qa_diagnosis legado fica intacto.
         } else if (statusChanged && !next.qa_rejection) {
             // Transporte falhou / sem journals: fallback legado (C0) sem inventar chave.
             const rejection = {
