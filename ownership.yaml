@@ -53,6 +53,18 @@ modules:
   - path: scripts/lib/subtask-decomposition.js
     capability: subtask-identity
     owner: UNKNOWN
+  # PRI-311 (PRI-287 S5.2a): ligações da Run decomposta (baseline, saída, cadeia, blocked).
+  # Não grava estado direto: Attempt pelo DOM06, state.json pelo watcher (writeTaskState).
+  # Novo dono de EXCLUSÃO: a varredura sweepKeys apaga memory/runs/_dom06-keys/<task>.key e
+  # memory/runs/_dom06-manifests/<task>/ do checkout principal só quando a task não tem Run em
+  # nenhuma raiz (runs e runs/_archive do checkout e de cada worktree).
+  - path: scripts/lib/decomposition-runtime.js
+    capability: decomposition-runtime
+    owner: UNKNOWN
+  # PRI-311: sinais de saída do agente (texto), extraídos do watcher sem mudança.
+  - path: scripts/lib/agent-exit-signals.js
+    capability: agent-exit-signals
+    owner: UNKNOWN
 
   # SDD / evidence (candidatos)
   - path: scripts/lib/spec-change.js

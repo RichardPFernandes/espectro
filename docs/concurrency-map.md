@@ -82,6 +82,9 @@ O endpoint de versão do dashboard usa a mesma versão efetiva.
 | Despacho de um ticket (check-then-act) | watcher (tick) e dashboard (`dispatchNode`: ▶ Disparar, retomadas, replay) → `dispatchTicket` | — (reserva por ticket entre processos, ver "Despacho por ticket") | — | — | pula com `despacho_reservado` / `fetch_em_execucao`; dashboard: 409 |
 | Carimbo de PID do lease | watcher: `node-lease.recordAgentPid` | estado `running` e `node_started_at` sob lock; `execution_id` validado em `scripts/cas.js` | sim | — | lease liberado ou takeover: gravação tardia ignorada |
 | Release do lease | watcher/wrapper: `node-lease releaseNode` | — | sim (o do lease) | — | `SESSION_CONFLICT`: release ignorado |
+| Release com contexto (Run decomposta, PRI-311) | watcher/wrapper: `node-lease releaseNodeWithContext` | `plan_version` lida dentro do mesmo `stateWriter.update` do claim | sim (o do lease) | — | `SESSION_CONFLICT` → sem versão → `PLAN_VERSION_UNKNOWN` no aceite |
+| `blocked` da Run decomposta (PRI-311, H6) | watcher: `applyDecompositionBlock` a partir do `acceptance` do último Attempt com papel | `writeTaskState` (versão lida no tick) | — | uma vez por Attempt (`decomposition_block_applied`) | só com status `in_progress`; nunca sobrescreve `session_limit` nem status do comando; próximo tick |
+| Exclusão de chave/manifestos locais (PRI-311, H5) | watcher: `sweepKeys` no startup (`memory/runs/_dom06-keys`, `_dom06-manifests`) | — (fora do state.json) | — | idempotente | só sem Run da task em nenhuma raiz; Run nova da mesma task que perder a chave → `KEY_MISSING` → UNKNOWN → `blocked` (fail-closed) |
 | Escritas de sistema (eventos, custo, transcrições, PR poll, gates) | watcher, libs | merge de 3 vias com a leitura-base, ou mutator sobre o disco fresco | — | — | só recusa se outro processo mudou o mesmo campo crítico |
 
 Campos obrigatórios por operação: `cas.REQUIRED` em `scripts/cas.js`. Faltar um deles é

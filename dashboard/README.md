@@ -328,6 +328,20 @@ todo dia, agende no cron, por exemplo `0 3 * * * cd <repo> && node scripts/clean
   `GET /api/archive`, `POST /api/archive/:taskId/restore` (409 se já existe pasta no lugar
   original).
 
+## Preview: erro de build com lib do ~/.m2
+
+Quando `mo-entity`/`app-core` não têm worktree do ticket e nenhuma branch (`origin/<ticket>`,
+`PREVIEW_LIB_REFS`) tem a versão do app-back, o preview segue com o snapshot do `~/.m2` e
+avisa no log. Se o build do back falha nessa situação (ex.: `no suitable method found` numa
+chamada de lib), o fold **Preview de Ambiente** mostra o aviso e **Escolher branch das
+libs…**: lista as branches remotas das libs cuja versão (`pom.xml`) bate com a do back; com
+uma escolhida, **🔧 Reconstruir libs e tentar de novo** reinstala as libs dela no `~/.m2`
+(ignora o marcador de cache) e reinicia o preview. A escolha vale só para esse start.
+
+- API: `GET /api/preview/:ticketId/lib-refs` → `{ need, libs: [{ key, refs }] }`;
+  `POST /api/preview/:ticketId/start` aceita `{ libRef: "origin/<branch>" }` (400 se a ref
+  não for `origin/<branch>`). `status.libFallback` lista as libs que caíram no `~/.m2`.
+
 ## Usar na minha máquina
 
 No fold **Preview de Ambiente** do run, **💻 Usar na minha máquina** põe os checkouts

@@ -157,6 +157,8 @@ function decompositionFields(ctx) {
         lineage_id: ctx.role === 'subtask' ? ctx.subtask_key : null,
         rework: Boolean(ctx.rework),
         context_record_sha256: ctx.context_record_sha256 ?? null,
+        // PRI-311 (H0): HMAC do escopo do baseline com a chave da Run; nunca o escopo.
+        scope_hmac: typeof ctx.scope_hmac === 'string' ? ctx.scope_hmac : null,
         chain_anchor: ctx.chain_anchor ? structuredClone(ctx.chain_anchor) : null,
         workspace: { baseline: ctx.workspace_baseline ? structuredClone(ctx.workspace_baseline) : null, post: null },
         acceptance: null,
@@ -490,6 +492,8 @@ function fulfillOnExit({ attemptFile, attemptId, node, code } = {}) {
 // Saída única e agregação do Implement decomposto (PRI-310 / PRI-287 S5.1, SDD B3)
 
 const LOST_CLAIM = new Set(['LEASE_REPLACED', 'SESSION_CONFLICT']);
+const EXEMPT_CAUSES = new Set(['PROVIDER_UNAVAILABLE', 'SESSION_LIMIT']);
+const HUMAN_ANCHORS = new Set(['HUMAN_RESUME', 'HUMAN_UNBLOCK']);
 const UNOBSERVED_POST = Object.freeze({ digest: null, counts: null, completeness: 'UNKNOWN', cause: 'POST_NOT_OBSERVED' });
 
 function complete(summary) {
@@ -512,9 +516,11 @@ function manifestSummary(m) {
  * Tabela de aceite da SDD (B3), pura. `claim` = motivo de releaseNodeWithReason.
  * `parentAcceptance` = aceite do `parent_attempt_id` (teto de retry, B4).
  * `currentPlanVersion` ausente = versão vigente desconhecida → não aceita (fail-closed).
- * Devolve { accepted, reason, block, no_change, retry_allowed }.
+ * `operationalCause` (PRI-311, H2): PROVIDER_UNAVAILABLE e SESSION_LIMIT sem mutação não
+ * consomem o teto (`exempt`); com mutação ou UNKNOWN bloqueiam como qualquer falha.
+ * Devolve { accepted, reason, block, no_change, retry_allowed, exempt? }.
  */
-function decideAcceptance({ attempt, code, claim, post, currentPlanVersion, parentAcceptance = null }) {
+function decideAcceptance({ attempt, code, claim, post, currentPlanVersion, parentAcceptance = null, operationalCause = null }) {
     const baseline = attempt?.workspace?.baseline || null;
     const same = complete(baseline) && complete(post) && baseline.digest === post.digest;
     const out = (accepted, reason, block, extra = {}) => ({ accepted, reason, block, no_change: same, retry_allowed: false, ...extra });
@@ -531,11 +537,20 @@ function decideAcceptance({ attempt, code, claim, post, currentPlanVersion, pare
     if (attempt.plan_version !== currentPlanVersion) return out(false, 'PLAN_SUPERSEDED', !same);
     if (Number(code) !== 0) {
         if (same) {
+            // Indisponibilidade do provider e session_limit, só sem mutação: fora do teto e
+            // redespachadas como no controle (D15; PRI-311 H2, O-04).
+            if (EXEMPT_CAUSES.has(operationalCause)) {
+                return out(false, 'OPERATIONAL_FAILURE_EXEMPT', false, { retry_allowed: true, exempt: true });
+            }
             // Teto (B4, AC-20): um retry automático por chave sem mutação. A 2ª falha
             // operacional da mesma chave (o pai já era falha sem mutação) bloqueia.
             // Pela linhagem, não pela causa (R2-C-O-02): qualquer nova tentativa da mesma chave
             // cujo pai foi falha sem mutação (retry, timeout, resume ou dispatch) bate no teto.
-            if (attempt.parent_attempt_id && parentAcceptance && parentAcceptance.retry_allowed === true) {
+            // PRI-311 (R2-O-03): pai isento não conta; Attempt reancorado por ato humano
+            // (HUMAN_RESUME/HUMAN_UNBLOCK) recomeça a contagem.
+            const humanAnchor = attempt.chain_anchor && HUMAN_ANCHORS.has(attempt.chain_anchor.reason);
+            if (attempt.parent_attempt_id && !humanAnchor && parentAcceptance
+                && parentAcceptance.retry_allowed === true && parentAcceptance.exempt !== true) {
                 return out(false, 'RETRY_CEILING', true);
             }
             return out(false, 'OPERATIONAL_FAILURE', false, { retry_allowed: true });
@@ -554,7 +569,7 @@ function decideAcceptance({ attempt, code, claim, post, currentPlanVersion, pare
  * Subtarefa/integração: aplica a tabela de aceite; só o aceite cumpre a obrigação.
  * Idempotente: um aceite já gravado é devolvido sem regravar.
  */
-function closeOnExit({ attemptFile, attemptId, node, code, claim = null, manifestPost, currentPlanVersion } = {}) {
+function closeOnExit({ attemptFile, attemptId, node, code, claim = null, manifestPost, currentPlanVersion, operationalCause = null, signalled = false } = {}) {
     if (!attemptFile || !attemptId) return false;
     let attempt;
     try {
@@ -563,8 +578,11 @@ function closeOnExit({ attemptFile, attemptId, node, code, claim = null, manifes
         return fulfillOnExit({ attemptFile, attemptId, node, code });
     }
     if (!attempt.role) return fulfillOnExit({ attemptFile, attemptId, node, code });
-    // Despacho destacado ainda em voo: nada a decidir.
-    if (code === null || code === undefined || code === '') return { pending: true };
+    // Despacho destacado ainda em voo: nada a decidir. Em --follow, saída sem código (sinal ou
+    // erro de spawn, `signalled`) é falha do agente (PRI-311, C-O-02).
+    const noCode = code === null || code === undefined || code === '';
+    if (noCode && !signalled) return { pending: true };
+    const effectiveCode = noCode ? 1 : code;
     try {
         const obligationId = attempt.role === 'subtask' ? `execute_subtask:${attempt.subtask_key}` : `integrate:${attempt.plan_version}`;
         if (attempt.role === 'gate') {
@@ -592,10 +610,14 @@ function closeOnExit({ attemptFile, attemptId, node, code, claim = null, manifes
             // O pai mora no mesmo diretório de Attempts da Run.
             try { parentAcceptance = readAttempt(path.join(path.dirname(attemptFile), `${attempt.parent_attempt_id}.json`)).acceptance || null; } catch { parentAcceptance = null; }
         }
-        const decision = decideAcceptance({ attempt, code, claim, post, currentPlanVersion, parentAcceptance });
+        const decision = decideAcceptance({ attempt, code: effectiveCode, claim, post, currentPlanVersion, parentAcceptance, operationalCause });
         const { attempt: fresh, saved } = loadForUpdate(attemptFile);
         fresh.workspace = { ...(fresh.workspace || {}), post };
-        fresh.acceptance = { ...decision, claim, exit_code: Number(code), decided_at: new Date().toISOString() };
+        fresh.acceptance = {
+            ...decision, claim, exit_code: noCode ? null : Number(code),
+            operational_cause: Number(effectiveCode) === 0 ? null : (operationalCause || 'AGENT_FAILURE'),
+            decided_at: new Date().toISOString(),
+        };
         saveFrozen(attemptFile, fresh, saved);
         if (decision.accepted) {
             recordEffect(attemptFile, { obligation_id: obligationId, idempotency_key: `execute:${attemptId}`, status: 'fulfilled' });
@@ -658,18 +680,22 @@ function allKey(planVersion) {
  * Órfão (STARTED sem saída) no recovery existente: fecha como UNCERTAIN, com o manifesto
  * corrente comparado ao `baseline`. Nunca cumpre obrigação nem reaplica efeito.
  */
-function closeOrphan(attemptFile, { manifestNow } = {}) {
+function closeOrphan(attemptFile, { manifestNow, orphanReason = null } = {}) {
     const { attempt, saved } = loadForUpdate(attemptFile);
     if (!attempt.role || attempt.acceptance) return attempt.acceptance || null;
     if (!attempt.started || attempt.result !== 'STARTED') return null;
     const post = manifestSummary(manifestNow);
     const baseline = attempt.workspace?.baseline || null;
     const same = complete(baseline) && complete(post) && baseline.digest === post.digest;
+    // PRI-311 (H4, O-06): órfão por timeout não tem pid gravado — o agente pode estar vivo e
+    // escrevendo, então "sem mutação" lido agora não autoriza retry. Divergência conservadora
+    // declarada em relação à SPEC B3/AC-10.
+    const retryAllowed = same && orphanReason !== 'timeout';
     attempt.result = 'UNCERTAIN';
     attempt.workspace = { ...(attempt.workspace || {}), post };
     attempt.acceptance = {
-        accepted: false, reason: 'ORPHAN_UNCERTAIN', block: !same, no_change: same, retry_allowed: same,
-        claim: null, exit_code: null, decided_at: new Date().toISOString(),
+        accepted: false, reason: 'ORPHAN_UNCERTAIN', block: !retryAllowed, no_change: same, retry_allowed: retryAllowed,
+        orphan_reason: orphanReason, claim: null, exit_code: null, decided_at: new Date().toISOString(),
     };
     saveFrozen(attemptFile, attempt, saved);
     return attempt.acceptance;

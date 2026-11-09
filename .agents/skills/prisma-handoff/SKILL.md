@@ -19,7 +19,7 @@ Ao concluir, bloquear ou interromper tarefa delegada, entregar handoff YAML vál
 
 1. Partir de `templates/handoff.yaml.template` e ler `docs/handoff-contract.md`.
 2. YAML obrigatório: arquivo `.yaml` ou fence ` ```yaml ` dentro de `.md`. Prosa solta **não** conta.
-3. Preferir `handoff_version: "1.1"` (campos `routing` e `risk` obrigatórios).
+3. Usar `handoff_version: "1.2"` (campos `routing`, `risk` e `nivel_processo` obrigatórios; motivo em `nivel_processo_motivo` se o nível mudou).
 4. Preservar IDs Linear, ACs, decisões aprovadas vs hipóteses (`decisions.approved` / `proposed`, `facts` / `assumptions`), e refs de evidência — referenciar artefatos em vez de colar documentos inteiros.
 
 ## Validação
@@ -59,7 +59,7 @@ node scripts/validate-handoff.js <handoff.yaml|handoff.md> [--check-paths] [--pr
 
 ## Verification
 
-- [ ] YAML válido (`handoff_version`, routing/risk se 1.1)
+- [ ] YAML válido (`handoff_version`, routing/risk se 1.1+, `nivel_processo` se 1.2)
 - [ ] `node scripts/validate-handoff.js <arquivo>` sem ERROR
 - [ ] Fatos vs assumptions separados; UNKNOWN preservado
 - [ ] Artefatos referenciados por path (não colados inteiros)

@@ -10,6 +10,7 @@ const planScorer = require('./plan-scorer');
 const acRegistry = require('./ac-registry');
 const schemaWatcher = require('./schema-watcher');
 const { serviceOf } = require('./service-detector');
+const { normPath, declaredPaths, declaredAcIds } = require('./plan-paths');
 
 const UNKNOWN = 'UNKNOWN';
 
@@ -31,10 +32,6 @@ const DEFAULT_POLICY = Object.freeze({
 
 // Ordem do §4.2: a maior natureza entre os caminhos vale.
 const KIND_ORDER = ['sensitive', 'schema', 'behavior', 'config', 'code', 'test', 'docs'];
-
-function normPath(p) {
-    return String(p || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
-}
 
 function globToRe(glob) {
     let re = '';
@@ -96,22 +93,6 @@ function serviceBuckets(paths, policy = DEFAULT_POLICY) {
 // ---------------------------------------------------------------------------------
 // Extração dos passos do plano
 
-function parsePathsLine(line) {
-    const body = line.replace(/^\s*[-*]?\s*arquivos?\s*:\s*/i, '');
-    const ticked = [...body.matchAll(/`([^`]+)`/g)].map(m => m[1]);
-    const raw = ticked.length ? ticked : body.split(/[,;]|\se\s/).map(t => t.trim().replace(/[.)]+$/, ''));
-    const out = [];
-    for (const t of raw) {
-        // Sufixos de posição (`x.js:42`, `X.java::metodo`) não fazem parte do caminho.
-        const p = normPath(t.replace(/\s*\(.*$/, '').replace(/::.*$/, '').replace(/:\d+(?:[-:]\d+)*$/, ''));
-        // Caminho concreto: sem "...", sem curinga, sem espaço (salvo entre crases); com "/" ou extensão.
-        // Diretório (termina em "/") não é arquivo: lista incompleta => UNKNOWN.
-        if (!p || /\/$/.test(p) || /\.\.\./.test(p) || (ticked.length && /[,;]|\se\s/.test(p)) || (!ticked.length && /\s/.test(p)) || /[*<>{}]/.test(p) || !/[/.]/.test(p)) return null;
-        out.push(p);
-    }
-    return out.length ? [...new Set(out)] : null;
-}
-
 /**
  * @returns {{plan_version: string, steps: Array<{index: number, paths_decl: string[]|'UNKNOWN',
  *   acs: string[], text: string}>}} plan_version = null quando não há bloco de plano.
@@ -124,17 +105,11 @@ function extractPlanSteps(planContent) {
     return {
         plan_version: planVersion,
         steps: steps.map((text, i) => {
-            const lines = text.split('\n');
-            // Mais de uma linha "Arquivo:" no passo: lista possivelmente parcial => UNKNOWN
-            // (nunca subestimar paths_decl; §4.1).
-            const fileLines = lines.filter(l => /^\s*[-*]?\s*arquivos?\s*:/i.test(l));
-            const fileLine = fileLines.length === 1 ? fileLines[0] : null;
-            const acLine = lines.find(l => /^\s*[-*]?\s*crit[eé]rios?\s*:/i.test(l));
             return {
                 index: i + 1,
                 text,
-                paths_decl: (fileLine && parsePathsLine(fileLine)) || UNKNOWN,
-                acs: acLine ? [...new Set(acLine.match(/\bAC-\d+\b/g) || [])] : [],
+                paths_decl: declaredPaths(text).paths,
+                acs: declaredAcIds(text),
             };
         }),
     };

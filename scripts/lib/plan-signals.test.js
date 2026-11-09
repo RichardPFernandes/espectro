@@ -332,3 +332,48 @@ test('achado MINOR 5: bloco de código indentado no passo ou código no AC não 
     const plan = '## Plano de execução\n1. Algo\n   - Arquivo: `a.js`\n   - Critérios: AC-01\n';
     assert.deepStrictEqual([...ps.classifierEnvelopes(plan, specWithCode).values()][0], { ok: false, reason: 'AC_HAS_CODE_BLOCK' });
 });
+
+// --- Linha "Arquivo:" com anotação entre crases (run 44042: 7 de 8 passos UNKNOWN => R3 => Opus) ---
+
+test('anotação entre crases não derruba a linha: só itens que parecem arquivo contam', () => {
+    const f = '`src/main/java/br/App.java` (novo, `@ApplicationScoped`) e `src/main/java/br/Res.java` (delega a `InsightsIAService`; branch `44042`)';
+    assert.deepStrictEqual(first([{ files: f }]).paths_decl, ['src/main/java/br/App.java', 'src/main/java/br/Res.java']);
+    assert.deepStrictEqual(first([{ files: '`@POST @Path("insights")`, `getMapDatasFiltro(..., 30)`, `Res.java`' }]).paths_decl, ['Res.java']);
+    assert.deepStrictEqual([...first([{ files: '`app/index.html`, `Dockerfile`, `exportar-dados`' }]).paths_decl].sort(), ['Dockerfile', 'app/index.html']);
+});
+
+test('anotação ao lado de item incompleto continua UNKNOWN (nunca subestimar)', () => {
+    for (const f of ['`@Path`, `src/main/.../X.java`', '`@Path`, `src/main/java/`', '`@Path`, `src/**/*.js`', '`@Path`, `a.js, b.js`']) {
+        assert.strictEqual(first([{ files: f }]).paths_decl, U, f);
+    }
+});
+
+test('só anotação, sem nenhum item que pareça arquivo, mantém o critério antigo (UNKNOWN)', () => {
+    for (const f of ['`@ApplicationScoped`', '`44042`', '`analisarInsights`, `exportar-dados`']) {
+        assert.strictEqual(first([{ files: f }]).paths_decl, U, f);
+    }
+});
+
+test('PRI-320: passo com "Arquivo:" inline na prosa gera sinais de caminho (não UNKNOWN)', () => {
+    const text = '## Plano de execução\n1. Resolver central. Arquivo: scripts/a.js, scripts/b.js. Critérios: AC-01\n   - Verificação: t.\n' +
+        '2. Documentar. Arquivo: docs/x.md. Critérios: AC-02\n   - Verificação: t.\n' +
+        '3. Revisar o resultado sem declarar arquivo. Critérios: AC-01\n   - Verificação: t.\n';
+    const r = ps.buildProspective(text, { specContent: SPEC, fileExists: () => true });
+    assert.deepStrictEqual(r.groups[0].signals.paths_decl, ['scripts/a.js', 'scripts/b.js']);
+    assert.strictEqual(r.groups[0].signals.n_files, 2);
+    assert.deepStrictEqual(r.groups[1].signals.paths_decl, ['docs/x.md']);
+    assert.strictEqual(r.groups[2].signals.paths_decl, U, 'passo sem declaração continua UNKNOWN');
+});
+
+test('PRI-320 (revisão B1): Critérios inline entra nos sinais; sensitive_decl e n_acs_step iguais ao formato de linhas próprias', () => {
+    const spec = '## Critérios de Aceite\n- AC-01: lista de transportadoras.\n- AC-02: exigir senha e token no login.\n';
+    const inline = '## Plano de execução\n1. Documentar. Arquivo: docs/x.md. Critérios: AC-02. Verificação: t.\n';
+    const own = '## Plano de execução\n1. Documentar\n   - Arquivo: `docs/x.md`\n   - Critérios: AC-02\n   - Verificação: t.\n';
+    const a = ps.buildProspective(inline, { specContent: spec, fileExists: () => true }).groups[0].signals;
+    const b = ps.buildProspective(own, { specContent: spec, fileExists: () => true }).groups[0].signals;
+    assert.strictEqual(a.sensitive_decl, true);
+    assert.deepStrictEqual([a.sensitive_decl, a.n_acs_step, a.kind, a.n_files], [b.sensitive_decl, b.n_acs_step, b.kind, b.n_files]);
+    // Passo de teste com AC inline: n_acs_step conta o AC (não vira o "0 válido" de passo só de teste).
+    const t = ps.buildProspective('## Plano de execução\n1. Testar. Arquivo: scripts/x.test.js. Critérios: AC-01, AC-02\n', { specContent: spec, fileExists: () => true }).groups[0].signals;
+    assert.strictEqual(t.n_acs_step, 2);
+});

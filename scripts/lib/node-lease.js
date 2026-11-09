@@ -136,10 +136,20 @@ function releaseNode(lease) {
 // - STATE_MISSING: o state.json (ou a pasta) não existe;
 // - NO_LEASE: lease ausente.
 function releaseNodeWithReason(lease) {
-    if (!lease) return 'NO_LEASE';
+    return releaseNodeWithContext(lease).reason;
+}
+
+// PRI-311 (S5.2a, H1/O-02): o mesmo release, devolvendo também a plan_version da Run decomposta
+// lida DENTRO do callback do stateWriter.update — o mesmo snapshot do claim. Um redecompor no
+// tick seguinte não muda a versão que a saída enxerga. Sem state (STATE_MISSING) ou com
+// conflito de sessão não há versão (null → PLAN_VERSION_UNKNOWN no aceite).
+function releaseNodeWithContext(lease) {
+    if (!lease) return { reason: 'NO_LEASE', plan_version: null };
     let reason = 'STATE_MISSING';
+    let planVersion = null;
     try {
         stateWriter.update(lease.dir, s => {
+            planVersion = s.decomposition && typeof s.decomposition.plan_version === 'string' ? s.decomposition.plan_version : null;
             if (s.status !== 'running') { reason = 'STATUS_CHANGED'; return cas.SKIP; }
             if (s.node_started_at && s.node_started_at !== lease.startedAt) { reason = 'LEASE_REPLACED'; return cas.SKIP; }
             reason = 'RELEASED';
@@ -150,11 +160,11 @@ function releaseNodeWithReason(lease) {
             operation: 'lease_release', actor: 'watcher',
             expect: lease.executionId ? { execution_id: lease.executionId } : null,
         });
-        return reason;
+        return { reason, plan_version: reason === 'STATE_MISSING' ? null : planVersion };
     } catch (e) {
         if (!cas.isConflict(e)) throw e;
         console.warn(`[recovery] ${path.basename(lease.dir)}: ${e.message} — release ignorado.`);
-        return 'SESSION_CONFLICT';
+        return { reason: 'SESSION_CONFLICT', plan_version: null };
     }
 }
 
@@ -296,7 +306,9 @@ function listTaskDirs(runsDirs) {
 
 // Escaneia e trata os órfãos. Devolve [{ taskId, dir, node, since, action }], com
 // action = "redispatch" | "escalated". dryRun: só loga/devolve, não grava nada.
-function recoverOrphans(runsDirs, { now = new Date(), defaultTimeoutMs, isAlive, dryRun = false, filter } = {}) {
+// onOrphan(dir, state, reason) (PRI-311, H4): chamado antes do redespacho de nó comum, para o
+// watcher fechar o Attempt com papel como UNCERTAIN (closeOrphan). Falha nele só é logada.
+function recoverOrphans(runsDirs, { now = new Date(), defaultTimeoutMs, isAlive, dryRun = false, filter, onOrphan = null } = {}) {
     const results = [];
     for (const dir of listTaskDirs(runsDirs)) {
         const state = readState(dir);
@@ -329,6 +341,9 @@ function recoverOrphans(runsDirs, { now = new Date(), defaultTimeoutMs, isAlive,
             console.warn(`[recovery] Task ${taskId}: nó ${node} órfão desde ${since} (${cause}) — redespachando`);
             results.push({ taskId, dir, node, since, action: 'redispatch', reason });
             if (dryRun) continue;
+            if (onOrphan) {
+                try { onOrphan(dir, state, reason); } catch (e) { console.warn(`[recovery] Task ${taskId}: falha fechando o Attempt órfão com papel (${e.message}).`); }
+            }
             appendEvent(state, {
                 type: 'node_error', node, at,
                 detail: `Nó órfão detectado pelo watcher (${cause}) — redespachando`,
@@ -363,7 +378,7 @@ function recoveryNote(state) {
 
 module.exports = {
     DEFAULT_NODE_TIMEOUT_MS, LEGACY_SPAWN_WINDOW_MS, resolveNodeTimeoutMs,
-    acquireNode, recordAgentPid, releaseNode, releaseNodeWithReason, stampNewTask, clearFetchDispatch, fetchDispatchLive,
+    acquireNode, recordAgentPid, releaseNode, releaseNodeWithReason, releaseNodeWithContext, stampNewTask, clearFetchDispatch, fetchDispatchLive,
     agentAlive, orphanReason, isOrphan, describeRunning, recoverOrphans, recoveryNote,
 };
 
@@ -382,8 +397,9 @@ if (require.main === module) {
         const arg = JSON.parse(raw);
         const code = rawCode === undefined || rawCode === '' ? undefined : Number(rawCode);
         let claim = null;
+        let planVersion = null;
         if (arg.dir) {
-            claim = releaseNodeWithReason(arg);
+            ({ reason: claim, plan_version: planVersion } = releaseNodeWithContext(arg));
             if (code !== undefined) require('./node-events').recordNodeExit(arg, code);
         } else if (arg.runsDir) {
             const dir = stampNewTask(arg.runsDir, arg.prefix, arg);
@@ -393,12 +409,24 @@ if (require.main === module) {
         if (code !== undefined) {
             // PRI-310 (S5.1): saída única do DOM-06. Attempt sem `role` delega ao
             // fulfillOnExit de sempre; Attempt de subtarefa/integração decide o aceite.
+            // PRI-311 (S5.2a, H1/H2): Attempt com papel ganha post, versão vigente (do mesmo
+            // snapshot do release) e causa operacional pela cauda do log a partir do offset
+            // gravado no spawn (best-effort; indeterminada = AGENT_FAILURE, conta no teto).
+            let roleCtx = {};
+            if (arg.dom06Role) {
+                const rt = require('./decomposition-runtime');
+                const { manifestPost, currentPlanVersion } = rt.exitContext({ lease: arg, planVersion });
+                const tail = code === 0 ? '' : rt.readLogFrom(arg.logPath, arg.logOffset);
+                const operationalCause = require('./agent-exit-signals').operationalCause({ code, output: tail, stderr: tail });
+                roleCtx = { manifestPost, currentPlanVersion, operationalCause };
+            }
             require('./dom06-attempt').closeOnExit({
                 attemptFile: arg.dom06AttemptFile,
                 attemptId: arg.dom06AttemptId,
                 node: arg.node || (Array.isArray(arg.nodes) ? arg.nodes[0] : null),
                 code,
                 claim,
+                ...roleCtx,
             });
         }
     } catch (e) {

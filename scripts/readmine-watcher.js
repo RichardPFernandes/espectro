@@ -63,6 +63,7 @@ const specGenerator = require('./lib/spec-generator');
 const cycleNotifications = require('./lib/cycle-notifications');
 const humanInputIntent = require('./lib/human-input-intent');
 const dom06 = require('./lib/dom06-attempt');
+const decompositionRuntime = require('./lib/decomposition-runtime');
 
 // Consumer env loads before watcher initialization. Explicit REPO_PATH wins;
 // otherwise the caller must run in the consumer root. Candidate code has no .env.
@@ -1696,6 +1697,26 @@ async function refuseRoutedNode({ ticket, taskId, node, state, dir, resolution }
     return { action: 'skip', reason: 'routing_not_started', taskId, node, cause: resolution.cause, detail: resolution.detail };
 }
 
+// PRI-311 (S5.2a, H6): writer do `blocked` da Run decomposta, pelo mesmo caminho da recusa de
+// roteamento da S4 (writeTaskState com CAS + notifyBlocked uma vez por assinatura). Marca o
+// Attempt aplicado em decomposition_block_applied: o desbloqueio humano (unblocked) não é
+// desfeito no tick seguinte. Nota só com códigos (motivo do aceite), nunca caminhos.
+async function applyDecompositionBlock({ ticket, taskId, node, state, dir, pending }) {
+    const at = new Date().toISOString();
+    const note = `Run decomposta (PRI-287 S5): o Attempt ${pending.attempt_id} do nó "${pending.node}" não foi aceito ` +
+        `(${pending.reason}). Retry automático só sem mutação observada no workspace; aqui há mutação possível ou o teto ` +
+        `foi atingido, então a Run para no caminho humano. O diff parcial fica preservado no worktree (sem reset).`;
+    state.status = 'blocked';
+    state.decomposition_block_applied = { attempt_id: pending.attempt_id, reason: pending.reason, at };
+    state.agent_log = [...(state.agent_log || []), { agent: 'watcher', nodes: [node], at, note }];
+    writeTaskState(dir, state, 'decomposition_blocked');
+    appendEvent(taskId, { type: 'checkpoint', node, agent: 'watcher', ts: at, detail: `decomposição: blocked (${pending.reason})` }, dir);
+    console.warn(`Task ${taskId}: ${note}`);
+    try { fs.rmSync(notifiedMarkerPath(dir), { force: true }); } catch { /* best-effort */ }
+    await notifyBlocked(ticket, taskId, node, 'blocked', dir, state, note);
+    return { action: 'skip', reason: 'decomposition_blocked', taskId, node, attempt: pending.attempt_id, cause: pending.reason };
+}
+
 // Ticket novo: o fetch_ticket recusado não cria Run nem worktree (Bugbot, PR #97: um
 // worktree por ticket recusado esgotaria o pool). Sem Run não há Attempt: a recusa e a
 // RoutingDecision ficam no marcador RUNS_DIR/<ticket>-routing-not-started.json, como a
@@ -3303,29 +3324,7 @@ function cleanAgentEnv() {
 // "14:19:15,429" (milissegundos de timestamp) num log de build do Quarkus durante o
 // /test do ticket #43425. Todo padrão aqui precisa de contexto textual específico o
 // bastante pra não colidir com números soltos em log de build/teste normal.
-const UNAVAILABLE_SIGNATURES = [
-    /session limit/i, /usage limit/i, /rate limit exceeded/i, /quota exceeded/i,
-    /401 unauthorized/i, /missing bearer/i, /429 too many requests/i,
-];
-function looksUnavailable(output) {
-    return UNAVAILABLE_SIGNATURES.some(re => re.test(output));
-}
-
-// Estouro de janela de contexto/tokens da PRÓPRIA sessão (não indisponibilidade do
-// provedor) — diferente de UNAVAILABLE_SIGNATURES acima: ali a ação é "deixa o
-// próximo tick tentar de novo sozinho"; aqui o run precisa ficar visível e travado
-// (status="session_limit") até uma retomada manual pelo dashboard (POST
-// /api/runs/:taskId/resume-session), porque simplesmente redespachar do zero
-// perderia o que a sessão anterior tinha acumulado. "session limit" aparece nas
-// duas listas de propósito — texto igual, ação diferente — por isso a checagem
-// desta lista tem precedência (ver dispatchTicket, comentário "estouro de
-// contexto/tokens" perto do looksUnavailable(output) existente).
-const SESSION_LIMIT_SIGNATURES = [
-    /context window/i, /max_tokens/i, /token limit/i, /session limit/i,
-];
-function looksLikeSessionLimit(stderrText) {
-    return SESSION_LIMIT_SIGNATURES.some(re => re.test(stderrText));
-}
+const { looksUnavailable, looksLikeSessionLimit } = require('./lib/agent-exit-signals');
 
 // Spawna o processo `claude` do jeito certo pro modo --follow ou não — mesma
 // lógica de robustez do watcher original: sem --follow, o pai sai logo, então
@@ -3341,18 +3340,24 @@ function looksLikeSessionLimit(stderrText) {
 // é a recuperação de órfão no próximo startup (recoverOrphanedNodes).
 // code: exit code do agente (null = sinal/falha no spawn) — vira os eventos de saída
 // do nó em state.json.events (nodeEvents.recordNodeExit; falha lá só é logada).
+// PRI-311 (S5.2a, H1/O-03): Attempt com papel (Run decomposta) não fecha aqui. O release
+// (claim + plan_version do mesmo snapshot) roda no exit do processo, como sempre; o aceite
+// só é decidido depois do `drained`, com a saída completa (closeRoleAttempt). Devolve o
+// contexto do release para esse fechamento adiado (null para Attempt sem papel).
 function releaseLease(lease, code) {
-    if (!lease) return;
+    if (!lease) return null;
     try {
         let claim = null;
+        let planVersion = null;
         if (lease.dir) {
-            claim = nodeLease.releaseNodeWithReason(lease);
+            ({ reason: claim, plan_version: planVersion } = nodeLease.releaseNodeWithContext(lease));
             nodeEvents.recordNodeExit(lease, code);
         } else if (lease.runsDir) {
             const dir = nodeLease.stampNewTask(lease.runsDir, lease.prefix, lease);
             nodeLease.clearFetchDispatch(lease.gatePath, lease.startedAt);
             if (dir) nodeEvents.recordNodeExit(lease, code, dir);
         }
+        if (lease.dom06Role) return { claim, planVersion };
         // PRI-310 (S5.1): mesma saída única do wrapper destacado (node-lease.js release).
         dom06.closeOnExit({
             attemptFile: lease.dom06AttemptFile,
@@ -3363,6 +3368,36 @@ function releaseLease(lease, code) {
         });
     } catch (e) {
         console.error('[recovery] falha liberando lease do nó:', e.message);
+    }
+    return null;
+}
+
+// PRI-311 (S5.2a, H1/H2): fechamento do Attempt com papel em --follow, depois do `drained`
+// (output e stderr completos). Mesma saída única do wrapper destacado: exitContext (post no
+// escopo do baseline, versão do release) + causa operacional, e closeOnExit.
+// Falha no release (releaseCtx null) → claim desconhecido (não aceita, bloqueia); saída sem
+// código (sinal, erro de spawn) → fechada como falha (C-O-02): Attempt com papel nunca fica
+// STARTED sem acceptance depois de liberado o lease.
+function closeRoleAttempt(lease, code, releaseCtx, output = '', stderr = '') {
+    if (!lease || !lease.dom06Role) return null;
+    const ctx = releaseCtx || { claim: 'CLAIM_UNKNOWN', planVersion: null };
+    try {
+        const { manifestPost, currentPlanVersion } = decompositionRuntime.exitContext({ lease, planVersion: ctx.planVersion });
+        const operationalCause = require('./lib/agent-exit-signals').operationalCause({ code, output, stderr });
+        return dom06.closeOnExit({
+            attemptFile: lease.dom06AttemptFile,
+            attemptId: lease.dom06AttemptId,
+            node: lease.node || (Array.isArray(lease.nodes) ? lease.nodes[0] : null),
+            code,
+            claim: ctx.claim,
+            manifestPost,
+            currentPlanVersion,
+            operationalCause,
+            signalled: code === null || code === undefined,
+        });
+    } catch (e) {
+        console.error('[recovery] falha fechando o Attempt com papel:', e.message);
+        return null;
     }
 }
 
@@ -3424,8 +3459,11 @@ function spawnAgent(bin, args, cwd, logPath, lease = null, extraEnv = {}) {
             const complete = code => {
                 if (completed) return;
                 completed = true;
-                releaseLease(lease, code);
-                drained.then(() => resolve({ code, output, stderr: stderrBuffer }));
+                const releaseCtx = releaseLease(lease, code);
+                drained.then(() => {
+                    closeRoleAttempt(lease, code, releaseCtx, output, stderrBuffer);
+                    resolve({ code, output, stderr: stderrBuffer });
+                });
             };
             child.once('exit', complete);
             child.once('error', () => {
@@ -3438,6 +3476,12 @@ function spawnAgent(bin, args, cwd, logPath, lease = null, extraEnv = {}) {
         });
     }
     const logFd = fs.openSync(logPath, 'a');
+    // PRI-311 (S5.2a, H2): Attempt com papel leva no lease o log do ticket e o tamanho dele
+    // no spawn; o release destacado lê só daí em diante (texto de despacho anterior não conta).
+    if (lease && lease.dom06Role) {
+        lease.logPath = logPath;
+        try { lease.logOffset = fs.fstatSync(logFd).size; } catch { lease.logOffset = null; }
+    }
     const [cmd, cmdArgs] = lease
         ? ['/bin/sh', ['-c', `n=$1; l=$2; a=$3; shift 3; ${bin} "$@"; c=$?; "$n" "$l" release "$a" "$c"; exit $c`,
             'sh', process.execPath, NODE_LEASE_SCRIPT, JSON.stringify(lease), ...args]]
@@ -3966,11 +4010,18 @@ function dom06SpecHash(state, worktreePath, ticketId) {
     return crypto.createHash('sha256').update(fs.readFileSync(specFile)).digest('hex');
 }
 
-function attachDom06Lease(lease, decision, node) {
+function attachDom06Lease(lease, decision, node, { task = null } = {}) {
     if (!lease || !decision?.attempt || node === 'commit') return lease;
     lease.dom06AttemptFile = decision.attemptFile;
     lease.dom06AttemptId = decision.attempt.attempt_id;
     if (!lease.node) lease.node = node;
+    // PRI-311 (S5.2a, H1): Attempt com papel. As adições do DOM-06 ao lease são só o papel, o
+    // diretório de manifestos e a task: nunca a chave nem o escopo.
+    if (decision.attempt.role) {
+        lease.dom06Role = decision.attempt.role;
+        lease.dom06ManifestsDir = decompositionRuntime.manifestPaths(REPO_PATH).manifestsDir;
+        lease.task = task || path.basename(lease.dir || '');
+    }
     return lease;
 }
 
@@ -4086,7 +4137,8 @@ async function simulateClaudeSegment({ ticket, nodes, lease, extraNote }) {
         console.error(`[dry-run] agente simulado falhou no(s) nó(s) ${nodes.join('+')}:`, e.message);
         result = { code: 1, output: e.message, stderr: e.message, simulated: true };
     }
-    releaseLease(lease, result.code);
+    const releaseCtx = releaseLease(lease, result.code);
+    closeRoleAttempt(lease, result.code, releaseCtx, result.output || '', result.stderr || '');
     try {
         result.finalize?.();
     } catch (e) {
@@ -4684,6 +4736,14 @@ async function dispatchTicketReserved(ticket) {
             ({ node, status } = state);
         }
     }
+    // PRI-311 (S5.2a, H6): `blocked` a partir do acceptance gravado por um Attempt com papel
+    // (no modo destacado, o wrapper só grava o Attempt; o bloqueio vem neste tick). Só com a
+    // Run em in_progress e uma vez por Attempt; nunca sobrescreve session_limit nem status
+    // gravado pelo comando.
+    if (!DRY_RUN && status === 'in_progress') {
+        const pending = decompositionRuntime.pendingBlock(dir, state);
+        if (pending) return applyDecompositionBlock({ ticket, taskId, node, state, dir, pending });
+    }
     if (status === 'escalated' || status === 'blocked' || status === 'needs_human_review' || status === 'state_corrupted') {
         console.warn(`Task ${taskId}: status "${status}" no nó "${node}" — precisa de intervenção humana, não despacho.`);
         if (!DRY_RUN) await notifyBlocked(ticket, taskId, node, status, dir, state);
@@ -5110,7 +5170,21 @@ function recoverOrphanedNodes() {
         defaultTimeoutMs: NODE_TIMEOUT_MS,
         dryRun: DRY_RUN,
         filter: taskScopeFilter(),
+        // PRI-311 (S5.2a, H4): Attempt com papel deixado STARTED fecha UNCERTAIN antes do
+        // redespacho; timeout sempre bloqueia. Sem Attempt com papel, nada muda.
+        // Mesma origem da task do lease e da varredura: o nome do diretório da Run (C-O-07).
+        onOrphan: (dir, state, reason) => decompositionRuntime.closeRoleOrphan({
+            runDir: dir, node: state.node, task: path.basename(dir), checkoutRoot: REPO_PATH, orphanReason: reason,
+        }),
     });
+}
+
+// PRI-311 (S5.2a, H5): chave e manifestos locais saem só quando a task não tem Run em
+// nenhuma raiz (checkout principal e cada worktree, runs e runs/_archive). O _archive não é
+// terminal: a Recusa QA revive a mesma Run. Idempotente.
+function sweepDecompositionKeys() {
+    // Mesmas raízes do recovery de órfãos (C-A-09); cada uma com runs/ e runs/_archive.
+    return decompositionRuntime.sweepKeys({ checkoutRoot: REPO_PATH, runsDirs: runsRootsForStartup(), filter: taskScopeFilter() || null });
 }
 
 // Filtro por task-id das varreduras de startup (órfãos, rotação de runs): --ticket=<id>
@@ -5689,6 +5763,14 @@ async function main() {
             console.error('[cleanup] falha na rotação de runs (sigo com o tick):', e.message);
         }
     }
+    if (!DRY_RUN) {
+        try {
+            const swept = sweepDecompositionKeys();
+            if (swept.length) console.log(`[dom06] chave/manifestos locais removidos de ${swept.length} task(s) sem Run em nenhuma raiz.`);
+        } catch (e) {
+            console.error('[dom06] falha na varredura de chaves (sigo com o tick):', e.message);
+        }
+    }
     let prPoller = null;
     try {
         // DRY-RUN: o polling consulta o Bitbucket, e nenhum PR foi aberto de verdade.
@@ -5735,6 +5817,7 @@ module.exports = {
     needsPlanGate, runPlanGate, planFeedbackNote, PLAN_GATE_COMMENT_PREFIX, PLAN_MAX_REPLANS,
     needsPreBuildGate, runPreBuildGate, worktreeFingerprint, formatPreBuildComment, PRE_BUILD_COMMENT_PREFIX,
     needsChurnGate, runChurnGate, formatChurnComment, CHURN_COMMENT_PREFIX,
+    releaseLease, closeRoleAttempt, attachDom06Lease, applyDecompositionBlock, sweepDecompositionKeys,
     syncAcRegistry, collectAcCandidates, AC_REGISTRY_PATH,
     syncKnowledgeGraph, collectKnowledgeFacts, KNOWLEDGE_GRAPH_PATH,
     runMemoryConsolidator, runMemoryConsolidatorSafe, CONSOLIDATOR_STATE_PATH, CONSOLIDATOR_PATTERNS_PATH,

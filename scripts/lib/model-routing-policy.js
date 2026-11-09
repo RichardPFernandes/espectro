@@ -180,7 +180,61 @@ function validateRoutedPolicy(raw) {
         if (!Object.prototype.hasOwnProperty.call(map, effort)) return fail(`effort_map_missing:${effort}`);
         if (!CLI_EFFORTS.has(map[effort])) return fail(`effort_map_value_invalid:${effort}`);
     }
+    const sections = validateDecompositionSections(raw);
+    if (!sections.ok) return fail(sections.detail);
     return { ok: true, policy: raw };
+}
+
+// PRI-311 (S5.2a, H3): seções opcionais da policy para a Run decomposta. Só sintaxe: a
+// validade nunca depende do worktree do consumidor (um papel listado que o projeto não tem
+// não é erro). `default` vale para todo papel não listado, inclusive os embutidos da CLI.
+// Ausentes → padrões (decompositionSections). Forma inválida → policy inválida (RC-5).
+const ROLE_NAME = /^[a-z0-9][a-z0-9-]*$/;
+const DEFAULT_MANIFEST_LIMITS = Object.freeze({ max_entries: 20000, max_bytes: 256 * 1024 * 1024 });
+
+/** @returns {{ ok: true } | { ok: false, detail: string }} */
+function validateDecompositionSections(raw) {
+    const fail = detail => ({ ok: false, detail });
+    const isObj = v => v != null && typeof v === 'object' && !Array.isArray(v);
+    if (raw.subagent_roles !== undefined) {
+        if (!isObj(raw.subagent_roles) || Object.keys(raw.subagent_roles).length === 0) return fail('subagent_roles_invalid');
+        const efforts = new Set(Object.keys(raw.effort_map || {}));
+        for (const [role, spec] of Object.entries(raw.subagent_roles)) {
+            if (role !== 'default' && !ROLE_NAME.test(role)) return fail(`subagent_role_name_invalid:${role}`);
+            if (!isObj(spec) || !isRealModel(spec.model_id)) return fail(`subagent_role_model_invalid:${role}`);
+            if (spec.effort === 'UNKNOWN') {
+                if (!nonEmptyString(spec.effort_ref)) return fail(`subagent_role_effort_ref_missing:${role}`);
+            } else if (!efforts.has(spec.effort)) {
+                return fail(`subagent_role_effort_invalid:${role}`);
+            }
+        }
+    }
+    if (raw.manifest_limits !== undefined) {
+        const l = raw.manifest_limits;
+        const posInt = v => Number.isSafeInteger(v) && v > 0;
+        if (!isObj(l) || !posInt(l.max_entries) || !posInt(l.max_bytes)) return fail('manifest_limits_invalid');
+    }
+    if (raw.workspace_watch_globs !== undefined) {
+        const g = raw.workspace_watch_globs;
+        if (!Array.isArray(g)) return fail('workspace_watch_globs_invalid');
+        for (const glob of g) {
+            if (!nonEmptyString(glob) || path.isAbsolute(glob) || glob.split(/[\\/]/).includes('..')) return fail('workspace_watch_globs_invalid');
+        }
+    }
+    return { ok: true };
+}
+
+/**
+ * Seções da Run decomposta já com os padrões (policy válida).
+ * @returns {{ subagent_roles: object|null, manifest_limits: { maxEntries: number, maxBytes: number }, workspace_watch_globs: string[] }}
+ */
+function decompositionSections(policy) {
+    const l = policy && policy.manifest_limits ? policy.manifest_limits : DEFAULT_MANIFEST_LIMITS;
+    return {
+        subagent_roles: policy && policy.subagent_roles ? structuredClone(policy.subagent_roles) : null,
+        manifest_limits: { maxEntries: l.max_entries, maxBytes: l.max_bytes },
+        workspace_watch_globs: policy && Array.isArray(policy.workspace_watch_globs) ? [...policy.workspace_watch_globs] : [],
+    };
 }
 
 // PRI-205 S3b (T4): seção `classifier` do núcleo 2. Validada à parte e NUNCA torna
@@ -368,6 +422,9 @@ module.exports = {
     ROUTING_CONFIG_REL,
     CLI_EFFORTS,
     validateRoutedPolicy,
+    validateDecompositionSections,
+    decompositionSections,
+    DEFAULT_MANIFEST_LIMITS,
     readRoutingConfig,
     validateClassifierSection,
     MAX_CLASSIFIER_TIMEOUT_MS,
