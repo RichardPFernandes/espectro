@@ -60,28 +60,81 @@ function parsePathsLine(line) {
         const kept = cleaned.filter((c, i) => !isAnnotation(ticked[i], c));
         raw = kept.length ? kept : cleaned;
     } else {
+        // Elipse no fim ('a.js, b.js...') = lista truncada: o trim por item a engoliria.
+        if (/(?:\.\.\.|\u2026)\s*$/.test(body)) return null;
         raw = body.split(/[,;]|\se\s/).map(t => t.trim().replace(/[.)]+$/, '')).map(cleanToken);
     }
     const out = [];
     for (const p of raw) {
         // Caminho concreto: sem "...", sem curinga, sem espaço (salvo entre crases); com "/" ou extensão.
         // Diretório (termina em "/") não é arquivo: lista incompleta => UNKNOWN.
-        if (!p || /\/$/.test(p) || /\.\.\./.test(p) || (ticked.length && /[,;]|\se\s/.test(p)) || (!ticked.length && /\s/.test(p)) || /[*<>{}]/.test(p) || !(/[/.]/.test(p) || EXTENSIONLESS.has(p))) return null;
+        if (!p || /\/$/.test(p) || /\.\.\./.test(p) || (ticked.length && /[,;]|\se\s/.test(p)) || (!ticked.length && /\s/.test(p)) || /[*<>{}\u2026]/.test(p) || /^n\/a$/i.test(p) || !(/[/.]/.test(p) || EXTENSIONLESS.has(p))) return null;
         out.push(p);
     }
     return out.length ? [...new Set(out)] : null;
 }
 
+// `Arquivo:` escrito no meio da prosa do passo ("Resolver X. Arquivo: a.js, b.js. Critérios:
+// AC-01"). Só vale com fronteira de frase antes (". ", "; ", ") " ou travessão) e "Arquivo"
+// com maiúscula: "o arquivo: x" em texto corrido não é declaração. O trecho vai até o
+// próximo rótulo do passo ou o fim da linha.
+const INLINE_LABEL = /(?:[.;)]\s+|\s[\u2014\u2013-]\s)Arquivos?\s*:\s*/g;
+const NEXT_LABEL = /\s*\b(?:Crit[e\u00e9]rios?|Verifica[c\u00e7][a\u00e3]o|Valida[c\u00e7][a\u00e3]o)\s*:/;
+
+const INLINE_CRITERIOS = /(?:[.;)]\s+|\s[\u2014\u2013-]\s)Crit[e\u00e9]rios?\s*:\s*/gi;
+const NEXT_LABEL_AFTER_CRITERIOS = /\s*\b(?:Arquivos?|Verifica[c\u00e7][a\u00e3]o|Valida[c\u00e7][a\u00e3]o)\s*:/i;
+
+function inlineSegments(line) {
+    const out = [];
+    for (const m of line.matchAll(INLINE_LABEL)) {
+        const rest = line.slice(m.index + m[0].length);
+        const cut = rest.search(NEXT_LABEL);
+        const seg = (cut === -1 ? rest : rest.slice(0, cut)).replace(/\s+$/, '');
+        // "a.js, b.js..." / "…" indica lista truncada: mantém para o parser recusar. Só o ponto final da frase sai.
+        out.push(/(?:\.\.\.|\u2026)$/.test(seg) ? seg : seg.replace(/\.+$/, ''));
+    }
+    return out;
+}
+
 /**
- * Caminhos declarados em UM passo. Mais de uma linha "Arquivo:" = lista possivelmente
- * parcial => UNKNOWN (nunca subestimar paths_decl; §4.1).
- * @returns {{ paths: string[]|'UNKNOWN', fileLines: number }} fileLines = linhas "Arquivo:" achadas
+ * Caminhos declarados em UM passo, na linha "- Arquivo:" própria ou inline na prosa. Mais de
+ * uma declaração no passo = lista possivelmente parcial => UNKNOWN (nunca subestimar
+ * paths_decl; §4.1). Passo sem nenhuma declaração fica UNKNOWN: não há arquivo a ler.
+ * @returns {{ paths: string[]|'UNKNOWN', fileLines: number }} fileLines = declarações "Arquivo:" achadas
  */
 function declaredPaths(stepText) {
     const lines = String(stepText || '').split('\n');
-    const fileLines = lines.filter(l => /^\s*[-*]?\s*arquivos?\s*:/i.test(l));
-    const fileLine = fileLines.length === 1 ? fileLines[0] : null;
-    return { paths: (fileLine && parsePathsLine(fileLine)) || UNKNOWN, fileLines: fileLines.length };
+    const labelLines = lines.filter(l => /^\s*[-*]?\s*arquivos?\s*:/i.test(l));
+    const inline = lines.filter(l => !/^\s*[-*]?\s*arquivos?\s*:/i.test(l)).flatMap(inlineSegments);
+    const total = labelLines.length + inline.length;
+    // Menção "arquivo:" que nenhuma das duas formas reconheceu (negrito, minúsculo, após vírgula,
+    // entre parênteses): com uma declaração válida no mesmo passo seria lista parcial => UNKNOWN.
+    const mentions = lines.reduce((n, l) => n + (l.replace(/`[^`]*`/g, '').match(/\barquivos?\s*:/gi) || []).length, 0);
+    if (total >= 1 && mentions > total) return { paths: UNKNOWN, fileLines: mentions };
+    let paths = null;
+    if (total === 1) paths = labelLines.length ? parsePathsLine(labelLines[0]) : parsePathsLine(`- Arquivo: ${inline[0]}`);
+    return { paths: paths || UNKNOWN, fileLines: total };
 }
 
-module.exports = { UNKNOWN, normPath, parsePathsLine, declaredPaths, isAnnotation };
+/**
+ * ACs citados em UM passo, na linha "Critérios:" própria (a linha inteira, como sempre) ou
+ * inline na prosa ("... Critérios: AC-01, AC-02. Verificação: ..."). União das duas: nunca
+ * perde um AC que o passo cita (um AC a menos subestima sensitive_decl e n_acs_step).
+ */
+function declaredAcIds(stepText) {
+    const ids = new Set();
+    for (const line of String(stepText || '').split('\n')) {
+        if (/^\s*[-*]?\s*crit[e\u00e9]rios?\s*:/i.test(line)) {
+            for (const id of line.match(/\bAC-\d+\b/g) || []) ids.add(id);
+            continue;
+        }
+        for (const m of line.matchAll(INLINE_CRITERIOS)) {
+            const rest = line.slice(m.index + m[0].length);
+            const cut = rest.search(NEXT_LABEL_AFTER_CRITERIOS);
+            for (const id of (cut === -1 ? rest : rest.slice(0, cut)).match(/\bAC-\d+\b/g) || []) ids.add(id);
+        }
+    }
+    return [...ids];
+}
+
+module.exports = { UNKNOWN, normPath, parsePathsLine, declaredPaths, declaredAcIds, isAnnotation };
