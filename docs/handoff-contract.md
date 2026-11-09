@@ -1,4 +1,4 @@
-# Maestri — Agent Handoff Contract v1.1
+# Maestri — Agent Handoff Contract v1.2
 
 ## Objetivo
 
@@ -103,6 +103,30 @@ usage:                         # só valores observados; o que não foi medido �
   tokens: "UNKNOWN"
 ```
 
+## Versão 1.2 (aditiva)
+
+A 1.2 acrescenta o nível de processo do
+[acordo de desenvolvimento](https://linear.app/prisma-app/document/prisma-acordo-de-desenvolvimento-62a84790f75a)
+(seção «Níveis de processo» do `AGENTS.md`). Herda tudo da 1.1; handoffs 1.0 e
+1.1 continuam válidos nas próprias versões e não são reinterpretados.
+
+```yaml
+handoff_version: "1.2"
+
+nivel_processo: "medio"        # obrigatório na 1.2: leve | medio | alto (sem acento)
+nivel_processo_inicial: null   # nível com que a issue entrou, se mudou
+nivel_processo_motivo: null    # obrigatório quando inicial ≠ nivel_processo
+```
+
+- Na dúvida entre dois níveis, usa-se o maior e registra-se o motivo em
+  `nivel_processo_motivo`.
+- O revisor pode subir o nível. Descer só com o Richard: o handoff cita a
+  decisão em `decisions.approved`. Descida com essa lista vazia é
+  `ERROR NIVEL_PROCESSO_DESCEU_SEM_DECISAO`; com ela preenchida, `WARN
+  NIVEL_PROCESSO_DESCEU` (o validador não lê o conteúdo da decisão).
+- O nível é independente de `risk.level` e do perfil G0–G3; se apontarem
+  exigências diferentes, vale a mais exigente.
+
 Em `validation.executed`, o campo opcional `expected` (`PASSED` padrão, ou `FAILED`)
 declara o resultado esperado. Teste de injeção de falha — rodado contra código
 sabotado para provar que o teste detecta o defeito — usa `expected: "FAILED"`.
@@ -115,7 +139,8 @@ O receptor roda `node scripts/validate-handoff.js` antes de aceitar o handoff:
 - `ERROR` impede a aceitação: campo obrigatório ausente, status fora do enum,
   resultado sem evidência, `COMPLETED` com falha inesperada não explicada em
   `open_issues`, `NEEDS_HUMAN`/`BLOCKED` sem `open_issues`, credencial no arquivo,
-  `usage` com valor estimado.
+  `usage` com valor estimado, `nivel_processo` ausente ou fora do enum na 1.2,
+  mudança de nível sem `nivel_processo_motivo`, descida sem `decisions.approved`.
 - `WARN` é conferido e registrado, sem bloquear.
 - O validador confere forma e coerência, não verdade: não reexecuta testes. Com
   `--check-paths`, confere que artefatos e evidências citados existem.
@@ -259,7 +284,14 @@ Antes de uma issue ir para Done, o coordenador roda:
 
 A checagem lê as citações do handoff. Não chama o Linear, não muda status e não
 registra Done. Exit 0 significa que as quatro citações do planejamento Prisma
-estão presentes e persistidas na forma exigida. A confirmação do Richard
+estão presentes e persistidas na forma exigida.
+
+As mensagens citam o nível de processo (`nivel_processo`, lido só em handoff 1.2;
+ausente, inválido ou em versão anterior, vale alto).
+Em leve e médio, a checagem não exige spec separada nem revisão G3; em alto, o
+processo completo é conferido manualmente. Em todo nível continuam as regras
+fixas: evidência persistida, aceite dos ACs pelo Richard e pai sem filha
+aberta. A checagem não consulta o Linear para conferi-las. A confirmação do Richard
 continua obrigatória. Exit 1 recusa essa linha. Exit 3 deixa o Done com o
 Richard porque o tipo não tem critério automático.
 

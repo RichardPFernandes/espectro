@@ -1,4 +1,4 @@
-// Validação do Agent Handoff Contract (docs/handoff-contract.md), versões 1.0 e 1.1.
+// Validação do Agent Handoff Contract (docs/handoff-contract.md), versões 1.0, 1.1 e 1.2.
 //
 // O receptor (normalmente o Coordenador) roda isto antes de aceitar um handoff, em vez
 // de conferir a estrutura a olho. Aceita um .yaml/.yml puro ou um .md com um bloco
@@ -26,7 +26,9 @@ const ARTIFACT_ACTIONS = ['CREATED', 'MODIFIED', 'DELETED'];
 const RESULTS = ['PASSED', 'FAILED'];
 const RUNTIMES = ['claude', 'codex', 'human', 'other'];
 const RISK_LEVELS = ['LOW', 'MEDIUM', 'HIGH', 'MAX'];
-const VERSIONS = ['1.0', '1.1'];
+const VERSIONS = ['1.0', '1.1', '1.2'];
+// Níveis de processo do acordo de desenvolvimento (AGENTS.md, «Níveis de processo»).
+const PROCESS_LEVELS = ['leve', 'medio', 'alto'];
 const SECRET = /(ATATT[A-Za-z0-9_\-=]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9\-_]{20,}|xox[abp]-[A-Za-z0-9-]{10,}|apikey_[A-Za-z0-9_]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/;
 
 function extractYaml(text, file) {
@@ -49,7 +51,9 @@ function validate(doc, opts = {}) {
     if (!isObj(doc)) { err('NOT_A_MAP', 'o handoff precisa ser um mapa YAML'); return out; }
     const version = String(doc.handoff_version ?? '');
     if (!VERSIONS.includes(version)) err('VERSION', `handoff_version "${version}" não suportada (use ${VERSIONS.join(' ou ')})`);
-    const v11 = version === '1.1';
+    // 1.2 é aditiva sobre a 1.1: herda routing/risk e acrescenta nivel_processo.
+    const v12 = version === '1.2';
+    const v11 = version === '1.1' || v12;
 
     const task = doc.task;
     if (!isObj(task)) err('TASK_MISSING', 'bloco task ausente');
@@ -148,7 +152,37 @@ function validate(doc, opts = {}) {
             }
         }
     }
+    if (v12) validateProcessLevel(doc, err, warn);
     return out;
+}
+
+// v1.2: nivel_processo obrigatório; mudança de nível exige motivo; descida só com o Richard.
+function validateProcessLevel(doc, err, warn) {
+    const level = doc.nivel_processo;
+    if (typeof level !== 'string' || !PROCESS_LEVELS.includes(level)) {
+        const norm = typeof level === 'string' ? level.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
+        const hint = PROCESS_LEVELS.includes(norm) ? ` — escreva "${norm}", minúsculo, sem acento nem espaço` : '';
+        err('NIVEL_PROCESSO', `nivel_processo "${level ?? ''}" inválido (${PROCESS_LEVELS.join(', ')})${hint}`);
+        return;
+    }
+    const initial = doc.nivel_processo_inicial;
+    if (initial === undefined || initial === null || initial === '') return;
+    if (typeof initial !== 'string' || !PROCESS_LEVELS.includes(initial)) {
+        err('NIVEL_PROCESSO_INICIAL', `nivel_processo_inicial "${initial}" inválido (${PROCESS_LEVELS.join(', ')})`);
+        return;
+    }
+    if (initial === level) return;
+    if (!isStr(doc.nivel_processo_motivo)) {
+        err('NIVEL_PROCESSO_MOTIVO', `nivel_processo mudou de ${initial} para ${level}; registre o motivo em nivel_processo_motivo`);
+    }
+    if (PROCESS_LEVELS.indexOf(level) < PROCESS_LEVELS.indexOf(initial)) {
+        const approved = isObj(doc.decisions) && Array.isArray(doc.decisions.approved) ? doc.decisions.approved : [];
+        if (approved.length === 0) {
+            err('NIVEL_PROCESSO_DESCEU_SEM_DECISAO', `nivel_processo desceu de ${initial} para ${level} sem decisão em decisions.approved; descer só com o Richard`);
+        } else {
+            warn('NIVEL_PROCESSO_DESCEU', `nivel_processo desceu de ${initial} para ${level}; descer só com o Richard — confira que decisions.approved cita a decisão dele (o validador não lê o conteúdo)`);
+        }
+    }
 }
 
 function validateFile(file, opts = {}) {
@@ -212,7 +246,7 @@ function runFile(file, opts = {}) {
     };
 }
 
-module.exports = { validate, validateFile, extractYaml, parseArgs, runFile, combineExit, checkPreDone };
+module.exports = { validate, validateFile, extractYaml, parseArgs, runFile, combineExit, checkPreDone, PROCESS_LEVELS };
 
 if (require.main === module) {
     const parsed = parseArgs(process.argv.slice(2));
@@ -237,7 +271,9 @@ if (require.main === module) {
                 ? 'citações presentes'
                 : (preDone.outcome === 'human' ? 'aguarda critério humano' : 'recusado');
             console.log(`  pré-Done: ${outcome}`);
+            console.log(`  nível de processo: ${preDone.nivelProcesso.label}`);
             for (const r of preDone.results) console.log(`  [${r.level}] ${r.code}: ${r.msg}`);
+            console.log(`  regras fixas (todo nível): ${preDone.fixedRules.join('; ')}`);
             console.log('  confirmação do Richard: obrigatória');
             console.log('  Done no Linear: não registrado');
             if (preDone.outcome === 'evidence_present') {
