@@ -34,7 +34,8 @@
   if (linked) { prefs.selected = linked; persist(); }
   window.addEventListener('hashchange', () => {
     const id = runFromHash();
-    if (id && id !== selected) Views.openRun(id);
+    // Link direto abre o detalhe inteiro da run (artboard RunDetail).
+    if (id && id !== selected) { Views.openRun(id); openRunDetail(); }
   });
 
   // ------------------------------------------------------------------ visão geral
@@ -291,7 +292,8 @@
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '?') { e.preventDefault(); openHelp(); return; }
     const n = Number(e.key);
-    if (n >= 1 && n <= VIEW_KEYS.length && !selecting) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
+    // Com o detalhe da run aberto, 1–6 pulam entre os grupos de abas dele (index.html).
+    if (n >= 1 && n <= VIEW_KEYS.length && !selecting && !document.body.classList.contains('run-open')) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
   }, true);
 
   window.UX = { overview, route, notifyNeedsYou, openPalette, openHelp };
