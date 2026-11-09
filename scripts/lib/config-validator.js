@@ -621,7 +621,9 @@ function ruleRoutingConfig(ctx) {
     const r = readRoutingConfig(ctx.root);
     if (r.status === 'OFF') {
         const why = r.source === 'absent' ? `${ROUTING_CONFIG_REL} ausente` : 'mode OFF declarado';
-        return makeResult(ctx, rule, { passed: true, message: `roteamento OFF (${why}): despacho AS-IS` });
+        // PRI-310 (S5.1): aviso, não falha. Com mode OFF a chave decomposition não tem efeito.
+        const warn = r.decomposition_ignored ? '; aviso DECOMPOSITION_IGNORED_MODE_OFF: a chave decomposition é ignorada com mode OFF' : '';
+        return makeResult(ctx, rule, { passed: true, message: `roteamento OFF (${why}): despacho AS-IS${warn}` });
     }
     if (r.status === 'ON') {
         const ref = r.policy_ref;

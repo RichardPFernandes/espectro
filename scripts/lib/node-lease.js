@@ -120,11 +120,29 @@ function recordAgentPid(lease, pid, { startOf = processIdentity.processStartIso 
 // replay, QA retry): SESSION_CONFLICT, registrado em logs/state-conflicts.jsonl, e o
 // release não grava nada.
 function releaseNode(lease) {
-    if (!lease) return false;
+    // PRI-310 (S5.1): delega ao release com motivo; mesmo efeito e mesmo booleano de antes
+    // (true só quando gravou in_progress; conflito de sessão, status trocado, lease de outro
+    // despacho, state ausente ou lease nulo → false).
+    return releaseNodeWithReason(lease) === 'RELEASED';
+}
+
+// PRI-310 (S5.1, B3): o release devolvendo o MOTIVO em vez de booleano, para a saída de
+// Attempt de subtarefa distinguir perda de claim de mudança legítima de status. releaseNode
+// acima delega a esta função e mantém o booleano. Motivos:
+// - RELEASED: gravou in_progress (o agente saiu sem trocar o status);
+// - STATUS_CHANGED: o próprio comando gravou outro status (SPEC_CHANGE, autorização…);
+// - LEASE_REPLACED: o state.json é de outro despacho (node_started_at diferente);
+// - SESSION_CONFLICT: outra sessão assumiu o run (execution_id diferente);
+// - STATE_MISSING: o state.json (ou a pasta) não existe;
+// - NO_LEASE: lease ausente.
+function releaseNodeWithReason(lease) {
+    if (!lease) return 'NO_LEASE';
+    let reason = 'STATE_MISSING';
     try {
-        const written = stateWriter.update(lease.dir, s => {
-            if (s.status !== 'running') return cas.SKIP;
-            if (s.node_started_at && s.node_started_at !== lease.startedAt) return cas.SKIP;
+        stateWriter.update(lease.dir, s => {
+            if (s.status !== 'running') { reason = 'STATUS_CHANGED'; return cas.SKIP; }
+            if (s.node_started_at && s.node_started_at !== lease.startedAt) { reason = 'LEASE_REPLACED'; return cas.SKIP; }
+            reason = 'RELEASED';
             s.status = RELEASED_STATUS;
             delete s.agent_pid;
             delete s.agent_started_at;
@@ -132,11 +150,11 @@ function releaseNode(lease) {
             operation: 'lease_release', actor: 'watcher',
             expect: lease.executionId ? { execution_id: lease.executionId } : null,
         });
-        return written != null;
+        return reason;
     } catch (e) {
         if (!cas.isConflict(e)) throw e;
         console.warn(`[recovery] ${path.basename(lease.dir)}: ${e.message} — release ignorado.`);
-        return false;
+        return 'SESSION_CONFLICT';
     }
 }
 
@@ -345,7 +363,7 @@ function recoveryNote(state) {
 
 module.exports = {
     DEFAULT_NODE_TIMEOUT_MS, LEGACY_SPAWN_WINDOW_MS, resolveNodeTimeoutMs,
-    acquireNode, recordAgentPid, releaseNode, stampNewTask, clearFetchDispatch, fetchDispatchLive,
+    acquireNode, recordAgentPid, releaseNode, releaseNodeWithReason, stampNewTask, clearFetchDispatch, fetchDispatchLive,
     agentAlive, orphanReason, isOrphan, describeRunning, recoverOrphans, recoveryNote,
 };
 
@@ -363,8 +381,9 @@ if (require.main === module) {
     try {
         const arg = JSON.parse(raw);
         const code = rawCode === undefined || rawCode === '' ? undefined : Number(rawCode);
+        let claim = null;
         if (arg.dir) {
-            releaseNode(arg);
+            claim = releaseNodeWithReason(arg);
             if (code !== undefined) require('./node-events').recordNodeExit(arg, code);
         } else if (arg.runsDir) {
             const dir = stampNewTask(arg.runsDir, arg.prefix, arg);
@@ -372,11 +391,14 @@ if (require.main === module) {
             if (dir && code !== undefined) require('./node-events').recordNodeExit(arg, code, dir);
         }
         if (code !== undefined) {
-            require('./dom06-attempt').fulfillOnExit({
+            // PRI-310 (S5.1): saída única do DOM-06. Attempt sem `role` delega ao
+            // fulfillOnExit de sempre; Attempt de subtarefa/integração decide o aceite.
+            require('./dom06-attempt').closeOnExit({
                 attemptFile: arg.dom06AttemptFile,
                 attemptId: arg.dom06AttemptId,
                 node: arg.node || (Array.isArray(arg.nodes) ? arg.nodes[0] : null),
                 code,
+                claim,
             });
         }
     } catch (e) {

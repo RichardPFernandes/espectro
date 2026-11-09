@@ -44,6 +44,15 @@ modules:
   - path: scripts/lib/routing-run.js
     capability: model-routing-run-snapshot
     owner: UNKNOWN
+  # PRI-310 (PRI-287 S5.1): manifesto do workspace, só leitura do worktree; a chave por Run
+  # e os manifestos locais ficam fora do worktree. O resumo vai no Attempt (DOM06).
+  - path: scripts/lib/workspace-manifest.js
+    capability: workspace-manifest
+    owner: UNKNOWN
+  # PRI-310: identidade das subtarefas (plan_version + grupo), pura; não grava estado.
+  - path: scripts/lib/subtask-decomposition.js
+    capability: subtask-identity
+    owner: UNKNOWN
 
   # SDD / evidence (candidatos)
   - path: scripts/lib/spec-change.js
