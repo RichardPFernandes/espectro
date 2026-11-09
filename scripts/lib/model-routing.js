@@ -245,8 +245,24 @@ function resolveRoute(input = {}) {
     const policy = snapshot.policy;
     const ineligible = new Set(Array.isArray(input.ineligibleModels) ? input.ineligibleModels : []);
     const isEligible = m => snapshot.eligible_set.models.includes(m) && !ineligible.has(m);
-    const routed = node === ROUTED_NODE;
-    const classified = routed ? classifyImplement(signals, planClasses) : { class: null, selection_source: 'FIXED_NODE', rule: null };
+    // PRI-311 (S5.2b, B5.6/Q4): a integração da Run decomposta usa o default_route (nó fixo).
+    const routed = node === ROUTED_NODE && input.fixedRoute !== true;
+    let classified = routed ? classifyImplement(signals, planClasses) : { class: null, selection_source: 'FIXED_NODE', rule: null };
+    // PRI-311 (S5.2b, B5.3/B5.7–8): piso da linhagem — rework nunca abaixo da resolução inicial;
+    // reclassificação de risco (scope_violation, rework ALL) sobe a ≥ C4 com RISK_RECLASSIFIED.
+    // Override humano vigente prevalece sobre o piso (aplicado em (3), abaixo).
+    // `exact` (rework ALL, B5.7/Q7 a): "nó inteiro em C4" — classe fixa, não piso. A marca de
+    // risco (RISK_RECLASSIFIED) fica gravada sempre que o piso de risco se aplica, mesmo quando a
+    // classe calculada já estava acima (contagem à parte, m3).
+    const floor = input.classFloor;
+    if (routed && floor && CLASS_RANK[floor.class]) {
+        const risk = floor.selection_source === 'RISK_RECLASSIFIED';
+        if (floor.exact === true || CLASS_RANK[floor.class] > CLASS_RANK[classified.class]) {
+            classified = { class: floor.class, selection_source: floor.selection_source || 'LINEAGE_FLOOR', rule: null };
+        } else if (risk) {
+            classified = { ...classified, selection_source: 'RISK_RECLASSIFIED' };
+        }
+    }
     const { override, pending } = pickOverride(overrides, { node, subtaskKey, nodeBoundaryAt });
     const n2 = nucleus2Record(routed, input.nucleus2, signals, planClasses);
 
@@ -266,9 +282,12 @@ function resolveRoute(input = {}) {
         selection_source: classified.selection_source,
         override_ref: override ? overrideRef(override) : null,
         overrides_pending: pending,
-        subagent: 'UNENFORCED',
+        // Campo legado da S4 (sem papel): sempre UNENFORCED. Com papel (S5.2b), resumo das linhas.
+        subagent: Array.isArray(input.subagentRoles) && input.subagentRoles.some(r => r.enforcement === 'ENFORCED') ? 'PARTIAL' : 'UNENFORCED',
         effort_router_plugin: input.capabilities?.pluginProof?.status || 'UNKNOWN',
         plugin_proof: null,
+        ...(Array.isArray(input.subagentRoles) ? { subagent_roles: structuredClone(input.subagentRoles) } : {}),
+        ...(input.subagentMechanism ? { subagent_mechanism: structuredClone(input.subagentMechanism) } : {}),
         effort_mechanism: input.capabilities?.effortMechanism?.status === 'VERIFIED'
             ? { status: 'VERIFIED', flag: input.capabilities.effortMechanism.flag }
             : { status: 'UNAVAILABLE' },
@@ -329,7 +348,10 @@ function resolveRoute(input = {}) {
     return { ok: true, result: 'RESOLVED', cause: null, detail: null, decision };
 }
 
-function routedArgs(baseArgs, resolution) {
+// `agentsJson` (PRI-311, S5.2b, B8/U10-a): redefinição dos papéis de subagente por `--agents`,
+// só para Attempt com papel e com `subagent_roles` na policy (montada por subagentRoles). Sem
+// ela o argv é o da S4 (golden AC-01).
+function routedArgs(baseArgs, resolution, { agentsJson = null } = {}) {
     if (!resolution || resolution.ok !== true || !resolution.decision?.chosen) {
         throw new Error('ROUTED_ARGS_REQUIRE_OK_DECISION');
     }
@@ -339,7 +361,105 @@ function routedArgs(baseArgs, resolution) {
         '--model', d.chosen.model_id,
         ...(d.effort_applied ? [d.effort_mechanism.flag, d.chosen.cli_effort] : []),
         '--settings', d.plugin_proof.settings_path,
+        ...(typeof agentsJson === 'string' && agentsJson ? ['--agents', agentsJson] : []),
     ];
+}
+
+// ---------------------------------------------------------------------------------
+// Subagentes por papel (PRI-311 / PRI-287 S5.2b, B8; RC-1/DP-4a)
+
+const ROLE_NAME = /^[a-z0-9][a-z0-9-]*$/;
+
+// Prova da tarefa 0 (U10-a, tasks/pri-287-s5/u10-probe-evidence.json): `--agents` fixou o modelo
+// de agentes de projeto, por papel, com precedência sobre o frontmatter, na CLI 2.1.319. Só o
+// modelo; esforço do subagente (U1) e subagentes embutidos não foram verificados.
+const SUBAGENT_MECHANISM_PROOF = Object.freeze({
+    mechanism: 'agents_flag', cli_versions: Object.freeze(['2.1.319']), proof_ref: 'tasks/pri-287-s5/u10-probe-evidence.json',
+});
+// Teto do JSON de `--agents` no argv (MAX_ARG_STRLEN do Linux é 128 KiB por argumento).
+const AGENTS_JSON_MAX_BYTES = 64 * 1024;
+
+/** Capacidade do mecanismo de subagente para a versão da CLI do despacho (como effortMechanism). */
+function subagentMechanism(cliVersion) {
+    const v = typeof cliVersion === 'string' ? cliVersion.trim() : '';
+    if (v && SUBAGENT_MECHANISM_PROOF.cli_versions.includes(v)) {
+        return { status: 'VERIFIED', mechanism: SUBAGENT_MECHANISM_PROOF.mechanism, cli_version: v, proof_ref: SUBAGENT_MECHANISM_PROOF.proof_ref };
+    }
+    return { status: 'UNVERIFIED', mechanism: SUBAGENT_MECHANISM_PROOF.mechanism, cli_version: v || 'UNKNOWN', proof_ref: SUBAGENT_MECHANISM_PROOF.proof_ref, reason: v ? 'CLI_VERSION_NOT_PROVEN' : 'CLI_VERSION_UNKNOWN' };
+}
+
+/**
+ * Papéis de subagente de um Attempt com papel, a partir do snapshot da Run e dos agentes do
+ * projeto (lidos do worktree pelo chamador, decomposition-visit.readProjectAgents).
+ * - Sem `subagent_roles` na policy: uma linha `default`, `declared_model = null`, UNENFORCED,
+ *   e nenhum `--agents` (o subagente segue o frontmatter).
+ * - Com a seção e o mecanismo VERIFIED (versão provada da CLI): cada agente do projeto que dá
+ *   para reproduzir FIELMENTE (`redefinable`) é redefinido por `--agents` com a própria
+ *   definição e só o `model` trocado → `ENFORCED` (modelo). Os demais agentes, os embutidos da
+ *   CLI (linha `default`) e qualquer caso sem mecanismo verificado ficam UNENFORCED com causa.
+ * - `effort_enforcement` é sempre UNKNOWN (esforço do subagente não verificado, U1).
+ * `observed_model` é preenchido depois da saída, pela trilha de uso por papel (S1).
+ * @returns {{ roles: object[], agentsJson: string|null, agents_sha256: string|null, mechanism: object|null }}
+ */
+function subagentRoles({ snapshot, agents = [], mechanism = null } = {}) {
+    const section = snapshot && snapshot.policy ? snapshot.policy.subagent_roles : null;
+    const row = (role, s, enforcement, cause = null) => ({
+        role, declared_model: s ? s.model_id : null, declared_effort: s ? (s.effort ?? null) : null,
+        enforcement, effort_enforcement: 'UNKNOWN', ...(cause ? { cause } : {}), observed_model: null,
+    });
+    if (!section || typeof section !== 'object') {
+        return { roles: [row('default', null, 'UNENFORCED', 'NO_SUBAGENT_ROLES_SECTION')], agentsJson: null, agents_sha256: null, mechanism: null };
+    }
+    const verified = Boolean(mechanism && mechanism.status === 'VERIFIED');
+    const spec = name => section[name] || section.default || null;
+    const roles = [];
+    const defs = {};
+    const seen = new Set();
+    for (const a of (Array.isArray(agents) ? agents : []).slice().sort((x, y) => String(x.name).localeCompare(String(y.name)))) {
+        if (!a || typeof a.name !== 'string' || !ROLE_NAME.test(a.name) || seen.has(a.name) || a.name === 'default') continue;
+        seen.add(a.name);
+        const s = spec(a.name);
+        if (!s) { roles.push(row(a.name, null, 'UNENFORCED', 'ROLE_NOT_IN_POLICY')); continue; }
+        if (!verified) { roles.push(row(a.name, s, 'UNENFORCED', mechanism ? mechanism.reason || 'MECHANISM_UNVERIFIED' : 'MECHANISM_UNVERIFIED')); continue; }
+        if (a.redefinable !== true || !a.definition) { roles.push(row(a.name, s, 'UNENFORCED', a.cause || 'AGENT_NOT_REPRODUCIBLE')); continue; }
+        defs[a.name] = { ...structuredClone(a.definition), model: s.model_id };
+        roles.push(row(a.name, s, 'ENFORCED'));
+    }
+    roles.push(row('default', section.default || null, 'UNENFORCED', 'BUILTIN_NOT_VERIFIED'));
+    const names = Object.keys(defs).sort();
+    if (!names.length) return { roles, agentsJson: null, agents_sha256: null, mechanism };
+    const agentsJson = JSON.stringify(Object.fromEntries(names.map(n => [n, defs[n]])));
+    if (Buffer.byteLength(agentsJson) > AGENTS_JSON_MAX_BYTES) {
+        for (const r of roles) if (r.enforcement === 'ENFORCED') Object.assign(r, { enforcement: 'UNENFORCED', cause: 'AGENTS_ARG_TOO_LARGE' });
+        return { roles, agentsJson: null, agents_sha256: null, mechanism };
+    }
+    return { roles, agentsJson, agents_sha256: crypto.createHash('sha256').update(agentsJson).digest('hex'), mechanism };
+}
+
+/**
+ * Observação depois da saída (B8): casa a atribuição por papel da S1
+ * (cost-tracking.subagentRoleAttribution) com os papéis declarados. Linha CONFLICTED ou sem
+ * papel não conta. Divergência declarado × observado = SUBAGENT_MODEL_MISMATCH (registro, não
+ * invalida o Attempt). Papel não listado cai na linha `default`.
+ */
+function observeSubagentRoles(declared = [], attribution = []) {
+    const rows = (Array.isArray(declared) ? declared : []).map(r => ({ ...r, observed_model: null, observations: 0 }));
+    const byRole = new Map(rows.map(r => [r.role, r]));
+    const unattributed = [];
+    for (const a of Array.isArray(attribution) ? attribution : []) {
+        if (!a || a.provenance === 'CONFLICTED' || !a.role) { unattributed.push({ provenance: a ? a.provenance : 'UNKNOWN' }); continue; }
+        const row = byRole.get(a.role) || byRole.get('default');
+        if (!row) continue;
+        row.observations += 1;
+        const models = Array.isArray(a.models) ? a.models : [];
+        row.observed_models = [...new Set([...(row.observed_models || []), ...models])].sort();
+        row.observed_model = row.observed_models.length === 1 ? row.observed_models[0] : (row.observed_models.length ? 'MULTIPLE' : null);
+    }
+    for (const r of rows) {
+        r.mismatch = Boolean(r.declared_model && r.observed_model && r.observed_model !== r.declared_model);
+        if (r.mismatch) r.finding = 'SUBAGENT_MODEL_MISMATCH';
+    }
+    return { roles: rows, unattributed: unattributed.length };
 }
 
 module.exports = {
@@ -347,6 +467,11 @@ module.exports = {
     snapshotIntegrity,
     resolveRoute,
     routedArgs,
+    subagentRoles,
+    subagentMechanism,
+    observeSubagentRoles,
+    SUBAGENT_MECHANISM_PROOF,
+    AGENTS_JSON_MAX_BYTES,
     canonicalSha256: sha256,
     ROUTED_NODE,
     PRODUCTION_EFFORT_MECHANISM,

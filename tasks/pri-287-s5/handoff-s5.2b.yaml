@@ -1,0 +1,129 @@
+# Maestri — Agent Handoff Contract v1.2. Regras: docs/handoff-contract.md
+handoff_version: "1.2"
+
+nivel_processo: "alto"
+nivel_processo_inicial: null
+nivel_processo_motivo: null
+
+task:
+  id: "PRI-311"
+  objective: "S5.2b da PRI-287: comando de passo e integração da Run decomposta no watcher (B2 decomposição da visita, B5 sequenciamento, B6 comandos/DoD/contexto, B8 subagent_roles, H7 manifesto nos gates), atrás da flag decomposition reservada."
+  specification_ref: "tasks/pri-287-s5/SPEC-s5.2.md (v2.1, aprovado pelo Richard em 2026-11-09) sobre tasks/pri-287-s5/SPEC.md (v2.1)"
+  acceptance_criteria:
+    - "AC-22 a AC-29 e AC-35 (S5.2b = passos 7 a 12 do adendo)."
+
+routing:
+  from: "Claude Opus 5.5 (sessão da PRI-287)"
+  to: "Richard (revisão do PR draft, merge exclusivo dele; decisão do gate do RC-1; ciência do desvio B5.9 × Q7 a)"
+  runtime: "claude"
+  fallback_reason: null
+
+risk:
+  level: "HIGH"
+  signals:
+    - "G3: liga o ramo decomposto no despacho do watcher, muda o argv roteado (--agents, atrás da flag) e cria writer novo da transição implement → review na Run decomposta"
+    - "Flag decomposition 'on' segue reservada: nenhuma Run real nasce decomposta"
+  classified_by: "Claude Opus 5.5"
+
+execution:
+  agent: "Claude Opus 5.5"
+  status: "COMPLETED"
+  summary: "Passos 7 a 12 implementados e testados (AC-22 a AC-29 PASS; AC-23 no nível da lib; scope_violation → ≥ C4 provado na lib). G3 de código r1: Opus CHANGES_REQUESTED (3 MAJOR), Arquiteto APPROVED_WITH_CHANGES (2 MAJOR); todos os MAJOR e MINOR corrigidos ou declarados em evidence-s5.2b.md. Suítes oficiais Node 22 e 24 sem falha. Gate do RC-1 NÃO CUMPRIDO (decisão do Richard)."
+  branch: "fernandesrichard312/pri-311-s52b-passo-integracao"
+  commit: null
+
+artifacts:
+  - path: "scripts/lib/decomposition-visit.js"
+    action: "CREATED"
+    description: "Decomposição da visita (B2, plan_visits), próxima ação (B5), rework mapeado (B5.7), piso da linhagem e ALL exato (B5.3/Q7 a), scope_violation (B5.8), DoD e blocos de contexto (B6), agentes do projeto reproduzíveis (B8)."
+  - path: "scripts/readmine-watcher.js"
+    action: "MODIFIED"
+    description: "prepareDecomposedNode (implement decomposto e gates com role gate), transição implement → review por CAS com expected_node, defesa da Review, pré-build/churn por visita, órfão sem lease, versão da CLI para o mecanismo, observação de subagentes no fechamento do custo, --follow continua após a transição."
+  - path: "scripts/lib/model-routing.js"
+    action: "MODIFIED"
+    description: "classFloor/fixedRoute em resolveRoute; subagentRoles, subagentMechanism, observeSubagentRoles; --agents em routedArgs só com agentsJson."
+  - path: "scripts/lib/dom06-attempt.js"
+    action: "MODIFIED"
+    description: "dod no Attempt; recordScopeViolation; recordSubagentObservation; latestBound exportado."
+  - path: ".claude/commands/implement-step.md"
+    action: "CREATED"
+    description: "Comando de passo (B6), por referência ao /implement, sem transição."
+  - path: ".claude/commands/implement-integrate.md"
+    action: "CREATED"
+    description: "Comando de integração (B6), sem transição, preserva os blocos subtask:*."
+  - path: ".graph/schemas/state.schema.json"
+    action: "MODIFIED"
+    description: "decomposition; decomposition_block_applied.attempt_id aceita null."
+  - path: "ownership.yaml"
+    action: "MODIFIED"
+    description: "Capacidade decomposition-visit (módulo e comandos)."
+  - path: "docs/concurrency-map.md"
+    action: "MODIFIED"
+    description: "Decomposição da visita, transição implement → review pelo watcher, registros pós-saída."
+  - path: "scripts/lib/decomposition-visit.test.js"
+    action: "CREATED"
+    description: "B2, AC-22 a AC-25, AC-28, B5.8 e B8 no nível da lib (11 testes)."
+  - path: "scripts/lib/model-routing-decomposed.test.js"
+    action: "CREATED"
+    description: "AC-24, AC-25, Q4, AC-27 (8 testes)."
+  - path: "scripts/lib/decomposition-watcher.test.js"
+    action: "CREATED"
+    description: "Watcher real em modo destacado: AC-26/AC-22 com rework e --agents, Review sem agregação, intercalado, AC-29 (4 testes)."
+  - path: "tasks/pri-287-s5/evidence-s5.2b.md"
+    action: "CREATED"
+    description: "Evidência por AC, suítes, G3, desvios e pendências."
+
+decisions:
+  approved:
+    - "Adendo v2.1 e Q8–Q14 (Richard, 2026-11-09); Q7 (a) da SPEC (Richard, 2026-11-09)."
+  proposed:
+    - "B5.9 superada pela Q7 (a) quanto a scope_violation e ALL (ciência do Richard pedida)."
+    - "Desvios declarados em evidence-s5.2b.md: núcleo 2 não coletado por subtarefa; observed_model em subagent_observation; LINEAGE_FLOOR; bloqueios com attempt_id null; piso por classe; --agents só para agentes de projeto reproduzíveis na CLI 2.1.319."
+
+validation:
+  executed:
+    - command: "npm --prefix scripts test (receita oficial do runbook, Node 22.23.2 e 24.22.1)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "1920 testes: 1914 pass, 0 fail, 6 skipped em cada versão (TAP sha256 03dcad4feb601624 / 770611ff3f112cd4)."
+    - command: "npm --prefix dashboard test (receita oficial do runbook, Node 22.23.2 e 24.22.1)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "402/402 em cada versão (TAP sha256 e13a8971b17d1322 / 1b1ace5393ba4ca9)."
+    - command: "npm run check:js && npm run lint:src && npm run arch:check (scripts/, Node 22.23.2)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "exit 0 nos três."
+  not_executed:
+    - "CI Linux (não disponível nesta sessão)."
+    - "Teste dedicado em --follow da transição encadeada e da Run decomposta revivida pela Recusa QA."
+
+open_issues:
+  - "Gate do RC-1: NÃO CUMPRIDO; decisão do Richard (prova do U10-a obtida; esforço do subagente e embutidos não verificados)."
+  - "Ciência do Richard sobre B5.9 × Q7 (a) (scope_violation e ALL em C4)."
+  - "C-A-08: igualdade subagent_roles.default = default_route na policy de piloto ou no PR de liberação."
+  - "Portas para ligar a flag: S5.3 (PRI-312), nova versão de policy aprovada, nota da Q7 na PRI-293."
+  - "RC-1 a RC-6 e RRC-F31-001/002 seguem NOT APPLIED; a flag decomposition 'on' segue reservada."
+
+next:
+  recommended_agent: "Richard"
+  action: "Revisar o PR draft da S5.2b (merge é dele); decidir o gate do RC-1; registrar ciência do desvio B5.9 × Q7 (a). Depois, S5.3 (PRI-312)."
+  prerequisites: []
+
+context_refs:
+  - "tasks/pri-287-s5/SPEC-s5.2.md"
+  - "tasks/pri-287-s5/evidence-s5.2b.md"
+  - "tasks/pri-287-s5/evidence-s5.2a.md"
+  - "https://linear.app/prisma-app/issue/PRI-311"
+  - "https://linear.app/prisma-app/issue/PRI-287"
+
+facts:
+  - "WATCHER_QA_DIAGNOSTICO e o polling de PR não foram tocados."
+  - "implement.md, review.md, commit.md, plan-signals.js e model-routing-policy.js não mudaram."
+  - "Trabalho no worktree .claude/worktrees/pri-311, branch nova a partir de main 886aff0."
+assumptions: []
+
+usage:
+  duration: "UNKNOWN"
+  retries: 0
+  tokens: "UNKNOWN"

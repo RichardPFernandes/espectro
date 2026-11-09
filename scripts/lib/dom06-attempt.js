@@ -160,6 +160,8 @@ function decompositionFields(ctx) {
         // PRI-311 (H0): HMAC do escopo do baseline com a chave da Run; nunca o escopo.
         scope_hmac: typeof ctx.scope_hmac === 'string' ? ctx.scope_hmac : null,
         chain_anchor: ctx.chain_anchor ? structuredClone(ctx.chain_anchor) : null,
+        // PRI-311 (S5.2b, B6/DP-8): DoD derivado, insumo do prompt. Nunca aprova nem reprova.
+        ...(ctx.dod ? { dod: structuredClone(ctx.dod) } : {}),
         workspace: { baseline: ctx.workspace_baseline ? structuredClone(ctx.workspace_baseline) : null, post: null },
         acceptance: null,
     };
@@ -671,6 +673,36 @@ function aggregateImplement(runDir, planVersion, subtaskKeys) {
     return { ok: true, duplicate: false, attempt_id: integ.attempt_id };
 }
 
+/**
+ * PRI-311 (S5.2b, B5.8): arquivo fora de `paths_decl` no `post` de uma subtarefa. Registro no
+ * Attempt (só a contagem; caminhos ficam no arquivo local), uma vez. Não invalida o Attempt
+ * nem muda o aceite (HD-AF-034); o próximo Attempt da linhagem sobe a ≥ C4 (Q7 a).
+ */
+function recordScopeViolation(attemptFile, { count, comparable = true } = {}) {
+    const { attempt, saved } = loadForUpdate(attemptFile);
+    if (attempt.role !== 'subtask' || attempt.scope_check) return attempt.scope_check || null;
+    attempt.scope_check = {
+        comparable: comparable === true,
+        outside_count: comparable === true && Number.isInteger(count) ? count : null,
+        checked_at: new Date().toISOString(),
+    };
+    attempt.scope_violation = comparable === true && Number.isInteger(count) && count > 0;
+    saveFrozen(attemptFile, attempt, saved);
+    return attempt.scope_check;
+}
+
+/**
+ * PRI-311 (S5.2b, B8): observação dos subagentes por papel depois da saída. A RoutingDecision
+ * (`routing`) fica como decidida no despacho; a observação vai num campo próprio, uma vez.
+ */
+function recordSubagentObservation(attemptFile, observation) {
+    const { attempt, saved } = loadForUpdate(attemptFile);
+    if (!attempt.role || attempt.subagent_observation) return attempt.subagent_observation || null;
+    attempt.subagent_observation = { ...structuredClone(observation), observed_at: new Date().toISOString() };
+    saveFrozen(attemptFile, attempt, saved);
+    return attempt.subagent_observation;
+}
+
 // Chave sintética do rework do nó inteiro (B5.7), fora da identidade D14. Fonte única.
 function allKey(planVersion) {
     return `${String(planVersion).slice(0, 12)}/ALL`;
@@ -835,6 +867,9 @@ module.exports = {
     closeOrphan,
     manifestSummary,
     decompositionFields,
+    recordScopeViolation,
+    recordSubagentObservation,
+    latestBound,
     beginAttempt, retryAttempt, prepareDispatch, causeFromState, spawnIfAdmitted,
     readAttempt, recordEffect, revoke, authorizeEffect, applyExternalEffect, summarize,
     fulfillOnExit, obligationsFor, listAttempts, closeAttempt, redmineEffect,
