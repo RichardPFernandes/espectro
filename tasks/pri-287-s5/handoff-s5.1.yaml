@@ -1,0 +1,130 @@
+# Maestri — Agent Handoff Contract v1.1. Regras: docs/handoff-contract.md
+handoff_version: "1.1"
+
+task:
+  id: "PRI-310"
+  objective: "S5.1 da PRI-287: contrato do DOM-06 para subtarefas como Attempts do Implement e manifesto do workspace com HMAC por Run, atrás da flag decomposition reservada (fail-closed)."
+  specification_ref: "tasks/pri-287-s5/SPEC.md (v2.1, aprovada pelo Richard em 2026-11-09)"
+  acceptance_criteria:
+    - "AC-01 a AC-21 e AC-35 da SDD (S5.1 = B1, B3, B4)."
+
+routing:
+  from: "Claude Opus 5.5 (sessão da PRI-287)"
+  to: "Richard (revisão do PR draft; merge exclusivo dele)"
+  runtime: "claude"
+  fallback_reason: null
+
+risk:
+  level: "HIGH"
+  signals:
+    - "G3: muda o contrato do escritor de Attempt (DOM-06) e os dois caminhos de saída do agente"
+    - "Flag decomposition 'on' reservada: nenhuma Run real nasce decomposta"
+  classified_by: "Claude Opus 5.5"
+
+execution:
+  agent: "Claude Opus 5.5"
+  status: "COMPLETED"
+  summary: "B1 (chave decomposition: OFF ignora com aviso, ON+on = DECOMPOSITION_RESERVED, snapshot só com on), B3 (papéis subtask/integration/gate, obrigações execute_subtask/integrate, closeOnExit único nos dois caminhos, releaseNodeWithReason, tabela de aceite, teto de retry, agregação por visita, órfão UNCERTAIN, seq monotônico) e B4 (workspace-manifest.js só leitura, HMAC por Run, chave e manifestos fora do worktree com check-ignore, encadeamento e reancoragens). Golden da Run ON gerado antes das mudanças. Revisão G3 de código em duas rodadas: Arquiteto APPROVED; Opus APPROVED_WITH_CHANGES com os MINOR corrigidos."
+  branch: "fernandesrichard312/pri-310-selecao-de-modelo-s51-contrato"
+  commit: null
+
+artifacts:
+  - path: "scripts/lib/dom06-attempt.js"
+    action: "MODIFIED"
+    description: "Papéis, obrigações, latestBound por chave, closeOnExit, decideAcceptance, aggregateImplement, closeOrphan, allKey, seq."
+  - path: "scripts/lib/workspace-manifest.js"
+    action: "CREATED"
+    description: "Manifesto do workspace (§3.5), só leitura, HMAC por Run."
+  - path: "scripts/lib/subtask-decomposition.js"
+    action: "CREATED"
+    description: "Identidade das subtarefas (plan_version + grupo), pura, reusa plan-signals."
+  - path: "scripts/lib/node-lease.js"
+    action: "MODIFIED"
+    description: "releaseNodeWithReason; releaseNode delega; CLI release chama closeOnExit."
+  - path: "scripts/readmine-watcher.js"
+    action: "MODIFIED"
+    description: "releaseLease usa releaseNodeWithReason e closeOnExit; aviso de admissão para DECOMPOSITION_RESERVED."
+  - path: "scripts/lib/model-routing-policy.js"
+    action: "MODIFIED"
+    description: "Chave decomposition na leitura da config."
+  - path: "scripts/lib/model-routing.js"
+    action: "MODIFIED"
+    description: "Snapshot com decomposition só quando 'on'."
+  - path: "scripts/lib/config-validator.js"
+    action: "MODIFIED"
+    description: "Aviso DECOMPOSITION_IGNORED_MODE_OFF."
+  - path: "ownership.yaml"
+    action: "MODIFIED"
+    description: "Registra workspace-manifest e subtask-decomposition (owner UNKNOWN)."
+  - path: "scripts/lib/routing-on-golden.test.js"
+    action: "CREATED"
+    description: "Golden da Run ON (AC-01), gerado em 2024597."
+  - path: "scripts/fixtures/routing-on-golden.json"
+    action: "CREATED"
+    description: "Fixture do golden ON."
+  - path: "scripts/lib/routing-off-golden.test.js"
+    action: "MODIFIED"
+    description: "Variante OFF + decomposition on."
+  - path: "scripts/lib/dom06-decomposition.test.js"
+    action: "CREATED"
+    description: "Testes de B1, B3 e AC-04."
+  - path: "scripts/lib/workspace-manifest.test.js"
+    action: "CREATED"
+    description: "Testes do manifesto com repositórios git sintéticos."
+  - path: "tasks/pri-287-s5/evidence-s5.1.md"
+    action: "CREATED"
+    description: "Evidência por AC, suítes, revisão, divergências e pendências."
+
+decisions:
+  approved:
+    - "SDD v2.1 e Q1–Q7 (Richard, 2026-11-09; Q3 corrigida: PRI-293 não é pré-condição, D-6 de 27/10)."
+  proposed:
+    - "Divergências declaradas em tasks/pri-287-s5/evidence-s5.1.md (id de conteúdo em processo, índice agregado, AC-04 como módulo puro, seq)."
+
+validation:
+  executed:
+    - command: "harness/run-tests.js scripts (Node 22.23.2 e 24.22.1)"
+      result: "FAILED"
+      expected: "PASSED"
+      evidence: "1842/1850 em cada versão; as 2 falhas são qa-rejection-c0-oracle por TMPDIR /var vs /private/var no macOS (23/23 com TMPDIR resolvido); sem relação com o diff."
+    - command: "harness/run-tests.js dashboard (Node 22.23.2 e 24.22.1)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "394/394 em cada versão."
+    - command: "node --test lib/routing-on-golden.test.js lib/routing-off-golden.test.js lib/dom06-decomposition.test.js lib/workspace-manifest.test.js"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "1/1, 1/1, 23/23, 21/21 (receita isolada, Node 20.20.2)."
+    - command: "npm run check:js && npm run lint:src && npm run arch:check (Node 22)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "exit 0 nos três."
+  not_executed:
+    - "CI Linux (não disponível nesta sessão)."
+
+open_issues:
+  - "Validação scripts FAILED só por qa-rejection-c0-oracle (2 casos): TMPDIR /var vs /private/var no macOS; o teste não importa módulo alterado e passa 23/23 com TMPDIR resolvido. Falha de ambiente preexistente."
+  - "Pendências declaradas para a S5.2 (PRI-311): post e versão vigente nos caminhos de saída; looksUnavailable/session_limit no teto; seções manifest_limits/workspace_watch_globs na policy; closeOrphan no recovery; destroyKey e retenção dos manifestos."
+  - "RC-1 a RC-6 e RRC-F31-001/002 seguem NOT APPLIED; a flag decomposition 'on' segue reservada."
+
+next:
+  recommended_agent: "Richard"
+  action: "Revisar o PR draft da S5.1; o merge é dele. Depois, S5.2 (PRI-311)."
+  prerequisites:
+    - "Nova versão de policy com subagent_roles antes da S5.2."
+
+context_refs:
+  - "tasks/pri-287-s5/SPEC.md"
+  - "tasks/pri-287-s5/evidence-s5.1.md"
+  - "https://linear.app/prisma-app/issue/PRI-310"
+  - "https://linear.app/prisma-app/issue/PRI-287"
+
+facts:
+  - "WATCHER_QA_DIAGNOSTICO e o polling não foram tocados."
+  - "O checkout principal tinha mudanças não commitadas de outra sessão (plan.md, plan-scorer, plan-signals); a S5.1 foi feita em worktree isolado e não as inclui."
+assumptions: []
+
+usage:
+  duration: "UNKNOWN"
+  retries: 0
+  tokens: "UNKNOWN"

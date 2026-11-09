@@ -298,8 +298,22 @@ function readRoutingConfig(root, { readFile = fs.readFileSync } = {}) {
         return invalid('ROUTING_CONFIG_INVALID', `json_parse:${e.name}`);
     }
     if (cfg == null || typeof cfg !== 'object' || Array.isArray(cfg)) return invalid('ROUTING_CONFIG_INVALID', 'root_not_object');
-    if (cfg.mode === undefined || cfg.mode === 'OFF') return { status: 'OFF', source: 'declared' };
+    if (cfg.mode === undefined || cfg.mode === 'OFF') {
+        // PRI-310 (S5.1, B1): com mode OFF a chave `decomposition` é ignorada. Só o check
+        // avisa; a admissão de um projeto OFF nunca muda (RC-5).
+        return cfg.decomposition === undefined
+            ? { status: 'OFF', source: 'declared' }
+            : { status: 'OFF', source: 'declared', decomposition_ignored: true };
+    }
     if (cfg.mode !== 'ON') return invalid('ROUTING_CONFIG_INVALID', 'mode_malformed');
+    // PRI-310 (S5.1, B1): `decomposition` ausente ou "off" = Run como na S4 (nada no
+    // snapshot). "on" fica reservado, fail-closed, em todas as fatias da S5: recusa de
+    // admissão pelo caminho do RC-5, sem criar Run. Sai só por PR de liberação próprio,
+    // depois das Portas da SDD. Valor fora do enum = config inválida.
+    if (cfg.decomposition !== undefined && cfg.decomposition !== 'off') {
+        if (cfg.decomposition === 'on') return invalid('DECOMPOSITION_RESERVED', 'reserved_until_release');
+        return invalid('ROUTING_CONFIG_INVALID', 'decomposition_invalid');
+    }
 
     const ref = cfg.policy_ref;
     if (!validPolicyRef(ref)) return invalid('ROUTING_CONFIG_INVALID', 'policy_ref_invalid');
