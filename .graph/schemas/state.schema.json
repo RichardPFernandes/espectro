@@ -1435,6 +1435,17 @@
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
+    "decomposition_block_applied": {
+      "type": "object",
+      "description": "PRI-311 (PRI-287 S5.2a, H6): último Attempt com papel (Run decomposta) cujo acceptance não aceito levou a Run a blocked. Gravado pelo watcher (writeTaskState com CAS) uma vez por Attempt, para o desbloqueio humano (unblocked) não ser desfeito no tick seguinte. Só códigos, nunca caminhos.",
+      "required": ["attempt_id", "reason", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": { "type": "string" },
+        "reason": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    },
     "routing_visit": {
       "type": "object",
       "description": "PRI-233 (D-4): limite de nó usado no 1º Attempt da visita atual (instante da resolução, anterior ao node_start). Os retries da mesma visita usam o menor entre ele e o node_start, para que uma override gravada no meio da visita nunca valha no retry. Gravado pelo watcher só para Run ON.",

@@ -411,7 +411,41 @@ function parseCodexResultTokens(markdown) {
     return result;
 }
 
+// PRI-311 (PRI-287 S5.2a, passo 0b; O-09): papel de cada transcript de subagente, para o
+// `observed_model` por papel do RC-1 (B8) e a prova do U10. Função à parte: sumClaudeUsage,
+// usage[], read_order e os agregados legados não mudam. Fontes, só leitura:
+//   - <id>/subagents/agent-<x>.meta.json → agentType e toolUseId;
+//   - transcript principal → tool_use com input.subagent_type (casado pelo toolUseId).
+// Divergência entre as duas → CONFLICTED (papel null, nunca conta como prova); sem meta →
+// UNKNOWN. Modelos = message.model das mensagens assistant do próprio transcript.
+// Entrada: { main: <conteúdo jsonl>, subagents: [{ file_ref, content, meta }] } (meta = objeto
+// do .meta.json ou null). Saída sem caminho nem conteúdo.
+function subagentRoleAttribution({ main = '', subagents = [] } = {}) {
+    const lines = text => String(text || '').split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const toolTypes = new Map();
+    for (const ev of lines(main)) {
+        const blocks = ev && ev.type === 'assistant' && Array.isArray(ev.message?.content) ? ev.message.content : [];
+        for (const b of blocks) {
+            if (b && b.type === 'tool_use' && b.id && b.input && typeof b.input.subagent_type === 'string') toolTypes.set(b.id, b.input.subagent_type);
+        }
+    }
+    return subagents.map(({ file_ref: fileRef, content, meta }) => {
+        const models = new Set();
+        for (const ev of lines(content)) {
+            const m = ev && ev.type === 'assistant' ? ev.message?.model : null;
+            if (typeof m === 'string' && m && m !== '<synthetic>') models.add(m);
+        }
+        const metaType = meta && typeof meta.agentType === 'string' ? meta.agentType : null;
+        const toolType = meta && meta.toolUseId ? toolTypes.get(meta.toolUseId) || null : null;
+        let role = null;
+        let provenance = 'UNKNOWN';
+        if (metaType && toolType && metaType !== toolType) provenance = 'CONFLICTED';
+        else if (metaType) { role = metaType; provenance = toolType ? 'META+TOOL_USE' : 'META'; }
+        return { file_ref: fileRef, role, provenance, models: [...models].sort() };
+    });
+}
+
 module.exports = {
     TOKEN_FIELDS, METRIC_FIELDS, PRICES_USD_PER_MTOK, PRICING_SOURCE, PRICING_SHA256, pricingSnapshot, priceFor, projectUsageCost, admissionForCost, messageCostUsd, addNullable, emptyCostTracking, recomputeTotals, mergeRun,
-    findClaudeTranscripts, sumClaudeUsage, parseCodexResultTokens,
+    findClaudeTranscripts, sumClaudeUsage, parseCodexResultTokens, subagentRoleAttribution,
 };
