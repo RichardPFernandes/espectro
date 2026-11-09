@@ -40,7 +40,8 @@ Prisma; não muda a governança que o Prisma aplica aos consumidores (PRI-145).
 - O revisor pode subir o nível; descer, só com o Richard.
 - Uma fatia é uma entrega verificável de 3 a 5 dias. Fatias vizinhas da mesma
   frente e do mesmo nível andam juntas: uma spec, uma revisão e um AUTORIZO.
-- O nível fica no rótulo `Processo: leve|médio|alto` da issue e em
+- O nível fica no grupo de rótulos `Processo` da issue no Linear (Leve, Médio
+  ou Alto; seleção única) e em
   `nivel_processo` do handoff (docs/handoff-contract.md).
 
 O que nunca muda, em qualquer nível:

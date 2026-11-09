@@ -17,7 +17,7 @@ Ponto de partida de uma sessão **interativa** no Prisma. Só lê e planeja; nã
 1. Leia `AGENTS.md`. Se existir no checkout, leia também `.cursor/rules/interactive-boundary.mdc` (fronteira interativa; ausente no `main` cloud até promoção separada).
 2. Pelo MCP Linear do workspace Prisma (`prisma-app` / time PRI), recupere a issue informada (ex.: `PRI-168`), comentários, relações e handoff anexado, se houver.
 3. **Nível de processo** (acordo de desenvolvimento, seção «Níveis de processo» do `AGENTS.md`):
-   - leia o rótulo `Processo: leve`, `Processo: médio` ou `Processo: alto` da issue;
+   - leia o rótulo do grupo `Processo` da issue (Leve, Médio ou Alto; o grupo é de seleção única no time Prisma-app);
    - sem rótulo, atribua o nível pela tabela do `AGENTS.md` e proponha o rótulo no resumo; na dúvida entre dois níveis, use o maior e registre o motivo;
    - o revisor pode subir o nível; descer, só com o Richard. Se o nível subir durante a sessão, registre o motivo na issue e no handoff (`nivel_processo_inicial`, `nivel_processo_motivo`);
    - o nível define o que a sessão exige: leve — sem spec separada, uma revisão simples; médio — spec e implementação na mesma fatia, uma revisão independente; alto — spec fina, revisão G3 independente, AUTORIZO específico, bump e readback.
