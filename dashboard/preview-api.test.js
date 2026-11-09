@@ -93,6 +93,15 @@ test('ticket-id inválido → 400; Host de fora → 403', async () => {
     res.resume();
 });
 
+test('lib-refs: sem repo das libs devolve lista vazia; start com libRef inválido → 400; ticket sem worktree → 404', async () => {
+    const r = await call('GET', '/api/preview/4242/lib-refs');
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.body, { need: null, libs: [] });
+    const bad = await fetch(`${base}/api/preview/4242/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ libRef: '--upload-pack=x' }) });
+    assert.strictEqual(bad.status, 400);
+    assert.strictEqual((await call('GET', '/api/preview/9999/lib-refs')).status, 404);
+});
+
 test('start 202 → SSE com log prefixado e fases até running → 409 pra outro ticket → stop 200 idle', async () => {
     const stream = sse('/api/preview/4242/log-stream', evs => evs.some(e => e.type === 'phase' && e.data.phase === 'running'));
     await new Promise(r => setTimeout(r, 100));

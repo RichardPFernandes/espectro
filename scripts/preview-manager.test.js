@@ -477,3 +477,66 @@ test('banco: PREVIEW_DB_OPTIONS vira as opções (com banco/sistema do .properti
     await m.stop('4242');
     assert.ok(calls());
 });
+
+test('lib no ~/.m2 + erro no build do back: status expõe libFallback, listLibRefs acha branches com a versão e start({libRef}) reconstrói dela', async () => {
+    const { execFileSync } = require('child_process');
+    const root = worktrees(['']);
+    fs.writeFileSync(path.join(root, '4242', 'pom.xml'), '<project><groupId>br.com.mosistemas</groupId><artifactId>app-back</artifactId><version>3.51-SNAPSHOT</version></project>');
+    const sh = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).toString();
+    const origin = path.join(root, 'origin-core.git');
+    const seed = path.join(root, 'seed');
+    sh(root, 'init', '-q', '--bare', origin);
+    sh(root, 'init', '-q', '-b', 'master', seed);
+    const commit = (v, msg) => { fs.writeFileSync(path.join(seed, 'pom.xml'), `<project><groupId>br.com.mosistemas</groupId><artifactId>app-core</artifactId><version>${v}</version></project>`); sh(seed, 'add', '.'); sh(seed, 'commit', '-q', '-m', msg); };
+    commit('3.49', 'master');
+    sh(seed, 'checkout', '-q', '-b', 'feature/ciot'); commit('3.51-SNAPSHOT', 'ciot');
+    sh(seed, 'checkout', '-q', '-b', 'outra', 'master'); commit('3.50', 'outra');
+    sh(seed, 'push', '-q', origin, 'master', 'feature/ciot', 'outra');
+    const repo = path.join(root, 'app-core');
+    sh(root, 'clone', '-q', origin, repo);
+    const m2 = path.join(root, 'm2');
+
+    const { m, calls } = manager(root, { FAIL_IN: '4242' }, { libRepos: { appCore: repo }, m2Repo: m2, libTmpDir: root });
+    m.start('4242');
+    await until(() => m.status('4242').phase === 'error');
+    let st = m.status('4242');
+    assert.strictEqual(st.errorPhase, 'building-app-back');
+    assert.deepStrictEqual(st.libFallback.map(f => [f.key, f.fixable]), [['app-core', true]]);
+    assert.doesNotMatch(calls(), /preview-app-core/);
+
+    // Só a branch com a versão do back é oferecida (master=3.49 e outra=3.50 ficam de fora).
+    assert.deepStrictEqual(await m.listLibRefs('4242'), { need: '3.51-SNAPSHOT', libs: [{ key: 'app-core', refs: ['origin/feature/ciot'] }] });
+
+    // Reconstrói da ref escolhida (o back segue falhando de propósito: o que importa é o install da lib).
+    await m.stop('4242');
+    m.start('4242', { libRef: 'origin/feature/ciot' });
+    await until(() => m.status('4242').phase === 'error');
+    st = m.status('4242');
+    assert.strictEqual(st.libRef, 'origin/feature/ciot');
+    assert.deepStrictEqual(st.libFallback, []);
+    assert.match(calls(), /mvn clean install -DskipTests -q @ preview-app-core-4242 /);
+    assert.match(texts(m).join('\n'), /app-core: sem worktree próprio — buildando origin\/feature\/ciot \(\w{10}, versão 3\.51-SNAPSHOT\)/);
+
+    // Mesma ref de novo: o marcador não pula o build (reparo explícito = sempre reconstrói).
+    const before = calls().split('\n').filter(l => l.includes('preview-app-core')).length;
+    await m.stop('4242');
+    m.start('4242', { libRef: 'origin/feature/ciot' });
+    await until(() => m.status('4242').phase === 'error');
+    assert.strictEqual(calls().split('\n').filter(l => l.includes('preview-app-core')).length, before + 1);
+
+    // Start comum depois: libRef não é lembrado.
+    await m.stop('4242');
+    m.start('4242');
+    await until(() => m.status('4242').phase === 'error');
+    assert.strictEqual(m.status('4242').libRef, null);
+    await m.stop('4242');
+});
+
+test('start({libRef}) recusa ref que viraria opção do git ou sai do escopo; listLibRefs sem worktree → 404', async () => {
+    const root = worktrees(['']);
+    const { m } = manager(root);
+    for (const bad of ['--upload-pack=x', '-x', 'a..b', 'a b', 'x;rm', 'a/b.lock', 5, 'HEAD', 'master', 'origin/a..b', 'origin/x.lock', 'a'.repeat(40)]) {
+        assert.throws(() => m.start('4242', { libRef: bad }), e => e.status === 400, String(bad));
+    }
+    await assert.rejects(m.listLibRefs('9999'), e => e.status === 404);
+});
