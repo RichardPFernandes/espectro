@@ -42,3 +42,61 @@ test('anotação ao lado de lista numa crase só continua UNKNOWN; caminho absol
     assert.strictEqual(parsePathsLine('Arquivo: `@Path`, `a.js, b.js`'), null);
     assert.deepStrictEqual(parsePathsLine('Arquivo: `GET /api/x`, `/Users/r/wt/44042`, `src/A.java`'), ['src/A.java']);
 });
+
+// --- PRI-320: "Arquivo:" inline na prosa do passo ---
+
+test('inline: caminhos até o próximo rótulo, com ponto final da frase aparado (casos reais da PRI-318)', () => {
+    assert.deepStrictEqual(declaredPaths('Resolver central. Arquivo: scripts/invalidate.js. Critérios: AC-01, AC-02'), { paths: ['scripts/invalidate.js'], fileLines: 1 });
+    assert.deepStrictEqual(
+        declaredPaths('Templates chamam `scripts/invalidate.js guard`. Arquivo: .claude/commands/verify.md, .claude/commands/plan.md. Critérios: AC-02'),
+        { paths: ['.claude/commands/verify.md', '.claude/commands/plan.md'], fileLines: 1 },
+    );
+    assert.deepStrictEqual(declaredPaths('Docs. Arquivo: docs/a.md, CLAUDE.md. Critérios: AC-09'), { paths: ['docs/a.md', 'CLAUDE.md'], fileLines: 1 });
+    assert.deepStrictEqual(declaredPaths('Testes. Arquivo: scripts/a.test.js. Verificação: passa.'), { paths: ['scripts/a.test.js'], fileLines: 1 });
+});
+
+test('inline: sem rótulo depois, vale até o fim da linha; com crases também', () => {
+    assert.deepStrictEqual(declaredPaths('Ajustar. Arquivo: `src/A.java`, `src/B.java`'), { paths: ['src/A.java', 'src/B.java'], fileLines: 1 });
+    assert.deepStrictEqual(declaredPaths('Ajustar — Arquivo: src/A.java'), { paths: ['src/A.java'], fileLines: 1 });
+});
+
+test('inline: abreviação ".../X.java", diretório e placeholder continuam UNKNOWN (nunca inferir diretório)', () => {
+    for (const t of ['x. Arquivo: `.../Foo.java`. Critérios: AC-1', 'x. Arquivo: src/main/. Critérios: AC-1', 'x. Arquivo: a definir. Critérios: AC-1']) {
+        const r = declaredPaths(t);
+        assert.deepStrictEqual([r.paths, r.fileLines], [UNKNOWN, 1], t);
+    }
+});
+
+test('inline: duas declarações no passo (inline + linha própria, ou duas inline) => UNKNOWN', () => {
+    assert.deepStrictEqual(declaredPaths('x. Arquivo: a.js.\n   - Arquivo: b.js'), { paths: UNKNOWN, fileLines: 2 });
+    assert.deepStrictEqual(declaredPaths('x. Arquivo: a.js. Depois. Arquivo: b.js.'), { paths: UNKNOWN, fileLines: 2 });
+});
+
+test('inline: "arquivo:" em texto corrido (minúsculo, sem fronteira de frase) e passo sem declaração não contam', () => {
+    assert.deepStrictEqual(declaredPaths('Abrir o arquivo: x.js e ler'), { paths: UNKNOWN, fileLines: 0 });
+    assert.deepStrictEqual(declaredPaths('Mostrar o Arquivo: x.js no cartão'), { paths: UNKNOWN, fileLines: 0 });
+    assert.deepStrictEqual(declaredPaths('Passo sem arquivo nenhum. Critérios: AC-1'), { paths: UNKNOWN, fileLines: 0 });
+});
+
+// --- PRI-320, achados da revisão independente ---
+const { declaredAcIds } = require('./plan-paths');
+
+test('B1: declaredAcIds lê Critérios na linha própria (linha inteira) e inline (até o próximo rótulo); união', () => {
+    assert.deepStrictEqual(declaredAcIds('x\n   - Critérios: AC-01, AC-02\n   - Verificação: t'), ['AC-01', 'AC-02']);
+    assert.deepStrictEqual(declaredAcIds('Resolver. Arquivo: a.js. Critérios: AC-03, AC-04. Verificação: cobre AC-09'), ['AC-03', 'AC-04']);
+    assert.deepStrictEqual(declaredAcIds('Sem critérios aqui'), []);
+});
+
+test('M1: menção "arquivo:" não reconhecida junto de declaração válida => UNKNOWN (nunca lista parcial)', () => {
+    for (const t of ['Resolver (Arquivo: a.js, b.js)\n   - Arquivo: c.js', 'Resolver, Arquivo: a.js, b.js\n   - Arquivo: c.js', '**Arquivo:** a.js\n   - Arquivo: c.js']) {
+        assert.strictEqual(declaredPaths(t).paths, UNKNOWN, t);
+    }
+});
+
+test('m1: "Testes:" depois da lista não é cortado em silêncio; m3: n/a e elipse viram UNKNOWN', () => {
+    assert.strictEqual(declaredPaths('x. Arquivo: src/A.java. Testes: src/ATest.java. Critérios: AC-1').paths, UNKNOWN);
+    for (const t of ['x. Arquivo: n/a', 'x. Arquivo: N/A', 'x. Arquivo: a.js, b.js... Critérios: AC', 'x. Arquivo: a.js, b.js…']) {
+        assert.strictEqual(declaredPaths(t).paths, UNKNOWN, t);
+    }
+    assert.deepStrictEqual(declaredPaths('x. Arquivo: a.js, b.js. Critérios: AC').paths, ['a.js', 'b.js']);
+});
