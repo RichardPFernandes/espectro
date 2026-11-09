@@ -3,8 +3,8 @@
 > **Status:** **APROVADA (v2.1) pelo Richard em 2026-11-09 ("AUTORIZO")**, com as recomendações:
 > Q1 (a) três filhas; Q2 (a) tarefa 0 da S5.2 verifica U10, sem prova o gate RC-1 fica não
 > cumprido; Q3 (b) **implementação espera a PRI-293** (recomendação D-6); Q4 (a); Q5 m1–m5
-> aprovadas como registro, sem limiar; Q6 (a). **Q7 segue PENDENTE** (sem recomendação; afeta
-> só S5.2/S5.3). Nada implementado.
+> aprovadas como registro, sem limiar; Q6 (a). **Q7 (a) decidida pelo Richard em 2026-11-09**
+> (reclassificação por escopo e rework `ALL` como risco, `RISK_RECLASSIFIED`). Nada implementado.
 > G3 r1: CHANGES_REQUESTED nos dois revisores (Opus O-01…O-21; Arquiteto A-01…A-15) → v2.
 > G3 r2: Arquiteto APPROVED_WITH_CHANGES (R2-A-01…05); Opus CHANGES_REQUESTED só no delta
 > (R2-O-01…07, "basta conferir esses pontos"). A v2.1 corrige os 12; a disposição está no fim.
@@ -280,9 +280,13 @@ Só no nó `implement` de Run com `decomposition = on` e `status` decomponível.
    Achado sem mapeamento inequívoco → um rework do nó inteiro com chave sintética
    `<pv12>/ALL` (`role = subtask`, fora da identidade D14: não tem resolução inicial
    própria, não aceita override de subtarefa, só de nó/ticket, entra na agregação da
-   visita). Sua resolução: **Q7**.
+   visita). Resolução (Q7 a): **C4** (T3), `selection_source = RISK_RECLASSIFIED`, como o
+   v9 §3.4 ("nó inteiro em C4").
 8. Arquivo fora de `paths_decl` no `post` de uma subtarefa: `scope_violation` no Attempt
-   (não invalida, HD-AF-034). Efeito na resolução do próximo Attempt da linhagem: **Q7**.
+   (não invalida, HD-AF-034). Próximo Attempt da linhagem (Q7 a): **≥ C4**,
+   `selection_source = RISK_RECLASSIFIED` (v9 §4.6 e §4.9 linha 4). É reclassificação de
+   risco, **não** `escalation`: não cria Attempt `escalation`, não gera proposta, não usa
+   `authorization_ref` e é contada à parte nas métricas (m3).
 9. **Sem a S5.3 entregue:** `failure_class = null`, rework na mesma resolução, sem proposta,
    `scope_violation` só registrado (sem reclassificação). A liberação da flag exige a S5.3
    entregue ou dispensada (Portas).
@@ -338,7 +342,7 @@ Só no nó `implement` de Run com `decomposition = on` e `status` decomponível.
 - **Review:** `review-result.js record` aceita, por achado, `failure_class_suggestion`
   opcional (enum `capacidade | plano_ou_spec | ambiente | revisao_julgada`) em
   `review_results`, como sombra. Sem efeito em rota, classe, argv. Achado sem o campo é válido.
-- **Efeito:** 1 → B4; 2, 3 → caminho atual; 4 → Q7; 5a → proposta + rework na mesma
+- **Efeito:** 1 → B4; 2, 3 → caminho atual; 4 → `RISK_RECLASSIFIED` ≥ C4 (Q7 a); 5a → proposta + rework na mesma
   resolução; 5b → rework na mesma resolução, sem proposta.
 - **Proposta** (`escalation_proposal`), gravada no **Attempt de rework, na criação**, ligada
   por `parent_attempt_id`: campos de `validateEscalationProposal` (`node`, `subtask_key`,
@@ -386,7 +390,7 @@ Sem aprovação do Richard, "melhorou" segue UNKNOWN.
 A reserva `DECOMPOSITION_RESERVED` (B1) fica no código até um PR de liberação próprio, que
 só pode ser aberto com: (1) gate do RC-1 cumprido ou dispensado pelo Richard (Q2); (2)
 PRI-293 aplicada ou decisão governada registrada (Q3); (3) nova versão de policy com as
-seções novas, aprovada; (4) Q6 e Q7 decididas; (5) S5.3 entregue ou dispensada por decisão.
+seções novas, aprovada; (4) Q6 e Q7 decididas (ambas decididas em 2026-11-09); (5) S5.3 entregue ou dispensada por decisão.
 Cada porta é citada no PR de liberação por referência verificável (comentário/decisão).
 
 ## Critérios de aceite (definitivos propostos)
@@ -446,7 +450,7 @@ Cada porta é citada no PR de liberação por referência verificável (comentá
   Review sem agregação → `blocked`. Review, Test, Verify uma vez sobre o integrado.
 - AC-23 Pré-build uma vez antes da primeira subtarefa; churn uma vez por visita.
 - AC-24 Classe por grupo; override humano prevalece; sem override, rework ≥ resolução inicial.
-- AC-25 Achado mapeado → rework só da chave; sem mapeamento → rework `ALL` conforme Q7.
+- AC-25 Achado mapeado → rework só da chave; sem mapeamento → rework `ALL` em C4 com `RISK_RECLASSIFIED` (Q7 a); `scope_violation` → próximo Attempt da linhagem ≥ C4 com `RISK_RECLASSIFIED`, sem proposta nem Attempt `escalation`.
 - AC-26 Modo destacado (sem `--follow`): ciclo completo de duas subtarefas + integração.
 - AC-27 `subagent_roles[]` gravado; sem U10 provado, `UNENFORCED` e o gate RC-1 marcado não
   cumprido na evidência.
@@ -514,7 +518,7 @@ Se preferir só duas, a S5.3 entra na S5.2 (8 pontos). Nomes S5.n para não coli
 | Q4 | Rota da integração | (a) `default_route` (T3, alto); (b) classe máxima dos grupos | **(a)** |
 | Q5 | Métrica do RC-3 (B9) | aprovar m1–m5 como registro, sem limiar / ajustar | aprovar como registro |
 | Q6 | Manifesto (só leitura) também nos Attempts de Review/Test/Verify da Run decomposta | (a) sim, sob a flag; (b) não, e o rework depois de gate parte do `post` do gate sem prova (o encadeamento fica quebrado e todo rework vai para `blocked`) | **(a)**: única forma de cumprir o "sem Attempt no meio" do v9 §3.5 |
-| Q7 | Resolução depois de `scope_violation` e no rework `ALL` (sem mapeamento) para grupos C1/C2 | (a) reclassificação de **risco** do v9 §4.6 e §4.9 linha 4 (não alterada pela HD): sobe a ≥ C4 com `selection_source = RISK_RECLASSIFIED`, não é `escalation`, medida nas métricas; tensiona o texto da HD ("subida de tier nunca automática por falha"); (b) mesma resolução (`ALL` = maior resolução inicial dos grupos), **sem proposta** (a HD limita a proposta à `capacidade`); diverge do v9 §3.4/§4.6 ("nó inteiro em C4", "≥ C4") e exige registro governado (delta D-8 ou reconciliação, regra 8) | Os dois divergem de um texto aprovado. **(a)** se você ler a reclassificação por escopo como risco, não como falha; **(b)** se preferir a leitura literal da HD. Sem recomendação forte; decisão sua |
+| Q7 | Resolução depois de `scope_violation` e no rework `ALL` (sem mapeamento) para grupos C1/C2 | (a) reclassificação de **risco** do v9 §4.6 e §4.9 linha 4 (não alterada pela HD): sobe a ≥ C4 com `selection_source = RISK_RECLASSIFIED`, não é `escalation`, medida nas métricas; tensiona o texto da HD ("subida de tier nunca automática por falha"); (b) mesma resolução (`ALL` = maior resolução inicial dos grupos), **sem proposta** (a HD limita a proposta à `capacidade`); diverge do v9 §3.4/§4.6 ("nó inteiro em C4", "≥ C4") e exige registro governado (delta D-8 ou reconciliação, regra 8) | **DECIDIDA: (a)** (Richard, 2026-11-09). Leitura registrada: reclassificação por escopo/sem mapeamento é **risco**, não "subida por falha" da HD-AF-078; a tensão com o texto da HD vai como nota para a reconciliação (PRI-293) |
 
 ## Premissas (valem se você não corrigir)
 
