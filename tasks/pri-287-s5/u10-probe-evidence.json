@@ -1,0 +1,350 @@
+{
+  "probe": "U10 PRI-311",
+  "records": [
+    {
+      "candidate": "control",
+      "run": 1,
+      "at": "2026-11-09T14:08:18.931Z",
+      "cli_version": "2.1.319 (Claude Code)",
+      "argv": [
+        "-p",
+        "<PROMPT>",
+        "--model",
+        "opus",
+        "--session-id",
+        "3c569f36-8a1d-4969-8667-4dacc4ce7633",
+        "--settings",
+        "~/u10-probe/work/routing-settings.json",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--allowedTools",
+        "Agent,Task"
+      ],
+      "env_added": [],
+      "plugin_proof": {
+        "status": "NOT_LOADED",
+        "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+      },
+      "models": {
+        "main": "opus",
+        "frontmatter": "haiku",
+        "declared": "sonnet"
+      },
+      "exit_code": 1,
+      "roles": [
+        {
+          "role": "u10-role-a",
+          "declared": null,
+          "frontmatter": "haiku",
+          "observed": [],
+          "transcripts": 0,
+          "match": false
+        },
+        {
+          "role": "u10-role-b",
+          "declared": null,
+          "frontmatter": "haiku",
+          "observed": [],
+          "transcripts": 0,
+          "match": false
+        }
+      ],
+      "unattributed_transcripts": 0,
+      "result": "UNCERTAIN"
+    },
+    {
+      "candidate": "control",
+      "run": 1,
+      "at": "2026-11-09T16:24:14.474Z",
+      "cli_version": "2.1.319 (Claude Code)",
+      "repeat_authorized": "Richard 2026-11-09: Sim, repetir e seguir",
+      "argv": [
+        "-p",
+        "<PROMPT>",
+        "--model",
+        "opus",
+        "--session-id",
+        "545b9c45-63ba-4253-8ad0-e5d0572dc822",
+        "--settings",
+        "~/u10-probe/work/routing-settings.json",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--allowedTools",
+        "Agent,Task"
+      ],
+      "env_added": [],
+      "plugin_proof": {
+        "status": "NOT_LOADED",
+        "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+      },
+      "models": {
+        "main": "opus",
+        "frontmatter": "haiku",
+        "declared": "sonnet"
+      },
+      "exit_code": 0,
+      "roles": [
+        {
+          "role": "u10-role-a",
+          "declared": null,
+          "frontmatter": "haiku",
+          "observed": [
+            "haiku"
+          ],
+          "transcripts": 1,
+          "match": true
+        },
+        {
+          "role": "u10-role-b",
+          "declared": null,
+          "frontmatter": "haiku",
+          "observed": [
+            "haiku"
+          ],
+          "transcripts": 1,
+          "match": true
+        }
+      ],
+      "unattributed_transcripts": 0,
+      "result": "CONTROL_DETECTS_FRONTMATTER"
+    },
+    {
+      "candidate": "agents",
+      "run": 1,
+      "at": "2026-11-09T16:24:38.972Z",
+      "cli_version": "2.1.319 (Claude Code)",
+      "repeat_authorized": null,
+      "argv": [
+        "-p",
+        "<PROMPT>",
+        "--model",
+        "opus",
+        "--session-id",
+        "56d3c1de-f844-47b2-9ec4-f2c8431fe0c0",
+        "--settings",
+        "~/u10-probe/work/routing-settings.json",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--allowedTools",
+        "Agent,Task",
+        "--agents",
+        "{\"u10-role-a\":{\"description\":\"Papel sintético da prova U10. Responde ok.\",\"prompt\":\"Responda apenas com a palavra ok.\",\"model\":\"sonnet\"},\"u10-role-b\":{\"description\":\"Papel sintético da prova U10. Responde ok.\",\"prompt\":\"Responda apenas com a palavra ok.\",\"model\":\"sonnet\"}}"
+      ],
+      "env_added": [],
+      "plugin_proof": {
+        "status": "NOT_LOADED",
+        "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+      },
+      "models": {
+        "main": "opus",
+        "frontmatter": "haiku",
+        "declared": "sonnet"
+      },
+      "exit_code": 0,
+      "roles": [
+        {
+          "role": "u10-role-a",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "sonnet"
+          ],
+          "transcripts": 1,
+          "match": true
+        },
+        {
+          "role": "u10-role-b",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "sonnet"
+          ],
+          "transcripts": 1,
+          "match": true
+        }
+      ],
+      "unattributed_transcripts": 0,
+      "result": "PROOF_OBTAINED"
+    },
+    {
+      "candidate": "agents",
+      "run": 2,
+      "at": "2026-11-09T16:25:03.393Z",
+      "cli_version": "2.1.319 (Claude Code)",
+      "repeat_authorized": null,
+      "argv": [
+        "-p",
+        "<PROMPT>",
+        "--model",
+        "opus",
+        "--session-id",
+        "e64a539b-e92c-4ed5-9257-40d04f0edff6",
+        "--settings",
+        "~/u10-probe/work/routing-settings.json",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--allowedTools",
+        "Agent,Task",
+        "--agents",
+        "{\"u10-role-a\":{\"description\":\"Papel sintético da prova U10. Responde ok.\",\"prompt\":\"Responda apenas com a palavra ok.\",\"model\":\"sonnet\"},\"u10-role-b\":{\"description\":\"Papel sintético da prova U10. Responde ok.\",\"prompt\":\"Responda apenas com a palavra ok.\",\"model\":\"sonnet\"}}"
+      ],
+      "env_added": [],
+      "plugin_proof": {
+        "status": "NOT_LOADED",
+        "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+      },
+      "models": {
+        "main": "opus",
+        "frontmatter": "haiku",
+        "declared": "sonnet"
+      },
+      "exit_code": 0,
+      "roles": [
+        {
+          "role": "u10-role-a",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "sonnet"
+          ],
+          "transcripts": 1,
+          "match": true
+        },
+        {
+          "role": "u10-role-b",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "sonnet"
+          ],
+          "transcripts": 1,
+          "match": true
+        }
+      ],
+      "unattributed_transcripts": 0,
+      "result": "PROOF_OBTAINED"
+    },
+    {
+      "candidate": "env",
+      "run": 1,
+      "at": "2026-11-09T16:25:28.214Z",
+      "cli_version": "2.1.319 (Claude Code)",
+      "repeat_authorized": null,
+      "argv": [
+        "-p",
+        "<PROMPT>",
+        "--model",
+        "opus",
+        "--session-id",
+        "3957fe7b-f1f1-45d7-9e1d-164e582bd953",
+        "--settings",
+        "~/u10-probe/work/routing-settings.json",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--allowedTools",
+        "Agent,Task"
+      ],
+      "env_added": [
+        "CLAUDE_CODE_SUBAGENT_MODEL"
+      ],
+      "plugin_proof": {
+        "status": "NOT_LOADED",
+        "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+      },
+      "models": {
+        "main": "opus",
+        "frontmatter": "haiku",
+        "declared": "sonnet"
+      },
+      "exit_code": 0,
+      "roles": [
+        {
+          "role": "u10-role-a",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "haiku"
+          ],
+          "transcripts": 1,
+          "match": false
+        },
+        {
+          "role": "u10-role-b",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "haiku"
+          ],
+          "transcripts": 1,
+          "match": false
+        }
+      ],
+      "unattributed_transcripts": 0,
+      "result": "PROOF_NOT_OBTAINED"
+    },
+    {
+      "candidate": "env",
+      "run": 2,
+      "at": "2026-11-09T16:25:39.363Z",
+      "cli_version": "2.1.319 (Claude Code)",
+      "repeat_authorized": null,
+      "argv": [
+        "-p",
+        "<PROMPT>",
+        "--model",
+        "opus",
+        "--session-id",
+        "7acf175e-f7b0-4381-8faf-5f0710586c7d",
+        "--settings",
+        "~/u10-probe/work/routing-settings.json",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--allowedTools",
+        "Agent,Task"
+      ],
+      "env_added": [
+        "CLAUDE_CODE_SUBAGENT_MODEL"
+      ],
+      "plugin_proof": {
+        "status": "NOT_LOADED",
+        "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+      },
+      "models": {
+        "main": "opus",
+        "frontmatter": "haiku",
+        "declared": "sonnet"
+      },
+      "exit_code": 0,
+      "roles": [
+        {
+          "role": "u10-role-a",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "haiku"
+          ],
+          "transcripts": 1,
+          "match": false
+        },
+        {
+          "role": "u10-role-b",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "haiku"
+          ],
+          "transcripts": 1,
+          "match": false
+        }
+      ],
+      "unattributed_transcripts": 0,
+      "result": "PROOF_NOT_OBTAINED"
+    }
+  ]
+}

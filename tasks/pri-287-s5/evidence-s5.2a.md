@@ -18,12 +18,42 @@ WATCHER_QA_DIAGNOSTICO e o polling de PR não foram tocados.
 | AC-38 (H3) | seções ausentes → padrões; forma inválida → `POLICY_INVALID`; `model_id` irreal recusado; papel inexistente não é erro; projeto OFF não lê | PASS |
 | AC-39 (H4) | órfão `agent_dead` sem/com mutação, `agent_dead` com post UNKNOWN, `timeout` → `blocked`; `recoverOrphans` chama `onOrphan`; sem Attempt com papel nada muda | PASS |
 | AC-40 (H5) | `_archive` mantém a chave; sem Run em nenhuma raiz → apaga; idempotente; filtro; chave apagada sob Run viva → `KEY_MISSING` (a saída nunca recria a chave); Run revivida → `blocked` até `HUMAN_UNBLOCK` (Q14 a) | PASS |
-| AC-41 (tarefa 0) | probe `scripts/probes/u10-subagent-model.js` + avaliação pura (`u10-subagent-model.test.js`, 4/4) | **PENDENTE**: a prova não foi executada; depende do login do Richard no perfil isolado. Estado: **prova não obtida** |
+| AC-41 (tarefa 0) | probe `scripts/probes/u10-subagent-model.js` + avaliação pura (4/4); execução real em 2026-11-09, evidência agregada em `tasks/pri-287-s5/u10-probe-evidence.json` | **PASS: prova obtida para U10-a (`--agents`)**; U10-b (env) sem prova. Ver "Tarefa 0" |
 | AC-42 (H6) | `pendingBlock`: só `in_progress`, uma vez por Attempt, nunca sobre `session_limit`/status do comando, ato humano posterior ao aceite prevalece (C-O-01); writer `applyDecompositionBlock` conferido no fonte | PASS (writer por inspeção do fonte: `notifyBlocked` faz chamada ao Redmine, fora do harness loopback-only) |
 | AC-43 (H6) | cadeia: encadeado, `CHANGED_BETWEEN_ATTEMPTS`, `RUN_START`, `HUMAN_RESUME`, `HUMAN_UNBLOCK`, `SCOPE_CHANGED` com e sem mutação no escopo antigo, anterior sem post → `PREVIOUS_POST_UNKNOWN` | PASS no nível da lib (ver desvios) |
 | AC-44 (H0) | baseline com resumo e `scope_hmac`, sem caminho; arquivo local com o escopo, fora do worktree | PASS no nível da lib (ver desvios) |
 | AC-45 (passo 0b) | `subagentRoleAttribution` (meta.json + tool_use; CONFLICTED; UNKNOWN); golden de `sumClaudeUsage` | PASS. O golden `scripts/fixtures/cost-usage-golden-pri311.json` foi gerado com o `cost-tracking.js` de `cc72b55` (árvore extraída por `git archive cc72b55`), antes de qualquer mudança desta fatia |
 | AC-35 | ver "Suítes" | ver abaixo |
+
+## Tarefa 0 (U10), execução real
+
+Perfil isolado `~/u10-probe/profile` (login feito pelo Richard; nenhuma credencial lida, copiada ou
+registrada), plugin `jev-model-router` desligado provado (`NOT_LOADED`) em todas as execuções, sem MCP,
+repositório git sintético, CLI `2.1.319 (Claude Code)`. Modelos: principal opus, frontmatter haiku,
+declarado sonnet. Teto de 6 chamadas atingido exatamente.
+
+| # | Candidato | Execução | Resultado | Observado (u10-role-a / u10-role-b) |
+| -- | -- | -- | -- | -- |
+| 1 | control | 1 | UNCERTAIN (exit 1) | — / — |
+| 2 | control | 1 (repetição autorizada: «Sim, repetir e seguir», Richard, 2026-11-09) | CONTROL_DETECTS_FRONTMATTER | haiku / haiku |
+| 3 | agents (U10-a, `--agents` no argv) | 1 | **PROOF_OBTAINED** | sonnet / sonnet |
+| 4 | agents | 2 | **PROOF_OBTAINED** | sonnet / sonnet |
+| 5 | env (U10-b, `CLAUDE_CODE_SUBAGENT_MODEL`) | 1 | PROOF_NOT_OBTAINED | haiku / haiku |
+| 6 | env | 2 | PROOF_NOT_OBTAINED | haiku / haiku |
+
+- A execução 1 falhou por defeito do probe (ambiente sem `USER`/`LOGNAME`: o CLI não achou o login no
+  Keychain e respondeu sinteticamente "Not logged in", sem chegar ao modelo). Corrigido; a repetição só
+  rodou com o «sim» do Richard, registrada no ledger e na evidência.
+- Papel atribuído só com `META+TOOL_USE` (meta.json casado com o `subagent_type` do tool_use).
+- **Conclusão:** `--agents` no despacho fixa o modelo do subagente por papel com precedência sobre o
+  frontmatter do projeto (a hipótese O-10 de precedência desfavorável não se confirmou nesta versão
+  do CLI). A variável de ambiente não fixa (o frontmatter prevalece).
+- **Limites:** só modelo; esforço do subagente não foi verificado (U1 segue aberto). Só os dois
+  papéis sintéticos de projeto; subagentes embutidos da CLI não foram testados. Resultado da versão
+  2.1.319 do CLI.
+- **Gate do RC-1:** a evidência registra **prova obtida (U10-a)**. Cumprir ou dispensar o gate é ato
+  do Richard (Portas, item 1); esta fatia não o declara cumprido. O mecanismo entra no `routedArgs`
+  só na S5.2b (Attempts com `role` e `subagent_roles` na policy).
 
 ## Suítes
 
@@ -94,8 +124,8 @@ Disposição:
 
 ## Pendências (fora desta fatia)
 
-- **AC-41 / tarefa 0:** rodar o probe com o perfil isolado (login do Richard). Até lá: prova não obtida;
-  o gate do RC-1 não é declarado cumprido aqui (é ato do Richard, Portas item 1).
+- **Gate do RC-1:** prova do U10-a obtida; a decisão de cumprir/dispensar o gate é do Richard. Esforço
+  do subagente e subagentes embutidos seguem sem verificação.
 - **C-A-08:** conferir que `subagent_roles.default` é igual ao `default_route` fica para a validação
   da policy de piloto ou para o PR de liberação da flag (A-04 iii); a validação de sintaxe da H3 não
   compara valores entre seções.

@@ -136,8 +136,12 @@ function main(argv) {
     const done = [...ledger.calls.map(c => ({ candidate: c.candidate, run: String(c.run), result: c.result })),
         ...prior.map(r => ({ candidate: r.candidate, run: String(r.run), result: r.result }))];
     const keys = new Set(done.map(c => `${c.candidate}/${c.run}`));
-    if (keys.size >= MAX_CALLS) throw new Error(`teto de ${MAX_CALLS} chamadas atingido`);
-    if (keys.has(`${a.candidate}/${a.run}`)) {
+    if (ledger.calls.length >= MAX_CALLS || keys.size >= MAX_CALLS) throw new Error(`teto de ${MAX_CALLS} chamadas atingido`);
+    // Repetição só com --repeat-authorized "<referência do «sim» do Richard>": registrada no ledger
+    // e na evidência, conta no teto e vale uma vez por candidato+execução.
+    const repeatRef = a['repeat-authorized'] || null;
+    const alreadyRepeated = ledger.calls.some(c => c.candidate === a.candidate && String(c.run) === a.run && c.repeat_authorized);
+    if (keys.has(`${a.candidate}/${a.run}`) && (!repeatRef || alreadyRepeated)) {
         throw new Error(`${a.candidate}/${a.run} já executado (resultado ${done.find(c => `${c.candidate}/${c.run}` === `${a.candidate}/${a.run}`).result}); repetir exige novo «sim»`);
     }
     fs.mkdirSync(workDir, { recursive: true });
@@ -146,11 +150,14 @@ function main(argv) {
     const proof = routedPluginProof({ runDir: workDir, accountDir: configDir, projectDir: repo });
     if (proof.status !== 'NOT_LOADED') throw new Error(`plugin não provado desligado: ${proof.status} (${proof.reason || '-'})`);
     const bin = a['claude-bin'] || execFileSync('/usr/bin/which', ['claude'], { encoding: 'utf8' }).trim();
-    const version = execFileSync(bin, ['--version'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: os.homedir(), CLAUDE_CONFIG_DIR: configDir } }).trim();
+    const version = execFileSync(bin, ['--version'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: os.homedir(), USER: os.userInfo().username, CLAUDE_CONFIG_DIR: configDir } }).trim();
     const sessionId = crypto.randomUUID();
     const argvClaude = ['-p', PROMPT, '--model', MAIN_MODEL, '--session-id', sessionId, '--settings', proof.settings_path,
         '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--allowedTools', 'Agent,Task'];
-    const env = { PATH: process.env.PATH, HOME: os.homedir(), CLAUDE_CONFIG_DIR: configDir };
+    // USER/LOGNAME: o CLI acha o login do perfil no Keychain do macOS pelo usuário do ambiente;
+    // sem eles responde "Not logged in" (1ª execução do controle, 2026-11-09). Nenhuma credencial
+    // passa por aqui: só o nome do usuário do sistema.
+    const env = { PATH: process.env.PATH, HOME: os.homedir(), USER: os.userInfo().username, LOGNAME: os.userInfo().username, CLAUDE_CONFIG_DIR: configDir };
     if (a.candidate === 'agents') {
         argvClaude.push('--agents', JSON.stringify(Object.fromEntries(ROLES.map(r => [r, {
             description: 'Papel sintético da prova U10. Responde ok.', prompt: 'Responda apenas com a palavra ok.', model: DECLARED_MODEL,
@@ -158,7 +165,7 @@ function main(argv) {
     }
     if (a.candidate === 'env') env.CLAUDE_CODE_SUBAGENT_MODEL = DECLARED_MODEL;
     // Reserva a chamada ANTES de executar: queda no meio conta no teto e não é repetida.
-    ledger.calls.push({ candidate: a.candidate, run: a.run, session_id: sessionId, at: new Date().toISOString(), result: 'IN_FLIGHT' });
+    ledger.calls.push({ candidate: a.candidate, run: a.run, session_id: sessionId, at: new Date().toISOString(), result: 'IN_FLIGHT', repeat_authorized: repeatRef });
     fs.writeFileSync(ledgerFile, JSON.stringify(ledger, null, 2));
     const res = spawnSync(bin, argvClaude, { cwd: repo, env, encoding: 'utf8', timeout: 10 * 60 * 1000 });
     const exitCode = res.status === null ? null : res.status;
@@ -166,7 +173,7 @@ function main(argv) {
     ledger.calls[ledger.calls.length - 1].result = evaluation.result;
     fs.writeFileSync(ledgerFile, JSON.stringify(ledger, null, 2));
     const record = {
-        candidate: a.candidate, run: Number(a.run), at: new Date().toISOString(), cli_version: version,
+        candidate: a.candidate, run: Number(a.run), at: new Date().toISOString(), cli_version: version, repeat_authorized: repeatRef,
         argv: argvClaude.map(x => (x === PROMPT ? '<PROMPT>' : x)), env_added: a.candidate === 'env' ? ['CLAUDE_CODE_SUBAGENT_MODEL'] : [],
         plugin_proof: { status: proof.status, settings_sha256: proof.settings_sha256 },
         models: { main: MAIN_MODEL, frontmatter: FRONTMATTER_MODEL, declared: DECLARED_MODEL },

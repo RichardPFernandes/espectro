@@ -23,8 +23,8 @@ risk:
 
 execution:
   agent: "Claude Opus 5.5"
-  status: "PARTIAL"
-  summary: "H0–H6, H3 e passo 0b implementados e testados (AC-36 a AC-40, AC-42 a AC-45 PASS; AC-43/AC-44 no nível da lib, ponto de chamada no despacho na S5.2b). AC-41 (tarefa 0) pendente: o probe está pronto e protegido, mas a prova depende do login do Richard no perfil isolado. G3 de código r1: Opus e Arquiteto APPROVED_WITH_CHANGES; MAJOR comum (blocked desfazia retomada humana) e MINORs corrigidos ou declarados. Suítes oficiais Node 22 e 24 sem falha."
+  status: "COMPLETED"
+  summary: "H0–H6, H3 e passo 0b implementados e testados (AC-36 a AC-40, AC-42 a AC-45 PASS; AC-43/AC-44 no nível da lib, ponto de chamada no despacho na S5.2b). AC-41 (tarefa 0): prova obtida para U10-a (--agents, sonnet nos dois papéis em 2 execuções, controle negativo vendo o frontmatter); U10-b (env) sem prova; 6/6 chamadas. G3 de código r1: Opus e Arquiteto APPROVED_WITH_CHANGES; MAJOR comum (blocked desfazia retomada humana) e MINORs corrigidos ou declarados. Suítes oficiais Node 22 e 24 sem falha."
   branch: "fernandesrichard312/pri-311-selecao-de-modelo-s52-subtarefas"
   commit: null
 
@@ -105,21 +105,23 @@ validation:
       result: "PASSED"
       expected: "PASSED"
       evidence: "4/4."
+    - command: "node scripts/probes/u10-subagent-model.js (control/1 repetido com autorização, agents/1-2, env/1-2; perfil isolado, CLI 2.1.319)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "tasks/pri-287-s5/u10-probe-evidence.json: control CONTROL_DETECTS_FRONTMATTER; agents PROOF_OBTAINED x2; env PROOF_NOT_OBTAINED x2."
   not_executed:
-    - "Tarefa 0 (probe U10 contra o provider): aguarda login do Richard no perfil isolado (Q10 a)."
     - "CI Linux (não disponível nesta sessão)."
 
 open_issues:
-  - "AC-41: prova do U10 não obtida (não executada). O gate do RC-1 não é declarado cumprido."
+  - "Gate do RC-1: prova do U10-a obtida; cumprir ou dispensar o gate é decisão do Richard (Portas, item 1). Esforço do subagente e subagentes embutidos não verificados."
   - "C-A-08: igualdade subagent_roles.default = default_route a validar na policy de piloto ou no PR de liberação."
   - "Falha intermitente observada uma vez em watcher-lock.test.js:175 (Node 24, rodada anterior às correções), não reproduzida na rodada final."
   - "RC-1 a RC-6 e RRC-F31-001/002 seguem NOT APPLIED; a flag decomposition 'on' segue reservada."
 
 next:
   recommended_agent: "Richard"
-  action: "Fazer login no perfil isolado para a tarefa 0; revisar o PR draft da S5.2a (merge é dele). Depois, S5.2b."
-  prerequisites:
-    - "Perfil isolado fora do repositório com login feito pelo Richard."
+  action: "Decidir o gate do RC-1 com a prova do U10-a; revisar o PR draft da S5.2a (merge é dele). Depois, S5.2b."
+  prerequisites: []
 
 context_refs:
   - "tasks/pri-287-s5/SPEC-s5.2.md"
