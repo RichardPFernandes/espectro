@@ -353,3 +353,27 @@ test('só anotação, sem nenhum item que pareça arquivo, mantém o critério a
         assert.strictEqual(first([{ files: f }]).paths_decl, U, f);
     }
 });
+
+test('PRI-320: passo com "Arquivo:" inline na prosa gera sinais de caminho (não UNKNOWN)', () => {
+    const text = '## Plano de execução\n1. Resolver central. Arquivo: scripts/a.js, scripts/b.js. Critérios: AC-01\n   - Verificação: t.\n' +
+        '2. Documentar. Arquivo: docs/x.md. Critérios: AC-02\n   - Verificação: t.\n' +
+        '3. Revisar o resultado sem declarar arquivo. Critérios: AC-01\n   - Verificação: t.\n';
+    const r = ps.buildProspective(text, { specContent: SPEC, fileExists: () => true });
+    assert.deepStrictEqual(r.groups[0].signals.paths_decl, ['scripts/a.js', 'scripts/b.js']);
+    assert.strictEqual(r.groups[0].signals.n_files, 2);
+    assert.deepStrictEqual(r.groups[1].signals.paths_decl, ['docs/x.md']);
+    assert.strictEqual(r.groups[2].signals.paths_decl, U, 'passo sem declaração continua UNKNOWN');
+});
+
+test('PRI-320 (revisão B1): Critérios inline entra nos sinais; sensitive_decl e n_acs_step iguais ao formato de linhas próprias', () => {
+    const spec = '## Critérios de Aceite\n- AC-01: lista de transportadoras.\n- AC-02: exigir senha e token no login.\n';
+    const inline = '## Plano de execução\n1. Documentar. Arquivo: docs/x.md. Critérios: AC-02. Verificação: t.\n';
+    const own = '## Plano de execução\n1. Documentar\n   - Arquivo: `docs/x.md`\n   - Critérios: AC-02\n   - Verificação: t.\n';
+    const a = ps.buildProspective(inline, { specContent: spec, fileExists: () => true }).groups[0].signals;
+    const b = ps.buildProspective(own, { specContent: spec, fileExists: () => true }).groups[0].signals;
+    assert.strictEqual(a.sensitive_decl, true);
+    assert.deepStrictEqual([a.sensitive_decl, a.n_acs_step, a.kind, a.n_files], [b.sensitive_decl, b.n_acs_step, b.kind, b.n_files]);
+    // Passo de teste com AC inline: n_acs_step conta o AC (não vira o "0 válido" de passo só de teste).
+    const t = ps.buildProspective('## Plano de execução\n1. Testar. Arquivo: scripts/x.test.js. Critérios: AC-01, AC-02\n', { specContent: spec, fileExists: () => true }).groups[0].signals;
+    assert.strictEqual(t.n_acs_step, 2);
+});
