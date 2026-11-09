@@ -293,3 +293,42 @@ test('globs: ** atravessa diretórios, * não; maiúsculas ignoradas', () => {
     assert.ok(!ps.matchesAny('a/b.md', ['*.md']));
     assert.ok(ps.matchesAny('Dockerfile.dev', ['**/Dockerfile*']));
 });
+
+// ---- PRI-205 S3b T7: envelope por grupo para o Jev (texto do passo, ACs e caminhos; sem código) ----
+test('S3b T7: classifierEnvelopes monta o envelope de cada grupo com os textos do passo, dos ACs e os caminhos', () => {
+    const planText = '## Plano de execução\n1. Ajustar listagem\n   - Arquivo: `backend/svc-a/src/a.js`\n   - Critérios: AC-01, AC-02\n   - Verificação: t.\n'
+        + '2. Documentar\n   - Arquivo: `README.md`\n   - Critérios: AC-03\n   - Verificação: t.\n';
+    const out = ps.classifierEnvelopes(planText, SPEC);
+    const keys = [...out.keys()];
+    assert.strictEqual(keys.length, 2);
+    const first = out.get(keys[0]);
+    assert.strictEqual(first.ok, true);
+    assert.deepStrictEqual(Object.keys(first.envelope).sort(), ['ac_texts', 'declared_paths', 'step_text']);
+    assert.match(first.envelope.step_text, /Ajustar listagem/);
+    assert.deepStrictEqual(first.envelope.ac_texts, ['AC-01: lista de transportadoras.', 'AC-02: mensagem de erro.']);
+    assert.deepStrictEqual(first.envelope.declared_paths, ['backend/svc-a/src/a.js']);
+    assert.deepStrictEqual(out.get(keys[1]).envelope.ac_texts, ['AC-03: ordenação.']);
+});
+
+test('S3b T7: passo com bloco de código não vira envelope (R-2: nada de código)', () => {
+    const planText = '## Plano de execução\n1. Trocar a função\n   - Arquivo: `a.js`\n   - Critérios: AC-01\n   ```js\n   const x = 1;\n   ```\n';
+    const [entry] = [...ps.classifierEnvelopes(planText, SPEC).values()];
+    assert.deepStrictEqual(entry, { ok: false, reason: 'STEP_HAS_CODE_BLOCK' });
+});
+
+test('S3b T7: AC citado fora da spec fica fora do envelope; plano sem passos devolve vazio', () => {
+    const planText = '## Plano de execução\n1. Algo\n   - Arquivo: `a.js`\n   - Critérios: AC-09\n';
+    const [entry] = [...ps.classifierEnvelopes(planText, SPEC).values()];
+    assert.deepStrictEqual(entry.envelope.ac_texts, []);
+    assert.strictEqual(ps.classifierEnvelopes('sem plano', SPEC).size, 0);
+});
+
+test('achado MINOR 5: bloco de código indentado no passo ou código no AC não vira envelope; sub-itens de lista passam', () => {
+    const indented = '## Plano de execução\n1. Trocar a função\n   - Arquivo: `a.js`\n   - Critérios: AC-01\n\n        const x = soma(a, b);\n        return x;\n';
+    assert.deepStrictEqual([...ps.classifierEnvelopes(indented, SPEC).values()][0], { ok: false, reason: 'STEP_HAS_CODE_BLOCK' });
+    const nested = '## Plano de execução\n1. Ajustar listagem\n   - Arquivo: `a.js`\n   - Critérios: AC-01\n     - detalhe: ordenar por nome\n     * outro detalhe\n';
+    assert.strictEqual([...ps.classifierEnvelopes(nested, SPEC).values()][0].ok, true);
+    const specWithCode = '## Critérios de Aceite\n- AC-01: retorna ```{"ok":true}```.\n';
+    const plan = '## Plano de execução\n1. Algo\n   - Arquivo: `a.js`\n   - Critérios: AC-01\n';
+    assert.deepStrictEqual([...ps.classifierEnvelopes(plan, specWithCode).values()][0], { ok: false, reason: 'AC_HAS_CODE_BLOCK' });
+});

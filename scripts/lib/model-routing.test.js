@@ -276,17 +276,14 @@ for (const [name, value] of [
 test('A3: R1–R8 rodam mesmo com classifier.provider = off', () => {
     const r = resolve({ policy: policy({ classifier: { provider: 'off' } }), signals: signalsOf(C2_GROUP) });
     assert.strictEqual(r.decision.class, 'C2');
-    assert.deepStrictEqual(r.decision.classifier_ref, { declared: 'off', nucleus2_effective: 'off', reason: 'DECLARED_OFF' });
+    const { declared, nucleus2_effective, reason } = r.decision.classifier_ref;
+    assert.deepStrictEqual({ declared, nucleus2_effective, reason }, { declared: 'off', nucleus2_effective: 'off', reason: 'DECLARED_OFF' });
 });
 
-test('A4: jev sem Authority Ref → núcleo 2 efetivo off, com motivo (AC-11)', () => {
+test('A4 (revisto na S3b): jev sem classifier_effective no snapshot → núcleo 2 off, AUTHORITY_REF_ABSENT (AC-11 da S4)', () => {
     const r = resolve({ policy: policy({ classifier: { provider: 'jev' } }) });
-    assert.deepStrictEqual(r.decision.classifier_ref, { declared: 'jev', nucleus2_effective: 'off', reason: 'AUTHORITY_REF_ABSENT' });
-});
-
-test('A4: jev com Authority Ref continua off na S4 (núcleo 2 fora desta fatia)', () => {
-    const r = resolve({ policy: policy({ classifier: { provider: 'jev' } }), authorityRef: { ref: 'declaracao-richard-2026-10-26', valid: true } });
-    assert.deepStrictEqual(r.decision.classifier_ref, { declared: 'jev', nucleus2_effective: 'off', reason: 'NUCLEUS2_NOT_IN_S4' });
+    const { declared, nucleus2_effective, reason } = r.decision.classifier_ref;
+    assert.deepStrictEqual({ declared, nucleus2_effective, reason }, { declared: 'jev', nucleus2_effective: 'off', reason: 'AUTHORITY_REF_ABSENT' });
 });
 
 // ── Precondições do despacho roteado (SP-1, SP-2) ──────────────────────────────
@@ -336,4 +333,110 @@ test('determinismo: 100 resoluções da mesma entrada são idênticas (AC-12)', 
 
 test('R1–R8 não estão duplicados: o resolver usa a classificadora da S3', () => {
     assert.strictEqual(mr._classifySubtask, wouldRoute.classifySubtask);
+});
+
+
+// ── PRI-205 S3b T7: núcleo 2 na RoutingDecision (só registro) ─────────────────────
+const jevClient = require('./jev-client');
+const REF_FIELDS = ['classifier_version', 'enum_version', 'mode', 'model_id', 'model_version', 'policy_sha256', 'prompt_sha256', 'provider'];
+const JEV_POLICY = () => policy({ classifier: { provider: 'jev', mode: 'shadow', model_id: 'jev-latest', timeout_ms: 3000,
+    prompt_ref: { id: 'p', version: '1', sha256: jevClient.promptSha256() }, enum_version: jevClient.ENUM_VERSION, destination: jevClient.DESTINATION_ID } });
+const EFF = (overrides = {}) => ({
+    provider: 'jev', declared: 'jev', mode: 'shadow', reason: null, detail: null,
+    authority_ref: { id: 'ref-1', sha256: 'd'.repeat(64), path: '.claude/classifier-authority.json' },
+    credential: { keychain: 'prisma-jev-typesafe', account: 'typesafe' },
+    model_id: 'jev-latest', timeout_ms: 3000, guard_version: 'classifier-guard@1', ...overrides,
+});
+const jevSnapshot = (eff = EFF()) => mr.buildRoutingSnapshot(loaded(JEV_POLICY()), { classifierEffective: eff });
+const pickRef = ref => Object.fromEntries(REF_FIELDS.map(k => [k, ref[k]]));
+
+test('S3b AC-12: classifier_ref tem os 8 campos da V7-02, explícitos, em toda decisão', () => {
+    for (const r of [resolve({ signals: signalsOf(C2_GROUP) }), resolve({ snapshot: jevSnapshot(), signals: signalsOf(C2_GROUP) })]) {
+        for (const k of REF_FIELDS) assert.ok(k in r.decision.classifier_ref, k);
+    }
+    const cheap = resolve({ signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
+    assert.deepStrictEqual([cheap.provider, cheap.model_id, cheap.mode, cheap.policy_sha256], ['cheap_rule', null, null, 'a'.repeat(64)]);
+});
+
+test('S3b AC-12: com jev efetivo, o classifier_ref vem do snapshot e é igual em todos os Attempts; alias → model_version UNKNOWN', () => {
+    const snap = jevSnapshot();
+    const a = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
+    const b = resolve({ snapshot: snap, node: 'review' }).decision.classifier_ref;
+    assert.deepStrictEqual(pickRef(a), {
+        provider: 'jev', model_id: 'jev-latest', model_version: 'UNKNOWN', prompt_sha256: jevClient.promptSha256(),
+        enum_version: jevClient.ENUM_VERSION, mode: 'shadow', classifier_version: jevClient.CLIENT_VERSION, policy_sha256: snap.policy_ref.sha256,
+    });
+    assert.deepStrictEqual(pickRef(b), pickRef(a));
+    const pinned = resolve({ snapshot: jevSnapshot(EFF({ model_id: 'jev-2026-10-01' })), signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
+    assert.strictEqual(pinned.model_version, 'jev-2026-10-01');
+});
+
+test('S3b AC-12: efetivo off no snapshot → provider off, reason do snapshot', () => {
+    const r = resolve({ snapshot: jevSnapshot(EFF({ provider: 'off', reason: 'AUTHORITY_REF_ABSENT', model_id: null })), signals: signalsOf(C2_GROUP) });
+    assert.deepStrictEqual([r.decision.classifier_ref.provider, r.decision.classifier_ref.reason, r.decision.classifier_ref.nucleus2_effective], ['off', 'AUTHORITY_REF_ABSENT', 'off']);
+});
+
+const N2 = (opinions, status = 'ON', reason = null) => ({ status, reason, opinions });
+
+test('S3b AC-02: núcleo 2 dizendo C1 com 0,99 não muda classe, origem, candidatos, escolhido nem argv', () => {
+    const snap = jevSnapshot();
+    const base = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP, C5_GROUP) });
+    const withN2 = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP, C5_GROUP), nucleus2: N2([
+        { subtask_key: 'g2', status: 'OK', probe: 'UPGRADE_PROBE', class: 'C2', class_suggested: 'C1', confidence: 0.99, would_class: 'C2', direction: 'DOWN_IGNORED' },
+    ]) });
+    const strip = d => { const { nucleus2, nucleus2_would_node_class, classifier_ref, ...rest } = d; return rest; };
+    assert.deepStrictEqual(strip(withN2.decision), strip(base.decision));
+    assert.deepStrictEqual(pickRef(withN2.decision.classifier_ref), pickRef(base.decision.classifier_ref));
+    assert.deepStrictEqual(mr.routedArgs(['-p', 'x'], withN2), mr.routedArgs(['-p', 'x'], base));
+});
+
+test('S3b B8: nucleus2 gravado por grupo e classe de nó hipotética (máximo dos would_class)', () => {
+    const r = resolve({ snapshot: jevSnapshot(), signals: signalsOf(C1_GROUP, C2_GROUP), nucleus2: N2([
+        { subtask_key: 'g1', status: 'OK', probe: 'UPGRADE_PROBE', class: 'C1', class_suggested: 'C1', confidence: 0.9, would_class: 'C1', direction: 'SAME' },
+        { subtask_key: 'g2', status: 'OK', probe: 'UPGRADE_PROBE', class: 'C2', class_suggested: 'C4', confidence: 0.5, would_class: 'C4', direction: 'UP' },
+    ]) });
+    assert.strictEqual(r.decision.class, 'C2');
+    assert.deepStrictEqual([r.decision.nucleus2.status, r.decision.nucleus2.groups.length], ['ON', 2]);
+    assert.strictEqual(r.decision.nucleus2_would_node_class, 'C4');
+    assert.strictEqual(r.decision.classifier_ref.nucleus2_effective, 'shadow');
+});
+
+test('S3b B8: sem núcleo 2, nó fixo ou núcleo 2 OFF → nucleus2 registrado sem classe hipotética', () => {
+    const none = resolve({ snapshot: jevSnapshot(), signals: signalsOf(C2_GROUP) });
+    assert.deepStrictEqual([none.decision.nucleus2, none.decision.nucleus2_would_node_class], [null, null]);
+    const fixed = resolve({ snapshot: jevSnapshot(), node: 'review', nucleus2: N2([]) });
+    assert.deepStrictEqual([fixed.decision.nucleus2, fixed.decision.nucleus2_would_node_class], [null, null]);
+    const off = resolve({ snapshot: jevSnapshot(), signals: signalsOf(C2_GROUP), nucleus2: N2([], 'OFF', 'AUTHORITY_REF_REVOKED') });
+    assert.deepStrictEqual([off.decision.nucleus2.status, off.decision.nucleus2.reason, off.decision.nucleus2_would_node_class], ['OFF', 'AUTHORITY_REF_REVOKED', null]);
+    assert.strictEqual(off.decision.classifier_ref.nucleus2_effective, 'off');
+});
+
+// ── PRI-205 S3b T11: seleção do classificador no snapshot e no classifier_ref ──────
+test('S3b T11: sem registro de seleção o snapshot fica igual ao da S4 e selection_version é null', () => {
+    const plain = mr.buildRoutingSnapshot(loaded());
+    assert.deepStrictEqual(mr.buildRoutingSnapshot(loaded(), { classifierSelection: { source: 'POLICY', selection_ref: null, reason: null, classifier: { provider: 'cheap_rule' } } }), plain);
+    assert.strictEqual(resolve({ signals: signalsOf(C2_GROUP) }).decision.classifier_ref.selection_version, null);
+});
+
+test('S3b T11 / AC-18: "Só policy" no registro → declared off, selection_version no classifier_ref e no hash do snapshot', () => {
+    const selection = { source: 'SELECTION', selection_ref: { version: 2, sha256: 'e'.repeat(64) }, reason: null, classifier: { provider: 'off' } };
+    const snap = mr.buildRoutingSnapshot(loaded(), { classifierSelection: selection });
+    assert.deepStrictEqual(snap.classifier_selection, { source: 'SELECTION', version: 2, sha256: 'e'.repeat(64), provider: 'off', mode: null, reason: null });
+    assert.notStrictEqual(snap.sha256, mr.buildRoutingSnapshot(loaded()).sha256);
+    const ref = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
+    assert.deepStrictEqual([ref.declared, ref.provider, ref.reason, ref.selection_version], ['off', 'off', 'DECLARED_OFF', 2]);
+});
+
+test('S3b T11: "Policy + Jev" no registro + efetivo jev → classifier_ref jev com a versão da seleção', () => {
+    const selection = { source: 'SELECTION', selection_ref: { version: 3, sha256: 'f'.repeat(64) }, reason: null, classifier: { provider: 'jev', mode: 'shadow' } };
+    const snap = mr.buildRoutingSnapshot(loaded(), { classifierSelection: selection, classifierEffective: EFF() });
+    const ref = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
+    assert.deepStrictEqual([ref.declared, ref.provider, ref.mode, ref.selection_version], ['jev', 'jev', 'shadow', 3]);
+});
+
+test('S3b T11: registro inválido → off com CLASSIFIER_SELECTION_INVALID, mesmo com a policy declarando jev', () => {
+    const selection = { source: 'INVALID', selection_ref: null, reason: 'CLASSIFIER_SELECTION_INVALID', classifier: { provider: 'off' } };
+    const snap = mr.buildRoutingSnapshot(loaded(JEV_POLICY()), { classifierSelection: selection });
+    const ref = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
+    assert.deepStrictEqual([ref.declared, ref.provider, ref.reason, ref.selection_version], ['off', 'off', 'CLASSIFIER_SELECTION_INVALID', null]);
 });

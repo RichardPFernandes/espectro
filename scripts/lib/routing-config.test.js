@@ -195,3 +195,92 @@ test('caminho sombra da S3 inalterado: policy default carrega e mode ON na polic
     const jev = policyLoader.loadPolicy({ json: { ...JSON.parse(fs.readFileSync(policyLoader.DEFAULT_POLICY_PATH, 'utf8')), classifier: { provider: 'jev' } } });
     assert.deepStrictEqual([jev.status, jev.detail], ['INVALID', 'classifier_provider_jev_blocked']);
 });
+
+// ---- PRI-205 S3b T4: seção classifier do jev e referências do núcleo 2 no config ----
+// Nada do núcleo 2 bloqueia a admissão (SPEC §B2): seção jev incompleta, credencial
+// ou Authority Ref malformadas deixam a policy válida e o núcleo 2 off, com o motivo.
+const jevClient = require('./jev-client');
+
+function jevSection(overrides = {}) {
+    return {
+        provider: 'jev',
+        mode: 'shadow',
+        model_id: 'jev-latest',
+        timeout_ms: 3000,
+        prompt_ref: { id: 'prisma-class-prompt', version: '1', sha256: jevClient.promptSha256() },
+        enum_version: jevClient.ENUM_VERSION,
+        destination: jevClient.DESTINATION_ID,
+        ...overrides,
+    };
+}
+
+test('T4: validateClassifierSection aceita a seção jev completa e ignora off/cheap_rule', () => {
+    assert.deepStrictEqual(policyLoader.validateClassifierSection(jevSection()), { ok: true });
+    assert.deepStrictEqual(policyLoader.validateClassifierSection({ provider: 'cheap_rule' }), { ok: true });
+    assert.deepStrictEqual(policyLoader.validateClassifierSection({ provider: 'off' }), { ok: true });
+});
+
+const SECTION_CASES = [
+    ['provider jev sem mais nada', { provider: 'jev' }, 'classifier_mode_invalid'],
+    ['mode desconhecido', jevSection({ mode: 'ligado' }), 'classifier_mode_invalid'],
+    ['sem model_id', jevSection({ model_id: '' }), 'classifier_model_missing'],
+    ['timeout acima de 5000', jevSection({ timeout_ms: 5001 }), 'classifier_timeout_invalid'],
+    ['timeout não inteiro', jevSection({ timeout_ms: 2.5 }), 'classifier_timeout_invalid'],
+    ['prompt_ref sem sha', jevSection({ prompt_ref: { id: 'x', version: '1' } }), 'classifier_prompt_ref_invalid'],
+    ['prompt de outra versão', jevSection({ prompt_ref: { id: 'x', version: '1', sha256: 'a'.repeat(64) } }), 'classifier_prompt_mismatch'],
+    ['enum de outra versão', jevSection({ enum_version: 'prisma-class-c1c5@0' }), 'classifier_enum_mismatch'],
+    ['destino diferente', jevSection({ destination: 'typesafe:/v2/outro' }), 'classifier_destination_mismatch'],
+    ['provider desconhecido', { provider: 'haiku' }, 'classifier_provider_unsupported:haiku'],
+];
+for (const [name, section, detail] of SECTION_CASES) {
+    test(`T4: validateClassifierSection recusa ${name} → ${detail}`, () => {
+        assert.deepStrictEqual(policyLoader.validateClassifierSection(section), { ok: false, detail });
+    });
+}
+
+test('T4: seção jev incompleta continua deixando a policy roteada válida (não bloqueia a admissão)', () => {
+    const root = consumer({ routing: { mode: 'ON' }, policy: routedPolicy({ classifier: { provider: 'jev', mode: 'shadow' } }) });
+    assert.strictEqual(policyLoader.readRoutingConfig(root).status, 'ON');
+});
+
+test('T4: config sem referências do núcleo 2 → classifier_config vazio, sem erro', () => {
+    const root = consumer({ routing: { mode: 'ON' }, policy: routedPolicy() });
+    const r = policyLoader.readRoutingConfig(root);
+    assert.deepStrictEqual(r.classifier_config, { credential: null, authority_ref: null, errors: [] });
+});
+
+test('T4: credencial e Authority Ref válidas são lidas só como nomes e referência', () => {
+    const authority_ref = { id: 'jev-envio-2026-10-26', sha256: 'b'.repeat(64), path: '.claude/classifier-authority.json' };
+    const root = consumer({
+        routing: { mode: 'ON', classifier_credential: { keychain: 'prisma-jev-typesafe', account: 'typesafe' }, authority_ref },
+        policy: routedPolicy({ classifier: jevSection() }),
+    });
+    const r = policyLoader.readRoutingConfig(root);
+    assert.strictEqual(r.status, 'ON');
+    assert.deepStrictEqual(r.classifier_config, {
+        credential: { keychain: 'prisma-jev-typesafe', account: 'typesafe' },
+        authority_ref,
+        errors: [],
+    });
+});
+
+const CONFIG_CASES = [
+    ['credencial com valor literal', { classifier_credential: { keychain: 'prisma-jev-typesafe', account: 'typesafe', value: 'x' } }, 'classifier_credential_invalid'],
+    ['credencial com campo de senha', { classifier_credential: { keychain: 'prisma-jev-typesafe', password: 'x' } }, 'classifier_credential_invalid'],
+    ['credencial como string', { classifier_credential: 'chave' }, 'classifier_credential_invalid'],
+    ['nome de item com espaço', { classifier_credential: { keychain: 'prisma jev', account: 'typesafe' } }, 'classifier_credential_invalid'],
+    ['authority_ref sem sha', { authority_ref: { id: 'x', path: '.claude/a.json' } }, 'authority_ref_invalid'],
+    ['authority_ref fora da raiz', { authority_ref: { id: 'x', sha256: 'b'.repeat(64), path: '../a.json' } }, 'authority_ref_path_outside_root'],
+    ['authority_ref absoluto', { authority_ref: { id: 'x', sha256: 'b'.repeat(64), path: '/etc/a.json' } }, 'authority_ref_path_outside_root'],
+];
+for (const [name, extra, detail] of CONFIG_CASES) {
+    test(`T4: ${name} → núcleo 2 com erro ${detail}, sem bloquear a admissão nem ecoar o valor`, () => {
+        const root = consumer({ routing: { mode: 'ON', ...extra }, policy: routedPolicy({ classifier: jevSection() }) });
+        const r = policyLoader.readRoutingConfig(root);
+        assert.strictEqual(r.status, 'ON');
+        assert.ok(r.classifier_config.errors.includes(detail), JSON.stringify(r.classifier_config.errors));
+        assert.ok(!JSON.stringify(r.classifier_config).includes('"x"'));
+        if (detail.startsWith('classifier_credential')) assert.strictEqual(r.classifier_config.credential, null);
+        else assert.strictEqual(r.classifier_config.authority_ref, null);
+    });
+}

@@ -301,7 +301,60 @@ function declaredUnion(prospective) {
     return [...new Set(all)];
 }
 
+// PRI-205 S3b (T7): envelope por grupo para o núcleo 2 (Jev em sombra). Só o texto
+// dos passos, o texto dos ACs citados que existem na spec e os caminhos declarados
+// (R-2). Passo ou AC com código (cerca ``` / ~~~ ou bloco indentado) não vira envelope:
+// nada de código sai. Resíduo declarado: ids do Redmine (#123) no texto do passo não são
+// filtrados (B4 os exclui; bloquear derrubaria a maior parte dos dados: decisão do Richard).
+// Devolve Map subtask_key → { ok: true, envelope } | { ok: false, reason }.
+const CODE_FENCE = /```|~~~/;
+// Achado MINOR 5 da revisão: o texto do passo chega normalizado pelo plan-scorer (sem a
+// indentação), então bloco indentado não é detectável pela margem. Além da cerca, conta
+// como código uma linha com cara de código: termina em `;`, `{` ou `}`, ou começa com
+// palavra-chave de código. Falso positivo só tira a opinião do Jev daquele grupo.
+const CODE_LINE_END = /[;{}]\s*$/;
+const CODE_LINE_START = /^\s*(const|let|var|return|import|export|function|class|public|private|protected|static|def|package|SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)\b/;
+function hasCode(text) {
+    const t = String(text || '');
+    if (CODE_FENCE.test(t)) return true;
+    return t.split('\n').some(line => {
+        const l = line.trim();
+        if (!l || /^([-*+]|\d+[.)])\s/.test(l)) return false;
+        return CODE_LINE_END.test(l) || CODE_LINE_START.test(l);
+    });
+}
+
+function classifierEnvelopes(planContent, specContent) {
+    const out = new Map();
+    const { plan_version, steps } = extractPlanSteps(planContent);
+    if (!plan_version) return out;
+    const specAcs = acTexts(specContent);
+    for (const g of groupSteps(plan_version, steps)) {
+        if (g.members.some(m => hasCode(m.text))) {
+            out.set(g.subtask_key, { ok: false, reason: 'STEP_HAS_CODE_BLOCK' });
+            continue;
+        }
+        const known = !g.members.some(m => m.paths_decl === UNKNOWN);
+        const paths = known ? [...new Set(g.members.flatMap(m => m.paths_decl))].sort() : [];
+        const acIds = [...new Set(g.members.flatMap(m => m.acs))].sort().filter(id => specAcs.has(id));
+        if (acIds.some(id => hasCode(specAcs.get(id)))) {
+            out.set(g.subtask_key, { ok: false, reason: 'AC_HAS_CODE_BLOCK' });
+            continue;
+        }
+        out.set(g.subtask_key, {
+            ok: true,
+            envelope: {
+                step_text: g.members.map(m => m.text).join('\n\n'),
+                ac_texts: acIds.map(id => `${id}: ${specAcs.get(id)}`),
+                declared_paths: paths,
+            },
+        });
+    }
+    return out;
+}
+
 module.exports = {
     UNKNOWN, DEFAULT_POLICY, KIND_ORDER, kindOfPath, maxKind, serviceBuckets, matchesAny,
     extractPlanSteps, groupSteps, prospectiveSignals, buildProspective, retrospectiveSignals, declaredUnion, isFlowArtifact,
+    classifierEnvelopes,
 };

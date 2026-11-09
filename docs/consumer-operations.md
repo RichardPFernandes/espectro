@@ -53,6 +53,13 @@ re-baselinar os hashes por decisão governada) e seguir «Nova janela de cutover
 O pin anterior a50ff9f, tree 97fe983, em `../prisma-wt/pri-63`, não existia no
 disco em 2026-11-06.
 
+## Núcleo 2 do roteamento (Jev em sombra)
+
+Desde a PRI-205 S3b, o roteamento pode registrar a opinião do Jev (TypeSafe) sem
+efeito no despacho. A fatia vem **desligada**: a main continua rodando no app-back
+sozinha, sem ativação. Ativação, desligamento, dados e o comando do U15 estão em
+[classifier-nucleus2.md](classifier-nucleus2.md).
+
 ## Modo pinado (referência, inativo)
 
 As subseções abaixo descrevem o launcher pinado e valem só quando ele estiver

@@ -31,6 +31,9 @@ const churnDetector = require('../scripts/lib/churn-detector');
 const preBuildAiFix = require('../scripts/lib/pre-build-ai-fix');
 // Conta do Claude dos agentes + uso/limite dela (painel Watcher > Configurações).
 const claudeAccount = require('../scripts/lib/claude-account');
+// PRI-205 S3b (T12): exceção explícita à no-dashboard-scripts-internals (decisão do
+// Richard em 2026-11-06; registrada na lista de violações conhecidas, dívida da F12).
+const classifierSelection = require('../scripts/lib/classifier-selection');
 const claudeUsage = require('../scripts/lib/claude-usage');
 // Knowledge Graph de rastreabilidade ticket → spec → arquivos → PR (aba Grafo).
 const knowledgeGraph = require('../scripts/lib/knowledge-graph');
@@ -2303,6 +2306,33 @@ function createDashboard(options = {}) {
     // (scripts/lib/authorization.js), sem pausar a Run e recusado com nó rodando (como as
     // demais decisões). Vale a partir do próximo limite de nó; elegibilidade conferida
     // pelo resolver contra o snapshot da Run.
+    // PRI-205 S3b (T12, SPEC §B11): seletor "Só policy" × "Policy + Jev" do projeto deste
+    // Dashboard. O writer governado (classifier-selection.writeSelection) é a guarda: valida
+    // na ordem do §4.8 e recusa com código; a tela só projeta. Vale para Runs novas.
+    app.get('/api/routing/classifier', (req, res) => {
+        res.json(classifierSelection.classifierState(repoRoot));
+    });
+
+    // Síncrono de propósito (achado MINOR 2 da revisão): o Express 4 só captura `throw`
+    // síncrono; erro inesperado (EACCES, ENOSPC) vira 500, nunca derruba o Dashboard.
+    app.post('/api/routing/classifier', (req, res) => {
+        const by = actorOf();
+        const b = req.body || {};
+        try {
+            const out = classifierSelection.changeClassifier(repoRoot, {
+                choice: b.choice, mode: b.mode ?? null, expectedVersion: b.expected_version,
+                operationId: b.operation_id, by, reason: b.reason, cas,
+            });
+            if (out.status === 'applied') console.log(`[dashboard] seleção do classificador v${out.version} (${out.choice}) por ${by}`);
+            return res.json({ ok: true, status: out.status, current: out.current });
+        } catch (e) {
+            if (e instanceof classifierSelection.SelectionError) {
+                return res.status(e.httpStatus).json({ ok: false, code: e.code, error: e.message, ...(e.detail ? { detail: e.detail } : {}) });
+            }
+            throw e;
+        }
+    });
+
     app.post('/api/runs/:taskId/routing-override', async (req, res) => {
         const ctx = authorizationRun(req, res);
         if (!ctx) return;

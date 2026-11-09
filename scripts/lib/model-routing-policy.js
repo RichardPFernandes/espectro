@@ -183,6 +183,71 @@ function validateRoutedPolicy(raw) {
     return { ok: true, policy: raw };
 }
 
+// PRI-205 S3b (T4): seção `classifier` do núcleo 2. Validada à parte e NUNCA torna
+// a policy roteada inválida: nada do núcleo 2 bloqueia a admissão (SPEC §B2). A
+// admissão usa o resultado para decidir o efetivo (off com motivo, ou jev em sombra).
+// O prompt, o enum e o destino têm de bater com o cliente desta versão do Prisma.
+const CLASSIFIER_MODES = new Set(['shadow', 'active']);
+const MAX_CLASSIFIER_TIMEOUT_MS = 5000;
+
+/** @returns {{ ok: true } | { ok: false, detail: string }} */
+function validateClassifierSection(classifier) {
+    const fail = detail => ({ ok: false, detail });
+    if (!classifier || typeof classifier !== 'object' || Array.isArray(classifier)) return fail('classifier_not_object');
+    const provider = classifier.provider;
+    if (provider === 'off' || provider === 'cheap_rule') return { ok: true };
+    if (provider !== 'jev') return fail(`classifier_provider_unsupported:${provider}`);
+    const jevClient = require('./jev-client');
+    if (!CLASSIFIER_MODES.has(classifier.mode)) return fail('classifier_mode_invalid');
+    if (!nonEmptyString(classifier.model_id)) return fail('classifier_model_missing');
+    const t = classifier.timeout_ms;
+    if (!Number.isInteger(t) || t < 1 || t > MAX_CLASSIFIER_TIMEOUT_MS) return fail('classifier_timeout_invalid');
+    const pr = classifier.prompt_ref;
+    if (!pr || typeof pr !== 'object' || !nonEmptyString(pr.id) || !nonEmptyString(pr.version)
+        || typeof pr.sha256 !== 'string' || !SHA256_HEX.test(pr.sha256)) return fail('classifier_prompt_ref_invalid');
+    if (pr.sha256 !== jevClient.promptSha256()) return fail('classifier_prompt_mismatch');
+    if (classifier.enum_version !== jevClient.ENUM_VERSION) return fail('classifier_enum_mismatch');
+    if (classifier.destination !== jevClient.DESTINATION_ID) return fail('classifier_destination_mismatch');
+    return { ok: true };
+}
+
+// Referências do núcleo 2 no config do consumidor: só nomes (item do Keychain) e
+// referência com hash (espelho da Authority Ref). Nunca valor de segredo. Malformadas
+// → erro no classifier_config (o núcleo 2 fica off), nunca INVALID da config.
+const KEYCHAIN_NAME = /^[A-Za-z0-9._-]+$/;
+
+function readCredentialRef(raw) {
+    if (raw === undefined || raw === null) return { value: null, error: null };
+    const ok = raw && typeof raw === 'object' && !Array.isArray(raw)
+        && Object.keys(raw).every(k => k === 'keychain' || k === 'account')
+        && typeof raw.keychain === 'string' && KEYCHAIN_NAME.test(raw.keychain)
+        && typeof raw.account === 'string' && KEYCHAIN_NAME.test(raw.account);
+    return ok
+        ? { value: { keychain: raw.keychain, account: raw.account }, error: null }
+        : { value: null, error: 'classifier_credential_invalid' };
+}
+
+function readAuthorityRef(raw, absRoot) {
+    if (raw === undefined || raw === null) return { value: null, error: null };
+    if (!validPolicyRef({ ...(raw && typeof raw === 'object' ? raw : {}), version: 'n/a' }) || Object.keys(raw).some(k => !['id', 'sha256', 'path'].includes(k))) {
+        return { value: null, error: 'authority_ref_invalid' };
+    }
+    if (path.isAbsolute(raw.path) || !insideRoot(absRoot, path.resolve(absRoot, raw.path))) {
+        return { value: null, error: 'authority_ref_path_outside_root' };
+    }
+    return { value: { id: raw.id, sha256: raw.sha256, path: raw.path }, error: null };
+}
+
+function readClassifierConfig(cfg, absRoot) {
+    const credential = readCredentialRef(cfg.classifier_credential);
+    const authority = readAuthorityRef(cfg.authority_ref, absRoot);
+    return {
+        credential: credential.value,
+        authority_ref: authority.value,
+        errors: [credential.error, authority.error].filter(Boolean),
+    };
+}
+
 function readFailure(cause, e) {
     const transient = TRANSIENT_FS_CODES.has(e && e.code);
     return { status: 'INVALID', cause, detail: `read:${(e && e.code) || 'ERROR'}`, transient };
@@ -273,6 +338,7 @@ function readRoutingConfig(root, { readFile = fs.readFileSync } = {}) {
         policy: raw,
         policy_ref: { id: ref.id, version: ref.version, sha256: ref.sha256, path: ref.path },
         policy_hash: hash,
+        classifier_config: readClassifierConfig(cfg, absRoot),
     };
 }
 
@@ -289,4 +355,6 @@ module.exports = {
     CLI_EFFORTS,
     validateRoutedPolicy,
     readRoutingConfig,
+    validateClassifierSection,
+    MAX_CLASSIFIER_TIMEOUT_MS,
 };

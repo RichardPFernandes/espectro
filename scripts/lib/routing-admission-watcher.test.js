@@ -110,9 +110,9 @@ const GIT_ENV = {
 };
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, env: { PATH: process.env.PATH, ...GIT_ENV }, encoding: 'utf8' }).trim();
 
-function policy(version = 'p-test-1') {
+function policy(version = 'p-test-1', classifier = { provider: 'cheap_rule' }) {
     return {
-        id: 'routing-sintetica', version, mode: 'ROUTED', classifier: { provider: 'cheap_rule' },
+        id: 'routing-sintetica', version, mode: 'ROUTED', classifier,
         class_to_tier: {
             C1: { tier: 'T1', effort: 'baixo' }, C2: { tier: 'T2', effort: 'médio' }, C3: { tier: 'T2', effort: 'alto' },
             C4: { tier: 'T3', effort: 'alto' }, C5: { tier: 'T3', effort: 'máximo' },
@@ -124,12 +124,13 @@ function policy(version = 'p-test-1') {
 }
 
 // Grava routing ON com policy válida (ou com sha divergente, para o caso inválido).
-function writeRouting(repo, { version = 'p-test-1', badSha = false } = {}) {
-    const bytes = JSON.stringify(policy(version));
+function writeRouting(repo, { version = 'p-test-1', badSha = false, classifier, extra = {} } = {}) {
+    const bytes = JSON.stringify(policy(version, classifier));
     fs.writeFileSync(path.join(repo, '.claude', 'routing-policy.json'), bytes);
     const sha = badSha ? 'f'.repeat(64) : crypto.createHash('sha256').update(bytes).digest('hex');
     fs.writeFileSync(path.join(repo, '.claude', 'model-routing.json'), JSON.stringify({
         mode: 'ON', policy_ref: { id: 'routing-sintetica', version, sha256: sha, path: '.claude/routing-policy.json' },
+        ...extra,
     }));
 }
 
@@ -215,13 +216,13 @@ test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true
 // Run já admitida ON: o Attempt de admissão é gravado pelo DOM06 real com o snapshot da
 // config do consumidor, e a task existe como o agente a teria criado. `bound` = state já
 // ligado (T5); `pluginBlocked` = worktree com o plugin não neutralizável (recusa SP-2).
-function seedOnRun(repo, id, { bound = true, node = 'implement', startedAt = new Date(Date.now() + 1000).toISOString(), retries = {}, pluginBlocked = false } = {}) {
+function seedOnRun(repo, id, { bound = true, node = 'implement', startedAt = new Date(Date.now() + 1000).toISOString(), retries = {}, pluginBlocked = false, classifierEffective = null, planText = null } = {}) {
     const worktree = worktreeOf(repo, id);
     fs.mkdirSync(worktree, { recursive: true });
     git(worktree, 'init', '-q', '-b', String(id));
     git(worktree, 'commit', '-q', '--allow-empty', '-m', `Melhoria #${id}`);
     if (pluginBlocked) blockPluginIn(worktree);
-    const snapshot = mr.buildRoutingSnapshot(policyLoader.readRoutingConfig(repo));
+    const snapshot = mr.buildRoutingSnapshot(policyLoader.readRoutingConfig(repo), { classifierEffective });
     const fetch = dom06.prepareDispatch({
         runDir: fetchRunDirOf(repo, id), node: 'fetch_ticket', ticketId: id, baseBranch: 'development',
         specHash: null, cause: 'dispatch', routing: snapshot,
@@ -238,7 +239,7 @@ function seedOnRun(repo, id, { bound = true, node = 'implement', startedAt = new
         ...(bound ? { routing_snapshot: { attempt_id: fetch.attempt.attempt_id, sha256: snapshot.sha256 } } : {}),
     }));
     fs.writeFileSync(path.join(dir, 'context.md'), '# Contexto\n');
-    fs.writeFileSync(path.join(dir, 'plan.md'), '# Plano\n\n## Passos\n\n1. Passo único.\n');
+    fs.writeFileSync(path.join(dir, 'plan.md'), planText || '# Plano\n\n## Passos\n\n1. Passo único.\n');
     return { fetch: fetch.attempt, snapshot, dir };
 }
 
@@ -588,4 +589,110 @@ test('T8 / D-4: override gravada no meio da visita ao nó não vale no retry do 
     assert.strictEqual(a.cause, 'retry');
     assert.strictEqual(a.routing.override_ref, null, 'override do meio do nó não vale neste Attempt');
     assert.deepStrictEqual(a.routing.overrides_pending, ['RO-1']);
+});
+
+// PRI-205 S3b T5: núcleo 2 na admissão. Hoje não há Authority Ref: a Run é admitida
+// normalmente e o snapshot registra o núcleo 2 off com o motivo (nunca bloqueia).
+test('S3b T5 / AC-07: policy jev sem Authority Ref → admitida, snapshot com núcleo 2 off (AUTHORITY_REF_ABSENT)', async () => {
+    const jevClient = require('./jev-client');
+    const id = 205501;
+    const classifier = {
+        provider: 'jev', mode: 'shadow', model_id: 'jev-latest', timeout_ms: 3000,
+        prompt_ref: { id: 'prisma-class-prompt', version: '1', sha256: jevClient.promptSha256() },
+        enum_version: jevClient.ENUM_VERSION, destination: jevClient.DESTINATION_ID,
+    };
+    const repo = consumer(r => writeRouting(r, { classifier, extra: { classifier_credential: { keychain: 'prisma-jev-typesafe', account: 'typesafe' } } }));
+    const r = await dispatch(repo, id, 's3b-t5-sem-ref');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    const eff = fetch.snapshot.routing.classifier_effective;
+    assert.deepStrictEqual([eff.provider, eff.declared, eff.reason, eff.credential], ['off', 'jev', 'AUTHORITY_REF_ABSENT', null]);
+    assert.strictEqual(flag(argvOf('s3b-t5-sem-ref'), '--model'), 'm-t3', 'o despacho segue igual');
+});
+
+// PRI-205 S3b T7: Run ON com o Jev efetivo no snapshot. O item do Keychain não existe
+// (nome de teste), então nada é enviado: o núcleo 2 fica registrado na decisão, sem
+// Attempt de efeito, e o despacho é o do núcleo 1.
+test('S3b T7 / AC-01 / AC-02: jev efetivo sem credencial → núcleo 2 registrado, nenhum Attempt classifier, mesmo modelo', async () => {
+    const jevClient = require('./jev-client');
+    const id = 205701;
+    const classifier = {
+        provider: 'jev', mode: 'shadow', model_id: 'jev-latest', timeout_ms: 3000,
+        prompt_ref: { id: 'p', version: '1', sha256: jevClient.promptSha256() },
+        enum_version: jevClient.ENUM_VERSION, destination: jevClient.DESTINATION_ID,
+    };
+    const repo = consumer(r => writeRouting(r, { classifier }));
+    const mirrorBytes = Buffer.from(JSON.stringify({ id: 'ref-teste', revoked_at: null }));
+    fs.writeFileSync(path.join(repo, '.claude', 'classifier-authority.json'), mirrorBytes);
+    const eff = {
+        provider: 'jev', declared: 'jev', mode: 'shadow', reason: null, detail: null,
+        authority_ref: { id: 'ref-teste', sha256: crypto.createHash('sha256').update(mirrorBytes).digest('hex'), path: '.claude/classifier-authority.json' },
+        credential: { keychain: 'prisma-jev-teste-inexistente', account: 'teste' },
+        model_id: 'jev-latest', timeout_ms: 3000, guard_version: 'classifier-guard@1',
+    };
+    const planText = '# Plano\n\n## Plano de execução\n1. Ajustar a listagem\n   - Arquivo: `backend/svc-a/src/a.js`\n   - Critérios: AC-01\n   - Verificação: teste.\n';
+    const { dir } = seedOnRun(repo, id, { classifierEffective: eff, planText });
+    fs.mkdirSync(path.join(worktreeOf(repo, id), 'memory', 'spec'), { recursive: true });
+    fs.writeFileSync(path.join(worktreeOf(repo, id), 'memory', 'spec', `${id}-spec.md`), '## Critérios de Aceite\n- AC-01: a listagem aparece.\n');
+    const r = await dispatch(repo, id, 's3b-t7-jev');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const attempts = dom06.listAttempts(dir);
+    assert.strictEqual(attempts.filter(a => a.node === 'classifier').length, 0, 'sem credencial nada é emitido');
+    const [impl] = attempts.filter(a => a.node === 'implement');
+    assert.strictEqual(impl.routing.classifier_ref.provider, 'jev');
+    assert.strictEqual(impl.routing.nucleus2.status, 'ON');
+    assert.ok(impl.routing.nucleus2.groups.length >= 1);
+    assert.deepStrictEqual(impl.routing.nucleus2.groups.map(g => [g.status, g.probe]), [['CREDENTIAL_UNAVAILABLE', 'UPGRADE_PROBE']], JSON.stringify(impl.routing.nucleus2.groups));
+    assert.strictEqual(flag(argvOf('s3b-t7-jev'), '--model'), impl.routing.chosen.model_id, 'argv = escolha do núcleo 1');
+});
+
+test('S3b T7 / AC-01: Run ON cheap_rule → sem núcleo 2 na decisão e sem Attempt classifier', async () => {
+    const id = 205702;
+    const repo = consumer(r => writeRouting(r));
+    const { dir } = seedOnRun(repo, id);
+    const r = await dispatch(repo, id, 's3b-t7-cheap');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const attempts = dom06.listAttempts(dir);
+    assert.strictEqual(attempts.filter(a => a.node === 'classifier').length, 0);
+    const [impl] = attempts.filter(a => a.node === 'implement');
+    assert.deepStrictEqual([impl.routing.nucleus2, impl.routing.classifier_ref.provider], [null, 'cheap_rule']);
+});
+
+// PRI-205 S3b T11 / AC-18: a admissão lê o registro de seleção; a troca só vale para Runs novas.
+test('S3b T11 / AC-18: seleção "Só policy" entra no snapshot da Run nova; trocar depois não muda a Run em andamento', async () => {
+    const sel = require('./classifier-selection');
+    const id = 205801;
+    const repo = consumer(r => writeRouting(r));
+    sel.writeSelection(repo, { choice: 'policy_only', expectedVersion: 0, operationId: 'op-t11-0001', by: 'richard', reason: 'só núcleo 1', project: 'app-back', cas: require('../cas') });
+    const r = await dispatch(repo, id, 's3b-t11-sel');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    const before = fetch.snapshot.routing;
+    assert.deepStrictEqual([before.classifier_selection.source, before.classifier_selection.version, before.classifier_selection.provider], ['SELECTION', 1, 'off']);
+    // Troca depois da admissão: a Run admitida guarda o snapshot dela.
+    sel.writeSelection(repo, { choice: 'policy_only', expectedVersion: 1, operationId: 'op-t11-0002', by: 'richard', reason: 'troca de teste', project: 'app-back', cas: require('../cas') });
+    const [again] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    assert.strictEqual(again.snapshot.routing.classifier_selection.version, 1);
+    assert.strictEqual(again.snapshot.routing.sha256, before.sha256);
+});
+
+test('S3b T11: registro de seleção quebrado → Run admitida, núcleo 2 off com CLASSIFIER_SELECTION_INVALID', async () => {
+    const sel = require('./classifier-selection');
+    const id = 205802;
+    const repo = consumer(r => writeRouting(r));
+    fs.mkdirSync(path.dirname(sel.registryPath(repo)), { recursive: true });
+    fs.writeFileSync(sel.registryPath(repo), '{quebrado');
+    const r = await dispatch(repo, id, 's3b-t11-invalido');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    assert.deepStrictEqual([fetch.snapshot.routing.classifier_selection.source, fetch.snapshot.routing.classifier_selection.reason], ['INVALID', 'CLASSIFIER_SELECTION_INVALID']);
+});
+
+test('S3b T11: sem registro de seleção o snapshot da Run nova não ganha campo (igual à S4)', async () => {
+    const id = 205803;
+    const repo = consumer(r => writeRouting(r));
+    const r = await dispatch(repo, id, 's3b-t11-sem');
+    assert.strictEqual(r.result?.action, 'dispatched', r.output);
+    const [fetch] = dom06.listAttempts(fetchRunDirOf(repo, id));
+    assert.ok(!('classifier_selection' in fetch.snapshot.routing));
 });
