@@ -26,10 +26,10 @@ function element(id) {
     };
 }
 
-function boot({ prefs = {}, waiting = 0 } = {}) {
+function boot({ prefs = {}, waiting = 0, hash = '' } = {}) {
     const els = new Map();
     const $ = id => { if (!els.has(id)) els.set(id, element(id)); return els.get(id); };
-    const location = { hash: '', pathname: '/' };
+    const location = { hash, pathname: '/' };
     const runs = new Map(Array.from({ length: waiting }, (_, i) => [`t${i}`, { taskId: `t${i}` }]));
     let saved = 0;
     const context = {
@@ -125,4 +125,35 @@ test('nav: repintura ao vivo devolve o foco ao cabeçalho de grupo que estava fo
     ui.context.runs.set('novo', { taskId: 'novo' });
     ui.context.window.Views.setView('runs');
     assert.equal(focusedSel, '[data-nav-group="Plataforma"]');
+});
+
+test('nav: itens e rótulos do AppNav da onda 1; Coordenação fora e #coordenacao cai em Runs', () => {
+    const ui = boot();
+    ui.setView('runs');
+    const items = [...ui.tabs().matchAll(/data-view="([^"]+)"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span>([^<]+)</g)].map(m => `${m[1]}:${m[2]}`);
+    assert.deepEqual(items, ['runs:Runs', 'redmine:Tickets', 'prs:Pull requests', 'metricas:Relatório semanal', 'tickets:Tickets e PRs',
+        'padroes:Padrões de falha', 'grafo:Knowledge Graph', 'roteamento:Roteamento', 'versao:Sistema', 'computador:Este computador']);
+    assert.doesNotMatch(ui.tabs(), /coordenacao/);
+    ui.setView('coordenacao');
+    assert.equal(ui.context.window.Views.current(), 'runs');
+    assert.equal(ui.context.prefs.view, 'runs');
+});
+
+test('nav: pref salva em #coordenacao abre Runs na carga', () => {
+    const ui = boot({ prefs: { view: 'coordenacao' } });
+    assert.equal(ui.context.window.Views.current(), 'runs');
+});
+
+test('nav: #coordenacao na carga abre Runs e limpa o hash e a pref antigos', () => {
+    const ui = boot({ hash: '#coordenacao', prefs: { view: 'coordenacao' } });
+    assert.equal(ui.context.window.Views.current(), 'runs');
+    assert.equal(ui.context.location.hash, '');
+    assert.equal(ui.context.prefs.view, 'runs');
+});
+
+test('nav: #run/<id> na carga fica intacto mesmo com pref antiga em coordenacao', () => {
+    const ui = boot({ hash: '#run/t1', prefs: { view: 'coordenacao' } });
+    assert.equal(ui.context.window.Views.current(), 'runs');
+    assert.equal(ui.context.location.hash, '#run/t1');
+    assert.equal(ui.context.prefs.view, 'runs');
 });

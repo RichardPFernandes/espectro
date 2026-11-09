@@ -1,5 +1,5 @@
 // View "Roteamento de modelo" (telas de roteamento, PRI-205; T5): GET /api/routing.
-// Padrão das views de Operação (Coordenação, Medição de modelo): módulo próprio,
+// Padrão das views em DOM (Sistema, Este computador): módulo próprio,
 // load()/render() em DOM, plugado em Views. Estilos: screens/routing.css.
 // Só projeta o que o servidor devolve: nunca calcula classe nem resolve modelo, e
 // ausência de dado aparece como desconhecida ou "sem preço", nunca como 0 ou OFF.

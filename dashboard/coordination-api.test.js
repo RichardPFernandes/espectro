@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const vm = require('node:vm');
 const { WebSocket } = require('ws');
 const { createDashboard } = require('./server');
 const { userCoordinationStatusPath, applyCoordinationDefault } = require('./coordination');
@@ -166,64 +165,4 @@ test('watch: change, atomic replacement, removal and creation broadcast WS refre
 test('coordination inherits localhost guard and has no write endpoint', async () => {
     assert.equal((await fetch(`${base}/api/coordination`, { headers: { Origin: 'https://evil.example' } })).status, 403);
     assert.equal((await fetch(`${base}/api/coordination`, { method: 'POST' })).status, 404);
-});
-// Tiny DOM harness: verifies the data sink and restricted UI without a browser dependency.
-test('UI: DOM/textContent, restricted two-column table, unsafe links and UNKNOWN capacity', async () => {
-    class Element {
-        constructor(tag) { this.tag = tag; this.children = []; this.textContent = ''; this.attributes = {}; }
-        append(...children) { this.children.push(...children); }
-        setAttribute(k, v) { this.attributes[k] = v; }
-        addEventListener() {}
-        set innerHTML(_) { throw new Error('innerHTML is forbidden'); }
-    }
-    const source = fixture();
-    // Deliberately feed unsanitized restricted fields to prove the UI defense too.
-    source.status = 'ok'; source.counts = { 'Em andamento': 1 }; source.capacity = { status: 'ok', runtimes: [{ runtime: 'claude', five_hour: null, seven_day: { used: 25 } }] };
-    source.tarefas[0].link = 'javascript:alert(1)';
-    const window = { Views: { refresh() {} } };
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'public', 'coordination.js'), 'utf8'), {
-        window, document: { createElement: tag => new Element(tag), head: new Element('head') }, api: async () => source, URL,
-    });
-    await window.CoordinationView.load();
-    const root = window.CoordinationView.render();
-    const all = node => [node, ...node.children.flatMap(all)];
-    const nodes = all(root);
-    assert.ok(nodes.some(n => n.textContent === '<script>not executable</script>'));
-    assert.ok(!nodes.some(n => n.textContent.includes(secret)));
-    assert.ok(nodes.some(n => n.textContent.includes('sem medição')));
-    assert.ok(!nodes.some(n => n.tag === 'a'));
-    const tables = nodes.filter(n => n.tag === 'table');
-    const privateTable = all(tables[1]);
-    assert.equal(privateTable.filter(n => n.tag === 'th').length, 2);
-    assert.equal(privateTable.filter(n => n.tag === 'td').length, 2);
-});
-
-test('Views.setView reloads Coordination after returning from another tab', async () => {
-    const elements = new Map();
-    const element = () => ({ innerHTML: '', scrollTop: 0, dataset: {}, children: [], classList: { add() {}, remove() {} }, setAttribute() {},
-        addEventListener() {}, querySelector() { return null; }, replaceChildren(...children) { this.children = children; } });
-    const dollar = id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
-    const location = { hash: '#runs', pathname: '/' };
-    const prefs = {};
-    let loadedVersion = 0;
-    const window = { addEventListener() {}, CoordinationView: {
-        async load() { loadedVersion++; window.Views?.refresh(); }, render() { return `version-${loadedVersion}`; },
-    } };
-    const document = { body: { dataset: {}, appendChild() {} }, activeElement: { dataset: {} }, createElement: element };
-    const context = {
-        window, document, location, prefs, selected: null, runs: new Map(), NODES: [], $: dollar,
-        visibleRuns: () => [], isHidden: () => false, needsYou: () => false,
-        history: { replaceState(_state, _title, url) { location.hash = url.startsWith('#') ? url : ''; } },
-        persist() {}, requestAnimationFrame: callback => callback(),
-    };
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'public', 'views.js'), 'utf8'), context);
-    window.Views.setView('coordenacao');
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(loadedVersion, 1);
-    assert.equal(dollar('view').children[0], 'version-1');
-    window.Views.setView('runs');
-    window.Views.setView('coordenacao');
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(loadedVersion, 2, 'voltar para Coordination executa outra leitura da API');
-    assert.equal(dollar('view').children[0], 'version-2');
 });
