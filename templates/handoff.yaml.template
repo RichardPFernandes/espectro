@@ -1,8 +1,14 @@
-# Maestri — Agent Handoff Contract v1.1. Regras: docs/handoff-contract.md
+# Maestri — Agent Handoff Contract v1.2. Regras: docs/handoff-contract.md
 # Validar antes de entregar: node scripts/validate-handoff.js <arquivo>
 # status: COMPLETED | BLOCKED | NEEDS_HUMAN | FAILED | PARTIAL
 # result de validation.executed só é PASSED com execução comprovada em evidence.
-handoff_version: "1.1"
+handoff_version: "1.2"
+
+# Nível de processo (AGENTS.md, «Níveis de processo»): leve | medio | alto.
+# Na dúvida, o maior. Mudou de nível? Preencha o inicial e o motivo; descer só com o Richard.
+nivel_processo: ""
+nivel_processo_inicial: null
+nivel_processo_motivo: null
 
 task:
   id: "PRI-XXX"
