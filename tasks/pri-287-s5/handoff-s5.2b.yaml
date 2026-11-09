@@ -30,7 +30,7 @@ execution:
   status: "COMPLETED"
   summary: "Passos 7 a 12 implementados e testados (AC-22 a AC-29 PASS; AC-23 no nível da lib; scope_violation → ≥ C4 provado na lib). G3 de código r1: Opus CHANGES_REQUESTED (3 MAJOR), Arquiteto APPROVED_WITH_CHANGES (2 MAJOR); todos os MAJOR e MINOR corrigidos ou declarados em evidence-s5.2b.md. Suítes oficiais Node 22 e 24 sem falha. Gate do RC-1 NÃO CUMPRIDO (decisão do Richard)."
   branch: "fernandesrichard312/pri-311-s52b-passo-integracao"
-  commit: null
+  commit: "db1c5cc"
 
 artifacts:
   - path: "scripts/lib/decomposition-visit.js"
