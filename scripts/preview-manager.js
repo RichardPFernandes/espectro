@@ -32,6 +32,10 @@ const STOP_GRACE_MS = 8000;
 const BACK_STARTUP_TIMEOUT_MS = 120000;
 const FRONT_READY_FALLBACK_MS = 15000;
 const TICKET_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+// Ref escolhida no painel (origin/<branch>): vai como argumento do git (sem shell), mas não
+// pode começar com '-' (virar opção) nem ter '..'. Branch com '@{' ou espaço não passa.
+const LIB_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
+const LIB_REF_SCAN_MAX = 200;
 const ACTIVE_PHASES = ['building-mo-entity', 'building-app-core', 'building-app-back', 'starting-back', 'starting-front', 'running', 'stopping'];
 const BUILD_STEPS = [
     { key: 'mo-entity', dir: 'moEntity', phase: 'building-mo-entity', goal: 'install' },
@@ -199,6 +203,7 @@ function createPreviewManager(options = {}) {
             ticketId, phase: 'idle', processes: { back: null, front: null }, current: null,
             ports: { ...ports }, logBuffer: [], startedAt: null, runningAt: null, error: null,
             errorPhase: null, steps: {}, worktrees: null, timers: new Set(), runToken: 0,
+            libFallbacks: [], libRef: null,
         };
     }
     function get(ticketId) {
@@ -419,19 +424,33 @@ function createPreviewManager(options = {}) {
     // abortado (fail/stop); null = segue com o ~/.m2 (sem repo/branch com a versão).
     async function buildLibFromBranch(s, token, step) {
         const repo = libRepos[step.dir];
-        const fallback = why => { s.steps[step.key] = 'skipped'; note(s, `${step.key}: ${why} — usando a versão do ~/.m2`, 'WARN'); return null; };
-        if (!libsFromBranch) return fallback('PREVIEW_LIBS_FROM_BRANCH=false');
-        if (!repo || !fs.existsSync(path.join(repo, '.git'))) return fallback('sem worktree próprio nem repo irmão');
+        const libRef = s.libRef; // fixo neste start: um stop+start durante o fetch não pode trocá-lo
+        const stale = () => token !== s.runToken;
+        const fallback = (why, fixable = true) => {
+            if (stale()) return false; // pipeline velho não escreve no estado do start novo
+            s.steps[step.key] = 'skipped';
+            s.libFallbacks.push({ key: step.key, dir: step.dir, why, fixable });
+            note(s, `${step.key}: ${why} — usando a versão do ~/.m2`, 'WARN');
+            return null;
+        };
+        if (!libsFromBranch) return fallback('PREVIEW_LIBS_FROM_BRANCH=false', false);
+        if (!repo || !fs.existsSync(path.join(repo, '.git'))) return fallback('sem worktree próprio nem repo irmão', false);
         let need = null;
         try { need = pomCoords(fs.readFileSync(path.join(s.worktrees.back, 'pom.xml'), 'utf8'))?.v; } catch {}
-        if (!need) return fallback('versão do app-back não encontrada no pom');
-        try { await git(repo, ['fetch', '--quiet', 'origin']); } catch (e) { note(s, `${step.key}: git fetch falhou (${e.message}) — usando as refs remotas locais`, 'WARN'); }
+        if (!need) return fallback('versão do app-back não encontrada no pom', false);
+        try { await git(repo, ['fetch', '--quiet', 'origin']); } catch (e) { if (!stale()) note(s, `${step.key}: git fetch falhou (${e.message}) — usando as refs remotas locais`, 'WARN'); }
+        if (stale()) return false;
         let ref = null, coords = null;
-        for (const r of [`origin/${s.ticketId}`, ...libRefs]) {
+        // Ref escolhida no painel vem primeiro; sem a versão do back nela, segue a ordem padrão.
+        const candidates = [...(libRef ? [libRef] : []), `origin/${s.ticketId}`, ...libRefs];
+        for (const r of candidates) {
             try { coords = pomCoords(await git(repo, ['show', `${r}:pom.xml`])); } catch { continue; }
+            if (stale()) return false;
             if (coords?.v === need) { ref = r; break; }
+            if (r === libRef) note(s, `${step.key}: ${r} tem a versão ${coords?.v ?? '?'}, não ${need} — tentando as refs padrão`, 'WARN');
         }
-        if (!ref) return fallback(`nenhuma branch (origin/${s.ticketId}, ${libRefs.join(', ')}) com a versão ${need}`);
+        if (stale()) return false;
+        if (!ref) return fallback(`nenhuma branch (${candidates.join(', ')}) com a versão ${need}`);
         const sha = (await git(repo, ['rev-parse', ref])).trim();
         const dir = path.join(m2Repo, ...coords.g.split('.'), coords.a, coords.v);
         const jar = path.join(dir, `${coords.a}-${coords.v}.jar`);
@@ -440,7 +459,7 @@ function createPreviewManager(options = {}) {
         try {
             const m = JSON.parse(fs.readFileSync(marker, 'utf8'));
             // mtime diferente = outro install sobrescreveu depois do nosso.
-            if (m.sha === sha && m.jarMtimeMs === jarMtime()) {
+            if (!libRef && m.sha === sha && m.jarMtimeMs === jarMtime()) {
                 s.steps[step.key] = 'done';
                 note(s, `${step.key}: ~/.m2 já tem ${coords.v} de ${ref} (${sha.slice(0, 10)}) — build pulado`);
                 return true;
@@ -510,8 +529,16 @@ function createPreviewManager(options = {}) {
         return pick;
     }
 
+    function validLibRef(ref) {
+        if (ref == null || ref === '') return null;
+        // Só refs remotas: HEAD/branch local/sha buildariam um checkout possivelmente sujo do repo irmão.
+        if (typeof ref !== 'string' || !ref.startsWith('origin/') || !LIB_REF_RE.test(ref) || ref.includes('..') || ref.endsWith('.lock')) throw httpError(400, `ref inválida (use origin/<branch>): ${String(ref).slice(0, 80)}`);
+        return ref;
+    }
+
     function start(ticketId, opts = {}) {
         validId(ticketId);
+        const libRef = validLibRef(opts.libRef);
         requireAdapter();
         if (!defaultProfile) throw httpError(400, 'profile do preview não configurado');
         const other = activePreview();
@@ -529,6 +556,7 @@ function createPreviewManager(options = {}) {
         clearTimers(s);
         Object.assign(s, {
             worktrees, db: pick.key, profile: pick.profile, logBuffer: [], error: null, errorPhase: null, startedAt: Date.now(), runningAt: null,
+            libFallbacks: [], libRef,
             steps: Object.fromEntries([
                 ...BUILD_STEPS.map(b => [b.key, willBuild(b, worktrees) ? 'pending' : 'skipped']),
                 ['back', 'pending'], ['front', worktrees.front ? 'pending' : 'skipped'],
@@ -537,6 +565,7 @@ function createPreviewManager(options = {}) {
         const token = ++s.runToken;
         redact.reset();
         const first = BUILD_STEPS.find(b => willBuild(b, worktrees));
+        if (libRef) note(s, `libs sem worktree: reconstruindo a partir de ${libRef} (cache do ~/.m2 ignorado)`);
         note(s, `preview iniciado — worktrees: ${Object.entries(worktrees).map(([k, v]) => `${k} ${v ? '✓' : '–'}`).join(' | ')}`);
         setPhase(s, first.phase);
         pipeline(s, token).catch(e => fail(s, e.message));
@@ -582,6 +611,10 @@ function createPreviewManager(options = {}) {
             activeTicket: active ? active.ticketId : null,
             db: s.db ?? null,
             profile: s.profile ?? null,
+            // Libs que caíram no ~/.m2 neste start; com erro no build do back, o snapshot de lá
+            // pode estar fora de sincronia com o código do ticket (assinatura que mudou, etc.).
+            libFallback: s.libFallbacks.map(f => ({ ...f })),
+            libRef: s.libRef ?? null,
             dbOptions: dbChoices(detectWorktrees(ticketId).back),
         };
     }
@@ -618,6 +651,37 @@ function createPreviewManager(options = {}) {
         return { ...status(ticketId), removed };
     }
 
+    // Refs remotas de mo-entity/app-core cuja versão (pom.xml) bate com a do app-back do
+    // ticket: o que o painel oferece em "Reconstruir libs". Mais recentes primeiro.
+    async function listLibRefs(ticketId) {
+        validId(ticketId);
+        requireAdapter();
+        const wt = detectWorktrees(ticketId);
+        if (!wt.back) throw httpError(404, `worktree do app-back não encontrado para ticket ${ticketId}`);
+        let need = null;
+        try { need = pomCoords(fs.readFileSync(path.join(wt.back, 'pom.xml'), 'utf8'))?.v; } catch {}
+        const out = { need, libs: [] };
+        if (!need) return out;
+        for (const step of BUILD_STEPS.filter(b => b.dir !== 'back')) {
+            const repo = libRepos[step.dir];
+            if (wt[step.dir] || !libsFromBranch || !repo || !fs.existsSync(path.join(repo, '.git'))) continue;
+            try { await git(repo, ['fetch', '--quiet', 'origin']); } catch {}
+            let names = [];
+            try {
+                names = (await git(repo, ['for-each-ref', '--sort=-committerdate', `--count=${LIB_REF_SCAN_MAX}`, '--format=%(refname:short)', 'refs/remotes/origin']))
+                    .split('\n').map(x => x.trim()).filter(x => x && x !== 'origin' && !x.endsWith('/HEAD') && LIB_REF_RE.test(x) && !x.includes('..'));
+            } catch {}
+            const refs = [];
+            for (let i = 0; i < names.length; i += 16) {
+                const batch = names.slice(i, i + 16);
+                const vs = await Promise.all(batch.map(r => git(repo, ['show', `${r}:pom.xml`], 15000).then(x => pomCoords(x)?.v).catch(() => null)));
+                batch.forEach((r, j) => { if (vs[j] === need) refs.push(r); });
+            }
+            out.libs.push({ key: step.key, refs });
+        }
+        return out;
+    }
+
     function getLogBuffer(ticketId) {
         validId(ticketId);
         return (previews.get(ticketId)?.logBuffer || []).slice();
@@ -638,7 +702,7 @@ function createPreviewManager(options = {}) {
         }
     }
 
-    return { start, stop, clean, status, getLogBuffer, on, stopAll, killSync, ports, worktreesDir };
+    return { start, stop, clean, status, listLibRefs, getLogBuffer, on, stopAll, killSync, ports, worktreesDir };
 }
 
 let singleton = null;

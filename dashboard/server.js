@@ -3448,7 +3448,9 @@ function createDashboard(options = {}) {
             res.status(e.status || 500).json({ error: e.message });
         }
     };
-    app.post('/api/preview/:ticketId/start', previewAction(202, (id, req) => preview().start(id, { db: req.body?.db })));
+    app.post('/api/preview/:ticketId/start', previewAction(202, (id, req) => preview().start(id, { db: req.body?.db, libRef: req.body?.libRef })));
+    // Branches de mo-entity/app-core com a versão do back: alimenta "Reconstruir libs" no erro de build.
+    app.get('/api/preview/:ticketId/lib-refs', previewAction(200, id => preview().listLibRefs(id)));
     app.post('/api/preview/:ticketId/stop', previewAction(200, id => preview().stop(id)));
     app.post('/api/preview/:ticketId/clean', previewAction(200, id => preview().clean(id)));
     app.get('/api/preview/:ticketId/status', previewAction(200, id => preview().status(id)));

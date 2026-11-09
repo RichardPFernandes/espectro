@@ -39,6 +39,10 @@
   let lc = null;
   let lcBusy = null;       // 'use' | 'restore'
   let lcError = null;      // último erro (conflito do git é longo demais pro toast)
+  // "Reconstruir libs": branches candidatas (GET /lib-refs) e a escolhida no select.
+  let libRefs = {};        // { loading } | { data: { need, libs: [{ key, refs }] } } | { error }
+  let libRefChoice = null;
+  let pendingLibRef = null;
 
   // Worktree do app-back = .claude/worktrees/<id>; run lido de um worktree usa o nome
   // dele (inclui os sem número de ticket), senão o ticket-id. location vem como
@@ -106,6 +110,25 @@
     });
   }
 
+  // Erro no build do back com lib(s) vindas do ~/.m2: o snapshot de lá pode estar fora de
+  // sincronia com o código do ticket (ex.: assinatura de método que mudou na lib).
+  const libFixable = () => st?.phase === 'error' && st.errorPhase === 'building-app-back'
+    && (st.libFallback || []).filter(f => f.fixable);
+
+  async function loadLibRefs() {
+    if (!key || libRefs.loading) return;
+    const k = key;
+    libRefs = { loading: true };
+    paint();
+    try {
+      const r = await api(`/api/preview/${encodeURIComponent(k)}/lib-refs`);
+      if (k === key) libRefs = { data: r };
+    } catch (e) {
+      if (k === key) libRefs = { error: e.message };
+    }
+    paint();
+  }
+
   async function act(action) {
     if (!key) return;
     const k = key;
@@ -116,7 +139,9 @@
       if (action === 'start') {
         const db = selectedDb();
         opts.headers = { 'Content-Type': 'application/json' };
-        opts.body = JSON.stringify({ db: db?.key ?? null });
+        opts.body = JSON.stringify({ db: db?.key ?? null, libRef: pendingLibRef || undefined });
+        pendingLibRef = null; // vale só pro clique de "Reconstruir libs"
+        libRefs = {};         // lista de branches fica velha após um novo start
       }
       const s = await api(`/api/preview/${encodeURIComponent(k)}/${action}`, opts);
       if (k === key) st = s;
@@ -284,6 +309,30 @@
     return o ? `<span class="pv-meta">banco: ${esc(dbText(o))}</span>` : '';
   }
 
+  // Aviso + reparo no erro de build do back quando mo-entity/app-core vieram do ~/.m2.
+  function libFixHtml() {
+    const fx = libFixable();
+    if (!fx || !fx.length) return '';
+    const names = fx.map(f => f.key).join(', ');
+    let picker;
+    if (libRefs.loading) picker = '<span class="pv-meta">Buscando branches com a versão do back…</span>';
+    else if (libRefs.error) picker = `<span class="pv-meta">Não foi possível listar as branches: ${esc(libRefs.error)}</span> <button type="button" class="link-btn" data-pvlibload>Tentar de novo</button>`;
+    else if (!libRefs.data) picker = '<button type="button" class="ghost-btn" data-pvlibload>Escolher branch das libs…</button>';
+    else {
+      const all = [...new Set(libRefs.data.libs.flatMap(l => l.refs))];
+      if (!all.length) picker = `<span class="pv-meta">Nenhuma branch remota de ${esc(names)} tem a versão ${esc(libRefs.data.need || '?')}. Rode o install da lib na branch certa e tente de novo.</span>`;
+      else {
+        const cur = all.includes(libRefChoice) ? libRefChoice : all[0];
+        picker = `<label class="pv-meta pv-db">Branch das libs (versão ${esc(libRefs.data.need)})
+          <select data-pvlibref ${busy ? 'disabled' : ''}>${all.map(r => `<option value="${esc(r)}" ${r === cur ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+          <button type="button" class="ghost-btn" data-pvlibgo="${esc(cur)}" ${busy ? 'disabled' : ''} title="Reconstrói ${esc(names)} a partir dessa branch (ignora o cache do ~/.m2) e reinicia o preview">🔧 Reconstruir libs e tentar de novo</button>`;
+      }
+    }
+    return `
+      <p class="fold-msg warn">${esc(names)} ${fx.length > 1 ? 'usaram' : 'usou'} o ~/.m2 (nenhuma branch padrão com a versão do back). Erro de compilação em chamada de lib costuma ser snapshot desatualizado ou de outra branch.</p>
+      <div class="pv-actions">${picker}</div>`;
+  }
+
   function bodyHtml() {
     if (!st && loadError) return `<p class="fold-msg err">Não foi possível consultar o preview de <code>${esc(key)}</code>: ${esc(loadError)}</p>
       <div class="pv-actions"><button type="button" class="ghost-btn" data-pvretry>↻ Tentar de novo</button></div>`;
@@ -317,6 +366,7 @@
       return `
         <p class="pv-state err">🔴 Erro na fase: ${esc(st.errorPhase || '—')}</p>
         <p class="pv-msg">Mensagem: ${esc(st.error || '—')}</p>
+        ${libFixHtml()}
         ${logBox()}
         ${other}
         <div class="pv-actions">${dbSelect()} ${btn('start', '↺ Tentar novamente', w.back ? '' : 'disabled title="worktree não encontrado"')} ${btn('stop', '■ Parar')} ${btn('clean', '🧹 Limpar cache', 'title="Apaga target/ dos worktrees e o que o preview instalou no ~/.m2"')}</div>`;
@@ -351,7 +401,7 @@
     const hero = document.querySelector('#detail section.hero');
     if (!r || !hero || document.getElementById('foldPreview')) return;
     const k = previewKey(r);
-    if (k !== key) { key = k; st = null; loadError = null; showLog = true; prError = null; lc = null; lcError = null; connect(); refresh(); }
+    if (k !== key) { key = k; st = null; loadError = null; showLog = true; prError = null; lc = null; lcError = null; libRefs = {}; libRefChoice = pendingLibRef = null; connect(); refresh(); }
     // Aberto sozinho enquanto há preview deste ticket em andamento.
     const open = openKeys.has(k) || (st && st.phase !== 'idle');
     hero.insertAdjacentHTML('beforeend', `
@@ -361,6 +411,8 @@
       </details></div>`);
     const fold = document.getElementById('foldPreview');
     fold.addEventListener('change', e => {
+      const lr = e.target.closest('[data-pvlibref]');
+      if (lr) { libRefChoice = lr.value; paint(); return; }
       const sel = e.target.closest('[data-pvdb]');
       if (!sel) return;
       dbChoice = sel.value;
@@ -368,6 +420,9 @@
     });
     fold.addEventListener('toggle', () => { if (fold.open) openKeys.add(key); else openKeys.delete(key); });
     fold.addEventListener('click', e => {
+      if (e.target.closest('[data-pvlibload]')) { libRefs = {}; return loadLibRefs(); }
+      const lg = e.target.closest('[data-pvlibgo]');
+      if (lg && !lg.disabled) { libRefChoice = pendingLibRef = lg.dataset.pvlibgo; return act('start'); }
       const a = e.target.closest('[data-pvact]');
       if (a && !a.disabled) return act(a.dataset.pvact);
       const l = e.target.closest('[data-lcact]');
