@@ -107,6 +107,18 @@ test('linha "Arquivo:" ilegível perde o crédito de arquivo e o feedback explic
     }
 });
 
+test('PRI-320: "Arquivo:" inline legível conta como arquivo; inline ilegível recebe o aviso de linha ilegível', () => {
+    const mk = inline => `## Plano de execução\n1. Passo um. ${inline}. Verificação: teste passa.\n` +
+        '2. Passo dois\n   - Arquivo: `src/b/B.java`\n   - Verificação: teste passa.\n3. Passo três\n   - Arquivo: `src/c/C.java`\n   - Verificação: teste passa.\n';
+    const files = r => r.criteria.find(c => c.key === 'steps_files').points;
+    const ok = scorePlan(mk('Arquivo: src/a/A.java'), '', { threshold: 60 });
+    assert.strictEqual(files(ok), 20);
+    assert.ok(!ok.feedback.some(f => /legível/.test(f)));
+    const bad = scorePlan(mk('Arquivo: `src/.../A.java`'), '', { threshold: 60 });
+    assert.ok(Math.abs(files(bad) - 20 * 2 / 3) < 0.05);
+    assert.ok(bad.feedback.some(f => /^Step 1: a linha "Arquivo:" não tem uma lista legível/.test(f)));
+});
+
 test('mais de 10 passos também reprova o critério de quantidade', () => {
     const steps = Array.from({ length: 11 }, (_, i) => `${i + 1}. Passo ${i + 1} em \`a/b${i}.js\`. Verificação: teste ${i} passa.`).join('\n');
     const r = scorePlan(`## Plano de execução\n${steps}\n`, '', { threshold: 60 });

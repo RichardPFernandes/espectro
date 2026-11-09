@@ -10,7 +10,7 @@ const planScorer = require('./plan-scorer');
 const acRegistry = require('./ac-registry');
 const schemaWatcher = require('./schema-watcher');
 const { serviceOf } = require('./service-detector');
-const { normPath, declaredPaths } = require('./plan-paths');
+const { normPath, declaredPaths, declaredAcIds } = require('./plan-paths');
 
 const UNKNOWN = 'UNKNOWN';
 
@@ -105,13 +105,11 @@ function extractPlanSteps(planContent) {
     return {
         plan_version: planVersion,
         steps: steps.map((text, i) => {
-            const lines = text.split('\n');
-            const acLine = lines.find(l => /^\s*[-*]?\s*crit[eé]rios?\s*:/i.test(l));
             return {
                 index: i + 1,
                 text,
                 paths_decl: declaredPaths(text).paths,
-                acs: acLine ? [...new Set(acLine.match(/\bAC-\d+\b/g) || [])] : [],
+                acs: declaredAcIds(text),
             };
         }),
     };
