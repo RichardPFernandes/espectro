@@ -2,7 +2,9 @@
 
 > **Status:** **APROVADA (v2.1) pelo Richard em 2026-11-09 ("AUTORIZO")**, com as recomendações:
 > Q1 (a) três filhas; Q2 (a) tarefa 0 da S5.2 verifica U10, sem prova o gate RC-1 fica não
-> cumprido; Q3 (b) **implementação espera a PRI-293** (recomendação D-6); Q4 (a); Q5 m1–m5
+> cumprido; Q3 **corrigida em 2026-11-09**: a PRI-293 **não** é pré-condição (D-6 decidida pelo
+> Richard em 27/10: "basta a HD-AF-078 para liberar as fatias S4 em diante"; a v2.1 tinha citado
+> a recomendação anterior do Arquiteto por engano); Q4 (a); Q5 m1–m5
 > aprovadas como registro, sem limiar; Q6 (a). **Q7 (a) decidida pelo Richard em 2026-11-09**
 > (reclassificação por escopo e rework `ALL` como risco, `RISK_RECLASSIFIED`). Nada implementado.
 > G3 r1: CHANGES_REQUESTED nos dois revisores (Opus O-01…O-21; Arquiteto A-01…A-15) → v2.
@@ -389,7 +391,8 @@ Sem aprovação do Richard, "melhorou" segue UNKNOWN.
 
 A reserva `DECOMPOSITION_RESERVED` (B1) fica no código até um PR de liberação próprio, que
 só pode ser aberto com: (1) gate do RC-1 cumprido ou dispensado pelo Richard (Q2); (2)
-PRI-293 aplicada ou decisão governada registrada (Q3); (3) nova versão de policy com as
+HD-AF-078 como base de liberação (D-6, decidida em 27/10; a PRI-293 não é pré-condição) e a
+nota da Q7 entregue à reconciliação; (3) nova versão de policy com as
 seções novas, aprovada; (4) Q6 e Q7 decididas (ambas decididas em 2026-11-09); (5) S5.3 entregue ou dispensada por decisão.
 Cada porta é citada no PR de liberação por referência verificável (comentário/decisão).
 
@@ -514,7 +517,7 @@ Se preferir só duas, a S5.3 entra na S5.2 (8 pontos). Nomes S5.n para não coli
 | -- | -- | -- | -- |
 | Q1 | Divisão | (a) S5.1 + S5.2 + S5.3; (b) S5.1 + S5.2 (com `failure_class`, 8 pts) | **(a)** |
 | Q2 | Gate do RC-1 com U10 nunca verificado | (a) tarefa 0 da S5.2 verifica um mecanismo; sem prova, gate não cumprido e a flag não liga até nova decisão sua; (b) você dispensa o gate por decisão registrada e aceita `UNENFORCED` até antes da S6; (c) proibir subagentes nos Attempts de passo | **(a)**. (c) faz os braços diferirem do controle fora da intervenção (D15) |
-| Q3 | Implementar antes da PRI-293 (RC-1, RC-3 NOT APPLIED) | (a) implementar atrás da flag, sem alegar RC aplicado, com decisão governada registrada nesta issue; ligar a flag continua esperando a PRI-293; (b) esperar a PRI-293 | A S5 muda o contrato do DOM-06, que vai além da baseline (AGENTS.md regra 8), e a D-6 recomenda **(b)**. A S4 seguiu (a), mas isso não é precedente automático. Decisão sua |
+| Q3 | Implementar antes da PRI-293 (RC-1, RC-3 NOT APPLIED) | (a) implementar atrás da flag, sem alegar RC aplicado, com decisão governada registrada nesta issue; ligar a flag continua esperando a PRI-293; (b) esperar a PRI-293 | **CORRIGIDA (2026-11-09):** a pergunta partiu de premissa errada. A D-6 já foi **decidida** pelo Richard em 27/10 ("basta a HD-AF-078 para liberar as fatias S4 em diante; a PRI-293 não é pré-condição delas"); a v2.1 citou a recomendação anterior do Arquiteto (`plano-aplicacao-rcs.md`). A implementação segue atrás da flag, sem alegar RC aplicado; a PRI-293 fecha os RCs formalmente em paralelo |
 | Q4 | Rota da integração | (a) `default_route` (T3, alto); (b) classe máxima dos grupos | **(a)** |
 | Q5 | Métrica do RC-3 (B9) | aprovar m1–m5 como registro, sem limiar / ajustar | aprovar como registro |
 | Q6 | Manifesto (só leitura) também nos Attempts de Review/Test/Verify da Run decomposta | (a) sim, sob a flag; (b) não, e o rework depois de gate parte do `post` do gate sem prova (o encadeamento fica quebrado e todo rework vai para `blocked`) | **(a)**: única forma de cumprir o "sem Attempt no meio" do v9 §3.5 |
