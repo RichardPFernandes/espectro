@@ -1,5 +1,5 @@
 // node --test scripts/validate-handoff.test.js
-// Validação do Agent Handoff Contract (scripts/validate-handoff.js), versões 1.0 e 1.1.
+// Validação do Agent Handoff Contract (scripts/validate-handoff.js), versões 1.0, 1.1 e 1.2.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('node:child_process');
 const { validate, validateFile, extractYaml, parseArgs, combineExit } = require('./validate-handoff.js');
-const { checkPreDone, TASK_TYPES } = require('./lib/maestro-guard-pre-done.js');
+const { checkPreDone, TASK_TYPES, FIXED_RULES } = require('./lib/maestro-guard-pre-done.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-handoff-'));
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -35,6 +35,8 @@ const v11 = () => ({
     assumptions: [],
     usage: { duration: '90s', retries: 0, tokens: 'UNKNOWN' },
 });
+
+const v12 = (nivel = 'medio') => ({ ...v11(), handoff_version: '1.2', nivel_processo: nivel });
 
 test('v1.0 completo é válido (compatibilidade)', () => {
     assert.deepStrictEqual(errors(validate(v10())), []);
@@ -481,4 +483,131 @@ test('--check-paths acusa artefato e evidência inexistentes', () => {
     fs.writeFileSync(path.join(tmp, 'scripts', 'a.test.js'), '');
     fs.writeFileSync(path.join(tmp, 'run.log'), 'ok');
     assert.deepStrictEqual(errors(validate(d, { checkPaths: true, baseDir: tmp })), []);
+});
+
+// Acordo de desenvolvimento — níveis de processo (v1.2 e guard de Done).
+
+test('v1.2 completo com nivel_processo é válido, nos três níveis', () => {
+    for (const nivel of ['leve', 'medio', 'alto']) {
+        assert.deepStrictEqual(codes(validate(v12(nivel))), [], nivel);
+    }
+});
+
+test('v1.2 exige nivel_processo no enum; "médio" com acento recebe a dica', () => {
+    const absent = v12(); delete absent.nivel_processo;
+    assert.deepStrictEqual(errors(validate(absent)), ['NIVEL_PROCESSO']);
+    const accented = validate(v12('médio'));
+    assert.deepStrictEqual(errors(accented), ['NIVEL_PROCESSO']);
+    assert.match(accented[0].msg, /sem acento/);
+    assert.match(validate(v12('Alto '))[0].msg, /escreva "alto"/);
+    assert.deepStrictEqual(errors(validate(v12('baixo'))), ['NIVEL_PROCESSO']);
+    assert.deepStrictEqual(errors(validate(v12(['leve']))), ['NIVEL_PROCESSO']);
+    assert.deepStrictEqual(errors(validate(v12(2))), ['NIVEL_PROCESSO']);
+});
+
+test('v1.2 herda routing e risk da 1.1', () => {
+    const d = v12(); delete d.routing; delete d.risk;
+    const e = errors(validate(d));
+    assert.ok(e.includes('ROUTING_MISSING') && e.includes('RISK_MISSING'), e.join());
+});
+
+test('v1.0 e v1.1 sem nivel_processo continuam válidos (sem reinterpretar histórico)', () => {
+    assert.deepStrictEqual(codes(validate(v11())), []);
+    assert.deepStrictEqual(errors(validate(v10())), []);
+});
+
+test('subir de nível exige motivo; com motivo é válido', () => {
+    const d = v12('alto'); d.nivel_processo_inicial = 'medio';
+    assert.deepStrictEqual(errors(validate(d)), ['NIVEL_PROCESSO_MOTIVO']);
+    d.nivel_processo_motivo = 'revisor subiu: a fatia passou a gravar estado autoritativo';
+    assert.deepStrictEqual(codes(validate(d)), []);
+    const same = v12('medio'); same.nivel_processo_inicial = 'medio';
+    assert.deepStrictEqual(codes(validate(same)), []);
+});
+
+test('descer de nível exige motivo e decisão aprovada; só o Richard desce', () => {
+    const d = v12('leve'); d.nivel_processo_inicial = 'alto';
+    assert.deepStrictEqual(errors(validate(d)), ['NIVEL_PROCESSO_MOTIVO', 'NIVEL_PROCESSO_DESCEU_SEM_DECISAO']);
+    d.nivel_processo_motivo = 'Richard desceu na issue';
+    assert.deepStrictEqual(errors(validate(d)), ['NIVEL_PROCESSO_DESCEU_SEM_DECISAO']);
+    d.decisions = { approved: ['Richard desceu para leve (link do comentário)'], proposed: [] };
+    const r = validate(d);
+    assert.deepStrictEqual(codes(r), ['WARN:NIVEL_PROCESSO_DESCEU']);
+    assert.match(r[0].msg, /só com o Richard/);
+    const bad = v12(); bad.nivel_processo_inicial = 'xyz';
+    assert.deepStrictEqual(errors(validate(bad)), ['NIVEL_PROCESSO_INICIAL']);
+    const arr = v12(); arr.nivel_processo_inicial = ['alto'];
+    assert.deepStrictEqual(errors(validate(arr)), ['NIVEL_PROCESSO_INICIAL']);
+});
+
+test('o template 1.2 cobra nivel_processo vazio', () => {
+    const { results, doc } = validateFile(path.join(__dirname, '..', 'templates', 'handoff.yaml.template'));
+    assert.strictEqual(doc.handoff_version, '1.2');
+    assert.ok(errors(results).includes('NIVEL_PROCESSO'), errors(results).join());
+});
+
+test('guard: leve e médio não exigem spec separada nem G3; regras fixas citadas; códigos iguais', () => {
+    for (const nivel of ['leve', 'medio']) {
+        const d = v12(nivel);
+        d.closure = { task_type: TASK_TYPES.IMPLEMENTATION };
+        const r = checkPreDone(d, { homeDir: makeHome() });
+        assert.strictEqual(r.exitCode, 3);
+        assert.deepStrictEqual(preCodes(r), ['PRE_DONE_CRITERIA_UNDEFINED']);
+        assert.deepStrictEqual(r.nivelProcesso, { nivel, declared: true, label: nivel });
+        const msg = r.results[0].msg;
+        assert.match(msg, new RegExp(`nível ${nivel === 'medio' ? 'médio' : 'leve'}`));
+        assert.match(msg, /não exige spec separada nem revisão G3/);
+        for (const rule of FIXED_RULES) assert.ok(msg.includes(rule), rule);
+        assert.deepStrictEqual(r.fixedRules, FIXED_RULES);
+    }
+});
+
+test('guard: alto cita o processo completo; sem nível declarado vale alto', () => {
+    const alto = v12('alto');
+    alto.closure = { task_type: TASK_TYPES.BUG };
+    const r = checkPreDone(alto, { homeDir: makeHome() });
+    assert.match(r.results[0].msg, /nível alto: processo completo/);
+    assert.match(r.results[0].msg, /revisão G3 independente/);
+    const legacy = checkPreDone(v11(), { homeDir: makeHome() });
+    assert.deepStrictEqual(preCodes(legacy), ['PRE_DONE_TYPE_ABSENT']);
+    assert.deepStrictEqual(legacy.nivelProcesso, { nivel: 'alto', declared: false, label: 'não declarado (handoff anterior à 1.2; vale alto)' });
+    assert.match(legacy.results[0].msg, /vale o maior/);
+    const v11WithField = { ...v11(), nivel_processo: 'leve' };
+    assert.strictEqual(checkPreDone(v11WithField, { homeDir: makeHome() }).nivelProcesso.declared, false);
+    const absent12 = v12(); delete absent12.nivel_processo;
+    assert.strictEqual(checkPreDone(absent12, { homeDir: makeHome() }).nivelProcesso.label, 'ausente (vale alto)');
+    for (const bad of ['Alto', ['leve'], 2]) {
+        const r12 = checkPreDone(v12(bad), { homeDir: makeHome() });
+        assert.deepStrictEqual(r12.nivelProcesso, { nivel: 'alto', declared: false, label: 'inválido (vale alto)' });
+    }
+});
+
+test('guard: recusa e aprovação do planejamento Prisma citam o nível sem mudar o exit', () => {
+    const home = makeHome();
+    const { transfer, doc } = planningPack(home);
+    doc.handoff_version = '1.2';
+    doc.nivel_processo = 'leve';
+    const ok = checkPreDone(doc, { homeDir: home, handoffPath: transfer, baseDir: home });
+    assert.strictEqual(ok.exitCode, 0);
+    assert.match(ok.results[0].msg, /nível leve/);
+    assert.match(ok.results[0].msg, /confirmação do Richard continua obrigatória/);
+    delete doc.closure.planning_ledger;
+    const refused = checkPreDone(doc, { homeDir: home, handoffPath: transfer, baseDir: home });
+    assert.strictEqual(refused.exitCode, 1);
+    assert.deepStrictEqual(preCodes(refused), ['PRE_DONE_MISSING']);
+    assert.match(refused.results[0].msg, /^\[leve\] Planning Ledger ausente/);
+});
+
+test('CLI --pre-done imprime o nível e as regras fixas', () => {
+    const f = path.join(tmp, 'nivel.yaml');
+    writeHandoff(f, 'nivel_processo: "medio"\nclosure:\n  task_type: "Implementação (feature/refactor)"');
+    const yaml = fs.readFileSync(f, 'utf8').replace('handoff_version: "1.0"', 'handoff_version: "1.2"')
+        + 'routing:\n  from: "Implementador"\n  to: "Revisor"\n  runtime: "claude"\n  fallback_reason: null\n'
+        + 'risk:\n  level: "MEDIUM"\n  signals: []\n  classified_by: "Coordenador"\n';
+    fs.writeFileSync(f, yaml);
+    const ran = spawnSync(process.execPath, [path.join(__dirname, 'validate-handoff.js'), f, '--pre-done'], { encoding: 'utf8' });
+    assert.strictEqual(ran.status, 3, ran.stdout + ran.stderr);
+    assert.match(ran.stdout, /VÁLIDO; pré-Done aguarda critério humano/);
+    assert.match(ran.stdout, /nível de processo: medio/);
+    assert.match(ran.stdout, /regras fixas \(todo nível\): evidência persistida; aceite dos ACs pelo Richard; pai não fecha com filha aberta/);
 });

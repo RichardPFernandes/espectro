@@ -35,6 +35,39 @@ const LIMITS = [
     'execution.status não autoriza Done. A checagem lê as citações de closure.',
 ];
 
+// Acordo de desenvolvimento (AGENTS.md, «Níveis de processo»). As regras fixas
+// valem em todo nível; a checagem não consulta o Linear para conferi-las.
+const FIXED_RULES = [
+    'evidência persistida',
+    'aceite dos ACs pelo Richard',
+    'pai não fecha com filha aberta',
+];
+
+const LEVEL_TEXT = {
+    leve: 'nível leve: o guard não exige spec separada nem revisão G3',
+    medio: 'nível médio: o guard não exige spec separada nem revisão G3',
+    alto: 'nível alto: processo completo (spec fina, revisão G3 independente, AUTORIZO específico, bump e readback), conferido manualmente',
+};
+
+// O campo só existe a partir da 1.2 (mesma fronteira do validador). Sem nível
+// válido, vale o maior: na dúvida, o maior.
+function processLevel(doc) {
+    const isMap = doc && typeof doc === 'object' && !Array.isArray(doc);
+    const v12 = isMap && String(doc.handoff_version ?? '') === '1.2';
+    const raw = v12 ? doc.nivel_processo : undefined;
+    if (typeof raw === 'string' && Object.prototype.hasOwnProperty.call(LEVEL_TEXT, raw)) {
+        return { nivel: raw, declared: true, label: raw, text: LEVEL_TEXT[raw] };
+    }
+    let label = 'não declarado (handoff anterior à 1.2; vale alto)';
+    if (v12) label = raw === undefined || raw === null || raw === '' ? 'ausente (vale alto)' : 'inválido (vale alto)';
+    return {
+        nivel: 'alto',
+        declared: false,
+        label,
+        text: `nível ${label}, vale o maior — ${LEVEL_TEXT.alto}`,
+    };
+}
+
 const FIELDS = [
     ['approved_document', 'Approved Document'],
     ['evidence', 'Evidence'],
@@ -117,15 +150,23 @@ function checkPreDone(doc, opts = {}) {
     const baseDir = opts.baseDir || process.cwd();
     const homeDir = opts.homeDir || os.homedir();
     const handoffPath = opts.handoffPath ? path.resolve(opts.handoffPath) : null;
-    const base = { humanConfirmation: 'required', linearDone: 'not_recorded', limits: LIMITS.slice() };
+    const level = processLevel(doc);
+    const fixed = `continuam obrigatórios: ${FIXED_RULES.join(', ')}`;
+    const base = {
+        humanConfirmation: 'required',
+        linearDone: 'not_recorded',
+        limits: LIMITS.slice(),
+        nivelProcesso: { nivel: level.nivel, declared: level.declared, label: level.label },
+        fixedRules: FIXED_RULES.slice(),
+    };
     const results = [];
-    const err = (code, msg) => results.push({ level: 'ERROR', code, msg });
+    const err = (code, msg) => results.push({ level: 'ERROR', code, msg: `[${level.label}] ${msg}` });
     const refused = () => ({ ...base, outcome: 'refused', exitCode: 1, results });
     const human = (code, msg) => ({
         ...base,
         outcome: 'human',
         exitCode: 3,
-        results: [{ level: 'INFO', code, msg }],
+        results: [{ level: 'INFO', code, msg: `${msg}. ${level.text}; ${fixed}.` }],
     });
 
     if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
@@ -243,9 +284,9 @@ function checkPreDone(doc, opts = {}) {
         results: [{
             level: 'INFO',
             code: 'PRE_DONE_EVIDENCE_PRESENT',
-            msg: 'Approved Document, Evidence, Handoff FINAL e Planning Ledger estão citados. A confirmação do Richard continua obrigatória. Done não foi registrado.',
+            msg: `Approved Document, Evidence, Handoff FINAL e Planning Ledger estão citados. ${level.text}; ${fixed}. A confirmação do Richard continua obrigatória. Done não foi registrado.`,
         }],
     };
 }
 
-module.exports = { checkPreDone, TASK_TYPES, LIMITS, evidenceRoot };
+module.exports = { checkPreDone, TASK_TYPES, LIMITS, FIXED_RULES, processLevel, evidenceRoot };
