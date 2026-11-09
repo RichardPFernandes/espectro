@@ -74,9 +74,11 @@ plano** a partir de `Attempt.signals` + `Attempt.would_route` (projetados em
 `cost-projection.js`). Fold **Subtarefas**: chave, passos, tipo, classe/faixa
 sombra e se sairia do Opus. Despacho continua AS-IS.
 
-## Coordenação (somente leitura)
+## Coordenação (API somente leitura)
 
-A aba **Coordenação** lê `GET /api/coordination`; não despacha agentes nem grava estado.
+`GET /api/coordination` expõe o estado do Coordenador; não despacha agentes nem grava estado. A aba
+Coordenação saiu do dashboard na onda 1 do design (PRI-323); a rota e o evento `coordination_update`
+continuam para outros clientes.
 `COORD_STATUS_PATH` configura o JSON do Coordenador. No `npm start`, a
 ausência da variável (ambiente e `.env` do dashboard) usa
 `~/.maestro-guard/coord-status.json`. Um servidor criado sem esse caminho,
@@ -399,7 +401,7 @@ demanda aberta**, com o status do Redmine na linha e uma nota no painel do run.
 - São só leitura: o watcher não lê runs em `_archive/`, então a API recusa mensagem (409)
   e arquivar de novo (409). Detalhe, contexto, Ticket Redmine e PR Matrix funcionam.
 - Eles também aparecem nas abas (Quadro na coluna Concluído, Tabela, Tickets e PRs,
-  Métricas), marcados com `archived: true` na API. `POST /api/archived-open/refresh`
+  Relatório semanal), marcados com `archived: true` na API. `POST /api/archived-open/refresh`
   força a varredura.
 
 ## Navegação e atalhos
@@ -445,7 +447,7 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
   faixa tracejada é o tempo esperando agora, em amarelo se estiver parado esperando você.
   As cores são uma rampa ordinal de um só matiz, validada nos dois temas. Sete etapas não
   cabem distinguíveis num matiz, por isso a divisão em fases.
-- **Métricas:** contadores por status, runs ativos por etapa, mediana do tempo por etapa
+- **Relatório semanal** (antiga Métricas; chave `metricas`): contadores por status, runs ativos por etapa, mediana do tempo por etapa
   (estimada pelo `agent_log`), retrabalho (`state.retries`) e PRs por estado (real do
   Bitbucket onde já foi consultado; senão, o do `state.json`).
 - **Tickets e PRs:** um cartão por ticket do Redmine, com status, responsável, % e
@@ -457,7 +459,7 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
   aprovação. Os cartões com alerta vêm primeiro. Há filtros para com alerta, PR aberto e
   sem PR. Runs cujo task-id começa com data, e não com o número do ticket, ficam em "Sem
   ticket".
-- **Grafo:** rastreabilidade ticket → spec → arquivos → PR, lida de
+- **Knowledge Graph** (antigo Grafo; chave `grafo`): rastreabilidade ticket → spec → arquivos → PR, lida de
   `memory/knowledge-graph.json` (`GET /api/graph`; gravado pelo watcher a cada tick e pelo
   `/commit` — ver `scripts/lib/knowledge-graph.js`). Um cartão por ticket com a spec, os
   arquivos tocados agrupados por repositório (`.java` primeiro) e os PRs com o status do

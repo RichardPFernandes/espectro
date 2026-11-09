@@ -514,8 +514,8 @@
   .seg-ctl .count { color: var(--faint); font-weight: 500; }
   .lamp { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--idle); flex-shrink: 0; }
 
-  /* Quadro, Tabela, Linha do tempo, Métricas e Tickets e PRs (views.js): screens/run-views.css. */
-  /* Tabela genérica rolável (coordination.js). */
+  /* Quadro, Tabela, Linha do tempo, Relatório semanal e Tickets e PRs (views.js): screens/run-views.css. */
+  /* Tabela genérica rolável (would-route-metrics.js). */
   .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 
   /* Badge de status do TICKET Redmine (ticketStatusBadge, index.html) — reusado na
@@ -575,7 +575,6 @@
 <link rel="stylesheet" href="screens/prs.css">
 <link rel="stylesheet" href="screens/graph.css">
 <link rel="stylesheet" href="screens/patterns.css">
-<link rel="stylesheet" href="screens/coordination.css">
 <link rel="stylesheet" href="screens/would-route.css">
 <link rel="stylesheet" href="screens/routing.css">
 <link rel="stylesheet" href="screens/run-subtasks.css">
@@ -3215,9 +3214,6 @@ function connect() {
     if (msg.type === 'hello') {
       setRuns(msg.runs); if (selected) loadContext(false);
       window.ContextMd?.refresh(); // reconexão: pode ter perdido context_update
-      if (window.Views?.current() === 'coordenacao') window.CoordinationView?.load();
-    } else if (msg.type === 'coordination_update') {
-      if (window.Views?.current() === 'coordenacao') window.CoordinationView?.load();
     } else if (msg.type === 'state_update') {
       const prev = runs.get(msg.taskId);
       runs.set(msg.taskId, msg.run || { ...(prev || {}), taskId: msg.taskId, state: msg.state });
@@ -3283,7 +3279,6 @@ document.addEventListener('click', async e => {
 <script src="views.js"></script>
 <script src="graph.js"></script>
 <script src="patterns.js"></script>
-<script src="coordination.js"></script>
 <script src="would-route-metrics.js"></script>
 <script src="routing.js"></script>
 <script src="version.js"></script>

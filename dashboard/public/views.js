@@ -1,5 +1,5 @@
-// Visões extras do dashboard (abas): Quadro, Tabela, Linha do tempo, Métricas,
-// Tickets e PRs, Grafo (esta em graph.js). Script clássico carregado depois do principal: usa os globais de lá
+// Visões extras do dashboard (abas): Quadro, Tabela, Linha do tempo, Relatório semanal (chave
+// metricas), Tickets e PRs, Knowledge Graph (chave grafo, em graph.js). Script clássico carregado depois do principal: usa os globais de lá
 // (runs, NODES, NODE_LABEL, STATUS, esc, ago, when, titleOf, isHidden, isDone,
 // needsYou, visibleRuns, extractPrs, prBadge, prState, ticketIdOfRun, ticketCache,
 // prCache, apiStatus, select, setGroupOpen, GROUPS, prefs, persist, $,
@@ -7,10 +7,9 @@
 (() => {
   const VIEWS = [
     ['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'],
-    ['timeline', 'Linha do tempo'], ['metricas', 'Métricas'], ['tickets', 'Tickets e PRs'],
-    ['redmine', 'Redmine'], ['grafo', 'Grafo'], ['padroes', 'Padrões'], ['prs', 'PRs'],
-    ['coordenacao', 'Coordenação'], ['roteamento', 'Roteamento de modelo'],
-    ['versao', 'Versão'], ['computador', 'Este computador'],
+    ['timeline', 'Linha do tempo'], ['metricas', 'Relatório semanal'], ['tickets', 'Tickets e PRs'],
+    ['redmine', 'Tickets'], ['grafo', 'Knowledge Graph'], ['padroes', 'Padrões de falha'], ['prs', 'Pull requests'],
+    ['roteamento', 'Roteamento'], ['versao', 'Sistema'], ['computador', 'Este computador'],
   ];
   // Etapas agrupadas em 4 fases pra linha do tempo: 7 tons de um matiz não ficam
   // distinguíveis (validado), 4 ficam. O nome exato da etapa vai no tooltip.
@@ -25,8 +24,10 @@
 
   // "Meus Tickets" virou "Redmine" (redmine.js): hash/pref antigos caem na aba nova.
   // #medicao-modelo virou a aba "Sombra × real" de Roteamento (telas de roteamento, T6).
+  // #coordenacao: tela descartada na onda 1 do design (PRI-323); a API continua, a tela não.
   const alias = v => {
     if (v === 'my-tickets') return 'redmine';
+    if (v === 'coordenacao') return 'runs';
     if (v === 'medicao-modelo') { window.RoutingTabRequest = 'sombra'; return 'roteamento'; }
     return v;
   };
@@ -100,23 +101,25 @@
   const RUN_VIEWS = [['runs', 'Lista', 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'],
     ['quadro', 'Quadro', 'M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v7h-4z'], ['tabela', 'Tabela', 'M3 5h18v14H3zM3 10h18M9 10v9'],
     ['timeline', 'Linha do tempo', 'M3 6h8M7 12h10M5 18h14']];
-  // Grupos e ordem das áreas do AppNav do design (Trabalho, Operação, Conhecimento, Agentes e
+  // Grupos, ordem, rótulos e ícones do AppNav do design (Trabalho, Operação, Conhecimento, Agentes e
   // modelos, Plataforma). Só entram visões que existem no app: área sem tela não aparece.
+  // Fora do AppNav, por enquanto: Relatório semanal (no design se chega pela Saúde do projeto, que o
+  // app não tem), Tickets e PRs (sai quando Tickets e Pull requests absorverem o cruzamento das três
+  // fontes, PRI-325/PRI-326) e Este computador.
   const NAV = [
     ['Trabalho', [
       ['runs', 'Runs', 'M3 12h4l3-8 4 16 3-8h4'],
-      ['metricas', 'Métricas', 'M4 20V10M10 20V4M16 20v-7M22 20H2'],
-      ['tickets', 'Tickets e PRs', 'M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 7v12'],
-      ['redmine', 'Redmine', 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3'],
+      ['redmine', 'Tickets', 'M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 7v12'],
       ['prs', 'Pull requests', 'M6 3v12M18 9a3 3 0 0 1-3 3H9a3 3 0 0 0-3 3M6 18h.01M18 6h.01'],
+      ['metricas', 'Relatório semanal', 'M4 20V10M10 20V4M16 20v-7M22 20H2'],
+      ['tickets', 'Tickets e PRs', 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3'],
     ]],
     ['Operação', [
-      ['coordenacao', 'Coordenação', 'M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h4v6h-4zM19 16h2'],
       ['padroes', 'Padrões de falha', 'M12 3l9 16H3zM12 10v4M12 17h.01'],
     ]],
-    ['Conhecimento', [['grafo', 'Grafo', 'M6 6.5h.01M18 5.5h.01M12 18.5h.01M7 7.5l4 9.2M17 6.8l-4 9.9M7.5 6l9-.2']]],
-    ['Agentes e modelos', [['roteamento', 'Roteamento de modelo', 'M6 3v6a6 6 0 0 0 6 6h6M15 12l3 3-3 3M6 21h.01']]],
-    ['Plataforma', [['versao', 'Versão', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2'], ['computador', 'Este computador', 'M4 5h16v11H4zM2 19h20']]],
+    ['Conhecimento', [['grafo', 'Knowledge Graph', 'M6 6.5h.01M18 5.5h.01M12 18.5h.01M7 7.5l4 9.2M17 6.8l-4 9.9M7.5 6l9-.2']]],
+    ['Agentes e modelos', [['roteamento', 'Roteamento', 'M4 6h6l4 6h6M4 18h6l4-6M17 3l3 3-3 3M17 15l3 3-3 3']]],
+    ['Plataforma', [['versao', 'Sistema', 'M3 5.5h18v6H3zM3 13.5h18v6H3zM7 8.5h.01M7 16.5h.01'], ['computador', 'Este computador', 'M4 5h16v11H4zM2 19h20']]],
   ];
   const navKeyOf = v => (RUN_VIEWS.some(([k]) => k === v) ? 'runs' : v);
   // Grupos recolhidos (prefs.navClosed). Entrar numa visão abre o grupo dela (na carga e no
@@ -187,7 +190,6 @@
     refresh();
     if (v === 'tickets' && !bulk.running && !bulk.loadedOnce) loadAll(false);
     if (v === 'redmine') window.RedmineView?.load(false);
-    if (v === 'coordenacao') window.CoordinationView?.load();
     if (v === 'roteamento') window.RoutingView?.load();
     if (v === 'versao') window.VersionView?.load(false);
     if (v === 'computador') window.OnboardingView?.load();
@@ -759,7 +761,6 @@
       const keepY = el.scrollTop;
       const focusKey = document.activeElement?.dataset?.tfilter;
       const domView = {
-        coordenacao: window.CoordinationView,
         roteamento: window.RoutingView,
         versao: window.VersionView,
         computador: window.OnboardingView,
@@ -767,7 +768,7 @@
       // Visão que devolve sempre o mesmo nó (formulário do onboarding) não é remontada: manter foco e digitação.
       const domNode = domView?.render();
       if (domNode) { if (el.firstChild !== domNode || el.lastChild !== domNode) el.replaceChildren(domNode); }
-      else el.innerHTML = view in { coordenacao: 1, roteamento: 1, versao: 1, computador: 1 }
+      else el.innerHTML = view in { roteamento: 1, versao: 1, computador: 1 }
         ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
       el.scrollTop = keepY;
       if (focusKey) el.querySelector(`[data-tfilter="${focusKey}"]`)?.focus();
@@ -778,4 +779,11 @@
   renderTabs();
   document.body.dataset.view = view;
   if (view !== 'runs') setView(view);
+  else {
+    // Tela descartada que cai em Runs (alias): limpa o hash e a pref antigos sem passar por
+    // setView, que trocaria um #run/<id> válido pelo selecionado (ainda nulo na carga).
+    const raw = location.hash.slice(1);
+    if (raw && raw !== 'runs' && alias(raw) === 'runs') history.replaceState(null, '', location.pathname);
+    if (prefs.view && prefs.view !== 'runs' && alias(prefs.view) === 'runs') { prefs.view = 'runs'; persist(); }
+  }
 })();

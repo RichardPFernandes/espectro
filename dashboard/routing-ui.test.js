@@ -191,12 +191,12 @@ const loaded = ui => until(() => ui.text().includes('Configuração do projeto')
 const filter = (ui, key) => ui.nodes().find(n => n.dataset?.tfilter === `routing-${key}`);
 const runCards = ui => ui.nodes().filter(n => String(n.className).split(' ').includes('rt-run'));
 
-test('T5: item Roteamento de modelo em Agentes e modelos; abre e carrega o /api/routing', async () => {
+test('T5: item Roteamento em Agentes e modelos; abre e carrega o /api/routing', async () => {
     const ui = boot(body());
     try {
         await ui.open();
         assert.match(ui.tabsHtml(), /data-view="roteamento"/);
-        assert.match(ui.tabsHtml(), /Roteamento de modelo/);
+        assert.match(ui.tabsHtml(), /data-view="roteamento"[^>]*>(<svg[\s\S]*?<\/svg>)<span>Roteamento<\/span>/);
         ui.setView('roteamento');
         await loaded(ui);
         assert.match(ui.tabsHtml(), /data-view="roteamento" aria-selected="true"/);
