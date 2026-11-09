@@ -24,5 +24,35 @@
 9. Ao concluir, bloquear ou interromper uma tarefa delegada, entregue o handoff
    de docs/handoff-contract.md, partindo de templates/handoff.yaml.template.
 
+## Níveis de processo
+
+Fonte: [Prisma — Acordo de desenvolvimento](https://linear.app/prisma-app/document/prisma-acordo-de-desenvolvimento-62a84790f75a)
+(v1, aprovado pelo Richard em 09/11/2026). Vale para o desenvolvimento do
+Prisma; não muda a governança que o Prisma aplica aos consumidores (PRI-145).
+
+| Nível | Quando | O que exige |
+| -- | -- | -- |
+| Leve | Avaliação, planejamento, documento ou ferramenta offline, sem efeito no ciclo | Sem spec separada; uma revisão simples; aceite do Richard no fim |
+| Médio | Código atrás de flag desligada, sem estado autoritativo, autorização humana ou segurança | Spec e implementação na mesma fatia; uma revisão independente; vale o AUTORIZO por lote do milestone |
+| Alto | Estado autoritativo, concorrência, autorização humana, segurança, operação protegida, ligar flag ou efeito no consumidor | Processo completo: spec fina, revisão G3 independente, AUTORIZO específico, bump e readback |
+
+- Na dúvida entre dois níveis, usa-se o maior e registra-se o motivo.
+- O revisor pode subir o nível; descer, só com o Richard.
+- Uma fatia é uma entrega verificável de 3 a 5 dias. Fatias vizinhas da mesma
+  frente e do mesmo nível andam juntas: uma spec, uma revisão e um AUTORIZO.
+- O nível fica no rótulo `Processo: leve|médio|alto` da issue e em
+  `nivel_processo` do handoff (docs/handoff-contract.md).
+
+O que nunca muda, em qualquer nível:
+
+- Comportamento novo entra com a flag desligada.
+- PR sempre em draft; o merge é do Richard.
+- AUTORIZO explícito antes de qualquer coisa que afete o consumidor: bump do
+  checkout vivo, religar o polling, ligar flag, operação protegida.
+- Done só com evidência e aceite dos ACs pelo Richard. Pai não fecha com filha aberta.
+- Nenhum dado corporativo da M&O no Linear.
+- Issue não se apaga: cancela ou arquiva. Antes de qualquer limpeza, conferir
+  se há filhas abertas.
+
 Este arquivo é instrução nova do scaffold. Regras e configuração de cada
 consumidor continuam no respectivo projeto; nenhum estado vivo é definido aqui.
