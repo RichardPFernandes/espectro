@@ -1485,6 +1485,10 @@ async function notifyRoutingAdmissionBlocked(ticket, cfg) {
         `${cfg.cause} (${cfg.detail}${cfg.transient ? ', leitura transitória repetida' : ''}). ` +
         `Nenhuma Run nova é admitida enquanto isso durar (este ticket #${ticket.id} e os próximos); ` +
         `Runs já em andamento não mudam.\n\n` +
+        // PRI-310 (S5.1): "decomposition": "on" está reservado até o PR de liberação da S5.
+        (cfg.cause === 'DECOMPOSITION_RESERVED'
+            ? `A chave "decomposition": "on" ainda está reservada (decomposição do Implement em subtarefas, PRI-287) e não é aceita; remova-a ou use "off". `
+            : '') +
         `Saídas: corrigir a policy ou o policy_ref (id, versão, sha256) em ${modelRoutingPolicy.ROUTING_CONFIG_REL}, ` +
         `ou desligar explicitamente com { "mode": "OFF" } nesse arquivo. ` +
         `Confira com: node scripts/validate-config.js --severity error. O próximo tick retoma sozinho.`;
@@ -3340,19 +3344,22 @@ function looksLikeSessionLimit(stderrText) {
 function releaseLease(lease, code) {
     if (!lease) return;
     try {
+        let claim = null;
         if (lease.dir) {
-            nodeLease.releaseNode(lease);
+            claim = nodeLease.releaseNodeWithReason(lease);
             nodeEvents.recordNodeExit(lease, code);
         } else if (lease.runsDir) {
             const dir = nodeLease.stampNewTask(lease.runsDir, lease.prefix, lease);
             nodeLease.clearFetchDispatch(lease.gatePath, lease.startedAt);
             if (dir) nodeEvents.recordNodeExit(lease, code, dir);
         }
-        dom06.fulfillOnExit({
+        // PRI-310 (S5.1): mesma saída única do wrapper destacado (node-lease.js release).
+        dom06.closeOnExit({
             attemptFile: lease.dom06AttemptFile,
             attemptId: lease.dom06AttemptId,
             node: lease.node || (Array.isArray(lease.nodes) ? lease.nodes[0] : null),
             code,
+            claim,
         });
     } catch (e) {
         console.error('[recovery] falha liberando lease do nó:', e.message);

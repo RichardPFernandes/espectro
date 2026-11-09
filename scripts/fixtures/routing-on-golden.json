@@ -1,0 +1,1207 @@
+{
+  "generated_at_revision": "2024597",
+  "scenarios": {
+    "new_ticket/dispatch": {
+      "action": "dispatched",
+      "argv": [
+        [
+          "-p",
+          "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #287001 (tipo: Melhoria). Rode, nesta ordem: /fetch-ticket 287001, /plan (use o task-id que acabou de gerar). Ao terminar o /plan, o handoff.md já deve estar escrito (é o último passo do próprio comando /plan). Assim que o /fetch-ticket terminar de escrever memory/spec/287001-spec.md — antes do /plan, e independente do resultado do spec-validator abaixo —, rode `node <prisma_root>/scripts/lib/spec-enricher.js memory/spec/287001-spec.md <task-id que acabou de gerar>`: acrescenta (só APPEND, idempotente) uma seção \"## Contexto Histórico\" com o que memory/knowledge-graph.json e memory/patterns.md já sabem sobre os arquivos citados na spec (regra inviolável, retrabalho anterior, padrões conhecidos). É best-effort — sempre sai 0, nunca bloqueia o ciclo, não precisa conferir o resultado antes de seguir. Entre o /fetch-ticket e o /plan, rode `node <prisma_root>/scripts/lib/spec-validator.js memory/spec/287001-spec.md`: se sair com código 1, NÃO rode o /plan — grave status=\"spec-invalid\" no state.json da task e pare (o orquestrador pede aceite no Redmine no próximo tick; nunca \"conserte\" a spec inventando conteúdo).  Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó plan) ===\nUse isto como ponto de partida em vez de reler o ticket inteiro ou abrir arquivos pra \"conhecer o projeto\" (ver \"Orçamento de contexto\" em .claude/commands/plan.md).\n\n--- Ticket #287001: Ticket 287001 (descrição, primeiros 3000 caracteres) ---\n## Contexto\nFixture própria do harness, sem dados do consumidor.\n\n## Objetivo\nExercitar o ciclo simulado sem efeito externo.\n\n## Escopo\n- Somente fixture sintética\n\n## Problema\nVerificar persistência no ciclo simulado.\n\n## Solução\nRegistrar uma marca de teste.\n\n## Critérios de Aceite\n- AC-01: Marca sintética registrada no fluxo simulado\n- AC-02: Marca sintética preservada no retorno simulado\n\n## Restrições\n- Nenhum efeito externo\n\n## Arquivos Afetados\n- scripts/fixtures/ticket-example.json\n\n## Dependências\n- Nenhuma\n\n\n--- Arquivos citados diretamente no ticket (estes sim: leia completos) ---\n  (nenhum arquivo/classe versionado citado literalmente)\n\n--- Estrutura do projeto (só nomes; entre parênteses, nº de arquivos) ---\n\n\n--- Caminhos que casam com termos do ticket (contexto, fixture, propria, harness, consumidor, objetivo, exercitar, ciclo, simulado, efeito, externo, escopo, …) ---\n  (nenhum)\n\n--- context.md da task (primeiros 6000 caracteres) ---\n(ainda não existe)\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+          "--name",
+          "Ticket #287001 — /plan (use o task-id que acabou de gerar)",
+          "--session-id",
+          "<uuid>",
+          "--permission-mode",
+          "acceptEdits",
+          "--allowedTools",
+          "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+          "--disallowedTools",
+          "Agent,Task",
+          "--add-dir",
+          "<prisma_root>",
+          "--model",
+          "m-t3",
+          "--settings",
+          "<tmp>/<variant>/app-back/.claude/worktrees/287001/memory/runs/_dom06/routing-settings.json"
+        ]
+      ],
+      "admission_snapshot_canonical": "2d491e4b09f1a9b2c07f89ce5adbe853684eec888687691b14b8a2591574afdd",
+      "admission_snapshot_keys": [
+        "default_route",
+        "eligible_set",
+        "eligible_set_ref",
+        "mode",
+        "policy",
+        "policy_ref",
+        "sha256"
+      ],
+      "fetch_attempts": [
+        {
+          "node": "fetch_ticket",
+          "cause": "dispatch",
+          "started": true,
+          "result": "STARTED",
+          "owner": "dom06",
+          "snapshot": {
+            "ticket_id": 287001,
+            "node": "fetch_ticket",
+            "base_branch": "development",
+            "spec_hash": null,
+            "routing": {
+              "mode": "ON",
+              "policy_ref": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+                "path": ".claude/routing-policy.json"
+              },
+              "policy": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "mode": "ROUTED",
+                "classifier": {
+                  "provider": "cheap_rule"
+                },
+                "class_to_tier": {
+                  "C1": {
+                    "tier": "T1",
+                    "effort": "baixo"
+                  },
+                  "C2": {
+                    "tier": "T2",
+                    "effort": "médio"
+                  },
+                  "C3": {
+                    "tier": "T2",
+                    "effort": "alto"
+                  },
+                  "C4": {
+                    "tier": "T3",
+                    "effort": "alto"
+                  },
+                  "C5": {
+                    "tier": "T3",
+                    "effort": "máximo"
+                  }
+                },
+                "tiers": {
+                  "T1": {
+                    "models": [
+                      "m-t1"
+                    ]
+                  },
+                  "T2": {
+                    "models": [
+                      "m-t2"
+                    ]
+                  },
+                  "T3": {
+                    "models": [
+                      "m-t3"
+                    ]
+                  }
+                },
+                "default_route": {
+                  "model_id": "m-t3",
+                  "effort": "alto"
+                },
+                "effort_map": {
+                  "baixo": "low",
+                  "médio": "medium",
+                  "alto": "high",
+                  "máximo": "max"
+                }
+              },
+              "default_route": {
+                "model_id": "m-t3",
+                "effort": "alto"
+              },
+              "eligible_set": {
+                "provider": "anthropic",
+                "models": [
+                  "m-t1",
+                  "m-t2",
+                  "m-t3"
+                ]
+              },
+              "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+              "sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165"
+            }
+          },
+          "obligations": [
+            {
+              "id": "execute_node",
+              "kind": "node_execution",
+              "status": "fulfilled"
+            }
+          ],
+          "effects": [
+            {
+              "obligation_id": "execute_node",
+              "idempotency_key": "execute:<uuid>",
+              "status": "fulfilled",
+              "detail": null,
+              "http_status": null,
+              "at": "<ts>"
+            }
+          ],
+          "authority": "valid",
+          "rebind_refused": null,
+          "revoke_reason": null,
+          "routing": {
+            "node": "fetch_ticket",
+            "snapshot_sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165",
+            "policy_ref": {
+              "id": "routing-sintetica",
+              "version": "p-golden-1",
+              "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+              "path": ".claude/routing-policy.json"
+            },
+            "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+            "class": null,
+            "class_rule": null,
+            "signals_sha256": null,
+            "classifier_ref": {
+              "provider": "cheap_rule",
+              "model_id": null,
+              "model_version": null,
+              "prompt_sha256": null,
+              "enum_version": null,
+              "mode": null,
+              "classifier_version": null,
+              "policy_sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+              "declared": "cheap_rule",
+              "nucleus2_effective": "off",
+              "reason": "NUCLEUS1_ONLY",
+              "selection_version": null
+            },
+            "nucleus2": null,
+            "nucleus2_would_node_class": null,
+            "candidates": [
+              {
+                "tier": "T3",
+                "model_id": "m-t3",
+                "status": "CHOSEN",
+                "reason": null
+              }
+            ],
+            "chosen": {
+              "model_id": "m-t3",
+              "effort": "alto",
+              "cli_effort": "high",
+              "tier": "T3"
+            },
+            "selection_source": "FIXED_NODE",
+            "override_ref": null,
+            "overrides_pending": [],
+            "subagent": "UNENFORCED",
+            "effort_router_plugin": "NOT_LOADED",
+            "plugin_proof": {
+              "settings_path": "<tmp>/<variant>/app-back/.claude/worktrees/287001/memory/runs/_dom06/routing-settings.json",
+              "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+            },
+            "effort_mechanism": {
+              "status": "UNAVAILABLE"
+            },
+            "effort_applied": false
+          }
+        }
+      ],
+      "node_attempts": [],
+      "obligations": [],
+      "state_after": {
+        "node": "implement",
+        "status": "in_progress",
+        "history": [
+          "fetch_ticket",
+          "plan"
+        ]
+      }
+    },
+    "implement/dispatch": {
+      "action": "dispatched",
+      "argv": [
+        [
+          "-p",
+          "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #287011 (tipo: Melhoria). Rode, nesta ordem: /implement 287011-og.  Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+          "--name",
+          "Ticket #287011 — /implement 287011-og",
+          "--session-id",
+          "<uuid>",
+          "--permission-mode",
+          "acceptEdits",
+          "--allowedTools",
+          "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+          "--add-dir",
+          "<prisma_root>",
+          "--model",
+          "m-t3",
+          "--settings",
+          "<tmp>/<variant>/app-back/.claude/worktrees/287011/memory/runs/287011-og/routing-settings.json"
+        ]
+      ],
+      "admission_snapshot_canonical": "2d491e4b09f1a9b2c07f89ce5adbe853684eec888687691b14b8a2591574afdd",
+      "admission_snapshot_keys": [
+        "default_route",
+        "eligible_set",
+        "eligible_set_ref",
+        "mode",
+        "policy",
+        "policy_ref",
+        "sha256"
+      ],
+      "fetch_attempts": [
+        {
+          "node": "fetch_ticket",
+          "cause": "dispatch",
+          "started": true,
+          "result": "STARTED",
+          "owner": "dom06",
+          "snapshot": {
+            "ticket_id": 287011,
+            "node": "fetch_ticket",
+            "base_branch": "development",
+            "spec_hash": null,
+            "routing": {
+              "mode": "ON",
+              "policy_ref": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+                "path": ".claude/routing-policy.json"
+              },
+              "policy": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "mode": "ROUTED",
+                "classifier": {
+                  "provider": "cheap_rule"
+                },
+                "class_to_tier": {
+                  "C1": {
+                    "tier": "T1",
+                    "effort": "baixo"
+                  },
+                  "C2": {
+                    "tier": "T2",
+                    "effort": "médio"
+                  },
+                  "C3": {
+                    "tier": "T2",
+                    "effort": "alto"
+                  },
+                  "C4": {
+                    "tier": "T3",
+                    "effort": "alto"
+                  },
+                  "C5": {
+                    "tier": "T3",
+                    "effort": "máximo"
+                  }
+                },
+                "tiers": {
+                  "T1": {
+                    "models": [
+                      "m-t1"
+                    ]
+                  },
+                  "T2": {
+                    "models": [
+                      "m-t2"
+                    ]
+                  },
+                  "T3": {
+                    "models": [
+                      "m-t3"
+                    ]
+                  }
+                },
+                "default_route": {
+                  "model_id": "m-t3",
+                  "effort": "alto"
+                },
+                "effort_map": {
+                  "baixo": "low",
+                  "médio": "medium",
+                  "alto": "high",
+                  "máximo": "max"
+                }
+              },
+              "default_route": {
+                "model_id": "m-t3",
+                "effort": "alto"
+              },
+              "eligible_set": {
+                "provider": "anthropic",
+                "models": [
+                  "m-t1",
+                  "m-t2",
+                  "m-t3"
+                ]
+              },
+              "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+              "sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165"
+            }
+          },
+          "obligations": [
+            {
+              "id": "execute_node",
+              "kind": "node_execution",
+              "status": "pending"
+            }
+          ],
+          "effects": [],
+          "authority": "valid",
+          "rebind_refused": null,
+          "revoke_reason": null
+        }
+      ],
+      "node_attempts": [
+        {
+          "node": "implement",
+          "cause": "dispatch",
+          "started": true,
+          "result": "STARTED",
+          "owner": "dom06",
+          "snapshot": {
+            "ticket_id": 287011,
+            "node": "implement",
+            "base_branch": "development",
+            "spec_hash": null,
+            "routing": {
+              "mode": "ON",
+              "policy_ref": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+                "path": ".claude/routing-policy.json"
+              },
+              "policy": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "mode": "ROUTED",
+                "classifier": {
+                  "provider": "cheap_rule"
+                },
+                "class_to_tier": {
+                  "C1": {
+                    "tier": "T1",
+                    "effort": "baixo"
+                  },
+                  "C2": {
+                    "tier": "T2",
+                    "effort": "médio"
+                  },
+                  "C3": {
+                    "tier": "T2",
+                    "effort": "alto"
+                  },
+                  "C4": {
+                    "tier": "T3",
+                    "effort": "alto"
+                  },
+                  "C5": {
+                    "tier": "T3",
+                    "effort": "máximo"
+                  }
+                },
+                "tiers": {
+                  "T1": {
+                    "models": [
+                      "m-t1"
+                    ]
+                  },
+                  "T2": {
+                    "models": [
+                      "m-t2"
+                    ]
+                  },
+                  "T3": {
+                    "models": [
+                      "m-t3"
+                    ]
+                  }
+                },
+                "default_route": {
+                  "model_id": "m-t3",
+                  "effort": "alto"
+                },
+                "effort_map": {
+                  "baixo": "low",
+                  "médio": "medium",
+                  "alto": "high",
+                  "máximo": "max"
+                }
+              },
+              "default_route": {
+                "model_id": "m-t3",
+                "effort": "alto"
+              },
+              "eligible_set": {
+                "provider": "anthropic",
+                "models": [
+                  "m-t1",
+                  "m-t2",
+                  "m-t3"
+                ]
+              },
+              "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+              "sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165"
+            }
+          },
+          "obligations": [
+            {
+              "id": "execute_node",
+              "kind": "node_execution",
+              "status": "fulfilled"
+            }
+          ],
+          "effects": [
+            {
+              "obligation_id": "execute_node",
+              "idempotency_key": "execute:<uuid>",
+              "status": "fulfilled",
+              "detail": null,
+              "http_status": null,
+              "at": "<ts>"
+            }
+          ],
+          "authority": "valid",
+          "rebind_refused": null,
+          "revoke_reason": null,
+          "routing": {
+            "node": "implement",
+            "snapshot_sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165",
+            "policy_ref": {
+              "id": "routing-sintetica",
+              "version": "p-golden-1",
+              "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+              "path": ".claude/routing-policy.json"
+            },
+            "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+            "class": "C4",
+            "class_rule": "R4",
+            "signals_sha256": "cec9ba3e27c42b48b386a6b7ff5bcd8955aa2ffd2ef25a6dc8748259f1bbd7ce",
+            "classifier_ref": {
+              "provider": "cheap_rule",
+              "model_id": null,
+              "model_version": null,
+              "prompt_sha256": null,
+              "enum_version": null,
+              "mode": null,
+              "classifier_version": null,
+              "policy_sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+              "declared": "cheap_rule",
+              "nucleus2_effective": "off",
+              "reason": "NUCLEUS1_ONLY",
+              "selection_version": null
+            },
+            "nucleus2": null,
+            "nucleus2_would_node_class": null,
+            "candidates": [
+              {
+                "tier": "T3",
+                "model_id": "m-t3",
+                "status": "CHOSEN",
+                "reason": null
+              }
+            ],
+            "chosen": {
+              "model_id": "m-t3",
+              "effort": "alto",
+              "cli_effort": "high",
+              "tier": "T3"
+            },
+            "selection_source": "RULES",
+            "override_ref": null,
+            "overrides_pending": [],
+            "subagent": "UNENFORCED",
+            "effort_router_plugin": "NOT_LOADED",
+            "plugin_proof": {
+              "settings_path": "<tmp>/<variant>/app-back/.claude/worktrees/287011/memory/runs/287011-og/routing-settings.json",
+              "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+            },
+            "effort_mechanism": {
+              "status": "UNAVAILABLE"
+            },
+            "effort_applied": false
+          }
+        }
+      ],
+      "obligations": [
+        [
+          {
+            "id": "execute_node",
+            "kind": "node_execution",
+            "status": "fulfilled"
+          }
+        ]
+      ],
+      "state_after": {
+        "node": "implement",
+        "status": "in_progress",
+        "history": [
+          "fetch_ticket",
+          "plan"
+        ]
+      }
+    },
+    "implement/retry": {
+      "action": "dispatched",
+      "argv": [
+        [
+          "-p",
+          "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #287012 (tipo: Melhoria). Rode, nesta ordem: /implement 287012-og.  Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+          "--name",
+          "Ticket #287012 — /implement 287012-og",
+          "--session-id",
+          "<uuid>",
+          "--permission-mode",
+          "acceptEdits",
+          "--allowedTools",
+          "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+          "--add-dir",
+          "<prisma_root>",
+          "--model",
+          "m-t3",
+          "--settings",
+          "<tmp>/<variant>/app-back/.claude/worktrees/287012/memory/runs/287012-og/routing-settings.json"
+        ]
+      ],
+      "admission_snapshot_canonical": "2d491e4b09f1a9b2c07f89ce5adbe853684eec888687691b14b8a2591574afdd",
+      "admission_snapshot_keys": [
+        "default_route",
+        "eligible_set",
+        "eligible_set_ref",
+        "mode",
+        "policy",
+        "policy_ref",
+        "sha256"
+      ],
+      "fetch_attempts": [
+        {
+          "node": "fetch_ticket",
+          "cause": "dispatch",
+          "started": true,
+          "result": "STARTED",
+          "owner": "dom06",
+          "snapshot": {
+            "ticket_id": 287012,
+            "node": "fetch_ticket",
+            "base_branch": "development",
+            "spec_hash": null,
+            "routing": {
+              "mode": "ON",
+              "policy_ref": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+                "path": ".claude/routing-policy.json"
+              },
+              "policy": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "mode": "ROUTED",
+                "classifier": {
+                  "provider": "cheap_rule"
+                },
+                "class_to_tier": {
+                  "C1": {
+                    "tier": "T1",
+                    "effort": "baixo"
+                  },
+                  "C2": {
+                    "tier": "T2",
+                    "effort": "médio"
+                  },
+                  "C3": {
+                    "tier": "T2",
+                    "effort": "alto"
+                  },
+                  "C4": {
+                    "tier": "T3",
+                    "effort": "alto"
+                  },
+                  "C5": {
+                    "tier": "T3",
+                    "effort": "máximo"
+                  }
+                },
+                "tiers": {
+                  "T1": {
+                    "models": [
+                      "m-t1"
+                    ]
+                  },
+                  "T2": {
+                    "models": [
+                      "m-t2"
+                    ]
+                  },
+                  "T3": {
+                    "models": [
+                      "m-t3"
+                    ]
+                  }
+                },
+                "default_route": {
+                  "model_id": "m-t3",
+                  "effort": "alto"
+                },
+                "effort_map": {
+                  "baixo": "low",
+                  "médio": "medium",
+                  "alto": "high",
+                  "máximo": "max"
+                }
+              },
+              "default_route": {
+                "model_id": "m-t3",
+                "effort": "alto"
+              },
+              "eligible_set": {
+                "provider": "anthropic",
+                "models": [
+                  "m-t1",
+                  "m-t2",
+                  "m-t3"
+                ]
+              },
+              "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+              "sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165"
+            }
+          },
+          "obligations": [
+            {
+              "id": "execute_node",
+              "kind": "node_execution",
+              "status": "pending"
+            }
+          ],
+          "effects": [],
+          "authority": "valid",
+          "rebind_refused": null,
+          "revoke_reason": null
+        }
+      ],
+      "node_attempts": [
+        {
+          "node": "implement",
+          "cause": "retry",
+          "started": true,
+          "result": "STARTED",
+          "owner": "dom06",
+          "snapshot": {
+            "ticket_id": 287012,
+            "node": "implement",
+            "base_branch": "development",
+            "spec_hash": null,
+            "routing": {
+              "mode": "ON",
+              "policy_ref": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+                "path": ".claude/routing-policy.json"
+              },
+              "policy": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "mode": "ROUTED",
+                "classifier": {
+                  "provider": "cheap_rule"
+                },
+                "class_to_tier": {
+                  "C1": {
+                    "tier": "T1",
+                    "effort": "baixo"
+                  },
+                  "C2": {
+                    "tier": "T2",
+                    "effort": "médio"
+                  },
+                  "C3": {
+                    "tier": "T2",
+                    "effort": "alto"
+                  },
+                  "C4": {
+                    "tier": "T3",
+                    "effort": "alto"
+                  },
+                  "C5": {
+                    "tier": "T3",
+                    "effort": "máximo"
+                  }
+                },
+                "tiers": {
+                  "T1": {
+                    "models": [
+                      "m-t1"
+                    ]
+                  },
+                  "T2": {
+                    "models": [
+                      "m-t2"
+                    ]
+                  },
+                  "T3": {
+                    "models": [
+                      "m-t3"
+                    ]
+                  }
+                },
+                "default_route": {
+                  "model_id": "m-t3",
+                  "effort": "alto"
+                },
+                "effort_map": {
+                  "baixo": "low",
+                  "médio": "medium",
+                  "alto": "high",
+                  "máximo": "max"
+                }
+              },
+              "default_route": {
+                "model_id": "m-t3",
+                "effort": "alto"
+              },
+              "eligible_set": {
+                "provider": "anthropic",
+                "models": [
+                  "m-t1",
+                  "m-t2",
+                  "m-t3"
+                ]
+              },
+              "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+              "sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165"
+            }
+          },
+          "obligations": [
+            {
+              "id": "execute_node",
+              "kind": "node_execution",
+              "status": "fulfilled"
+            }
+          ],
+          "effects": [
+            {
+              "obligation_id": "execute_node",
+              "idempotency_key": "execute:<uuid>",
+              "status": "fulfilled",
+              "detail": null,
+              "http_status": null,
+              "at": "<ts>"
+            }
+          ],
+          "authority": "valid",
+          "rebind_refused": null,
+          "revoke_reason": null,
+          "routing": {
+            "node": "implement",
+            "snapshot_sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165",
+            "policy_ref": {
+              "id": "routing-sintetica",
+              "version": "p-golden-1",
+              "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+              "path": ".claude/routing-policy.json"
+            },
+            "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+            "class": "C4",
+            "class_rule": "R4",
+            "signals_sha256": "5a10d155ae725a266e0f107781e2b9e4caa82076ddcfc868b46943019d865050",
+            "classifier_ref": {
+              "provider": "cheap_rule",
+              "model_id": null,
+              "model_version": null,
+              "prompt_sha256": null,
+              "enum_version": null,
+              "mode": null,
+              "classifier_version": null,
+              "policy_sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+              "declared": "cheap_rule",
+              "nucleus2_effective": "off",
+              "reason": "NUCLEUS1_ONLY",
+              "selection_version": null
+            },
+            "nucleus2": null,
+            "nucleus2_would_node_class": null,
+            "candidates": [
+              {
+                "tier": "T3",
+                "model_id": "m-t3",
+                "status": "CHOSEN",
+                "reason": null
+              }
+            ],
+            "chosen": {
+              "model_id": "m-t3",
+              "effort": "alto",
+              "cli_effort": "high",
+              "tier": "T3"
+            },
+            "selection_source": "RULES",
+            "override_ref": null,
+            "overrides_pending": [],
+            "subagent": "UNENFORCED",
+            "effort_router_plugin": "NOT_LOADED",
+            "plugin_proof": {
+              "settings_path": "<tmp>/<variant>/app-back/.claude/worktrees/287012/memory/runs/287012-og/routing-settings.json",
+              "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+            },
+            "effort_mechanism": {
+              "status": "UNAVAILABLE"
+            },
+            "effort_applied": false
+          }
+        }
+      ],
+      "obligations": [
+        [
+          {
+            "id": "execute_node",
+            "kind": "node_execution",
+            "status": "fulfilled"
+          }
+        ]
+      ],
+      "state_after": {
+        "node": "implement",
+        "status": "in_progress",
+        "history": [
+          "fetch_ticket",
+          "plan"
+        ]
+      }
+    },
+    "review/dispatch": {
+      "action": "dispatched",
+      "argv": [
+        [
+          "-p",
+          "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #287021 (tipo: Melhoria). Rode, nesta ordem: /review 287021-og.  Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó review) ===\nRevise a partir disto (ver \"Orçamento de contexto\" em .claude/commands/review.md). Nenhum arquivo não modificado vem aqui; abra um arquivo completo só se um item do checklist exigir.\n\n--- Arquivos alterados (git diff HEAD --stat + novos) ---\n(nenhuma mudança não commitada em nenhum dos worktrees — confira se o Implement realmente escreveu código)\n\n--- Pré-checagens já rodadas pelo orquestrador ---\nItem 1 (secret no diff): nada encontrado (valores reais de BITBUCKET_API_TOKEN/REDMINE_API_KEY/*_TOKEN do ambiente e padrões de token checados nas linhas adicionadas).\nItem 3 (lint): OK — git diff --check limpo; .js alterados passam em node --check; .json alterados são JSON válido. (Sem linter Java configurado no projeto: compilação é coberta pelo pré-build/nó test.)\n\n--- Diff (git diff HEAD + arquivos novos; até 60000 caracteres) ---\n(vazio)\n\n\n--- context.md da task (primeiros 6000 caracteres) ---\n# Contexto\n\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+          "--name",
+          "Ticket #287021 — /review 287021-og",
+          "--session-id",
+          "<uuid>",
+          "--permission-mode",
+          "acceptEdits",
+          "--allowedTools",
+          "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+          "--add-dir",
+          "<prisma_root>",
+          "--model",
+          "m-t3",
+          "--settings",
+          "<tmp>/<variant>/app-back/.claude/worktrees/287021/memory/runs/287021-og/routing-settings.json"
+        ]
+      ],
+      "admission_snapshot_canonical": "2d491e4b09f1a9b2c07f89ce5adbe853684eec888687691b14b8a2591574afdd",
+      "admission_snapshot_keys": [
+        "default_route",
+        "eligible_set",
+        "eligible_set_ref",
+        "mode",
+        "policy",
+        "policy_ref",
+        "sha256"
+      ],
+      "fetch_attempts": [
+        {
+          "node": "fetch_ticket",
+          "cause": "dispatch",
+          "started": true,
+          "result": "STARTED",
+          "owner": "dom06",
+          "snapshot": {
+            "ticket_id": 287021,
+            "node": "fetch_ticket",
+            "base_branch": "development",
+            "spec_hash": null,
+            "routing": {
+              "mode": "ON",
+              "policy_ref": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+                "path": ".claude/routing-policy.json"
+              },
+              "policy": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "mode": "ROUTED",
+                "classifier": {
+                  "provider": "cheap_rule"
+                },
+                "class_to_tier": {
+                  "C1": {
+                    "tier": "T1",
+                    "effort": "baixo"
+                  },
+                  "C2": {
+                    "tier": "T2",
+                    "effort": "médio"
+                  },
+                  "C3": {
+                    "tier": "T2",
+                    "effort": "alto"
+                  },
+                  "C4": {
+                    "tier": "T3",
+                    "effort": "alto"
+                  },
+                  "C5": {
+                    "tier": "T3",
+                    "effort": "máximo"
+                  }
+                },
+                "tiers": {
+                  "T1": {
+                    "models": [
+                      "m-t1"
+                    ]
+                  },
+                  "T2": {
+                    "models": [
+                      "m-t2"
+                    ]
+                  },
+                  "T3": {
+                    "models": [
+                      "m-t3"
+                    ]
+                  }
+                },
+                "default_route": {
+                  "model_id": "m-t3",
+                  "effort": "alto"
+                },
+                "effort_map": {
+                  "baixo": "low",
+                  "médio": "medium",
+                  "alto": "high",
+                  "máximo": "max"
+                }
+              },
+              "default_route": {
+                "model_id": "m-t3",
+                "effort": "alto"
+              },
+              "eligible_set": {
+                "provider": "anthropic",
+                "models": [
+                  "m-t1",
+                  "m-t2",
+                  "m-t3"
+                ]
+              },
+              "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+              "sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165"
+            }
+          },
+          "obligations": [
+            {
+              "id": "execute_node",
+              "kind": "node_execution",
+              "status": "pending"
+            }
+          ],
+          "effects": [],
+          "authority": "valid",
+          "rebind_refused": null,
+          "revoke_reason": null
+        }
+      ],
+      "node_attempts": [
+        {
+          "node": "review",
+          "cause": "dispatch",
+          "started": true,
+          "result": "STARTED",
+          "owner": "dom06",
+          "snapshot": {
+            "ticket_id": 287021,
+            "node": "review",
+            "base_branch": "development",
+            "spec_hash": null,
+            "routing": {
+              "mode": "ON",
+              "policy_ref": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+                "path": ".claude/routing-policy.json"
+              },
+              "policy": {
+                "id": "routing-sintetica",
+                "version": "p-golden-1",
+                "mode": "ROUTED",
+                "classifier": {
+                  "provider": "cheap_rule"
+                },
+                "class_to_tier": {
+                  "C1": {
+                    "tier": "T1",
+                    "effort": "baixo"
+                  },
+                  "C2": {
+                    "tier": "T2",
+                    "effort": "médio"
+                  },
+                  "C3": {
+                    "tier": "T2",
+                    "effort": "alto"
+                  },
+                  "C4": {
+                    "tier": "T3",
+                    "effort": "alto"
+                  },
+                  "C5": {
+                    "tier": "T3",
+                    "effort": "máximo"
+                  }
+                },
+                "tiers": {
+                  "T1": {
+                    "models": [
+                      "m-t1"
+                    ]
+                  },
+                  "T2": {
+                    "models": [
+                      "m-t2"
+                    ]
+                  },
+                  "T3": {
+                    "models": [
+                      "m-t3"
+                    ]
+                  }
+                },
+                "default_route": {
+                  "model_id": "m-t3",
+                  "effort": "alto"
+                },
+                "effort_map": {
+                  "baixo": "low",
+                  "médio": "medium",
+                  "alto": "high",
+                  "máximo": "max"
+                }
+              },
+              "default_route": {
+                "model_id": "m-t3",
+                "effort": "alto"
+              },
+              "eligible_set": {
+                "provider": "anthropic",
+                "models": [
+                  "m-t1",
+                  "m-t2",
+                  "m-t3"
+                ]
+              },
+              "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+              "sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165"
+            }
+          },
+          "obligations": [
+            {
+              "id": "execute_node",
+              "kind": "node_execution",
+              "status": "fulfilled"
+            }
+          ],
+          "effects": [
+            {
+              "obligation_id": "execute_node",
+              "idempotency_key": "execute:<uuid>",
+              "status": "fulfilled",
+              "detail": null,
+              "http_status": null,
+              "at": "<ts>"
+            }
+          ],
+          "authority": "valid",
+          "rebind_refused": null,
+          "revoke_reason": null,
+          "routing": {
+            "node": "review",
+            "snapshot_sha256": "24eb88ec2bb3c9da8853cf4d42cb75f71fdbb30b33ac92f965e7edc73d412165",
+            "policy_ref": {
+              "id": "routing-sintetica",
+              "version": "p-golden-1",
+              "sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+              "path": ".claude/routing-policy.json"
+            },
+            "eligible_set_ref": "1a04c562d4f40d6be08965d1676e524258ea0030382dc5840a0ee006d0f4f748",
+            "class": null,
+            "class_rule": null,
+            "signals_sha256": null,
+            "classifier_ref": {
+              "provider": "cheap_rule",
+              "model_id": null,
+              "model_version": null,
+              "prompt_sha256": null,
+              "enum_version": null,
+              "mode": null,
+              "classifier_version": null,
+              "policy_sha256": "639760e669eb420298d2977b79b2f68514a6e7b23107d6facc7c389492ffadaa",
+              "declared": "cheap_rule",
+              "nucleus2_effective": "off",
+              "reason": "NUCLEUS1_ONLY",
+              "selection_version": null
+            },
+            "nucleus2": null,
+            "nucleus2_would_node_class": null,
+            "candidates": [
+              {
+                "tier": "T3",
+                "model_id": "m-t3",
+                "status": "CHOSEN",
+                "reason": null
+              }
+            ],
+            "chosen": {
+              "model_id": "m-t3",
+              "effort": "alto",
+              "cli_effort": "high",
+              "tier": "T3"
+            },
+            "selection_source": "FIXED_NODE",
+            "override_ref": null,
+            "overrides_pending": [],
+            "subagent": "UNENFORCED",
+            "effort_router_plugin": "NOT_LOADED",
+            "plugin_proof": {
+              "settings_path": "<tmp>/<variant>/app-back/.claude/worktrees/287021/memory/runs/287021-og/routing-settings.json",
+              "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+            },
+            "effort_mechanism": {
+              "status": "UNAVAILABLE"
+            },
+            "effort_applied": false
+          }
+        }
+      ],
+      "obligations": [
+        [
+          {
+            "id": "execute_node",
+            "kind": "node_execution",
+            "status": "fulfilled"
+          }
+        ]
+      ],
+      "state_after": {
+        "node": "review",
+        "status": "in_progress",
+        "history": [
+          "fetch_ticket",
+          "plan",
+          "implement"
+        ]
+      }
+    }
+  }
+}
