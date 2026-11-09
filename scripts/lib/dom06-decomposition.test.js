@@ -286,7 +286,8 @@ test('AC-09: closeOnExit dá o mesmo resultado pelo wrapper destacado (node-leas
     assert.ok(!('acceptance' in dom06.readAttempt(asis2.attemptFile)));
     // O watcher (--follow) usa a mesma saída única.
     const watcherSrc = fs.readFileSync(path.join(__dirname, '..', 'readmine-watcher.js'), 'utf8');
-    assert.match(watcherSrc, /claim = nodeLease\.releaseNodeWithReason\(lease\)/);
+    // PRI-311 (S5.2a): o release devolve também a plan_version do mesmo snapshot.
+    assert.match(watcherSrc, /\(\{ reason: claim, plan_version: planVersion \} = nodeLease\.releaseNodeWithContext\(lease\)\)/);
     assert.match(watcherSrc, /dom06\.closeOnExit\(\{[\s\S]{0,300}claim,/);
 });
 
