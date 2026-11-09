@@ -39,6 +39,8 @@ for (const d of [binDir, captures, results]) fs.mkdirSync(d, { recursive: true }
 const VARIANTS = {
     absent: null,
     off: { mode: 'OFF' },
+    // PRI-310 (S5.1) AC-01/AC-02: com mode OFF a chave decomposition é ignorada.
+    off_decomposition_on: { mode: 'OFF', decomposition: 'on' },
 };
 
 const NODES = ['plan', 'implement', 'review', 'test', 'verify', 'commit'];
@@ -237,6 +239,7 @@ test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true
 test('AC-01: sem routing e com mode OFF, o despacho é igual ao golden do AS-IS', { timeout: 15 * 60 * 1000 }, async t => {
     const absent = await captureVariant('absent');
     const off = await captureVariant('off');
+    const offDecomposition = await captureVariant('off_decomposition_on');
 
     if (UPDATE) {
         fs.mkdirSync(path.dirname(GOLDEN), { recursive: true });
@@ -250,5 +253,6 @@ test('AC-01: sem routing e com mode OFF, o despacho é igual ao golden do AS-IS'
     for (const s of SCENARIOS) {
         assert.deepStrictEqual(absent[s.key], golden.scenarios[s.key], `routing ausente diverge do golden em ${s.key}`);
         assert.deepStrictEqual(off[s.key], golden.scenarios[s.key], `mode OFF diverge do golden em ${s.key}`);
+        assert.deepStrictEqual(offDecomposition[s.key], golden.scenarios[s.key], `mode OFF com decomposition diverge do golden em ${s.key}`);
     }
 });
