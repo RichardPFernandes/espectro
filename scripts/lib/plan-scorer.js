@@ -34,6 +34,7 @@ const crypto = require('crypto');
 const { parseSections, stripComments } = require('./spec-validator');
 const { extractACs } = require('./ac-registry');
 const acIdsLib = require('./ac-ids');
+const { declaredPaths, UNKNOWN: PATHS_UNKNOWN } = require('./plan-paths');
 
 const DEFAULT_THRESHOLD = 60;
 const MIN_STEPS = 3;
@@ -260,14 +261,20 @@ function scorePlan(planContent, specContent, opts = {}) {
 
     // 2 e 3. Arquivo e verificação por passo.
     const noFile = [];
+    const unreadable = [];
     const noVerify = [];
     steps.forEach((s, i) => {
-        if (!hasFile(s)) noFile.push(i + 1);
+        // Linha "Arquivo:" presente mas sem lista de caminhos concretos: o classificador de
+        // modelo (S2) não consegue ler => sinal UNKNOWN => C4/Opus. Não conta como arquivo.
+        const decl = declaredPaths(s);
+        if (decl.fileLines > 0 && decl.paths === PATHS_UNKNOWN) unreadable.push(i + 1);
+        else if (!hasFile(s)) noFile.push(i + 1);
         if (!hasVerification(s)) noVerify.push(i + 1);
     });
-    add('steps_files', count ? POINTS * (count - noFile.length) / count : 0);
+    add('steps_files', count ? POINTS * (count - noFile.length - unreadable.length) / count : 0);
     add('steps_verification', count ? POINTS * (count - noVerify.length) / count : 0);
     for (const n of noFile) feedback.push(`Step ${n} não especifica arquivo a modificar (ex: "Arquivo: app-core/src/.../Service.java").`);
+    for (const n of unreadable) feedback.push(`Step ${n}: a linha "Arquivo:" não tem uma lista legível de caminhos concretos (anotação, método ou branch entre crases, "...", curinga, diretório ou mais de uma linha "Arquivo:"). Deixe nela só os caminhos, um por crase (ex: "Arquivo: \`src/main/java/br/Foo.java\`, \`src/test/java/br/FooTest.java\`"), e ponha o resto em outra linha.`);
     for (const n of noVerify) feedback.push(`Step ${n} não tem critério de verificação (ex: "Verificação: teste X passa / tela mostra Y").`);
 
     // 4. Contradição com restrições da spec.

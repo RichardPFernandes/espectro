@@ -234,7 +234,7 @@ function simulatedHandoff(ticket, taskId) {
     const items = acs.length ? acs.slice(0, 10) : ['Implementar o pedido do ticket'];
     while (items.length < 3) items.push(items.length === 1 ? 'Cobrir a mudança com teste automatizado' : 'Revisar o diff final da mudança');
     const steps = items.map((ac, i) =>
-        `${i + 1}. ${ac}\n   - Arquivo: src/main/java/.../DryRun${i + 1}.java (simulado)\n   - Verificação: teste automatizado confirma "${ac}"`);
+        `${i + 1}. ${ac}\n   - Arquivo: \`src/main/java/br/com/dryrun/DryRun${i + 1}.java\` (simulado)\n   - Verificação: teste automatizado confirma "${ac}"`);
     return (
         `# Handoff — ${taskId} [DRY-RUN]\n\n` +
         `Gerado pelo agente simulado do watcher (DRY_RUN=true) — nenhum agente real rodou.\n\n` +

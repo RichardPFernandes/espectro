@@ -332,3 +332,24 @@ test('achado MINOR 5: bloco de código indentado no passo ou código no AC não 
     const plan = '## Plano de execução\n1. Algo\n   - Arquivo: `a.js`\n   - Critérios: AC-01\n';
     assert.deepStrictEqual([...ps.classifierEnvelopes(plan, specWithCode).values()][0], { ok: false, reason: 'AC_HAS_CODE_BLOCK' });
 });
+
+// --- Linha "Arquivo:" com anotação entre crases (run 44042: 7 de 8 passos UNKNOWN => R3 => Opus) ---
+
+test('anotação entre crases não derruba a linha: só itens que parecem arquivo contam', () => {
+    const f = '`src/main/java/br/App.java` (novo, `@ApplicationScoped`) e `src/main/java/br/Res.java` (delega a `InsightsIAService`; branch `44042`)';
+    assert.deepStrictEqual(first([{ files: f }]).paths_decl, ['src/main/java/br/App.java', 'src/main/java/br/Res.java']);
+    assert.deepStrictEqual(first([{ files: '`@POST @Path("insights")`, `getMapDatasFiltro(..., 30)`, `Res.java`' }]).paths_decl, ['Res.java']);
+    assert.deepStrictEqual([...first([{ files: '`app/index.html`, `Dockerfile`, `exportar-dados`' }]).paths_decl].sort(), ['Dockerfile', 'app/index.html']);
+});
+
+test('anotação ao lado de item incompleto continua UNKNOWN (nunca subestimar)', () => {
+    for (const f of ['`@Path`, `src/main/.../X.java`', '`@Path`, `src/main/java/`', '`@Path`, `src/**/*.js`', '`@Path`, `a.js, b.js`']) {
+        assert.strictEqual(first([{ files: f }]).paths_decl, U, f);
+    }
+});
+
+test('só anotação, sem nenhum item que pareça arquivo, mantém o critério antigo (UNKNOWN)', () => {
+    for (const f of ['`@ApplicationScoped`', '`44042`', '`analisarInsights`, `exportar-dados`']) {
+        assert.strictEqual(first([{ files: f }]).paths_decl, U, f);
+    }
+});
