@@ -1,7 +1,8 @@
 # Espectro — Dashboard
 
 Dashboard local (interface no design Espectro: tokens em `public/prisma-theme.css`, base e
-componentes em `public/theme.css`, CSS de cada tela em `public/screens/`) de observabilidade do watcher (`scripts/readmine-watcher.js`) com um
+componentes em `public/theme.css`, padrões de tela do design — card de indicador com sparkline, filtro removível,
+ações em lote, painel de detalhe, atalhos J/K — em `public/ui-kit.js` (`window.UIKit`), CSS de cada tela em `public/screens/`) de observabilidade do watcher (`scripts/readmine-watcher.js`) com um
 canal humano→agente: você acompanha os runs do grafo em tempo real e manda instruções
 pro agente sem matar o processo.
 

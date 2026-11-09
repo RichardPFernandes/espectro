@@ -100,6 +100,8 @@
   const RUN_VIEWS = [['runs', 'Lista', 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'],
     ['quadro', 'Quadro', 'M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v7h-4z'], ['tabela', 'Tabela', 'M3 5h18v14H3zM3 10h18M9 10v9'],
     ['timeline', 'Linha do tempo', 'M3 6h8M7 12h10M5 18h14']];
+  // Grupos e ordem das áreas do AppNav do design (Trabalho, Operação, Conhecimento, Agentes e
+  // modelos, Plataforma). Só entram visões que existem no app: área sem tela não aparece.
   const NAV = [
     ['Trabalho', [
       ['runs', 'Runs', 'M3 12h4l3-8 4 16 3-8h4'],
@@ -110,13 +112,22 @@
     ]],
     ['Operação', [
       ['coordenacao', 'Coordenação', 'M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h4v6h-4zM19 16h2'],
-      ['roteamento', 'Roteamento de modelo', 'M6 3v6a6 6 0 0 0 6 6h6M15 12l3 3-3 3M6 21h.01'],
       ['padroes', 'Padrões de falha', 'M12 3l9 16H3zM12 10v4M12 17h.01'],
     ]],
     ['Conhecimento', [['grafo', 'Grafo', 'M6 6.5h.01M18 5.5h.01M12 18.5h.01M7 7.5l4 9.2M17 6.8l-4 9.9M7.5 6l9-.2']]],
+    ['Agentes e modelos', [['roteamento', 'Roteamento de modelo', 'M6 3v6a6 6 0 0 0 6 6h6M15 12l3 3-3 3M6 21h.01']]],
     ['Plataforma', [['versao', 'Versão', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2'], ['computador', 'Este computador', 'M4 5h16v11H4zM2 19h20']]],
   ];
   const navKeyOf = v => (RUN_VIEWS.some(([k]) => k === v) ? 'runs' : v);
+  // Grupos recolhidos (prefs.navClosed). Entrar numa visão abre o grupo dela (na carga e no
+  // setView); depois o grupo atual também pode ser recolhido, e o item selecionado some junto.
+  const navClosed = Object.assign({}, prefs.navClosed || {});
+  const navGroupId = g => 'nav-' + g.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  function openNavGroupOf(v) {
+    const g = NAV.find(([, its]) => its.some(([k]) => k === navKeyOf(v)));
+    if (g && navClosed[g[0]]) { delete navClosed[g[0]]; prefs.navClosed = navClosed; }
+  }
+  openNavGroupOf(view);
   const icon = d => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 
   // refresh() chama renderTabs a cada evento ao vivo: só reescreve o HTML quando ele muda,
@@ -125,9 +136,13 @@
   function paint(id, html) {
     if (lastHtml.get(id) === html) return;
     lastHtml.set(id, html);
-    const focused = document.activeElement?.closest?.(`#${id} [data-view]`)?.dataset.view;
+    // Item ou cabeçalho de grupo (data-nav-group) com foco: devolve o foco ao mesmo depois de repintar.
+    const act = document.activeElement;
+    const focused = act?.closest?.(`#${id} [data-view]`)?.dataset.view;
+    const focusedGroup = act?.closest?.(`#${id} [data-nav-group]`)?.dataset.navGroup;
     $(id).innerHTML = html;
     if (focused) $(id).querySelector(`[data-view="${focused}"]`)?.focus();
+    else if (focusedGroup) $(id).querySelector(`[data-nav-group="${focusedGroup}"]`)?.focus();
   }
 
   function renderTabs() {
@@ -135,11 +150,21 @@
     // Mesmo total do título da aba (updateTitle): não varia com a busca.
     const waiting = [...runs.values()].filter(r => !isHidden(r) && needsYou(r)).length;
     // Atributos na ordem data-view, aria-selected: version-ui.test.js procura esse par.
-    paint('tabs', NAV.map(([group, items]) => `<div class="nav-group" role="presentation">
-      <span class="nav-group-label label" role="presentation">${group}</span>
+    // Cada grupo: botão que recolhe (design AppNav: chevron + rótulo mono) e um tablist próprio.
+    // Recolhido, o grupo mostra a soma do que pede você, para a pendência não sumir.
+    paint('tabs', NAV.map(([group, items]) => {
+      const id = navGroupId(group);
+      const open = !navClosed[group];
+      const sum = items.some(([k]) => k === 'runs') ? waiting : 0;
+      return `<div class="nav-group" role="group" aria-labelledby="${id}-h">
+      <button type="button" class="nav-group-label label" id="${id}-h" data-nav-group="${group}" aria-expanded="${open}" aria-controls="${id}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>${group}</span>${
+        !open && sum ? `<span class="nav-count" title="${sum} pedem você">${sum}</span>` : ''}</button>
+      <div class="nav-group-items" id="${id}" role="tablist" aria-orientation="vertical" aria-labelledby="${id}-h"${open ? '' : ' hidden'}>
       ${items.map(([k, label, d]) => `<button type="button" role="tab" class="nav-item" data-view="${k}" aria-selected="${k === cur}">${icon(d)}<span>${label}</span>${
         k === 'runs' && waiting ? `<span class="nav-count" title="${waiting} pedem você">${waiting}</span>` : ''}</button>`).join('')}
-    </div>`).join(''));
+      </div>
+    </div>`;
+    }).join(''));
     const [group, items] = NAV.find(([, its]) => its.some(([k]) => k === cur)) || NAV[0];
     $('crumbGroup').textContent = group;
     $('crumbView').textContent = (items.find(([k]) => k === cur) || [, 'Runs'])[1];
@@ -154,7 +179,7 @@
   }
   function setView(v) {
     v = alias(v);
-    view = v; prefs.view = v; persist();
+    view = v; prefs.view = v; openNavGroupOf(v); persist();
     const want = v === 'runs' ? (selected ? `#run/${encodeURIComponent(selected)}` : '') : `#${v}`;
     if (location.hash !== want) history.replaceState(null, '', want || location.pathname);
     document.body.dataset.view = v;
@@ -167,7 +192,16 @@
     if (v === 'versao') window.VersionView?.load(false);
     if (v === 'computador') window.OnboardingView?.load();
   }
-  $('tabs').addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
+  $('tabs').addEventListener('click', e => {
+    const g = e.target.closest('[data-nav-group]');
+    if (g) {
+      const name = g.dataset.navGroup;
+      navClosed[name] = g.getAttribute('aria-expanded') === 'true';
+      prefs.navClosed = navClosed; persist(); renderTabs();
+      return;
+    }
+    const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view);
+  });
   $('runViews').addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
   window.addEventListener('hashchange', () => { const v = alias(location.hash.slice(1)) || 'runs'; if (VIEWS.some(([k]) => k === v)) setView(v); });
   // #run/<id> é tratado em ux.js.
