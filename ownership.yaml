@@ -65,6 +65,19 @@ modules:
   - path: scripts/lib/agent-exit-signals.js
     capability: agent-exit-signals
     owner: UNKNOWN
+  # PRI-311 (S5.2b): visita ao Implement da Run decomposta — decomposição (B2), próxima ação
+  # (B5), rework mapeado, piso da linhagem, DoD e bloco de contexto (B6). Só decide; quem grava
+  # o state.json é o watcher (writeTaskState com CAS), inclusive a transição implement → review
+  # da Run decomposta (o comando de integração não transiciona), e quem grava Attempt é o DOM-06.
+  - path: scripts/lib/decomposition-visit.js
+    capability: decomposition-visit
+    owner: UNKNOWN
+  - path: .claude/commands/implement-step.md
+    capability: decomposition-visit
+    owner: UNKNOWN
+  - path: .claude/commands/implement-integrate.md
+    capability: decomposition-visit
+    owner: UNKNOWN
 
   # SDD / evidence (candidatos)
   - path: scripts/lib/spec-change.js
