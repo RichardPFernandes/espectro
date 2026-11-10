@@ -87,3 +87,89 @@ test('detalhe: abas com contagem só quando há dado; aba ativa marcada', () => 
     assert.match(nav, /data-rd-tab="log" aria-current="true"><span class="rd-tab-l">Log do agente<\/span><span class="rd-tab-c done">● ao vivo</);
     assert.match(nav, /data-rd-tab="summary" aria-current="false"><span class="rd-tab-l">Resumo<\/span><\/button>/);
 });
+
+test('lista do artboard Main: campo de filtro antes da ordenação e de Selecionar; Retrabalho com "loops"', () => {
+    const M = boot().RunsMain;
+    const head = M.headHtml([measured], '<div class="side-bar">SEL</div>');
+    const iq = head.indexOf('id="runsQ"'), is = head.indexOf('rl-sort'), ib = head.indexOf('SEL');
+    assert.ok(iq > 0 && iq < is && is < ib, 'ordem: filtro, ordenação, Selecionar');
+    assert.match(head, /placeholder="Filtrar por ticket, título ou nó"/);
+    assert.match(head, /Retrabalho por run<\/span><span class="kcard-row"><span class="kcard-value num">0<\/span><span class="kcard-delta tone-flat">loops</);
+    // sem medição de retrabalho, sem a unidade solta
+    assert.doesNotMatch(M.headHtml([bare], ''), /loops</);
+});
+
+test('matchQuery: ticket, título, task-id e nó (rótulo ou chave), sem acento e sem caixa', () => {
+    const M = boot().RunsMain;
+    const run = r('90218-exportacao', { node: 'implement' });
+    for (const q of ['90218', 'título 90218', 'TITULO', 'implementa', 'implement', 'exportacao', '']) assert.equal(M.matchQuery(run, q), true, q);
+    assert.equal(M.matchQuery(run, 'revisão'), false);
+    M.setQuery('nada-casa');
+    assert.equal(M.queryOf(), 'nada-casa');
+    assert.equal(M.matchQuery(run), false);
+});
+
+test('rowWhere: "nó · detalhe" só com o que o state.json grava', () => {
+    const M = boot().RunsMain;
+    assert.equal(M.rowWhere(r('a', { node: 'review' }, { status: 'running', retries: { review: 1 } })), 'Revisão · rodando · tentativa 2 · 4/7');
+    assert.equal(M.rowWhere(r('a', { node: 'plan' }, { status: 'in_progress' })), 'Plano · próximo nó · 2/7');
+    assert.equal(M.rowWhere(r('a', { status: 'failed', node: 'test' })), 'Testes · falhou');
+    assert.equal(M.rowWhere(r('a', { status: 'needs_human_review', node: 'implement' }, { status: 'spec-change-pending-approval' })), 'Implementação · SPEC_CHANGE aguardando você');
+    assert.equal(M.rowWhere(r('a', { status: 'needs_human_review', node: 'commit', qaRejected: true })), 'Commit · recusa QA');
+    assert.equal(M.rowWhere(bare), 'Commit · concluído');
+    assert.equal(M.rowWhere(r('a', { status: 'pending', node: null })), 'na fila · aguardando slot');
+});
+
+test('rowWhen: "parado 4 min" / "parado 1 h 1 min" esperando você; relógio no nó com o agente rodando', () => {
+    const M = boot().RunsMain;
+    const t0 = Date.parse('2026-11-10T12:00:00Z');
+    const at = min => new Date(t0 - min * 60000).toISOString();
+    assert.deepEqual({ ...M.rowWhen(r('a', { status: 'needs_human_review', updatedAt: at(4) }), t0) }, { text: 'parado 4 min', tone: '', since: '' });
+    assert.deepEqual({ ...M.rowWhen(r('a', { status: 'failed', updatedAt: at(61) }), t0) }, { text: 'parado 1 h 1 min', tone: 'waiting', since: '' });
+    const live = r('a', { updatedAt: at(1) }, { status: 'running', node_started_at: new Date(t0 - 724000).toISOString() });
+    assert.deepEqual({ ...M.rowWhen(live, t0) }, { text: '12:04 no nó', tone: 'running', since: live.state.node_started_at });
+    assert.equal(M.rowWhen(bare, t0).text, 'há 1 hora'); // concluída: última atualização
+});
+
+// ux.js num vm com DOM mínimo: só o atalho global de dígitos interessa aqui.
+function bootUx(view) {
+    const el = () => ({ dataset: {}, hidden: false, classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+        addEventListener() {}, insertAdjacentHTML() {}, appendChild() {}, setAttribute() {}, removeAttribute() {}, closest: () => null, querySelector: () => null, querySelectorAll: () => [], focus() {}, set innerHTML(_v) {} });
+    const keydown = [];
+    const els = new Map();
+    const calls = [];
+    const ctx = {
+        navigator: { platform: 'MacIntel' }, location: { hash: '', pathname: '/' }, history: { replaceState() {} },
+        window: { addEventListener() {} }, prefs: {}, persist() {}, selected: null, selecting: false, runs: new Map(),
+        $: id => { if (!els.has(id)) els.set(id, el()); return els.get(id); },
+        document: { body: { ...el(), dataset: { view } }, activeElement: null, createElement: el, querySelector: () => el(), querySelectorAll: () => [],
+            addEventListener(type, fn) { if (type === 'keydown') keydown.push(fn); } },
+        Views: { setView: v => calls.push(v), openRun() {} }, renderDetail() {}, closeRun() {},
+        isHidden: () => false, needsYou: () => false, isDone: () => false, NODE_LABEL: {}, STATUS: {}, titleOf: () => ({ num: '', text: '' }),
+    };
+    ctx.window.Views = ctx.Views;
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, 'public', 'ux.js'), 'utf8'), ctx, { filename: 'ux.js' });
+    const press = key => { const e = { key, preventDefault() {}, stopImmediatePropagation() {} }; keydown.forEach(fn => fn(e)); };
+    return { press, calls };
+}
+
+test('atalho de dígitos só na tela Runs: "3" em Tickets não vai para #tabela', () => {
+    const tk = bootUx('redmine');
+    tk.press('3');
+    assert.deepEqual(tk.calls, []);
+    for (const v of ['runs', 'quadro', 'timeline']) {
+        const rn = bootUx(v);
+        rn.press('3');
+        assert.deepEqual(rn.calls, ['tabela'], v);
+    }
+});
+
+test('footerHtml: watcher ativo · tick N, parado ou verificando; atalhos do artboard', () => {
+    const M = boot().RunsMain;
+    assert.match(M.footerHtml({ reachable: true, st: { running: true, ticks: 412 } }), /data-tone="on"><i aria-hidden="true"><\/i>watcher ativo · tick 412</);
+    assert.match(M.footerHtml({ reachable: true, st: { running: false, state: 'stopped' } }), /watcher parado/);
+    assert.match(M.footerHtml({ reachable: false, st: null }), /watcher sem conexão/);
+    assert.match(M.footerHtml(null), /watcher: verificando/);
+    assert.match(M.footerHtml(null), /K buscar · J K navegar · X selecionar · Esc fechar · V lista\/quadro\/linha do tempo/);
+});

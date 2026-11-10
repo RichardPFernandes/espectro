@@ -14,7 +14,7 @@
   const NONE = 'sem medição';
   const usd = v => (v == null ? NONE : fmtUsd(v));
   const tok = v => (v == null ? NONE : fmtTok(v));
-  const pct = v => `${v > 0 ? '↑' : v < 0 ? '↓' : '='} ${Math.abs(Math.round(v * 100))}% vs 7 d anteriores`;
+  const pct = v => `${v > 0 ? '↑' : v < 0 ? '↓' : '='} ${Math.abs(Math.round(v * 100))}%`;
 
   // ---------------------------------------------------------------- filtro por estado (topo)
   const FILTERS = [['all', 'Todas'], ['need', 'Precisa de você'], ['run', 'Em andamento'], ['done', 'Concluídas']];
@@ -26,10 +26,14 @@
   }
 
   // ---------------------------------------------------------------- indicadores (kcards)
+  // Artboard Main: 4 cards (Custo médio, Tokens, Tempo até PR, Retrabalho). "Tempo até PR" fica
+  // fora: o app não grava quando o PR abriu (pendente de implementação, sem número inventado).
+  // deltaText: texto do delta como no artboard ("↓ 12% vs 7d", "↓ 8%", "loops"); a variação do
+  // retrabalho vai para o title do card.
   const KCARDS = [
-    ['cost', 'Custo médio por run', 'cost_tracking.totals.cost_usd (watcher)', 'Custo acima da média', k => usd(k.cost.value), 'down'],
-    ['tokens', 'Tokens por run (mediana)', 'cost_tracking.totals, entrada + saída (watcher)', 'Consumindo tokens agora', k => tok(k.tokens.value), 'down'],
-    ['rework', 'Retrabalho por run', 'state.retries', 'Com retrabalho (nova tentativa ou loop)', k => (k.rework.value == null ? NONE : k.rework.value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })), 'down'],
+    ['cost', 'Custo médio por run', 'cost_tracking.totals.cost_usd (watcher)', 'Custo acima da média', k => usd(k.cost.value), 'down', d => `${pct(d)} vs 7d`],
+    ['tokens', 'Tokens por run (mediana)', 'cost_tracking.totals, entrada + saída (watcher)', 'Consumindo tokens agora', k => tok(k.tokens.value), 'down', d => pct(d)],
+    ['rework', 'Retrabalho por run', 'state.retries', 'Com retrabalho (nova tentativa ou loop)', k => (k.rework.value == null ? NONE : k.rework.value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })), 'down', null],
   ];
   const kfOf = () => (KCARDS.some(c => c[0] === prefs.runsKf) ? prefs.runsKf : null);
   const sortOf = () => (['urg', 'cost', 'recent'].includes(prefs.runsSort) ? prefs.runsSort : 'urg');
@@ -40,14 +44,28 @@
     return list.filter(r => (f === 'all' || M.bucketOf(r) === f) && (!kf || M.kfMatch(kf, r, k)));
   }
 
+  // Busca da lista (campo "Filtrar por ticket, título ou nó" do artboard Main): só nesta tela,
+  // em memória, junto com a busca do topo. Casa número e título do ticket, task-id e o nó atual.
+  let listQ = '';
+  const norm = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const queryOf = () => listQ;
+  const setQuery = v => { listQ = String(v || ''); };
+  function matchQuery(r, q = listQ) {
+    const qn = norm(q.trim());
+    if (!qn) return true;
+    const t = titleOf(r);
+    return norm(`${t.num} ${t.text} ${r.taskId} ${r.node || ''} ${NODE_LABEL[r.node] || ''}`).includes(qn);
+  }
+
   function headHtml(all, sideBarHtml) {
     const k = M.kpis(all), kf = kfOf();
     const nc = M.nodeCost(all);
-    const cards = KCARDS.map(([key, label, source, kfLabel, value, good]) => {
+    const cards = KCARDS.map(([key, label, source, kfLabel, value, good, deltaText]) => {
       const st = k[key], n = all.filter(r => M.kfMatch(key, r, k)).length, on = kf === key;
-      const tone = st.delta == null || st.delta === 0 ? 'flat' : (st.delta < 0) === (good === 'down') ? 'up' : 'waiting';
-      return K.kcard({ key, label, value: value(k), source, tip: `Mostrar só: ${kfLabel}`, pressed: on,
-        delta: st.delta == null ? '' : pct(st.delta), deltaTone: tone,
+      const tone = !deltaText || st.delta == null || st.delta === 0 ? 'flat' : (st.delta < 0) === (good === 'down') ? 'up' : 'waiting';
+      const trend = st.delta == null ? '' : `${pct(st.delta)} vs 7 d anteriores`;
+      return K.kcard({ key, label, value: value(k), source, tip: `Mostrar só: ${kfLabel}${!deltaText && trend ? ` · ${trend}` : ''}`, pressed: on,
+        delta: deltaText ? (st.delta == null ? '' : deltaText(st.delta)) : (st.value == null ? '' : 'loops'), deltaTone: tone,
         series: st.series.length > 1 ? st.series : null, sparkLabel: `${label} por dia, últimos 14 dias`,
         hint: on ? 'filtrando · clique para limpar' : `ver ${n} ${n === 1 ? 'run' : 'runs'} →` });
     }).join('');
@@ -68,10 +86,80 @@
       </section>
       <div class="rl-filters">
         ${kf ? K.filterChip({ label: kfLabel, act: 'clear-kcard' }) : ''}
+        <label for="runsQ" class="sr-only">Filtrar runs</label>
+        <span class="rl-q"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><input id="runsQ" type="text" value="${esc(listQ)}" placeholder="Filtrar por ticket, título ou nó" autocomplete="off" spellcheck="false">${listQ ? '<button type="button" data-act="clear-q" aria-label="Limpar filtro">×</button>' : ''}</span>
         <div class="seg rl-sort" role="group" aria-label="Ordenar">${[['urg', 'Urgência'], ['cost', 'Custo'], ['recent', 'Recentes']].map(([v, l]) =>
           `<button type="button" data-runs-sort="${v}" aria-pressed="${v === sort}">${l}</button>`).join('')}</div>
         ${sideBarHtml}
       </div>`;
+  }
+
+  // ---------------------------------------------------------------- linha da lista
+  // Subtítulo "nó · detalhe" (artboard Main: "implement · tentativa 2", "test · tentativa 2/2",
+  // "plan · 2/7"). Só junta o que o state.json grava; nada de limite de loop inventado.
+  const SPECIAL = {
+    'spec-draft': 'spec rascunho em revisão', 'spec-change-pending-approval': 'SPEC_CHANGE aguardando você',
+    'pre-build-failed': 'build quebrado', 'churn-escalation': 'churn de implementação', interrupted: 'interrompido',
+  };
+  function rowWhere(r) {
+    if (r.archived) return `${r.demand?.status || 'Aberto'} no Redmine`;
+    if (r.status === 'committed') return `${NODE_LABEL.commit || 'Commit'} · concluído`;
+    if (r.node === 'escalated') return 'Escalado para você';
+    if (!r.node) return r.status === 'pending' ? 'na fila · aguardando slot' : '';
+    const pos = NODES.findIndex(([x]) => x === r.node);
+    const parts = [NODE_LABEL[r.node] || r.node];
+    const extra = Number(r.state?.retries?.[r.node]) || 0;
+    const special = SPECIAL[r.state?.status];
+    if (r.qaRejected) parts.push('recusa QA');
+    else if (special) parts.push(special);
+    else if (r.status === 'awaiting_approval') parts.push('draft da spec no Redmine');
+    else if (r.status === 'failed') parts.push('falhou');
+    else if (r.status === 'needs_human_review') parts.push('esperando você');
+    else if (r.status === 'running') parts.push(r.state?.status === 'running' ? 'rodando' : 'próximo nó');
+    if (extra) parts.push(`tentativa ${extra + 1}`);
+    if (r.status === 'running' && pos >= 0) parts.push(`${pos + 1}/7`);
+    return parts.join(' · ');
+  }
+  // Duração "1 h 0 min" / "31 min" / "2 d" (artboard: "parado 1 h 0 min").
+  function spanText(ms) {
+    const m = Math.max(0, Math.floor(ms / 60000));
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    return h < 24 ? `${h} h ${m % 60} min` : `${Math.floor(h / 24)} d`;
+  }
+  // "12:04" no nó (mm:ss ou h:mm:ss), como o relógio do artboard.
+  function clockText(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), mi = Math.floor(s % 3600 / 60), se = s % 60;
+    return `${h ? `${h}:${String(mi).padStart(2, '0')}` : mi}:${String(se).padStart(2, '0')}`;
+  }
+  // Coluna da direita, embaixo: parado há quanto (espera você), relógio do nó (agente rodando,
+  // state.node_started_at) ou a última atualização. tone: 'waiting' depois de 30 min parado.
+  function rowWhen(r, now = Date.now()) {
+    const upd = Date.parse(r.updatedAt);
+    if (M.needsYou(r) && !M.isDone(r) && r.status !== 'committed' && upd) {
+      const ms = now - upd;
+      return { text: `parado ${spanText(ms)}`, tone: ms >= 1800000 ? 'waiting' : '', since: '' };
+    }
+    const started = Date.parse(r.state?.node_started_at);
+    if (r.state?.status === 'running' && started) return { text: `${clockText(now - started)} no nó`, tone: 'running', since: r.state.node_started_at };
+    return { text: ago(r.updatedAt), tone: '', since: '' };
+  }
+
+  // ---------------------------------------------------------------- rodapé de status
+  // Artboard Main: "watcher ativo · tick N" à esquerda e os atalhos à direita. Lê o mesmo estado
+  // do cartão do watcher (watcher.js, /api/watcher/status); sem dado, diz que está verificando.
+  const MOD = /Mac|iPhone|iPad/.test((typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '') ? '⌘' : 'Ctrl+';
+  function footerHtml(w) {
+    let tone = 'idle', text = 'watcher: verificando';
+    if (w && w.reachable === false) { tone = 'off'; text = 'watcher sem conexão'; }
+    else if (w && w.st) {
+      const st = w.st;
+      if (st.running) { tone = 'on'; text = `watcher ativo${st.ticks != null ? ` · tick ${st.ticks}` : ''}`; }
+      else if (st.state === 'restarting') { tone = 'warn'; text = 'watcher reiniciando'; }
+      else { tone = 'off'; text = 'watcher parado'; }
+    }
+    return `<span class="sb-w" data-tone="${tone}"><i aria-hidden="true"></i>${esc(text)}</span>
+      <span class="sb-keys">${MOD}K buscar · J K navegar · X selecionar · Esc fechar · V lista/quadro/linha do tempo</span>`;
   }
 
   // ---------------------------------------------------------------- pipeline
@@ -236,5 +324,6 @@
     return `<footer class="rd-status" aria-label="Status do detalhe"><span role="status" id="rdStatusLeft">${esc(left)}</span><span class="rd-status-keys">J K abas · 1–${groups.length} grupos · Esc volta ao Resumo</span></footer>`;
   }
 
-  window.RunsMain = { stateKey, filterOf, sortOf, kfOf, applyFilters, stateFilterHtml, headHtml, pipelineHtml, summaryHtml, detailHeadHtml, detailBandHtml, sideNavHtml, statusBarHtml, nodeName, NONE };
+  window.RunsMain = { stateKey, filterOf, sortOf, kfOf, applyFilters, stateFilterHtml, headHtml, pipelineHtml, summaryHtml, detailHeadHtml, detailBandHtml, sideNavHtml, statusBarHtml, nodeName, NONE,
+    queryOf, setQuery, matchQuery, rowWhere, rowWhen, footerHtml };
 })();

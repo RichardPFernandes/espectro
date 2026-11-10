@@ -12,8 +12,21 @@ body:is([data-view="runs"], [data-view="quadro"], [data-view="tabela"], [data-vi
 .rl-count { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 400; }
 
 /* ------------------------------------------------------------ lista: indicadores */
-/* Painel da lista com a run selecionada: ~440 px como no artboard Main a 1440 px. */
-.layout { grid-template-columns: 440px minmax(0, 1fr); }
+/* Painel da lista com a run selecionada: 460 px como no artboard Main (listFlex 0 0 460px).
+   Sem run aberta (body.runs-wide, renderDetail) a lista ocupa a área toda, como no artboard. */
+.layout { grid-template-columns: 460px minmax(0, 1fr); }
+@media (min-width: 2000px) { .layout { grid-template-columns: 520px minmax(0, 1fr); } }
+body.runs-wide .layout { grid-template-columns: minmax(0, 1fr); }
+body.runs-wide #detail { display: none; }
+body.runs-wide #sidebar { border-right: 0; }
+.ov-titlerow { display: flex; align-items: center; gap: 16px; }
+.ov-titlerow h1 { flex: 1 1 auto; }
+
+/* Segmentos da tela (visões, estado, ordenação): rótulo text-secondary, selecionado sem negrito (artboard). */
+#runViews > button, #runFilter > button, .rl-sort > button { color: var(--text-secondary); }
+#runViews > button[aria-selected="true"], #runFilter > button[aria-pressed="true"], .rl-sort > button[aria-pressed="true"] { color: var(--text); font-weight: 400; }
+/* Artboard Main a 1440 px mostra os ícones do segmento de visões. */
+@media (min-width: 1280px) { #runViews svg { display: inline; } }
 .rl-kpis { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .rl-team { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; font-size: 12px; line-height: 16px; }
 .rl-team-t { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text); }
@@ -28,23 +41,69 @@ body:is([data-view="runs"], [data-view="quadro"], [data-view="tabela"], [data-vi
 .rl-nc-bar > span.hi { background: var(--accent); }
 .rl-nc-legend { display: flex; flex-wrap: wrap; gap: 10px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
 
-/* Barra fixa: filtro do card, ordenação e os modos da lista. */
+/* Barra fixa: filtro do card, campo de filtro, ordenação e os modos da lista (artboard Main). */
 .rl-filters {
   position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--ground);
 }
 .rl-sort > button { min-height: 28px; padding: 0 8px; font-size: 12px; }
-.rl-filters .side-bar { flex: 1 1 auto; position: static; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; min-height: 0; }
+.rl-q {
+  flex: 1 1 180px; display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 10px; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted);
+}
+.rl-q input { flex: 1 1 auto; min-width: 0; height: 32px; border: 0; background: transparent; color: var(--text); font-family: inherit; font-size: 13px; outline: none; padding: 0; }
+.rl-q input::placeholder { color: var(--muted); }
+.rl-q:focus-within { border-color: var(--link); }
+.rl-q button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; padding: 0 2px; }
+.rl-filters .side-bar { flex: 0 1 auto; position: static; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; min-height: 0; }
 .rl-filters .side-bar .label { display: none; }
+/* Botões da barra no estilo btn2 do artboard (Selecionar): borda fina, texto secundário, 12 px. */
+.rl-filters .side-bar .ghost-btn { min-height: 34px; padding: 0 10px; border-color: var(--border); border-radius: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.rl-filters .side-bar .ghost-btn:hover { background: var(--surface-hover); color: var(--text); }
 
-/* Grupo: soma do custo à direita. */
+/* Grupo (artboard Main): ponto · RÓTULO · contagem … soma à direita, tudo em muted.
+   A seta de recolher (do app) fica no fim, depois da soma. */
+.group-head, .group-head.attention { color: var(--muted); }
 .group-head .g-sum { margin-left: auto; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; color: var(--muted); }
-.group-head .g-sum + .chev, .group-head .g-sum ~ .chev { margin-left: 8px; }
+.group-head .lead { margin: 0 0 0 auto; }
+.group-head .g-sum + .lead { margin-left: 8px; }
 
-/* Linha: custo em cima à direita, quando embaixo à direita (artboard Main). */
+/* Linha (artboard Main): glifo | ticket · título · selos | custo
+                         | trilha de 7 nós · "nó · detalhe" | quando. */
+.run { align-items: center; row-gap: 4px; }
+.run .title { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; -webkit-line-clamp: unset; }
+.run .title .ticket { flex: 0 0 auto; margin-right: 0; font-weight: 400; }
+.run .title .t-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.run .title > :not(.ticket):not(.t-text) { flex: 0 0 auto; }
 .run .cost-top { justify-self: end; }
 .run .cost-top .run-cost { margin-left: 0; font-family: var(--mono); font-size: 12px; color: var(--text-secondary); }
-.run .sub .when { margin-left: auto; padding-top: 0; }
+.run .sub { grid-column: 2; flex-wrap: nowrap; gap: 8px; overflow: hidden; }
+.run .sub > * { flex: 0 0 auto; }
+/* Sem espaço, os selos do app encolhem antes do "nó · detalhe" do artboard. */
+.run .sub .where { flex: 0 1 auto; min-width: 48px; }
+.run .sub .svcs { flex: 0 100 auto; flex-wrap: nowrap; min-width: 0; overflow: hidden; margin-top: 0; }
+.run > .when { grid-column: 3; justify-self: end; padding-top: 0; }
+.run > .when.waiting { color: var(--state-waiting-fg); }
+.run > .when.running { color: var(--state-running-fg); }
+.mini-rail i.cur.fail { background: var(--state-failed); }
+
+/* ------------------------------------------------------------ rodapé de status (artboard Main) */
+#runsStatus { display: none; }
+/* Integração com o rodapé comum do shell: uma barra só — a da lista de Runs ou a do detalhe da run. */
+body:is([data-view="runs"], [data-view="quadro"], [data-view="tabela"], [data-view="timeline"]):not(.run-open) #appStatus,
+.app-main:has(.rd-status) > #appStatus { display: none; }
+body:is([data-view="runs"], [data-view="quadro"], [data-view="tabela"], [data-view="timeline"]):not(.run-open) #runsStatus {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 16px; height: 28px; padding: 0 16px; box-sizing: border-box;
+  border-top: 1px solid var(--border); background: var(--rail); font-family: var(--mono); font-size: 11px; color: var(--muted);
+}
+#runsStatus .sb-w { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+#runsStatus .sb-w i { width: 8px; height: 8px; border-radius: 50%; background: var(--state-queued); }
+#runsStatus .sb-w[data-tone="on"] i { background: var(--state-done); animation: rs-pulse 1.4s ease-in-out infinite; }
+#runsStatus .sb-w[data-tone="warn"] i { background: var(--state-waiting); }
+#runsStatus .sb-w[data-tone="off"] i { background: var(--state-failed); }
+#runsStatus .sb-keys { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+@keyframes rs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (max-width: 760px) { body #runsStatus { display: none !important; } }
 
 /* Detalhe aberto: a lista sai e o detalhe ocupa a largura toda. */
 body.run-open .layout { grid-template-columns: minmax(0, 1fr); }

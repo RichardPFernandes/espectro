@@ -629,6 +629,7 @@
   <div id="live" class="live" role="status"><i aria-hidden="true"></i><span id="liveText">Conectando</span></div>
   <button id="helpBtn" class="sb-keys" type="button" title="Atalhos de teclado (?)" aria-keyshortcuts="?"></button>
 </footer>
+<footer id="runsStatus" class="statusbar" aria-label="Estado do watcher e atalhos"></footer>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -1104,6 +1105,23 @@ setInterval(() => {
   }
 }, 1000);
 
+// Lista de Runs (artboard Main): relógio "12:04 no nó" das linhas com agente rodando e o rodapé
+// de status (watcher · tick · atalhos), que lê o mesmo estado do cartão do watcher (watcher.js).
+function paintRunsStatus() {
+  const html = RunsMain.footerHtml(window.WatcherCtl?.snapshot());
+  const el = $('runsStatus');
+  if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+}
+setInterval(() => {
+  if (document.hidden) return;
+  const now = Date.now();
+  for (const el of document.querySelectorAll('#sidebar [data-node-since]')) {
+    const w = RunsMain.rowWhen(runs.get(el.closest('.run')?.dataset.id) || {}, now);
+    if (w.since) el.textContent = w.text;
+  }
+  paintRunsStatus();
+}, 1000);
+
 // ---------------------------------------------------------------- sidebar
 let lastRunsHash = '';
 function setRuns(list) {
@@ -1159,10 +1177,11 @@ function visibleRuns() {
 function sidebarBar(list) {
   if (!selecting) {
     const anyOpen = GROUPS.some(g => groupOpen(g) && list.some(r => (g.hidden ? isHidden(r) : !isHidden(r) && g.match(r))));
-    return `<div class="side-bar"><span class="label">Runs</span><span class="spacer"></span>
+    // "Selecionar" vem do artboard Main; "Recolher tudo" e "Comparar" são do app (fora do design).
+    return `<div class="side-bar"><span class="label">Runs</span>
+      <button class="ghost-btn" type="button" data-act="select" aria-pressed="false" title="Ou ⌘/Ctrl+clique num run (X marca a run aberta)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg>Selecionar</button>
       <button class="ghost-btn" type="button" data-act="${anyOpen ? 'collapse' : 'expand'}">${anyOpen ? 'Recolher tudo' : 'Expandir tudo'}</button>
-      <button class="ghost-btn" type="button" data-act="compare-mode" title="Escolha 2 runs para ver as diferenças lado a lado">Comparar</button>
-      <button class="ghost-btn" type="button" data-act="select" title="Ou ⌘/Ctrl+clique num run">Selecionar</button></div>`;
+      <button class="ghost-btn" type="button" data-act="compare-mode" title="Escolha 2 runs para ver as diferenças lado a lado">Comparar</button></div>`;
   }
   const ids = list.map(r => r.taskId);
   const n = ids.filter(id => picked.has(id)).length;
@@ -1208,12 +1227,16 @@ function renderSidebar({ views = true } = {}) {
   if (views) window.Views?.refresh();
   // Filtro por estado e filtro do kcard (design Main) valem para a lista e para as outras visões.
   const all = [...runs.values()].filter(r => !isHidden(r));
-  const list = RunsMain.applyFilters(visibleRuns(), all);
+  // Campo "Filtrar por ticket, título ou nó" da lista (artboard Main): só nesta lista.
+  const list = RunsMain.applyFilters(visibleRuns(), all).filter(r => RunsMain.matchQuery(r));
   $('runFilter').innerHTML = RunsMain.stateFilterHtml(visibleRuns().filter(r => !isHidden(r)));
-  const q = $('q').value.trim();
+  const q = $('q').value.trim() || RunsMain.queryOf().trim();
   const side = $('sidebar');
   side.classList.toggle('selecting', selecting);
   const keep = side.scrollTop;
+  // O campo de filtro mora no HTML que se reescreve: devolve foco e cursor depois de pintar.
+  const qi = document.activeElement?.id === 'runsQ' ? { s: document.activeElement.selectionStart, e: document.activeElement.selectionEnd } : null;
+  const refocus = () => { const el = qi && $('runsQ'); if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(qi.s, qi.e); } catch { /* sem seleção */ } } };
   if (!runs.size) {
     side.innerHTML = '<div class="side-empty">Nenhum run encontrado em memory/runs. Quando o watcher pegar um ticket, ele aparece aqui sozinho.</div>';
     return;
@@ -1221,6 +1244,7 @@ function renderSidebar({ views = true } = {}) {
   const head = RunsMain.headHtml(all, sidebarBar(list));
   if (!list.length) {
     side.innerHTML = head + `<div class="side-empty">${q ? `Nada bate com “${esc(q)}”. Tente o número do ticket.` : 'Nenhuma run neste filtro.'}</div>`;
+    refocus();
     return;
   }
   let html = head;
@@ -1232,8 +1256,9 @@ function renderSidebar({ views = true } = {}) {
     const sum = items.reduce((a, r) => { const v = RunListModel.totalsOf(r).usd; return v == null ? a : (a ?? 0) + v; }, null);
     const open = groupOpen(g);
     const hasSel = !open && items.some(r => r.taskId === selected);
+    // Artboard Main: ponto · RÓTULO · contagem … soma à direita. A seta de recolher é do app (fica no fim).
     const title = `<button class="group-head ${g.cls || ''}" type="button" data-group="${g.key}" aria-expanded="${open}">
-      ${ICON.chevLeft}<span class="g-dot ${GROUP_TONE[g.key] || 'queued'}" aria-hidden="true"></span>${g.label} <span class="count">${items.length}</span>${hasSel ? '<span class="sel-dot" title="O run aberto está neste grupo"></span>' : ''}${sum == null ? '' : `<span class="g-sum num" title="Soma do custo medido · fonte: cost_tracking do state.json">${esc(fmtUsd(sum))}</span>`}</button>`;
+      <span class="g-dot ${GROUP_TONE[g.key] || 'queued'}" aria-hidden="true"></span>${g.label} <span class="count">${items.length}</span>${hasSel ? '<span class="sel-dot" title="O run aberto está neste grupo"></span>' : ''}${sum == null ? '' : `<span class="g-sum num" title="Soma do custo medido · fonte: cost_tracking do state.json">${esc(fmtUsd(sum))}</span>`}${ICON.chevLeft}</button>`;
     if (selecting && !compareMode) {
       const n = items.filter(r => picked.has(r.taskId)).length;
       const cls = n === 0 ? '' : n === items.length ? 'on' : 'some';
@@ -1246,6 +1271,7 @@ function renderSidebar({ views = true } = {}) {
   html += actionBar();
   side.innerHTML = html;
   side.scrollTop = keep;
+  refocus();
 }
 
 function groupItems(key) {
@@ -1311,7 +1337,7 @@ function miniRail(r) {
   if (!r.nodes) return '';
   const dots = NODES.map(([k, label]) => {
     const cur = r.status !== 'committed' && r.node === k;
-    const cls = cur ? (needsYou(r) ? 'cur stop' : 'cur') : r.nodes[k] === 'done' || r.status === 'committed' ? 'done' : '';
+    const cls = cur ? (r.status === 'failed' ? 'cur fail' : needsYou(r) ? 'cur stop' : 'cur') : r.nodes[k] === 'done' || r.status === 'committed' ? 'done' : '';
     return `<i class="${cls}"></i>`;
   }).join('');
   const label = NODES.map(([k, l]) => l).join(' → ');
@@ -1338,17 +1364,19 @@ function runRow(r) {
   const twin = [...runs.values()].some(o => o !== r && titleOf(o).num === t.num && titleOf(o).text === t.text);
   const slug = twin ? r.taskId.replace(/^\d{4,6}-/, '') : '';
   const prs = extractPrs(r.state?.pull_request);
-  const where = r.archived ? `${r.demand?.status || 'Aberto'} no Redmine` : r.status === 'committed' ? 'Commitado' : r.state?.status === 'spec-draft' ? 'Spec rascunho em revisão' : r.state?.status === 'spec-change-pending-approval' ? 'SPEC_CHANGE aguardando você' : r.status === 'awaiting_approval' ? 'Draft da spec no Redmine' : r.node === 'escalated' ? 'Escalado para você' : r.node ? `${r.state?.status === 'running' ? 'Rodando' : r.status === 'running' ? 'Próximo' : 'Parado em'}: ${NODE_LABEL[r.node] || r.node}` : '';
+  // Artboard Main: linha 1 = ticket · título · selos | custo; linha 2 = trilha de 7 nós · "nó · detalhe" | quando.
+  const where = RunsMain.rowWhere(r);
+  const w = RunsMain.rowWhen(r);
   return `
     <div class="run ${picked.has(r.taskId) ? 'picked' : ''} ${isHidden(r) ? 'hidden-run' : ''} ${r.qaRejected ? 'qa-rejected' : ''}" role="button" tabindex="0" data-id="${esc(r.taskId)}"
       aria-current="${r.taskId === selected}" ${selecting ? `aria-pressed="${picked.has(r.taskId)}"` : ''}>
       ${selecting
         ? `<span class="check ${picked.has(r.taskId) ? 'on' : ''}">${ICON.box}</span>`
         : stateGlyph(r.status)}
-      <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}${highlight(t.text, q)}${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${qaRetryBlockedBadge(r)}${routingBlockedBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
+      <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}<span class="t-text">${highlight(t.text, q)}</span>${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${qaRetryBlockedBadge(r)}${routingBlockedBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
       <span class="cost-top">${runCost(r)}</span>
-      ${svcChips(r) ? `<span class="svcs" aria-label="Serviços afetados">${svcChips(r, { max: 3 })}</span>` : ''}
-      <span class="sub">${miniRail(r)}${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}<span class="where">${esc(where)}</span>${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}${window.RunSubtasks?.chipHtml(costOf(r)) || ''}<span class="when" title="${esc(when(r.updatedAt))}">${esc(ago(r.updatedAt))}</span></span>
+      <span class="sub">${miniRail(r)}<span class="where">${esc(where)}</span>${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}${svcChips(r) ? `<span class="svcs" aria-label="Serviços afetados">${svcChips(r, { max: 3 })}</span>` : ''}${window.RunSubtasks?.chipHtml(costOf(r)) || ''}</span>
+      <span class="when${w.tone ? ` ${w.tone}` : ''}" title="${esc(when(r.updatedAt))}"${w.since ? ` data-node-since="${esc(w.since)}"` : ''}>${esc(w.text)}</span>
       ${qaActions(r)}
       ${sessionLimitActions(r)}
     </div>`;
@@ -1498,6 +1526,7 @@ async function resumeSession(taskId) {
 $('sidebar').addEventListener('click', e => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'select') return setSelecting(true);
+  if (act === 'clear-q') { RunsMain.setQuery(''); renderSidebar(); $('runsQ')?.focus(); return; }
   if (act === 'clear-kcard') { prefs.runsKf = null; persist(); return renderSidebar(); }
   const kc = e.target.closest('[data-kcard]');
   if (kc) { prefs.runsKf = prefs.runsKf === kc.dataset.kcard ? null : kc.dataset.kcard; persist(); return renderSidebar(); }
@@ -1559,6 +1588,15 @@ $('runFilter').addEventListener('click', e => {
   renderSidebar();
 });
 $('q').addEventListener('input', () => { searchOverride = {}; renderSidebar(); });
+// Campo "Filtrar por ticket, título ou nó" da lista (renderSidebar devolve o foco ao campo).
+$('sidebar').addEventListener('input', e => {
+  if (e.target.id !== 'runsQ' || e.isComposing) return;
+  RunsMain.setQuery(e.target.value); renderSidebar();
+});
+$('sidebar').addEventListener('compositionend', e => { if (e.target.id === 'runsQ') { RunsMain.setQuery(e.target.value); renderSidebar(); } });
+$('sidebar').addEventListener('keydown', e => {
+  if (e.target.id === 'runsQ' && e.key === 'Escape' && e.target.value) { e.preventDefault(); e.stopPropagation(); RunsMain.setQuery(''); renderSidebar(); }
+});
 
 // Grupos e parada do detalhe aberto, para o rodapé de status acompanhar a troca de aba.
 let detailStatus = null;
@@ -1680,9 +1718,13 @@ function explanation(r) {
 
 function renderDetail() {
   document.body.classList.toggle('run-open', !!(runOpen && runs.get(selected)));
+  // Artboard Main: sem run aberta a lista ocupa a área toda. A Visão geral (fora do design) só
+  // aparece quando pedida (⌘K › Abrir visão geral) e fecha com Esc ou ×.
+  const wide = !window.Compare?.active() && !runs.get(selected) && !!window.UX && !UX.overviewOpen();
+  document.body.classList.toggle('runs-wide', wide);
   if (window.Compare?.active()) { $('detail').innerHTML = Compare.html(); return; }
   const r = runs.get(selected);
-  if (!r && window.UX) { $('detail').innerHTML = UX.overview(); return; }
+  if (!r && window.UX) { $('detail').innerHTML = wide ? '' : UX.overview(); return; }
   if (!r) {
     const waiting = [...runs.values()].filter(x => !isHidden(x) && needsYou(x)).length;
     $('detail').innerHTML = `
@@ -3323,6 +3365,12 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); runTab === 'summary' ? backToList() : setRunTab('summary'); return; }
   }
   if (!typing && !drawerOpen && e.key === 'Escape' && !e.defaultPrevented && !runOpen && selected && !window.Compare?.active() && document.body.dataset.view === 'runs') { e.preventDefault(); closeRun(); return; }
+  // Artboard Main: V alterna Lista/Quadro/(Tabela)/Linha do tempo; X marca a run aberta para a seleção.
+  const RUN_VIEW_KEYS = ['runs', 'quadro', 'tabela', 'timeline'];
+  if (!typing && !drawerOpen && !runOpen && !e.metaKey && !e.ctrlKey && !e.altKey && RUN_VIEW_KEYS.includes(document.body.dataset.view)) {
+    if (e.key === 'v' || e.key === 'V') { e.preventDefault(); const i = RUN_VIEW_KEYS.indexOf(document.body.dataset.view); Views.setView(RUN_VIEW_KEYS[(i + 1) % RUN_VIEW_KEYS.length]); return; }
+    if ((e.key === 'x' || e.key === 'X') && selected && !compareMode && document.body.dataset.view === 'runs') { e.preventDefault(); selecting = true; togglePick(selected); renderSidebar(); return; }
+  }
   if (!typing && !selecting && !runOpen && document.body.dataset.view === 'runs' && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k')) {
     const ids = [...document.querySelectorAll('.run')].map(b => b.dataset.id);
     if (!ids.length) return;
