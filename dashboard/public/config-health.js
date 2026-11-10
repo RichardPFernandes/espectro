@@ -117,9 +117,12 @@
     try { report = await api('/api/validate-config'); err = null; } catch (e) { err = e.message; }
     loading = false;
     paintAlert(); paintPanel();
+    if (window.Views?.current?.() === 'versao') window.Views.refresh();
   }
 
   setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
   load();
+  // A tela Sistema (version.js, aba Configuração e versão) lê este mesmo relatório.
+  window.ConfigHealth = { snapshot: () => ({ report, err, loading }), load };
 
 })();
