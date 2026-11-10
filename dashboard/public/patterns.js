@@ -1,38 +1,172 @@
-// Aba "Padrões": memory/patterns.md (GET /api/patterns), gerado periodicamente por
-// scripts/memory-consolidator.js a partir do histórico de memory/runs/. Mesmo padrão
-// de graph.js: módulo próprio carregado depois de views.js, cache local com
-// load()/render(), plugado em VIEWS/RENDER de views.js. Sem lib de markdown externa.
+// Aba "Padrões de falha" (chave padroes): memory/patterns.md (GET /api/patterns), escrito por
+// scripts/memory-consolidator.js a partir de memory/runs/. Artboard: FailureIntelligence.dc.html
+// (design Espectro, onda 1, PRI-329): lista de padrões à esquerda e detalhe do escolhido à direita,
+// J/K percorrem, Esc fecha o detalhe.
 //
-// Design Espectro ("Padrões de falha"): o formato de memory/patterns.md é fixo
-// (scripts/memory-consolidator.js renderPatterns), então as linhas conhecidas viram
-// listas com contagem e barra de frequência; qualquer linha/seção fora desse formato
-// cai no mini-renderer markdown (##, listas, **bold**, `code`; comentários HTML de
-// metadata nunca aparecem no corpo). Nada é inventado: o que o arquivo não diz fica "—".
+// Só entra o que o arquivo diz (comparação elemento a elemento na PRI-329). Fica fora, por falta de
+// dado: origem (Execução / Recusa do QA), severidade, custo em US$, tendência por semana, "última", status do padrão, causa
+// provável, correção selecionável e o pedido de correção, abas Ao vivo e Histórico. A seção de alto
+// custo e as recomendações que não citam um padrão também ficam fora: não estão no artboard (prompt de
+// atualização do canvas no PR).
+//
+// O modelo (parse/model/filtro) é puro e exportado para teste (CommonJS); no navegador o mesmo arquivo
+// monta a tela (window.PatternsView), com UIKit (ui-kit.js) para o fechar do detalhe e o passo do J/K.
 // Estilos em screens/patterns.css.
-(() => {
-  const st = { data: null, loading: false, error: null, loadedOnce: false };
+(root => {
+  const escHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // ---------------------------------------------------------------- modelo
+  // Linhas exatas de scripts/memory-consolidator.js (renderPatternsMarkdown).
+  const RE_REVIEW = /^\*\*(.+?)\*\*: ocorreu em (\d+)\/(\d+) run\(s\) revisado\(s\)(?: \(ex\.: (.+)\))?$/;
+  const GENERIC_SIGNATURE = 'lógica de negócio / regra de domínio (sem item de checklist citado)';
+  const KIND = [
+    ['review', /^Padrões de Falha no Review/i],
+    ['cost', /^Runs de Alto Custo/i],
+    ['recs', /^Recomendações/i],
+  ];
+
+  // review: padrões com contagem; reviewNotes: linhas da seção fora do formato (ex.: "Nenhuma
+  // reprovação…"); recs: recomendações; known: o arquivo tem ao menos uma seção do consolidador.
+  function parse(markdown) {
+    const out = { review: [], reviewNotes: [], recs: [], known: false, hasReview: false };
+    let kind = null;
+    for (const raw of String(markdown || '').split('\n')) {
+      const line = raw.replace(/\s+$/, '');
+      if (/^<!--.*-->$/.test(line.trim()) || /^#\s+/.test(line)) continue;
+      const h = line.match(/^##\s+(.*)$/);
+      if (h) {
+        const k = KIND.find(([, re]) => re.test(h[1]));
+        kind = k ? k[0] : null;
+        if (kind) out.known = true;
+        if (kind === 'review') out.hasReview = true;
+        continue;
+      }
+      const b = line.match(/^-\s+(.*)$/);
+      if (kind === 'review') {
+        const text = b ? b[1] : line.trim();
+        if (!text) continue;
+        const m = text.match(RE_REVIEW);
+        if (m) out.review.push({ sig: m[1], count: +m[2], total: +m[3], examples: m[4] ? m[4].split(/,\s*/).filter(Boolean) : [] });
+        else out.reviewNotes.push(text);
+      } else if (kind === 'recs' && b) out.recs.push(b[1]);
+    }
+    // mais frequente primeiro, ordem do arquivo no empate
+    out.review = out.review.map((p, i) => ({ ...p, i })).sort((a, b) => b.count - a.count || a.i - b.i).map(({ i, ...p }) => p);
+    return out;
+  }
+
+  // A recomendação que o consolidador escreveu para este padrão (recommendations(): as três primeiras
+  // são por padrão de review). Frase fixa do consolidador com a assinatura entre aspas (as de decisão
+  // também usam aspas, por isso o prefixo); a genérica tem frase própria.
+  function recFor(p, recs) {
+    const hit = p.sig === GENERIC_SIGNATURE
+      ? recs.find(r => r.startsWith('Specs de regras de negócio complexas'))
+      : recs.find(r => r.startsWith(`Tasks que tocam "${p.sig}"`));
+    if (!hit) return null;
+    const cut = hit.indexOf(' — ');
+    return cut < 0 ? { action: hit, evidence: '' } : { action: hit.slice(0, cut), evidence: hit.slice(cut + 3) };
+  }
+
+  // Busca do artboard ("sintoma, nó ou run"): aqui sintoma (assinatura) e run de exemplo — o arquivo
+  // não diz nó por padrão além de review, que vale para todos.
+  function filter(list, q) {
+    const s = String(q || '').trim().toLowerCase();
+    if (!s) return list;
+    return list.filter(p => `${p.sig} ${p.examples.join(' ')}`.toLowerCase().includes(s));
+  }
+
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  // Estado da tela -> o que desenhar. sel: assinatura escolhida (null = detalhe fechado).
+  // A contagem do consolidador é por run distinto (um run reprovado 3x pelo mesmo motivo conta 1), e o
+  // arquivo guarda só os 10 padrões mais frequentes e até 3 runs de exemplo por padrão.
+  function model(data, { q = '', sel } = {}) {
+    if (!data?.exists) return { state: 'absent' };
+    const p = parse(data.content);
+    if (!p.known) return { state: 'raw', content: data.content };
+    const vis = filter(p.review, q);
+    const cur = sel === undefined ? vis[0]?.sig ?? null : sel;
+    const x = vis.find(r => r.sig === cur) || null;
+    return {
+      state: 'ok', all: p.review, vis, hasReview: p.hasReview,
+      clean: p.hasReview && !p.review.length ? (p.reviewNotes[0] || 'Nenhuma reprovação de review registrada.') : '',
+      sel: x ? x.sig : null,
+      detail: x && {
+        ...x,
+        reviewed: `em ${x.count} de ${plural(x.total, 'run revisado', 'runs revisados')}`,
+        exampleNote: x.examples.length && x.examples.length < x.count ? `${plural(x.examples.length, 'exemplo', 'exemplos')} de ${plural(x.count, 'run', 'runs')}` : '',
+        fix: recFor(x, p.recs),
+      },
+      // Sem a seção de review no arquivo não há contagem: nada, em vez de "0 de 0".
+      status: p.hasReview ? `${vis.length} de ${plural(p.review.length, 'padrão', 'padrões')} no arquivo` : '',
+    };
+  }
+
+  // ---------------------------------------------------------------- HTML (puro)
+  const SRC = 'Fonte: memory/patterns.md';
+
+  function inline(text) {
+    return escHtml(text)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  }
+
+  function rowHtml(r, cur) {
+    const on = r.sig === cur;
+    return `<button type="button" class="pat-row" data-pat-sel="${escHtml(r.sig)}" aria-current="${on}" title="${escHtml(`${r.count} de ${r.total} runs revisados · ${SRC}`)}">
+      <span class="pat-row-meta">review</span>
+      <span class="pat-row-sig">${inline(r.sig)}</span>
+      <span class="pat-row-foot"><span class="num">${plural(r.count, 'run', 'runs')}</span></span>
+    </button>`;
+  }
+
+  // closeHtml: botão de fechar do detalhe (UIKit.drawerClose no navegador).
+  function detailHtml(d, closeHtml = '') {
+    const fix = d.fix ? `<section aria-labelledby="pat-fx-h" class="pat-col-main">
+        <h2 id="pat-fx-h" class="pat-cap">Como corrigir na origem</h2>
+        <div class="pat-fix">
+          <span class="pat-fix-label">${inline(d.fix.action)}</span>
+          ${d.fix.evidence ? `<span class="pat-fix-what">${inline(d.fix.evidence)}</span>` : ''}
+          <span class="pat-fix-where">recomendação do consolidador · memory/patterns.md</span>
+        </div>
+      </section>` : '';
+    const ex = d.examples.length ? `<aside aria-labelledby="pat-ex-h" class="pat-where">
+        <h2 id="pat-ex-h" class="pat-cap">Onde aconteceu</h2>
+        ${d.examples.map(id => `<a href="#run/${encodeURIComponent(id)}" data-pat-run="${escHtml(id)}" title="Abrir o run"><span class="pat-run">${escHtml(id)}</span></a>`).join('')}
+        ${d.exampleNote ? `<span class="pat-where-note">${escHtml(d.exampleNote)} · memory/patterns.md</span>` : ''}
+      </aside>` : '';
+    return `<section class="pat-detail" aria-labelledby="pat-h">
+      ${closeHtml}
+      <article class="pat-article">
+        <div class="pat-title"><span class="pat-title-meta">nó review</span><h1 id="pat-h">${inline(d.sig)}</h1></div>
+        <div class="pat-stats">
+          <div class="pat-stat" title="${SRC} · contagem por run"><span class="pat-stat-k">Ocorrências</span><span class="pat-stat-v num">${d.count}</span><span class="pat-stat-d">${escHtml(d.reviewed)}</span></div>
+        </div>
+        ${fix || ex ? `<div class="pat-cols">${fix}${ex}</div>` : ''}
+      </article>
+    </section>`;
+  }
+
+  const exported = { RE_REVIEW, GENERIC_SIGNATURE, parse, recFor, filter, model, inline, rowHtml, detailHtml };
+  if (typeof module !== 'undefined' && module.exports) { module.exports = exported; return; }
+
+  // ---------------------------------------------------------------- navegador
+  const st = { data: null, loading: false, error: null, loadedOnce: false, q: '', sel: undefined };
 
   async function load() {
     st.loading = true; st.error = null;
-    window.Views?.refresh();
+    root.Views?.refresh();
     try {
       st.data = await api('/api/patterns');
     } catch (e) {
       st.error = e.message;
     }
     st.loading = false; st.loadedOnce = true;
-    window.Views?.refresh();
+    root.Views?.refresh();
   }
 
-  function inline(text) {
-    return esc(text)
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  }
-
-  // markdown -> HTML pro formato fixo de memory/patterns.md: "# "/"## " (título já
-  // fica no vhead da aba, então "# " é ignorado aqui), listas "- ", **bold**,
-  // `code`. Linhas de comentário HTML (metadata do gerador) nunca aparecem no corpo.
+  // Arquivo fora do formato do consolidador: mostra o markdown como veio (##, listas, **bold**,
+  // `code`; comentários HTML de metadata nunca aparecem), para não esconder conteúdo.
   function mdToHtml(markdown) {
     const html = [];
     let inList = false;
@@ -42,182 +176,105 @@
       if (/^<!--.*-->$/.test(line.trim())) continue;
       const bullet = line.match(/^-\s+(.*)$/);
       if (/^#\s+/.test(line)) { closeList(); continue; }
-      if (/^##\s+/.test(line)) { closeList(); html.push(`<h3 class="pat-h">${inline(line.replace(/^##\s+/, ''))}</h3>`); continue; }
+      if (/^##\s+/.test(line)) { closeList(); html.push(`<h2 class="pat-cap">${inline(line.replace(/^##\s+/, ''))}</h2>`); continue; }
       if (bullet) {
-        if (!inList) { html.push('<ul class="pat-list">'); inList = true; }
+        if (!inList) { html.push('<ul class="pat-md-list">'); inList = true; }
         html.push(`<li>${inline(bullet[1])}</li>`);
         continue;
       }
-      if (line.trim()) { closeList(); html.push(`<p>${inline(line)}</p>`); }
-      else closeList();
+      if (line.trim()) { closeList(); html.push(`<p>${inline(line)}</p>`); } else closeList();
     }
     closeList();
     return html.join('\n');
   }
 
-  // ---------------------------------------------------------------- parsing
-  // Linhas exatas de scripts/memory-consolidator.js (renderPatterns). Fora disso,
-  // a linha é preservada como texto livre (rest) e renderizada pelo mdToHtml.
-  const RE_REVIEW = /^\*\*(.+?)\*\*: ocorreu em (\d+)\/(\d+) run\(s\) revisado\(s\)(?: \(ex\.: (.+)\))?$/;
-  const RE_COST = /^Runs tocando `([^`]+)`: média ([\d.]+) loops \((\d+) run\(s\)\)$/;
-  const KIND = [
-    ['review', /^Padrões de Falha no Review/i],
-    ['cost', /^Runs de Alto Custo/i],
-    ['recs', /^Recomendações/i],
-  ];
-
-  function parse(markdown) {
-    const out = { review: [], cost: [], recs: [], notes: { review: [], cost: [] }, extra: [], meta: {}, heads: {} };
-    let kind = null; let extra = null;
-    for (const raw of String(markdown || '').split('\n')) {
-      const line = raw.replace(/\s+$/, '');
-      const meta = line.trim().match(/^<!--\s*metadata:(.*)-->$/);
-      if (meta) {
-        for (const m of meta[1].matchAll(/(\w+)=(\S+)/g)) out.meta[m[1]] = m[2];
-        continue;
-      }
-      if (/^<!--.*-->$/.test(line.trim()) || /^#\s+/.test(line)) continue;
-      const h = line.match(/^##\s+(.*)$/);
-      if (h) {
-        const k = KIND.find(([, re]) => re.test(h[1]));
-        kind = k ? k[0] : null;
-        if (kind) { out.heads[kind] = h[1]; extra = null; }
-        else { extra = [line]; out.extra.push(extra); }
-        continue;
-      }
-      if (!kind) { if (extra) extra.push(line); else if (line.trim()) out.extra.push([line]); continue; }
-      const b = line.match(/^-\s+(.*)$/);
-      if (!b) { if (line.trim()) (kind === 'recs' ? out.recs : out.notes[kind]).push(line.trim()); continue; }
-      const text = b[1];
-      if (kind === 'review') {
-        const m = text.match(RE_REVIEW);
-        if (m) out.review.push({ sig: m[1], count: +m[2], total: +m[3], examples: m[4] ? m[4].split(/,\s*/).filter(Boolean) : [] });
-        else out.notes.review.push(text);
-      } else if (kind === 'cost') {
-        const m = text.match(RE_COST);
-        if (m) out.cost.push({ label: m[1], avg: Number(m[2]), n: +m[3] });
-        else out.notes.cost.push(text);
-      } else out.recs.push(text);
-    }
-    // ordem estável, mais frequente primeiro
-    out.review = out.review.map((p, i) => ({ ...p, i })).sort((a, b) => b.count - a.count || a.i - b.i);
-    out.cost = out.cost.map((p, i) => ({ ...p, i })).sort((a, b) => b.avg - a.avg || a.i - b.i);
-    return out;
-  }
-
-  // ---------------------------------------------------------------- render
-  const fmt1 = n => (Number.isFinite(n) ? n.toFixed(1).replace('.', ',') : '—');
-  const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
-  const dash = v => (v == null || v === '' ? '—' : esc(String(v)));
-
-  function kpi(label, value, hint) {
-    return `<div class="kpi"><span class="kpi-label">${label}</span><span class="kpi-value">${value}</span>${hint ? `<span class="kpi-hint">${hint}</span>` : ''}</div>`;
-  }
-
-  function notesHtml(list) {
-    return list.length ? `<div class="pat-notes">${list.map(t => `<p>${inline(t)}</p>`).join('')}</div>` : '';
-  }
-
-  function reviewSection(p) {
-    const head = p.heads.review || 'Padrões de Falha no Review';
-    const rows = p.review.map(r => {
-      const share = pct(r.count, r.total);
-      const w = r.total > 0 ? Math.max(0, Math.min(100, (r.count / r.total) * 100)) : 0;
-      const tip = `${r.count} de ${r.total} run(s) revisado(s)${share != null ? ` (${share}%)` : ''}`;
-      return `<li class="pat-row" title="${esc(tip)}">
-        <div class="pat-row-top">
-          <span class="pat-sig">${inline(r.sig)}</span>
-          <span class="pat-val num"><b>${r.count}</b><span class="pat-of">/${r.total}</span>${share != null ? `<span class="pat-pct">${share}%</span>` : ''}</span>
-        </div>
-        <span class="meter pat-meter" role="img" aria-label="${esc(tip)}"><i style="width:${w.toFixed(1)}%"></i></span>
-        ${r.examples.length ? `<div class="pat-ex"><span class="pat-ex-k">ex.:</span>${r.examples.map(x => `<span class="tag" title="run de exemplo em memory/runs/">${esc(x)}</span>`).join('')}</div>` : ''}
-      </li>`;
-    }).join('');
-    return `<section class="panel pat-sec" aria-labelledby="pat-h-review">
-      <header class="pat-sec-head">
-        <h3 id="pat-h-review" class="label">${inline(head)}</h3>
-        <span class="source-note">ocorrências / runs revisados · fonte: <code>memory/patterns.md</code></span>
-      </header>
-      ${rows ? `<ol class="pat-rows">${rows}</ol>` : ''}
-      ${notesHtml(p.notes.review)}
-      ${!rows && !p.notes.review.length ? '<p class="pat-none">Seção ausente no arquivo.</p>' : ''}
-    </section>`;
-  }
-
-  function costSection(p) {
-    const head = p.heads.cost || 'Runs de Alto Custo (loop_count > 1)';
-    const max = Math.max(0, ...p.cost.map(c => c.avg).filter(Number.isFinite));
-    const rows = p.cost.map(c => {
-      const w = max > 0 && Number.isFinite(c.avg) ? (c.avg / max) * 100 : 0;
-      const tip = `${c.label}: média ${fmt1(c.avg)} loop(s) em ${c.n} run(s)`;
-      return `<li class="pat-row pat-cost" title="${esc(tip)}">
-        <span class="pat-mod mono">${esc(c.label)}</span>
-        <span class="meter pat-meter" role="img" aria-label="${esc(tip)}"><i style="width:${w.toFixed(1)}%"></i></span>
-        <span class="pat-val num"><b>${fmt1(c.avg)}</b><span class="pat-of"> loops</span><span class="pat-pct">${c.n} run(s)</span></span>
-      </li>`;
-    }).join('');
-    return `<section class="panel pat-sec" aria-labelledby="pat-h-cost">
-      <header class="pat-sec-head">
-        <h3 id="pat-h-cost" class="label">${inline(head)}</h3>
-        <span class="source-note">média de loops review/test/verify por módulo · barra relativa ao maior · fonte: <code>memory/patterns.md</code></span>
-      </header>
-      ${rows ? `<ol class="pat-rows">${rows}</ol>` : ''}
-      ${notesHtml(p.notes.cost)}
-      ${!rows && !p.notes.cost.length ? '<p class="pat-none">Seção ausente no arquivo.</p>' : ''}
-    </section>`;
-  }
-
-  function recsSection(p) {
-    const head = p.heads.recs || 'Recomendações para Specs Futuras';
-    return `<section class="panel pat-sec pat-recs" aria-labelledby="pat-h-recs">
-      <header class="pat-sec-head">
-        <h3 id="pat-h-recs" class="label">${inline(head)}</h3>
-        <span class="source-note">geradas pelo consolidador · fonte: <code>memory/patterns.md</code></span>
-      </header>
-      ${p.recs.length ? `<ul class="pat-list">${p.recs.map(r => `<li>${inline(r)}</li>`).join('')}</ul>` : '<p class="pat-none">Seção ausente no arquivo.</p>'}
-    </section>`;
-  }
+  const note = (tone, glyph, text) => `<div role="note" class="pat-note ${tone}"><span aria-hidden="true">${glyph} </span>${text}</div>`;
+  const empty = (title, hint) => `<div class="pat-empty"><span class="pat-empty-t">${title}</span><span class="pat-empty-h">${hint}</span></div>`;
 
   function render() {
     if (!st.loadedOnce && !st.loading) load();
-    const d = st.data;
-    const head = `<div class="vhead pat-head">
-      <div class="pat-head-text"><h2>Padrões</h2>
-      <p>Padrões de falha de review e de custo alto, consolidados por <code>scripts/memory-consolidator.js</code> a partir de <code>memory/runs/</code>. O watcher reconsolida a cada 10 runs completados novos; o botão abaixo força uma leitura do arquivo atual.</p></div>
-      <div class="vtools"><button class="btn" type="button" data-pat-reload ${st.loading ? 'disabled' : ''}>${st.loading ? 'Carregando…' : '↻ Atualizar'}</button>
-        ${d?.lastConsolidationAt ? `<span class="muted" title="${esc(when(d.lastConsolidationAt))}">última consolidação ${esc(ago(d.lastConsolidationAt))} · ${esc(String(d.totalConsolidations ?? 0))} execução(ões)</span>` : ''}
-      </div></div>`;
-    if (st.error) return `<div class="pat">${head}<p class="fold-msg warn pat-state"><span aria-hidden="true">✕ </span>Não deu para ler os padrões: ${esc(st.error)}</p></div>`;
-    if (!d) return `<div class="pat">${head}<div class="vempty">Carregando…</div></div>`;
-    if (!d.exists) return `<div class="pat">${head}<div class="vempty pat-empty">Ainda não existe <code>memory/patterns.md</code>. Ele nasce depois de 10 runs completados no histórico (contador em <code>memory/consolidator-state.json</code>), ou rodando <code>node scripts/memory-consolidator.js</code> manualmente.</div></div>`;
-
-    const p = parse(d.content);
-    const known = p.heads.review || p.heads.cost || p.heads.recs;
-    // Arquivo fora do formato do consolidador: mostra o markdown como veio.
-    if (!known) return `<div class="pat">${head}<div class="panel pat-sec pat-body">${mdToHtml(d.content)}</div></div>`;
-
-    const totals = [...new Set(p.review.map(r => r.total))];
-    const reviewed = totals.length === 1 ? totals[0] : null;
-    const kpis = `<div class="kpis pat-kpis">
-      ${kpi('Padrões de falha no review', p.heads.review ? String(p.review.length) : '—', 'assinaturas distintas · patterns.md')}
-      ${kpi('Runs revisados', dash(reviewed), 'denominador das ocorrências · patterns.md')}
-      ${kpi('Runs analisados', dash(p.meta.runs_analyzed), `completados: ${dash(p.meta.completed_runs)} · metadata do patterns.md`)}
-      ${kpi('Consolidações', d.lastConsolidationAt ? dash(d.totalConsolidations) : '—', `runs completados na última: ${dash(d.completedRunsAtLastRun)} · consolidator-state.json`)}
+    keepFocus();
+    const search = `<input type="search" class="pat-q" data-pat-q aria-label="Buscar padrões" placeholder="Buscar por sintoma ou run" value="${escHtml(st.q)}">`;
+    const shell = (side, detail = '', status = '') => `<div class="pat">
+      <div class="pat-panes" tabindex="0" aria-label="Padrões de falha. J e K navegam, Esc fecha.">
+        <section class="pat-side${detail ? ' has-sel' : ''}" aria-label="Padrões, do mais frequente ao menos frequente">${side}</section>${detail}
+      </div>
+      <footer class="pat-status"><span role="status">${status}</span><span class="pat-keys">J K navegar · Esc fechar</span></footer>
     </div>`;
-    const extra = p.extra.length ? `<div class="panel pat-sec pat-body">${mdToHtml(p.extra.map(x => x.join('\n')).join('\n'))}</div>` : '';
-    const updated = d.updatedAt ? `<p class="source-note pat-foot">Arquivo <code>memory/patterns.md</code> modificado ${esc(ago(d.updatedAt))} (${esc(when(d.updatedAt))})${p.meta.generated_at ? ` · gerado em ${esc(when(p.meta.generated_at) || p.meta.generated_at)}` : ''}. Heurística sobre texto livre (scope/agent_log), não é auditoria exaustiva.</p>` : '';
-    return `<div class="pat">${head}${kpis}
-      <div class="pat-grid">
-        <div class="pat-main">${reviewSection(p)}${costSection(p)}${extra}</div>
-        <aside class="pat-side">${recsSection(p)}</aside>
-      </div>${updated}</div>`;
+    const top = extra => `<div class="pat-tools">${search}${extra || ''}</div>`;
+
+    if (st.error) return shell(top(note('failed', '✕', `Não deu para ler os padrões: ${escHtml(st.error)}. Saia e volte para esta tela para tentar de novo.`)));
+    if (!st.data) return shell(top(), '', 'Carregando…');
+    const m = model(st.data, { q: st.q, sel: st.sel });
+    if (m.state === 'absent') return shell(top() + empty('Ainda não há padrões.', 'O arquivo <code>memory/patterns.md</code> não existe. Ele nasce depois de 10 runs completados, ou rodando <code>node scripts/memory-consolidator.js</code>.'));
+    if (m.state === 'raw') return shell(`<div class="pat-md">${mdToHtml(m.content)}</div>`);
+    const list = m.vis.map(r => rowHtml(r, m.sel)).join('');
+    const side = top(m.clean ? note('done', '✓', inline(m.clean)) : '')
+      + (!m.vis.length && !m.clean ? empty('Nenhum padrão nesse recorte.', m.all.length ? 'Limpe a busca.' : 'A seção de padrões de review não está no arquivo.') : '')
+      + list;
+    return shell(side, m.detail ? detailHtml(m.detail, root.UIKit.drawerClose('pat-close')) : '',
+      m.status ? `<span title="${SRC}">${m.status}</span>` : '');
   }
+
+  // #view é remontado a cada refresh (eventos ao vivo): devolve foco, cursor da busca e rolagem
+  // dos painéis depois que o HTML novo entra (microtarefa roda depois do innerHTML do refresh).
+  // Foco que estava em qualquer lugar da tela (linha, X, painel) volta para a linha escolhida, ou
+  // para o painel: J/K/Esc continuam funcionando depois de um clique. Detalhe de outro padrão
+  // abre do topo; a linha escolhida fica visível.
+  let shownSel = null;
+  function keepFocus() {
+    const view = $('view');
+    const a = root.document.activeElement;
+    const inQ = a?.matches?.('[data-pat-q]') ? [a.selectionStart, a.selectionEnd] : null;
+    const inPat = !inQ && !!a?.closest?.('.pat');
+    const side = view.querySelector('.pat-side')?.scrollTop || 0;
+    const det = view.querySelector('.pat-detail')?.scrollTop || 0;
+    queueMicrotask(() => {
+      const row = view.querySelector('.pat-row[aria-current="true"]');
+      const sel = row?.dataset.patSel ?? null;
+      const s = view.querySelector('.pat-side'); if (s) s.scrollTop = side;
+      const d = view.querySelector('.pat-detail'); if (d) d.scrollTop = sel === shownSel ? det : 0;
+      if (sel !== shownSel) row?.scrollIntoView?.({ block: 'nearest' });
+      shownSel = sel;
+      if (inQ) { const q = view.querySelector('[data-pat-q]'); q?.focus(); q?.setSelectionRange(inQ[0], inQ[1]); }
+      else if (inPat) (row || view.querySelector('.pat-panes'))?.focus({ preventScroll: true });
+    });
+  }
+
+  function current() { return st.data ? model(st.data, { q: st.q, sel: st.sel }) : null; }
+  function select(sig) { st.sel = sig; root.Views?.refresh(); }
 
   const view = $('view');
   view.addEventListener('click', e => {
-    if (e.target.closest('[data-pat-reload]')) load();
+    const row = e.target.closest('[data-pat-sel]');
+    if (row) { select(row.dataset.patSel); return; }
+    // Abre o run direto: pelo hash, o ux.js ignora o run que já é o selecionado em Runs.
+    const run = e.target.closest('[data-pat-run]');
+    if (run && root.Views?.openRun) { e.preventDefault(); root.Views.openRun(run.dataset.patRun); return; }
+    if (e.target.closest('[data-act="pat-close"]')) select(null);
   });
+  view.addEventListener('input', e => {
+    if (!e.target.matches('[data-pat-q]')) return;
+    st.q = e.target.value; st.sel = undefined; root.Views?.refresh();
+  });
+  view.addEventListener('keydown', e => {
+    if (root.Views?.current() !== 'padroes' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    const m = current();
+    if (m?.state !== 'ok') return;
+    const k = e.key.toLowerCase();
+    if (k === 'escape' && m.sel) { e.preventDefault(); e.stopPropagation(); select(null); return; }
+    if ((k === 'j' || k === 'k') && m.vis.length) {
+      e.preventDefault();
+      const i = m.vis.findIndex(r => r.sig === m.sel);
+      select(m.vis[root.UIKit.step(i, k === 'j' ? 1 : -1, m.vis.length)].sig);
+    }
+  });
+  // Entrar de novo na tela relê o arquivo (o consolidador reescreve a cada 10 runs completados).
+  new MutationObserver(() => {
+    if (root.document.body.dataset.view === 'padroes' && st.loadedOnce && !st.loading) load();
+  }).observe(root.document.body, { attributes: true, attributeFilter: ['data-view'] });
 
-  window.PatternsView = { render, load };
-  window.Views?.refresh();
-})();
+  root.PatternsView = { render, load };
+  root.Views?.refresh();
+})(typeof window !== 'undefined' ? window : globalThis);

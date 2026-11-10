@@ -100,24 +100,30 @@ function createOnboarding({
         const found = r => r.code === 0;
         const nodeMajor = Number((/^v?(\d+)/.exec(nodeVersion) || [])[1]);
         const accounts = listAccounts();
+        // version: "ferramenta x.y.z" quando o binário respondeu (null se não respondeu; sem número
+        // na saída, "ferramenta · versão desconhecida").
+        // requirement: o que o Espectro exige dela, como a tela mostra ao lado do nome.
+        const ver = (tool, r) => (found(r) ? `${tool} ${version(r.stdout) || '· versão desconhecida'}` : null);
+        const nodeVer = `node ${nodeVersion.replace(/^v/, '')}${found(npm) && version(npm.stdout) ? ` · npm ${version(npm.stdout)}` : ''}`;
+        const REQUIRED = 'obrigatório';
         const items = [
             found(git)
-                ? { id: 'git', name: 'Git', role: 'Obrigatório', state: 'done', detail: `encontrado · ${version(git.stdout) || 'versão desconhecida'}` }
-                : { id: 'git', name: 'Git', role: 'Obrigatório', state: 'waiting', detail: 'Não encontrado. Instale no terminal:',
+                ? { id: 'git', name: 'Git', requirement: REQUIRED, version: ver('git', git), state: 'done', detail: `encontrado · ${version(git.stdout) || 'versão desconhecida'}` }
+                : { id: 'git', name: 'Git', requirement: REQUIRED, version: null, state: 'waiting', detail: 'Não encontrado. Instale no terminal:',
                     ...(platform === 'darwin' ? { command: 'xcode-select --install' } : { hint: 'Instale pelo gerenciador de pacotes do sistema.' }) },
             nodeMajor >= NODE_MIN_MAJOR && found(npm)
-                ? { id: 'node', name: 'Node.js e npm', role: 'Obrigatório', state: 'done', detail: `encontrado · ${nodeVersion} · npm ${version(npm.stdout) || '?'}` }
-                : { id: 'node', name: 'Node.js e npm', role: 'Obrigatório', state: 'waiting',
+                ? { id: 'node', name: 'Node e npm', requirement: `${REQUIRED} · Node ${NODE_MIN_MAJOR} ou mais`, version: nodeVer, state: 'done', detail: `encontrado · ${nodeVersion} · npm ${version(npm.stdout) || '?'}` }
+                : { id: 'node', name: 'Node e npm', requirement: `${REQUIRED} · Node ${NODE_MIN_MAJOR} ou mais`, version: nodeVer, state: 'waiting',
                     detail: nodeMajor >= NODE_MIN_MAJOR ? 'npm não encontrado.' : `${nodeVersion} · exige ${NODE_MIN_MAJOR} ou mais.`,
                     hint: `Instale o Node ${NODE_MIN_MAJOR} ou mais (nodejs.org) e reinicie o Espectro.` },
             found(claude)
-                ? { id: 'claude', name: 'Claude Code', role: 'Agente · obrigatório', state: 'done',
+                ? { id: 'claude', name: 'Claude Code', requirement: REQUIRED, version: ver('claude', claude), state: 'done',
                     detail: `encontrado · ${version(claude.stdout) || 'versão desconhecida'} · ${accounts.length} conta${accounts.length === 1 ? '' : 's'} na máquina` }
-                : { id: 'claude', name: 'Claude Code', role: 'Agente · obrigatório', state: 'waiting',
+                : { id: 'claude', name: 'Claude Code', requirement: REQUIRED, version: null, state: 'waiting',
                     detail: 'Não encontrado. Instale e faça login no terminal:', command: 'npm install -g @anthropic-ai/claude-code && claude' },
             found(codex)
-                ? { id: 'codex', name: 'Codex CLI', role: 'Agente · opcional', state: 'done', detail: `encontrado · ${version(codex.stdout) || '?'} · o watcher ainda despacha só Claude Code` }
-                : { id: 'codex', name: 'Codex CLI', role: 'Agente · opcional', state: 'queued', detail: 'não encontrado' },
+                ? { id: 'codex', name: 'Codex', requirement: 'opcional', version: ver('codex', codex), state: 'done', detail: `encontrado · ${version(codex.stdout) || '?'} · o watcher ainda despacha só Claude Code` }
+                : { id: 'codex', name: 'Codex', requirement: 'opcional', version: null, state: 'queued', detail: 'não encontrado' },
         ];
         const summary = { done: 0, optional: 0, waiting: 0 };
         for (const t of items) summary[t.state === 'queued' ? 'optional' : t.state] += 1;
