@@ -23,14 +23,14 @@
   const DAY = 86400000;
 
   // "Meus Tickets" virou "Redmine" (redmine.js): hash/pref antigos caem na aba nova.
-  // #medicao-modelo virou a aba "Sombra × real" de Roteamento (telas de roteamento, T6).
+  // #medicao-modelo (antiga aba Sombra × real) é o corpo da tela Roteamento desde a onda 1 (PRI-328).
   // #coordenacao: tela descartada na onda 1 do design (PRI-323); a API continua, a tela não.
   const alias = v => {
     if (v === 'my-tickets') return 'redmine';
     // #tickets ("Tickets e PRs") saiu na onda 1: tickets em Tickets (PRI-325), PRs em Pull requests (PRI-326).
     if (v === 'tickets') return 'redmine';
     if (v === 'coordenacao') return 'runs';
-    if (v === 'medicao-modelo') { window.RoutingTabRequest = 'sombra'; return 'roteamento'; }
+    if (v === 'medicao-modelo') return 'roteamento';
     return v;
   };
   let view = VIEWS.some(([k]) => k === alias(location.hash.slice(1))) ? alias(location.hash.slice(1))

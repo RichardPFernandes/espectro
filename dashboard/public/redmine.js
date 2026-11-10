@@ -413,6 +413,8 @@
     if (!root) {
       root = document.createElement('div');
       root.className = 'tk';
+      // 1–3 trocam a visão salva desta tela; o atalho global de abas (ux.js) cede (data-local-digits).
+      root.dataset.localDigits = '';
       wire(root);
     }
     const scroll = {};
