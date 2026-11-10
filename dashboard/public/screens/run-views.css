@@ -1,5 +1,5 @@
 /* screens/run-views.css — estilos desta tela no design Espectro. Carregado depois do <style> de index.html.
-   Visões de runs montadas por views.js: Quadro, Tabela, Linha do tempo, Métricas e Tickets e PRs.
+   Visões de runs montadas por views.js: Quadro, Tabela, Linha do tempo e Tickets e PRs (o Relatório semanal fica em screens/weekly-report.css).
    Classes próprias com prefixo rv-; componentes compartilhados (.pill, .btn, .seg, .panel, .kpi,
    .dtable, .meter, .label, .empty) vêm de theme.css. Estado = glifo + cor (✓ ◐ ‖ ✕ ○). */
 
@@ -137,39 +137,6 @@
 .rv-seg.rv-tail.blocked, .rv-sw.rv-tail.blocked { background: var(--state-waiting-bg); border-color: var(--state-waiting); }
 .rv-now { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 1px solid var(--link); opacity: .5; pointer-events: none; }
 
-/* ------------------------------------------------------------ Métricas */
-.rv-kpis { margin-bottom: 16px; }
-.rv-kpi.waiting { background: var(--state-waiting-bg); border-color: var(--state-waiting); }
-.rv-kpi.waiting .kpi-value { color: var(--state-waiting-fg); }
-.rv-share { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-.rv-share-cap { font-size: 11px; line-height: 14px; color: var(--muted); }
-.rv-share-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; }
-.rv-share-bar > span { min-width: 2px; background: var(--heat-3); }
-.rv-share-bar > span.hi { background: var(--accent); }
-.rv-share-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--muted); }
-.rv-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 16px; }
-.rv-chart { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; }
-.rv-chart-title { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; }
-.rv-chart-sub { margin: 0 0 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
-.rv-chart-empty { margin: 0; padding: 8px 0; font-size: 13px; color: var(--muted); }
-.rv-chart-action { align-self: flex-start; margin-top: 12px; }
-.rv-bars { display: flex; flex-direction: column; }
-.rv-bar-row {
-  display: grid; grid-template-columns: minmax(96px, 150px) minmax(60px, 1fr) minmax(72px, auto); gap: 12px; align-items: center;
-  min-height: 36px; padding: 0 8px; margin: 0 -8px; font-size: 13px;
-}
-.rv-bar-row + .rv-bar-row { border-top: 1px solid var(--border); }
-.rv-bar-row:hover, .rv-bar-row:focus-visible { background: var(--surface-hover); }
-.rv-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-.rv-bar-track { display: block; height: 8px; background: var(--raised); border-radius: 4px; overflow: hidden; }
-.rv-bar { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
-.rv-bar.pr-OPEN { background: var(--accent); }
-.rv-bar.pr-MERGED { background: var(--state-done); }
-.rv-bar.pr-DECLINED { background: var(--state-failed); }
-.rv-bar.pr-SUPERSEDED { background: var(--state-waiting); }
-.rv-bar.pr-unknown { background: var(--muted); }
-.rv-bar-val { text-align: right; white-space: nowrap; font-family: var(--mono); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
-
 /* ------------------------------------------------------------ Tickets e PRs */
 .rv-banner {
   display: flex; gap: 8px; align-items: flex-start; margin: 0 0 16px; padding: 10px 12px; border-radius: var(--radius-control);
@@ -220,6 +187,5 @@ a.rv-pr:hover { border-color: var(--border-control); background: var(--surface-h
 @media (max-width: 820px) {
   .rv-total { margin-left: 0; }
   .rv-lane { grid-template-columns: 160px minmax(0, 1fr); }
-  .rv-bar-row { grid-template-columns: 110px minmax(0, 1fr) 64px; }
   .rv-tk-src > div { grid-template-columns: 1fr; gap: 4px; }
 }
