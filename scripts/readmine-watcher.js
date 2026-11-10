@@ -10,7 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { execSync, execFileSync, spawn } = require('child_process');
+const { execSync, execFileSync, spawn, spawnSync } = require('child_process');
 const specValidator = require('./lib/spec-validator');
 const specRepairer = require('./lib/spec-repairer');
 const { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, accountCostMetadata, routedPluginProof, evaluatePluginProof } = require('./lib/claude-account');
@@ -64,6 +64,7 @@ const cycleNotifications = require('./lib/cycle-notifications');
 const humanInputIntent = require('./lib/human-input-intent');
 const dom06 = require('./lib/dom06-attempt');
 const decompositionRuntime = require('./lib/decomposition-runtime');
+const decompositionVisit = require('./lib/decomposition-visit');
 
 // Consumer env loads before watcher initialization. Explicit REPO_PATH wins;
 // otherwise the caller must run in the consumer root. Candidate code has no .env.
@@ -1616,13 +1617,17 @@ function routingCapabilities(runDir, projectDir) {
 // state = state.json da task (null no ticket novo, que ainda não tem Run nem override).
 // T8 (P-2): overrides humanas de state.routing_overrides, vigentes a partir do início da
 // visita atual ao nó (D-4; routing-run.nodeVisitStart).
-function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir, state = null, stateReadAt = null, nucleus2 = null }) {
+// `decomposed` (PRI-311, S5.2b, B5.3): Attempt com papel da Run decomposta — sinais só do grupo
+// (`signalsKey`), `subtaskKey` para o override de subtarefa, piso da linhagem, rota fixa da
+// integração e os papéis de subagente declarados (B8). Ausente = resolução da S4, sem mudança.
+function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir, state = null, stateReadAt = null, nucleus2 = null, decomposed = null }) {
     if (!runSnapshot.ok) {
         return { ok: false, result: 'NOT_STARTED', cause: 'CONFIG_UNVERIFIABLE', detail: runSnapshot.detail, decision: null };
     }
-    const signals = node === modelRouting.ROUTED_NODE
+    let signals = node === modelRouting.ROUTED_NODE
         ? prospectiveSignalsForRun('claude', [node], { ticket, worktreePath, base: signalBaseBranch(ticket), isRecusaQA }).signals_prospective
         : undefined;
+    if (decomposed && decomposed.signalsKey) signals = decompositionVisit.groupSignals(signals, decomposed.signalsKey);
     const overrides = Array.isArray(state?.routing_overrides) ? state.routing_overrides : [];
     // MINOR-1: o "agora" da visita nova é o instante da leitura do state (não o fim da
     // resolução), senão uma override gravada entre a leitura e aqui valeria no retry.
@@ -1631,6 +1636,11 @@ function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA,
     const resolution = modelRouting.resolveRoute({
         snapshot: runSnapshot.snapshot, node, signals, provider: { state: 'ACTIVE' },
         capabilities: routingCapabilities(runDir, worktreePath), overrides, nodeBoundaryAt: boundary, nucleus2,
+        ...(decomposed ? {
+            subtaskKey: decomposed.subtaskKey ?? null, classFloor: decomposed.classFloor ?? null,
+            fixedRoute: decomposed.fixedRoute === true, subagentRoles: decomposed.subagentRoles,
+            subagentMechanism: decomposed.subagentMechanism ?? null,
+        } : {}),
     });
     // Visita nova: o chamador grava o limite usado (state.routing_visit), para o retry da
     // mesma visita não usar o node_start, que é posterior (Bugbot, PR #97).
@@ -1715,6 +1725,192 @@ async function applyDecompositionBlock({ ticket, taskId, node, state, dir, pendi
     try { fs.rmSync(notifiedMarkerPath(dir), { force: true }); } catch { /* best-effort */ }
     await notifyBlocked(ticket, taskId, node, 'blocked', dir, state, note);
     return { action: 'skip', reason: 'decomposition_blocked', taskId, node, attempt: pending.attempt_id, cause: pending.reason };
+}
+
+// ---------------------------------------------------------------------------------
+// Run decomposta (PRI-311 / PRI-287 S5.2b; SPEC B2, B5, B6, B8 e adendo H7). Atrás da flag:
+// só uma Run cujo snapshot de admissão traz `decomposition: "on"` entra aqui, e a admissão
+// real recusa "on" (DECOMPOSITION_RESERVED). Sem engine novo: o mesmo despacho do nó, com o
+// Attempt criado por prepareRoleDispatch (baseline + cadeia + DOM-06) e o comando de passo.
+
+const DECOMPOSED_GATES = new Set(['review', 'test', 'verify']);
+// Attempt com papel STARTED, sem aceite e com a Run fora de `running` por mais que isto: o
+// processo nunca subiu (exceção entre o Attempt e o lease) ou morreu sem lease. Fecha como
+// órfão (H4: sem mutação → um retry; com mutação/UNKNOWN → blocked), nunca espera para sempre.
+const DECOMPOSITION_ORPHAN_GRACE_MS = 2 * 60 * 1000;
+
+// Versão da CLI do agente (B8): o mecanismo `--agents` só vale para a versão provada na tarefa 0.
+let claudeCliVersionCache;
+function claudeCliVersion() {
+    if (claudeCliVersionCache !== undefined) return claudeCliVersionCache;
+    try {
+        const out = spawnSync('claude', ['--version'], { encoding: 'utf8', timeout: 15000, env: cleanAgentEnv() });
+        const m = /(\d+\.\d+\.\d+)/.exec(String(out.stdout || ''));
+        claudeCliVersionCache = out.status === 0 && m ? m[1] : null;
+    } catch {
+        claudeCliVersionCache = null;
+    }
+    return claudeCliVersionCache;
+}
+
+function decompositionBlockPending(attemptId, reason, node) {
+    return { attempt_id: attemptId || null, reason, node };
+}
+
+// B5.6: integração aceita e `execute_node` cumprida pela agregação → o watcher faz a
+// transição implement → review pelo writer existente (CAS) e acrescenta `implement` ao
+// history (o comando de integração não transiciona).
+// CAS com expected_node (como o `state-writer transition` do /implement): o nó ainda é o
+// implement e a versão é a lida no tick; conflito lança e nada é gravado.
+function transitionDecomposedImplement({ taskId, state, dir, aggregate }) {
+    const at = new Date().toISOString();
+    const note = `Run decomposta: subtarefas e integração aceitas, agregação ${aggregate.duplicate ? 'já gravada' : 'gravada'} ` +
+        `no Attempt ${aggregate.attempt_id}; transição implement → review feita pelo watcher.`;
+    const written = stateWriter.update(dir, draft => {
+        draft.node = 'review';
+        draft.history = [...(draft.history || []), 'implement'];
+        draft.updated_at = at;
+        draft.agent_log = [...(draft.agent_log || []), { agent: 'watcher', nodes: ['implement'], at, note }];
+    }, { operation: 'node_transition', actor: 'watcher', expect: { expected_state_version: cas.effectiveVersion(state), expected_node: 'implement' } });
+    if (written) { Object.assign(state, written); rememberBase(written); checkWrittenState(dir); }
+    appendEvent(taskId, { type: 'checkpoint', node: 'implement', agent: 'watcher', ts: at, detail: 'decomposição: implement → review (agregação)' }, dir);
+    return { action: 'transitioned', taskId, node: 'implement', to: 'review', aggregate: aggregate.attempt_id };
+}
+
+/**
+ * Prepara o despacho de um nó da Run decomposta. Devolve:
+ * - `{ result }`: o tick termina aqui (em voo, blocked, transição);
+ * - `{ decomposed: null }`: não decomponível ou nó fora do ramo → caminho da S4;
+ * - `{ decomposed }`: ação, resolução, comandos, bloco de contexto e `admit()` (H0 + H6 +
+ *   DOM-06), chamado pelo despacho depois dos portões.
+ */
+async function prepareDecomposedNode({ ticket, taskId, id, node, state, dir, worktreePath, base, isRecusaQA, stateReadAt, runSnapshot }) {
+    const snapshot = runSnapshot.snapshot;
+    const sections = modelRoutingPolicy.decompositionSections(snapshot.policy);
+    const specHash = () => dom06SpecHash(state, worktreePath, id);
+    const block = (attemptId, reason) => ({ result: applyDecompositionBlock({ ticket, taskId, node, state, dir, pending: decompositionBlockPending(attemptId, reason, node) }) });
+
+    if (DECOMPOSED_GATES.has(node)) {
+        const dec = state.decomposition;
+        if (!dec || dec.status !== 'DECOMPOSABLE') return { decomposed: null };
+        // Defesa da Review (B5.6, AC-22): sem agregação da versão vigente, não despacha.
+        if (node === 'review' && !decompositionVisit.reviewAllowed(dir, dec.plan_version)) return block(null, 'REVIEW_WITHOUT_AGGREGATE');
+        const resolution = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt });
+        return {
+            decomposed: {
+                action: { kind: 'gate' }, resolution, commands: null, contextBlock: null,
+                admit: () => decompositionRuntime.prepareRoleDispatch({
+                    runDir: dir, checkoutRoot: REPO_PATH, task: taskId, worktree: worktreePath,
+                    decomposition: { role: 'gate', plan_version: dec.plan_version },
+                    scopePaths: dec.scope_paths, watchGlobs: sections.workspace_watch_globs, limits: sections.manifest_limits, state,
+                    dispatch: {
+                        node, ticketId: id, baseBranch: base, specHash: specHash(), cause: dom06.causeFromState(state),
+                        ...(resolution.ok ? { routing: snapshot, routingDecision: resolution.decision } : {}),
+                    },
+                }),
+            },
+        };
+    }
+    if (node !== 'implement') return { decomposed: null };
+
+    // B2: decomposição da visita, gravada pelo writer existente.
+    const { planContent } = readPlanArtifacts(ticket, dir);
+    const rec = decompositionVisit.recordDecomposition(state, planContent);
+    if (rec.changed) {
+        state.decomposition = rec.decomposition;
+        writeTaskState(dir, state, 'decomposition_recorded');
+    }
+    if (rec.refused) return block(null, rec.refused);
+    const dec = state.decomposition;
+    if (dec.status !== 'DECOMPOSABLE') {
+        console.warn(`Task ${taskId}: plano não decomponível (${dec.cause}) — Implement segue como um Attempt (caminho da S4).`);
+        return { decomposed: null };
+    }
+    // B5.7: volta de gate → rework mapeado (uma vez por gate).
+    const rework = decompositionVisit.pendingRework({ runDir: dir, state, decomposition: dec });
+    if (rework) {
+        state.decomposition = { ...dec, rework };
+        writeTaskState(dir, state, 'decomposition_rework');
+    }
+    const current = state.decomposition;
+    // B5.8: scope_violation das subtarefas já fechadas (registro no Attempt, uma vez).
+    for (const a of decompositionVisit.versionAttempts(dir, current.plan_version)) {
+        if (a.role !== 'subtask' || !a.acceptance || a.scope_check) continue;
+        try {
+            const r = decompositionVisit.scopeCheck({ checkoutRoot: REPO_PATH, task: taskId, attempt: a, decomposition: current });
+            dom06.recordScopeViolation(path.join(dir, 'dom06', 'attempts', `${a.attempt_id}.json`), r);
+        } catch (e) {
+            console.error(`Task ${taskId}: falha conferindo o escopo do Attempt ${a.attempt_id} (fica sem registro):`, e.message);
+        }
+    }
+
+    let action = decompositionVisit.nextAction({ runDir: dir, state, decomposition: current });
+    if (action.kind === 'wait' && state.status !== 'running') {
+        const open = dom06.listAttempts(dir).find(a => a.attempt_id === action.attempt_id);
+        if (open && Date.now() - Date.parse(open.created_at) > DECOMPOSITION_ORPHAN_GRACE_MS) {
+            decompositionRuntime.closeRoleOrphan({ runDir: dir, node, task: taskId, checkoutRoot: REPO_PATH, orphanReason: 'agent_dead' });
+            action = decompositionVisit.nextAction({ runDir: dir, state, decomposition: current });
+        }
+    }
+    if (action.kind === 'wait') {
+        return { result: { action: 'skip', reason: 'decomposition_attempt_open', taskId, node, attempt: action.attempt_id } };
+    }
+    if (action.kind === 'blocked') return block(action.attempt_id, action.reason);
+    if (action.kind === 'rework_pending') return block(null, 'REWORK_NOT_RECORDED');
+    if (action.kind === 'aggregate') {
+        const agg = dom06.aggregateImplement(dir, current.plan_version, action.keys);
+        if (!agg.ok) return block(null, 'AGGREGATE_PENDING');
+        return { result: transitionDecomposedImplement({ taskId, state, dir, aggregate: agg }) };
+    }
+
+    // Subtarefa ou integração.
+    const isSubtask = action.kind === 'subtask';
+    const allKey = dom06.allKey(current.plan_version);
+    const group = isSubtask ? decompositionVisit.keyGroup(current, action.key) : null;
+    const agents = decompositionVisit.readProjectAgents(worktreePath);
+    const mechanism = snapshot.policy && snapshot.policy.subagent_roles ? modelRouting.subagentMechanism(claudeCliVersion()) : null;
+    const roles = modelRouting.subagentRoles({ snapshot, agents, mechanism });
+    const resolution = resolveNodeRoute({
+        runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt,
+        decomposed: isSubtask
+            ? {
+                signalsKey: action.key === allKey ? null : action.key,
+                subtaskKey: action.key === allKey ? null : action.key, // ALL: só override de nó/ticket
+                classFloor: decompositionVisit.classFloor({ runDir: dir, decomposition: current, key: action.key }),
+                subagentRoles: roles.roles, subagentMechanism: mechanism,
+            }
+            : { fixedRoute: true, subagentRoles: roles.roles, subagentMechanism: mechanism },
+    });
+    if (resolution.ok) {
+        resolution.agentsJson = roles.agentsJson;
+        if (roles.agents_sha256) resolution.decision.subagent_agents_sha256 = roles.agents_sha256;
+    }
+    const dod = isSubtask ? decompositionVisit.deriveDod({ group, planContent }) : null;
+    const ctx = isSubtask
+        ? decompositionVisit.stepContextBlock({ taskId, group, planContent, dod, rework: action.rework })
+        : decompositionVisit.integrationContextBlock({ taskId, decomposition: current });
+    return {
+        decomposed: {
+            action, resolution, contextBlock: ctx.block,
+            commands: [isSubtask ? `/implement-step ${taskId} ${action.key}` : `/implement-integrate ${taskId}`],
+            admit: () => {
+                const r = decompositionRuntime.prepareRoleDispatch({
+                    runDir: dir, checkoutRoot: REPO_PATH, task: taskId, worktree: worktreePath,
+                    decomposition: {
+                        role: isSubtask ? 'subtask' : 'integration', plan_version: current.plan_version,
+                        ...(isSubtask ? { subtask_key: action.key, steps: group.steps, rework: action.rework, dod } : {}),
+                        parent_attempt_id: action.parent_attempt_id, context_record_sha256: ctx.sha256,
+                    },
+                    scopePaths: current.scope_paths, watchGlobs: sections.workspace_watch_globs, limits: sections.manifest_limits, state,
+                    dispatch: {
+                        node, ticketId: id, baseBranch: base, specHash: specHash(), cause: action.cause,
+                        ...(resolution.ok ? { routing: snapshot, routingDecision: resolution.decision } : {}),
+                    },
+                });
+                return r;
+            },
+        },
+    };
 }
 
 // Ticket novo: o fetch_ticket recusado não cria Run nem worktree (Bugbot, PR #97: um
@@ -3802,6 +3998,21 @@ function collectRunMetrics(run, target, endMs) {
 // Fecha um run pendente: mede, acumula no cost_tracking da task e grava no state.json.
 // Nunca toca state.updated_at — ele decide findActiveTask e o "já tratado neste ciclo"
 // de mostRecentArchivedCommit; métrica não pode mexer nisso.
+// PRI-311 (S5.2b, B8): `observed_model` por papel depois da saída, pela trilha de uso da S1
+// (subagents/*.jsonl casados com o papel pelo subagent_type). Só Attempt com papel e com
+// subagent_roles declarados; falha aqui nunca muda o despacho nem o aceite.
+function recordSubagentObservation(run, attempt, attemptFile) {
+    try {
+        if (!attempt.role || run.agent !== 'claude') return;
+        const declared = attempt.routing && Array.isArray(attempt.routing.subagent_roles) ? attempt.routing.subagent_roles : null;
+        if (!declared) return;
+        const attribution = decompositionVisit.attributionFromTranscripts(findRunTranscripts(run));
+        dom06.recordSubagentObservation(attemptFile, modelRouting.observeSubagentRoles(declared, attribution));
+    } catch (e) {
+        console.error(`[custo] falha observando subagentes do Attempt ${attempt.attempt_id}:`, e.message);
+    }
+}
+
 function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
     if (DRY_RUN) return;
     try {
@@ -3818,8 +4029,12 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
             !path.isAbsolute(ref.path) && !ref.path.startsWith('..') &&
             ref.runs_root === `worktree:${ticketId}/memory/runs`) {
             try {
-                const attempt = JSON.parse(fs.readFileSync(path.join(taskRunsDir(ticketId), ref.path), 'utf8'));
-                if (attempt.attempt_id === run.admission.attempt_id) attemptResult = attempt.result || 'UNKNOWN';
+                const attemptFile = path.join(taskRunsDir(ticketId), ref.path);
+                const attempt = JSON.parse(fs.readFileSync(attemptFile, 'utf8'));
+                if (attempt.attempt_id === run.admission.attempt_id) {
+                    attemptResult = attempt.result || 'UNKNOWN';
+                    recordSubagentObservation(run, attempt, attemptFile);
+                }
             } catch { /* arquivo não observável (ex.: arquivamento): UNKNOWN */ }
         }
         const observedOutcome = { ...outcome, attemptResult };
@@ -4105,7 +4320,8 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
         ...siblingAddDirArgs(ticket.id),
     ];
     // PRI-233 T7: só com resolução ok (Run ON); sem routing o argv é o do AS-IS.
-    if (routing) args.push(...modelRouting.routedArgs([], routing));
+    // PRI-311 (S5.2b, B8): `--agents` só em Attempt com papel e com subagent_roles na policy.
+    if (routing) args.push(...modelRouting.routedArgs([], routing, { agentsJson: routing.agentsJson || null }));
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
     const costRun = startCostRun(ticket.id, {
@@ -4873,6 +5089,8 @@ async function dispatchTicketReserved(ticket) {
     // rastro de ON que não dá para ligar recusa. Run ON resolve o §4.7 antes do Attempt.
     let nodeRouting = null;
     let nodeRoutingSnapshot = null;
+    // PRI-311 (S5.2b): ramo da Run decomposta (snapshot com decomposition "on"; atrás da flag).
+    let decomposed = null;
     {
         const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
         const binding = routingRun.bindingFor(state, fetchRunDir, taskId);
@@ -4887,11 +5105,18 @@ async function dispatchTicketReserved(ticket) {
         }
         const runSnapshot = routingRun.loadRunSnapshot(state, fetchRunDir);
         if (runSnapshot.mode === 'ON') {
-            const nucleus2 = node === modelRouting.ROUTED_NODE && !DRY_RUN && !SIMULATE
+            if (runSnapshot.ok && decompositionVisit.isDecomposedSnapshot(runSnapshot.snapshot) && (node === 'implement' || DECOMPOSED_GATES.has(node))) {
+                const prep = await prepareDecomposedNode({ ticket, taskId, id, node, state, dir, worktreePath, base, isRecusaQA, stateReadAt, runSnapshot });
+                if (prep.result) return prep.result;
+                decomposed = prep.decomposed;
+            }
+            // Núcleo 2 (só registro) não é coletado por subtarefa: a visita da Run decomposta
+            // segue sem opinião do Jev (declarado na evidência da S5.2b).
+            const nucleus2 = !decomposed && node === modelRouting.ROUTED_NODE && !DRY_RUN && !SIMULATE
                 && runSnapshot.snapshot?.classifier_effective?.provider === 'jev'
                 ? await collectNucleus2({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, taskId })
                 : null;
-            nodeRouting = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt, nucleus2 });
+            nodeRouting = decomposed ? decomposed.resolution : resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt, nucleus2 });
             if (nodeRouting.visit) state.routing_visit = nodeRouting.visit;
             if (!nodeRouting.ok) return refuseRoutedNode({ ticket, taskId, node, state, dir, resolution: nodeRouting });
             if (nodeRouting.visit) writeTaskState(dir, state, 'routing_visit');
@@ -4902,14 +5127,19 @@ async function dispatchTicketReserved(ticket) {
     // Portão de build entre plan e implement — ver runPreBuildGate. Antes do lease:
     // o Maven roda aqui no watcher, não é o agente que está "running".
     let preBuildNote = '';
-    if (needsPreBuildGate(state)) {
+    // PRI-311 (S5.2b, B5.1/AC-23): na Run decomposta, pré-build uma vez, antes da primeira
+    // subtarefa (não antes da integração nem de cada passo).
+    const preBuildDue = decomposed
+        ? decomposed.action.kind === 'subtask' && needsPreBuildGate(state) && decompositionVisit.preBuildDue(dir)
+        : needsPreBuildGate(state);
+    if (preBuildDue) {
         // DRY-RUN: mesmo portão, com `mvn compile` simulado (sucesso) no lugar do Maven.
         const gate = await runPreBuildGate(ticket, active, worktreePath, SIMULATE ? { validate: dryRun.simulatedBuild } : undefined);
         if (!gate.proceed) {
             return { action: 'skip', reason: gate.reason, status: 'pre-build-failed', taskId, node };
         }
         preBuildNote = gate.note;
-    } else if (node === 'implement' && state.preBuildAccepted && state.preBuildStatus === 'failed') {
+    } else if (node === 'implement' && state.preBuildAccepted && state.preBuildStatus === 'failed' && (!decomposed || decomposed.action.kind === 'subtask')) {
         preBuildNote = preBuildAcceptedNote(state); // loop review→implement: erros aceitos continuam valendo
     }
 
@@ -4917,9 +5147,13 @@ async function dispatchTicketReserved(ticket) {
     // ver runChurnGate. Depois do pré-build: só conta se o implement vai mesmo sair.
     // DRY-RUN pula: o "worktree" é o checkout principal, e a âncora do churn gravaria
     // refs no repo de verdade (e o implement simulado não muda código pra medir).
-    if (SIMULATE && needsChurnGate(state)) {
+    // PRI-311 (S5.2b, B5.1/AC-23): churn uma vez por visita, antes da primeira subtarefa dela.
+    const churnDue = decomposed
+        ? needsChurnGate(state) && decompositionVisit.churnDue(dir, state.decomposition, decomposed.action)
+        : needsChurnGate(state);
+    if (SIMULATE && churnDue) {
         console.log(`[dry-run] Task ${taskId}: portão de churn pulado (sem worktree git do ticket).`);
-    } else if (needsChurnGate(state)) {
+    } else if (churnDue) {
         const gate = await runChurnGate(ticket, active, worktreePath);
         if (!gate.proceed) {
             console.warn(`Task ${taskId}: churn de implementação — aguardando revisão humana (churn-escalation).`);
@@ -4949,21 +5183,33 @@ async function dispatchTicketReserved(ticket) {
     } catch (e) {
         console.warn(`Task ${taskId}: execution_spec não registrada (${e.message}) — o carimbo do nó compara só com a spec atual.`);
     }
-    const nodeAdmission = dom06.prepareDispatch({
-        ...(nodeRouting ? { routing: nodeRoutingSnapshot, routingDecision: nodeRouting.decision } : {}),
-        runDir: dir,
-        node,
-        ticketId: id,
-        baseBranch: base,
-        specHash: dom06SpecHash(state, worktreePath, id),
-        state,
-    });
+    let nodeAdmission;
+    if (decomposed) {
+        // H0 + H6 + DOM-06: baseline no escopo da versão vigente, cadeia contra o Attempt
+        // manifestado anterior e só então o Attempt com papel. Cadeia quebrada → blocked.
+        const admitted = decomposed.admit();
+        if (!admitted.ok) {
+            return applyDecompositionBlock({ ticket, taskId, node, state, dir, pending: decompositionBlockPending(null, admitted.reason, node) });
+        }
+        if (admitted.store_error) console.error(`Task ${taskId}: baseline local não gravado (${admitted.store_error}) — a saída fecha com post UNKNOWN (fail-closed).`);
+        nodeAdmission = admitted.admission;
+    } else {
+        nodeAdmission = dom06.prepareDispatch({
+            ...(nodeRouting ? { routing: nodeRoutingSnapshot, routingDecision: nodeRouting.decision } : {}),
+            runDir: dir,
+            node,
+            ticketId: id,
+            baseBranch: base,
+            specHash: dom06SpecHash(state, worktreePath, id),
+            state,
+        });
+    }
     if (!nodeAdmission.dispatch) {
         console.warn(`Task ${taskId}: admissão DOM06 ${nodeAdmission.attempt.result} (${nodeAdmission.reason}) — ${node} não despachado e não conta como PASS.`);
         return { action: 'skip', reason: `dom06_${String(nodeAdmission.attempt.result).toLowerCase()}`, taskId, node, admission: nodeAdmission.attempt.result };
     }
     const lease = nodeLease.acquireNode(dir, { node, timeoutMs: NODE_TIMEOUT_MS, extra: executionSpec ? { execution_spec: executionSpec } : null });
-    attachDom06Lease(lease, nodeAdmission, node);
+    attachDom06Lease(lease, nodeAdmission, node, { task: taskId });
     if (lease) lease.retriesBefore = Number(state.retries?.[node]) || 0; // node_retry na saída (nodeEvents)
     appendEvent(taskId, {
         type: 'node_start', node, agent: 'claude', ts: lease?.startedAt,
@@ -4980,9 +5226,9 @@ async function dispatchTicketReserved(ticket) {
 
     segment = await dispatchClaudeSegment({
         ticket, isRecusaQA, qaFeedback, worktreePath, lease, admissionDecision: nodeAdmission, routing: nodeRouting,
-        commands: [`/${node} ${taskId}`],
+        commands: decomposed && decomposed.commands ? decomposed.commands : [`/${node} ${taskId}`],
         nodes: [node],
-        contextBlock: nodeContextBlock(node, { ticket, dir, worktreePath }),
+        contextBlock: decomposed && decomposed.contextBlock ? decomposed.contextBlock : nodeContextBlock(node, { ticket, dir, worktreePath }),
         extraNote: (node === 'commit'
             ? commitRiskNote(state)
             : node === 'plan'
@@ -5124,7 +5370,9 @@ async function tick() {
         // e o ciclo plan→commit inteiro sai numa execução só.
         if ((FOLLOW || SIMULATE) && !DRY_RUN && claudeAvailable) {
             let segments = 1;
-            while (result.action === 'dispatched' && segments < MAX_FOLLOW_SEGMENTS && !watcherState.shuttingDown) {
+            // PRI-311 (S5.2b): a transição implement → review da Run decomposta (feita pelo watcher,
+            // sem agente) também avança — o próximo segmento despacha a Review.
+            while ((result.action === 'dispatched' || result.action === 'transitioned') && segments < MAX_FOLLOW_SEGMENTS && !watcherState.shuttingDown) {
                 result = await dispatchTicketSafe(ticket);
                 segments++;
                 log.tickets[ticket.id] = { subject: ticket.subject, status: ticket.status?.name, ...result, at: new Date().toISOString() };
@@ -5818,6 +6066,7 @@ module.exports = {
     needsPreBuildGate, runPreBuildGate, worktreeFingerprint, formatPreBuildComment, PRE_BUILD_COMMENT_PREFIX,
     needsChurnGate, runChurnGate, formatChurnComment, CHURN_COMMENT_PREFIX,
     releaseLease, closeRoleAttempt, attachDom06Lease, applyDecompositionBlock, sweepDecompositionKeys,
+    prepareDecomposedNode, transitionDecomposedImplement, recordSubagentObservation, DECOMPOSED_GATES,
     syncAcRegistry, collectAcCandidates, AC_REGISTRY_PATH,
     syncKnowledgeGraph, collectKnowledgeFacts, KNOWLEDGE_GRAPH_PATH,
     runMemoryConsolidator, runMemoryConsolidatorSafe, CONSOLIDATOR_STATE_PATH, CONSOLIDATOR_PATTERNS_PATH,
