@@ -78,6 +78,7 @@ test('ferramentas: obrigatória ausente pede você com comando; Codex ausente é
     assert.equal(by.claude.state, 'waiting');
     assert.match(by.claude.command, /claude-code/);
     assert.equal(by.codex.state, 'queued');
+    assert.equal(by.codex.command, 'npm install -g @openai/codex');
     assert.deepEqual(r.summary, { done: 2, optional: 1, waiting: 1 });
     // versão e requisito prontos para a tela; ferramenta ausente não ganha versão inventada
     assert.match(by.git.version, /^git \d+\.\d+/);

@@ -70,19 +70,45 @@ test('nav: grupos na ordem das áreas do AppNav, com aria-controls e tablist por
     assert.match(ui.tabs(), /data-view="runs" aria-selected="true"/);
 });
 
+test('nav: sem escolha salva, abertos só Trabalho e o grupo da visão atual (padrão do AppNav)', () => {
+    const ui = boot();
+    ui.setView('runs');
+    assert.match(ui.group('Trabalho'), /aria-expanded="true"/);
+    for (const g of ['Operação', 'Conhecimento', 'Agentes e modelos', 'Plataforma']) assert.match(ui.group(g), /aria-expanded="false"/);
+    assert.match(ui.tabs(), /<div class="nav-group has-current" role="group" aria-labelledby="nav-trabalho-h">/);
+    ui.setView('roteamento');
+    assert.match(ui.group('Agentes e modelos'), /aria-expanded="true"/);
+    assert.match(ui.group('Trabalho'), /aria-expanded="true"/);
+    assert.match(ui.tabs(), /<div class="nav-group" role="group" aria-labelledby="nav-trabalho-h">/);
+    ui.setView('runs');
+    assert.match(ui.group('Agentes e modelos'), /aria-expanded="false"/);
+});
+
 test('nav: recolher persiste em prefs.navClosed e esconde os itens; abrir de novo desfaz', () => {
     const ui = boot();
     ui.setView('runs');
     const before = ui.saved();
-    ui.clickGroup('Plataforma');
-    assert.equal(ui.context.prefs.navClosed['Plataforma'], true);
+    ui.clickGroup('Trabalho');
+    assert.equal(ui.context.prefs.navClosed['Trabalho'], true);
     assert.ok(ui.saved() > before);
-    assert.match(ui.group('Plataforma'), /aria-expanded="false"/);
-    assert.match(ui.tabs(), /id="nav-plataforma" role="tablist"[^>]* hidden>/);
+    assert.match(ui.group('Trabalho'), /aria-expanded="false"/);
+    assert.match(ui.tabs(), /id="nav-trabalho" role="tablist"[^>]* hidden>/);
+    ui.clickGroup('Trabalho');
+    assert.equal(ui.context.prefs.navClosed['Trabalho'], false);
+    assert.match(ui.group('Trabalho'), /aria-expanded="true"/);
+    assert.doesNotMatch(ui.tabs(), /id="nav-trabalho" role="tablist"[^>]* hidden>/);
+    // Grupo recolhido por padrão: abrir grava false e ele fica aberto fora da visão dele.
     ui.clickGroup('Plataforma');
     assert.equal(ui.context.prefs.navClosed['Plataforma'], false);
-    assert.match(ui.group('Plataforma'), /aria-expanded="true"/);
     assert.doesNotMatch(ui.tabs(), /id="nav-plataforma" role="tablist"[^>]* hidden>/);
+});
+
+test('rodapé de status: atalhos da visão atual no botão de ajuda (#helpBtn)', () => {
+    const ui = boot();
+    ui.setView('runs');
+    assert.match(ui.context.$('helpBtn').textContent, /J K navegar/);
+    ui.setView('versao');
+    assert.equal(ui.context.$('helpBtn').textContent, '⌘K buscar · R atualizar · ? atalhos · Esc fechar');
 });
 
 test('nav: o grupo da visão atual também recolhe; entrar numa visão reabre o grupo dela', () => {

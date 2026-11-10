@@ -3,12 +3,12 @@
    pelos tokens de prisma-theme.css (claro e escuro). Tudo com prefixo wr- e escopado em .wr-screen. */
 
 /* .view já tem 24px; o artboard pede 32px 40px 56px. */
-.wr-screen { display: flex; flex-direction: column; gap: 36px; padding: 8px 16px 32px; outline: none; font-size: 14px; line-height: 20px; color: var(--text); }
+.wr-screen { box-sizing: border-box; min-height: 100%; display: flex; flex-direction: column; gap: 36px; padding: 8px 16px 32px; outline: none; font-size: 14px; line-height: 20px; color: var(--text); }
 .wr-screen button, .wr-screen input, .wr-screen select { font-family: inherit; }
 .wr-screen button:focus-visible, .wr-screen a:focus-visible, .wr-screen select:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 .wr-screen a { color: var(--link); text-decoration: none; }
 .wr-screen a:hover { color: var(--link-hover); }
-.wr-body { display: flex; flex-direction: column; gap: 36px; }
+.wr-body { display: flex; flex-direction: column; gap: 36px; flex: 1 0 auto; }
 .wr-panel { display: flex; flex-direction: column; gap: 36px; }
 
 /* utilitários */
@@ -38,6 +38,7 @@
 .wr-h1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.02em; }
 .wr-h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; }
 .wr-h3 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; }
+.wr-h2-20 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
 .wr-sub { font-size: 12px; line-height: 16px; color: var(--muted); }
 .wr-note { padding-bottom: 8px; }
 
@@ -70,8 +71,14 @@
 .wr-tools { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .wr-search {
   display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--c-252a3d); border-radius: 8px;
-  flex: 1 1 220px; max-width: 360px; color: var(--muted);
+  flex: 1 1 220px; max-width: 360px; color: var(--muted); box-sizing: content-box;
 }
+.wr-scope {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--c-252a3d); border-radius: 8px;
+  font-size: 13px; color: var(--muted); box-sizing: content-box;
+}
+.wr-scope select { min-height: 40px; background: transparent; color: var(--text); border: 0; font-size: 14px; }
+.wr-scope select option { background: var(--surface); color: var(--text); }
 .wr-search input { flex: 1 1 auto; min-width: 0; min-height: 40px; border: 0; background: transparent; color: var(--text); font-size: 14px; outline: none; }
 .wr-btn {
   min-height: 44px; padding: 0 16px; border: 1px solid var(--c-252a3d); border-radius: 8px; background: transparent; color: var(--text);
@@ -100,7 +107,6 @@
 /* ------------------------------------------------------------ seções e cards */
 .wr-sec { display: flex; flex-direction: column; gap: 16px; }
 .wr-sec-rule { border-top: 1px solid var(--border); padding-top: 28px; }
-.wr-panel > .wr-sec:first-child.wr-sec-rule { border-top: 0; padding-top: 0; }
 .wr-sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
 .wr-summary { display: flex; flex-direction: column; gap: 10px; font-size: 16px; line-height: 26px; color: var(--c-d5daea); max-width: 720px; }
 .wr-summary p { margin: 0; }
@@ -110,6 +116,9 @@
 .wr-grid-190 { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); }
 .wr-grid-420 { grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 24px; }
 .wr-grid-380 { grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); }
+/* Grades do artboard com cards pendentes (sem fonte de dado): o card que existe fica na largura dele. */
+.wr-grid-halves { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.wr-grid-thirds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .wr-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .wr-card-10 { gap: 10px; }
 .wr-k, .wr-kd, .wr-gd { font-size: 12px; line-height: 16px; color: var(--muted); }
@@ -167,6 +176,11 @@ span.wr-mono-link { color: var(--text-secondary); }
 .wr-stage-row { display: grid; grid-template-columns: minmax(120px, 160px) minmax(60px, 1fr) 150px; gap: 12px; align-items: center; min-height: 44px; padding: 4px 0; border-top: 1px solid var(--c-1a1e2b); }
 .wr-type-row { display: grid; grid-template-columns: minmax(120px, 160px) minmax(60px, 1fr) 190px; gap: 12px; align-items: center; min-height: 44px; border-top: 1px solid var(--c-1a1e2b); }
 .wr-stage-name { font-size: 13px; font-weight: 500; }
+/* Custo por projeto */
+.wr-proj-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 20px; display: flex; flex-direction: column; gap: 6px; }
+.wr-proj-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 190px; gap: 16px; align-items: center; min-height: 40px; }
+.wr-proj-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wr-proj-row .wr-track, .wr-proj-row .wr-fill { height: 8px; border-radius: 4px; }
 .wr-loop-row { display: grid; grid-template-columns: minmax(150px, 1.3fr) 72px minmax(60px, 1fr); gap: 12px; align-items: center; min-height: 56px; border-top: 1px solid var(--c-1a1e2b); }
 
 /* ------------------------------------------------------------ gráfico de custo/runs */
@@ -238,8 +252,21 @@ span.wr-mono-link { color: var(--text-secondary); }
 .wr-l-dot-cost-hit { background: var(--accent); }
 .wr-l-graph { display: inline-flex; align-items: center; min-height: 40px; font-size: 13px; }
 
+/* ------------------------------------------------------------ barra de status (rodapé do artboard) */
+/* Gruda no pé da área rolável (.view, padding 24px) e atravessa o padding da tela até as bordas. */
+.wr-status {
+  position: sticky; bottom: -24px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; min-height: 28px;
+  margin: 20px -40px -56px; padding: 0 16px; border-top: 1px solid var(--border); background: var(--rail);
+  font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--muted);
+}
+.wr-status-toast { color: var(--state-running-fg); }
+.wr-status-keys { margin-left: auto; }
+
 @media (max-width: 760px) {
   .wr-screen { padding: 0 0 24px; }
+  .wr-status { display: none; }
+  .wr-grid-halves, .wr-grid-thirds { grid-template-columns: 1fr; }
+  .wr-proj-row { grid-template-columns: minmax(80px, 1fr) minmax(40px, 1fr) auto; }
   .wr-pr-row { grid-template-columns: minmax(0, 1fr) 72px 40px; }
   .wr-pr-row .wr-track { display: none; }
   .wr-node-row { grid-template-columns: 88px minmax(0, 1fr) 112px; }

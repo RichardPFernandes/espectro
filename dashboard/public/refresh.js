@@ -52,10 +52,10 @@
   });
 
   // ------------------------------------------------------------------ UI
-  // Controle compacto na topbar (um grupo de 40 px, como o LimitsBar do design); CSS em
-  // screens/system.css.
-  const live = $('live');
-  live.insertAdjacentHTML('beforebegin', `
+  // Controle compacto na topbar (um grupo de 40 px, no lugar do LimitsBar do design), primeiro do
+  // grupo global da direita; CSS em screens/system.css. Rótulo curto ("Auto", "Auto 30 s") para a
+  // barra caber numa linha; o texto completo vai no aria-label e no title.
+  document.querySelector('.topbar-right').insertAdjacentHTML('afterbegin', `
     <div class="refresh-ctl" id="refreshCtl">
       <button type="button" class="refresh-now" id="refreshNow" title="Atualizar agora (R)" aria-keyshortcuts="R">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -72,7 +72,8 @@
     const ago_ = lastAt ? ago(new Date(lastAt).toISOString()) : 'ainda não';
     btn.title = `Atualizar agora (R). Última atualização: ${ago_}.`;
     const auto = $('refreshAuto');
-    auto.textContent = cfg.sec ? `Auto: ${label().replace('A cada ', '')}` : 'Auto: desligado';
+    auto.textContent = cfg.sec ? `Auto ${label().replace('A cada ', '')}` : 'Auto';
+    auto.setAttribute('aria-label', cfg.sec ? `Atualização automática: ${label().toLowerCase()}` : 'Atualização automática: desligada');
     auto.classList.toggle('on', !!cfg.sec);
     auto.title = cfg.sec
       ? `Atualiza sozinho ${label().toLowerCase()}${cfg.external ? ', com Redmine e Bitbucket no máximo a cada 5 min' : ''}. Pausa com a aba em segundo plano.`

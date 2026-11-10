@@ -498,14 +498,8 @@ kbd {
 .ov-tips { margin: 0; color: var(--muted); font-size: 12px; }
 
 /* ------------------------------------------------------------ Paleta ⌘K e ajuda */
-.cmd-btn {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px 0 12px;
-  border: 1px solid var(--border-control); border-radius: var(--radius-control); background: transparent;
-  color: var(--muted); font-size: 13px; cursor: pointer; white-space: nowrap;
-}
-.cmd-btn:hover { color: var(--text); background: var(--surface-hover); }
+/* Campo da paleta (.nav-search) e botão de atalhos (.sb-keys): cromo global, em theme.css. */
 .icon-btn[aria-pressed="true"] { color: var(--link); border-color: var(--link); background: var(--state-running-bg); }
-#helpBtn { font-weight: 700; font-size: 14px; }
 .overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: start center; padding: 12vh 16px 16px; }
 .overlay[hidden] { display: none; }
 .ov-backdrop { position: fixed; inset: 0; background: rgba(5, 7, 12, .6); }
@@ -556,3 +550,29 @@ kbd {
   .ov-grid, .ov-cards { grid-template-columns: minmax(0, 1fr); }
 }
 .hero-meta .hero-cost { font-family: var(--mono); font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Cartão do gate humano (artboard RunDetail · Resumo · Gate humano · SPEC_CHANGE). */
+.gate-card { background: var(--c-15140f); border: 1px solid var(--c-5a4520); border-radius: 14px; overflow: hidden; }
+.gate-card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--c-3a3220); }
+.gate-card-t { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 360px; }
+.gate-card-k { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--state-waiting-fg); }
+.gate-card h2 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
+.gate-card-t p { margin: 0; color: var(--c-b8bed2); }
+.gate-card-when { align-self: flex-start; font-size: 12px; color: var(--muted); }
+.gate-card-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+.gate-diff-wrap { display: flex; flex-direction: column; gap: 8px; }
+.gate-card-sub { font-size: 13px; font-weight: 600; }
+.gate-diff { border: 1px solid var(--c-252a3d); border-radius: 8px; overflow: hidden; font-family: var(--mono); font-size: 13px; line-height: 20px; }
+.gate-diff > div { display: flex; gap: 12px; padding: 10px 14px; overflow-wrap: anywhere; }
+.gate-del { background: var(--c-2a1416); color: var(--c-f7b3b3); }
+.gate-add { background: var(--c-10261c); color: var(--c-a6ebc6); }
+.gate-card-note { margin: 0; font-size: 12px; color: var(--muted); }
+.gate-cells { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.gate-cell { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--c-252a3d); border-radius: 8px; }
+.gate-cell > span { font-size: 12px; color: var(--muted); }
+.gate-cell > b { font-weight: 600; overflow-wrap: anywhere; }
+.gate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gate-go { min-height: 44px; padding: 0 20px; border: 0; border-radius: 8px; background: var(--state-waiting); color: var(--on-waiting); font-weight: 600; font-size: 14px; cursor: pointer; }
+.gate-alt { min-height: 44px; padding: 0 20px; border: 1px solid var(--border-control); border-radius: 8px; background: transparent; color: var(--text); font-weight: 500; font-size: 14px; cursor: pointer; }
+.gate-alt:hover:not([disabled]) { background: var(--surface-hover); }
+.gate-go[disabled], .gate-alt[disabled] { opacity: .55; cursor: not-allowed; }

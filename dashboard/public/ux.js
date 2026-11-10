@@ -7,6 +7,8 @@
   const VIEW_KEYS = [['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'], ['timeline', 'Linha do tempo'], ['metricas', 'Relatório semanal'], ['redmine', 'Tickets']];
   const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const currentView = () => document.body.dataset.view || 'runs';
+  // Lista, Quadro, Tabela e Linha do tempo são a mesma tela (Runs): os dígitos de visão só valem nela.
+  const RUN_SCREEN = new Set(['runs', 'quadro', 'tabela', 'timeline']);
   // Resposta do watcher à sua mensagem (state.human_input_interpretations) vence a nota do
   // agente quando é mais recente e não destravou a task: é a pergunta que está esperando você.
   const lastNote = r => {
@@ -39,10 +41,20 @@
   });
 
   // ------------------------------------------------------------------ visão geral
+  // Fora do artboard Main (lá, sem run aberta, a lista ocupa a área toda): só aparece quando
+  // pedida pela paleta (⌘K › Abrir visão geral) e fecha com Esc ou ×.
+  let ovOpen = false;
+  const overviewOpen = () => ovOpen;
+  function setOverview(on) {
+    ovOpen = !!on;
+    if (ovOpen && currentView() !== 'runs') Views.setView('runs');
+    if (ovOpen && selected) closeRun(); else renderDetail();
+  }
+  const OV_CLOSE = '<button type="button" class="rs-close ov-close" data-ov-close aria-label="Fechar a visão geral (Esc)" title="Fechar (Esc)">×</button>';
   function overview() {
     const list = [...runs.values()].filter(r => !isHidden(r));
     if (!runs.size) {
-      return `<div class="overview"><header class="ov-head"><h1>Visão geral</h1>
+      return `<div class="overview"><header class="ov-head"><div class="ov-titlerow"><h1>Visão geral</h1>${OV_CLOSE}</div>
         <p>Carregando runs… Quando o watcher pegar um ticket, ele aparece aqui sozinho.</p></header></div>`;
     }
     const attn = list.filter(r => !isDone(r) && needsYou(r)).sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
@@ -102,7 +114,7 @@
 
     return `<div class="overview">
       <header class="ov-head">
-        <h1>Visão geral</h1>
+        <div class="ov-titlerow"><h1>Visão geral</h1>${OV_CLOSE}</div>
         <p>${esc(headline)}</p>
         <div class="kpis ov-counts" role="list" aria-label="Runs por estado">
           <div class="kpi ${attn.length ? 'attn' : ''}" role="listitem"><span class="kpi-label"><span class="g-dot waiting" aria-hidden="true"></span>Precisam de você</span><span class="kpi-value">${attn.length}</span></div>
@@ -124,6 +136,7 @@
   }
 
   $('detail').addEventListener('click', e => {
+    if (e.target.closest('[data-ov-close]')) { setOverview(false); return; }
     const reply = e.target.closest('[data-ov-reply]');
     if (reply) {
       Views.openRun(reply.dataset.ovReply);
@@ -167,8 +180,9 @@
       });
     }
     out.sort((a, b) => a.rank - b.rank);
-    for (const [k, label] of VIEW_KEYS) out.push({ group: 'Visões', label: `Ir para ${label}`, sub: `tecla ${VIEW_KEYS.findIndex(v => v[0] === k) + 1}`, run: () => Views.setView(k) });
+    for (const [k, label] of VIEW_KEYS) out.push({ group: 'Visões', label: `Ir para ${label}`, sub: `tecla ${VIEW_KEYS.findIndex(v => v[0] === k) + 1} na tela Runs`, run: () => Views.setView(k) });
     const act = (label, sub, run) => out.push({ group: 'Ações', label, sub, run });
+    act('Abrir visão geral', 'quem precisa de você, atividade recente e o que está andando', () => setOverview(true));
     act('Alternar tema claro/escuro', '', () => $('theme').click());
     act('Recolher todos os grupos', 'lista lateral', () => { Views.setView('runs'); GROUPS.forEach(g => setGroupOpen(g.key, false)); renderSidebar(); });
     act('Expandir todos os grupos', 'lista lateral', () => { Views.setView('runs'); GROUPS.forEach(g => setGroupOpen(g.key, true)); renderSidebar(); });
@@ -230,7 +244,9 @@
       <table>
         ${row([MOD, 'K'], 'Ir para qualquer run, ticket, visão ou ação')}
         ${row(['/'], 'Filtrar a lista e as visões')}
-        ${row(['1', '…', '6'], 'Trocar de aba (Runs, Quadro, Tabela, Linha do tempo, Relatório semanal, Tickets)')}
+        ${row(['1', '…', '6'], 'Na tela Runs: trocar de aba (Runs, Quadro, Tabela, Linha do tempo, Relatório semanal, Tickets)')}
+        ${row(['V'], 'Na tela Runs: alternar Lista, Quadro, Tabela e Linha do tempo')}
+        ${row(['X'], 'Na lista de Runs: marcar a run aberta para a seleção')}
         ${row(['↑', '↓'], 'Trocar de run na lista (também j e k)')}
         ${row([MOD, '↵'], 'Enviar a mensagem ao agente')}
         ${row([MOD, 'clique'], 'Começar a selecionar vários runs')}
@@ -264,18 +280,19 @@
     b.title = prefs.notify ? 'Notificações ativas: clique para desativar' : 'Avisar quando um run parar esperando você';
   }
 
-  // ------------------------------------------------------------------ topbar
-  const right = document.querySelector('.topbar-right');
-  right.insertAdjacentHTML('afterbegin', `
-    <button id="cmdk" class="cmd-btn" type="button" title="Ir para… (${MOD} K)"><span>Ir para…</span><kbd>${MOD} K</kbd></button>`);
+  // ------------------------------------------------------------------ cromo global
+  // Paleta: campo no menu lateral (#cmdk, CommandPalette do AppNav). Topbar: sino (NotifBell)
+  // antes do tema. Atalhos: botão à direita do rodapé de status (#helpBtn, index.html).
+  $('cmdk').title = `Buscar ou ir para… (${MOD} K)`;
+  $('cmdkKey').textContent = MOD === '⌘' ? '⌘K' : `${MOD} K`;
   $('theme').insertAdjacentHTML('beforebegin', `
     <button id="bell" class="icon-btn" type="button" aria-pressed="false" aria-label="Notificações">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 20a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-    </button>
-    <button id="helpBtn" class="icon-btn" type="button" title="Atalhos de teclado (?)" aria-label="Atalhos de teclado">?</button>`);
+    </button>`);
   $('cmdk').addEventListener('click', openPalette);
   $('bell').addEventListener('click', toggleNotify);
   $('helpBtn').addEventListener('click', openHelp);
+  $('helpTop').addEventListener('click', openHelp);
   syncBell();
 
   // ------------------------------------------------------------------ teclado global
@@ -291,14 +308,17 @@
     }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'Escape' && ovOpen && !selected) { e.preventDefault(); setOverview(false); return; }
     if (e.key === '?') { e.preventDefault(); openHelp(); return; }
     const n = Number(e.key);
     // Tela com abas próprias nos dígitos (data-local-digits, ex.: Roteamento) trata 1–N ela mesma.
     if (document.activeElement?.closest?.('[data-local-digits]')) return;
     // Com o detalhe da run aberto, 1–6 pulam entre os grupos de abas dele (index.html).
+    // Só na tela Runs: em outra tela (ex.: Tickets) o "3" não pode cair em #tabela.
+    if (!RUN_SCREEN.has(currentView())) return;
     if (n >= 1 && n <= VIEW_KEYS.length && !selecting && !(document.body.classList.contains('run-open') && currentView() === 'runs')) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
   }, true);
 
-  window.UX = { overview, route, notifyNeedsYou, openPalette, openHelp };
+  window.UX = { overview, overviewOpen, setOverview, route, notifyNeedsYou, openPalette, openHelp };
   if (!selected) renderDetail();
 })();

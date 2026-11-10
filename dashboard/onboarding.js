@@ -123,7 +123,7 @@ function createOnboarding({
                     detail: 'Não encontrado. Instale e faça login no terminal:', command: 'npm install -g @anthropic-ai/claude-code && claude' },
             found(codex)
                 ? { id: 'codex', name: 'Codex', requirement: 'opcional', version: ver('codex', codex), state: 'done', detail: `encontrado · ${version(codex.stdout) || '?'} · o watcher ainda despacha só Claude Code` }
-                : { id: 'codex', name: 'Codex', requirement: 'opcional', version: null, state: 'queued', detail: 'não encontrado' },
+                : { id: 'codex', name: 'Codex', requirement: 'opcional', version: null, state: 'queued', detail: 'não encontrado', command: 'npm install -g @openai/codex' },
         ];
         const summary = { done: 0, optional: 0, waiting: 0 };
         for (const t of items) summary[t.state === 'queued' ? 'optional' : t.state] += 1;

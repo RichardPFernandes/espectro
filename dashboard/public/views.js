@@ -127,9 +127,12 @@
     ['Plataforma', [['versao', 'Sistema', 'M3 5.5h18v6H3zM3 13.5h18v6H3zM7 8.5h.01M7 16.5h.01'], ['computador', 'Este computador', 'M4 5h16v11H4zM2 19h20']]],
   ];
   const navKeyOf = v => (RUN_VIEWS.some(([k]) => k === v) ? 'runs' : v);
-  // Grupos recolhidos (prefs.navClosed). Entrar numa visão abre o grupo dela (na carga e no
-  // setView); depois o grupo atual também pode ser recolhido, e o item selecionado some junto.
+  // Grupos recolhidos (prefs.navClosed: true recolhido, false aberto). Sem escolha salva vale o
+  // padrão do AppNav: abertos só Trabalho e o grupo da visão atual. Entrar numa visão abre o grupo
+  // dela (na carga e no setView); depois o grupo atual também pode ser recolhido.
   const navClosed = Object.assign({}, prefs.navClosed || {});
+  const NAV_OPEN_BY_DEFAULT = 'Trabalho';
+  const navIsOpen = (group, hasCurrent) => (navClosed[group] !== undefined ? !navClosed[group] : hasCurrent || group === NAV_OPEN_BY_DEFAULT);
   const navGroupId = g => 'nav-' + g.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
   function openNavGroupOf(v) {
     const g = NAV.find(([, its]) => its.some(([k]) => k === navKeyOf(v)));
@@ -162,9 +165,10 @@
     // Recolhido, o grupo mostra a soma do que pede você, para a pendência não sumir.
     paint('tabs', NAV.map(([group, items]) => {
       const id = navGroupId(group);
-      const open = !navClosed[group];
+      const hasCurrent = items.some(([k]) => k === cur);
+      const open = navIsOpen(group, hasCurrent);
       const sum = items.some(([k]) => k === 'runs') ? waiting : 0;
-      return `<div class="nav-group" role="group" aria-labelledby="${id}-h">
+      return `<div class="nav-group${hasCurrent ? ' has-current' : ''}" role="group" aria-labelledby="${id}-h">
       <button type="button" class="nav-group-label label" id="${id}-h" data-nav-group="${group}" aria-expanded="${open}" aria-controls="${id}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>${group}</span>${
         !open && sum ? `<span class="nav-count" title="${sum} pedem você">${sum}</span>` : ''}</button>
       <div class="nav-group-items" id="${id}" role="tablist" aria-orientation="vertical" aria-labelledby="${id}-h"${open ? '' : ' hidden'}>
@@ -177,6 +181,19 @@
     $('crumbGroup').textContent = group;
     $('crumbView').textContent = (items.find(([k]) => k === cur) || [, 'Runs'])[1];
     renderRunViews();
+    renderStatusKeys();
+  }
+  // Atalhos à direita do rodapé de status (#helpBtn abre a ajuda completa). Só atalhos que existem
+  // (ux.js, refresh.js, index.html); telas com rodapé próprio escondem o rodapé comum.
+  const STATUS_KEYS = {
+    runs: '⌘K buscar · J K navegar · / filtrar · R atualizar · ? atalhos · Esc fechar',
+    quadro: '⌘K buscar · / filtrar · 1–4 visão · R atualizar · ? atalhos',
+  };
+  function renderStatusKeys() {
+    const el = $('helpBtn');
+    if (!el) return;
+    const k = STATUS_KEYS[view] || STATUS_KEYS[navKeyOf(view) === 'runs' ? 'quadro' : ''] || '⌘K buscar · R atualizar · ? atalhos · Esc fechar';
+    if (el.textContent !== k) el.textContent = k;
   }
   // Segmento Lista · Quadro · Tabela · Linha do tempo no topo, só nas visões de Runs.
   function renderRunViews() {

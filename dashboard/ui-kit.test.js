@@ -49,6 +49,12 @@ test('filterChip e drawerClose: rótulos acessíveis e data-act', () => {
     assert.match(UI.drawerClose(), /data-act="close-detail" aria-label="Fechar o detalhe \(Esc\)"/);
 });
 
+test('statusbar: rodapé mono com estado (role=status) e atalhos à direita, texto escapado', () => {
+    assert.strictEqual(UI.statusbar({ left: '3 PRs <nesta aba>', keys: 'J K navegar' }),
+        '<footer class="statusbar"><span role="status">3 PRs &lt;nesta aba&gt;</span><span class="statusbar-keys">J K navegar</span></footer>');
+    assert.strictEqual(UI.statusbar({ left: 'só estado' }), '<footer class="statusbar"><span role="status">só estado</span></footer>');
+});
+
 test('step: J/K presos às pontas; sem foco começa na ponta certa', () => {
     assert.strictEqual(UI.step(-1, 1, 3), 0);
     assert.strictEqual(UI.step(-1, -1, 3), 2);

@@ -87,6 +87,7 @@ body[data-view="prs"] .topbar .search { display: none; }
 .prs-row[data-state="superseded"] .prs-icon { stroke: var(--state-waiting); }
 .prs-meta { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; color: var(--muted); }
 .prs-repo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prs-lines { margin-left: auto; flex: 0 0 auto; }
 .prs-title { font-weight: 500; overflow-wrap: anywhere; }
 .prs-facts { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; min-width: 0; }
 .prs-author { margin-left: auto; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

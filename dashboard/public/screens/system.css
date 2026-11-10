@@ -11,9 +11,27 @@
 }
 
 /* ------------------------------------------------------------ 1. Tela Sistema (version.js; artboard System) */
-/* #view já tem 24px; a soma dá o 28px 40px 48px do <main> do artboard. */
-.sys-page { display: flex; flex-direction: column; gap: 22px; padding: 4px 16px 24px; box-sizing: border-box; }
-@media (max-width: 760px) { .sys-page { padding: 0 0 16px; } }
+/* A tela ocupa a área inteira do shell: área rolável + barra de status de 28 px (artboard .panes/.statusbar);
+   o <main> do artboard tem 28px 40px 48px. */
+body.app[data-view="versao"] .view { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.sys-screen { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.sys-screen:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
+.sys-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.sys-page { display: flex; flex-direction: column; gap: 22px; padding: 28px 40px 48px; box-sizing: border-box; }
+.sys-statusbar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 16px; height: 28px; padding: 0 16px; box-sizing: border-box;
+  border-top: 1px solid var(--border); background: var(--rail);
+  font-family: 'JetBrains Mono', var(--mono), monospace; font-size: 11px; color: var(--muted);
+}
+.sys-status-left { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sys-status-left[data-tone="notice"] { color: var(--state-running-fg); }
+.sys-status-keys { margin-left: auto; white-space: nowrap; }
+@media (max-width: 760px) {
+  body.app[data-view="versao"] .view { overflow: visible; display: block; }
+  .sys-scroll { overflow: visible; }
+  .sys-page { padding: 24px 16px 40px; }
+  .sys-statusbar { display: none; }
+}
 .sys-page a { color: var(--link); text-decoration: none; }
 .sys-page a:hover { color: var(--link-hover); }
 .sys-mono { font-family: 'JetBrains Mono', var(--mono), monospace; font-variant-numeric: tabular-nums; }
@@ -135,6 +153,20 @@
 .sys-logrow[data-level="ERROR"] .sys-log-l { color: var(--state-failed); }
 .sys-log-empty { margin: 0; padding: 12px 20px; font-family: 'Inter', var(--font, system-ui), sans-serif; font-size: 13px; color: var(--muted); }
 
+/* Dependências do watcher */
+.sys-deps-list { margin: 0; padding: 6px 0; list-style: none; }
+.sys-deps-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 20px; border-top: 1px solid var(--c-1a1e2b); }
+.sys-dep-who { flex: 1 1 200px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sys-dep-name { font-weight: 500; }
+.sys-dep-note { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.sys-dep-lat { font-size: 12px; color: var(--text-secondary); }
+.sys-dep-state {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; white-space: nowrap;
+  font-size: 12px; font-weight: 600; color: var(--state-queued-fg); background: var(--state-queued-bg);
+}
+.sys-deps-list li[data-tone="ok"] .sys-dep-state { color: var(--state-done-fg); background: var(--state-done-bg); }
+.sys-deps-list a { font-size: 13px; }
+
 /* Saúde da configuração */
 .sys-kcards { display: flex; flex-wrap: wrap; gap: 24px; padding: 14px 20px; border-bottom: 1px solid var(--c-1d2232); font-variant-numeric: tabular-nums; }
 .sys-kc {
@@ -190,14 +222,14 @@
 .version-stale { color: var(--state-waiting-fg); }
 
 /* ------------------------------------------------------------ 2. Watcher no pé do rail */
-/* #navFoot vira um único cartão: watcher (botão) · saúde do processo · configuração. */
-#navFoot:not(:empty) {
-  gap: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--rail);
-}
-.wctl { position: static; }
+/* Cartão do watcher como no AppNav (borda 1 px, raio 10, 12 px, título 13/600 com bolinha de 10 px,
+   linha mono 11). Saúde do processo e da configuração (fora do AppNav) ficam em linhas compactas
+   logo abaixo, sem passar da largura do menu. */
+#navFoot:not(:empty) { gap: 6px; min-width: 0; }
+.wctl { position: static; min-width: 0; }
 .wctl-chip {
-  display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; min-height: 44px;
-  padding: 12px; border: 0; border-radius: 9px 9px 0 0; background: transparent; color: var(--text);
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; min-height: 44px;
+  padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--text);
   text-align: left; cursor: pointer;
 }
 .wctl-chip:hover, .wctl-chip[aria-expanded="true"] { background: var(--surface-hover); }
@@ -206,9 +238,9 @@
 .wctl-sub { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .wctl-sub:empty { display: none; }
 .wctl i { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--state-queued); }
-.wctl[data-tone="on"] i { background: var(--state-done); box-shadow: 0 0 0 3px var(--state-done-bg); }
-.wctl[data-tone="off"] i { background: var(--state-failed); box-shadow: 0 0 0 3px var(--state-failed-bg); }
-.wctl[data-tone="warn"] i { background: var(--state-waiting); box-shadow: 0 0 0 3px var(--state-waiting-bg); }
+.wctl[data-tone="on"] i { background: var(--state-done); }
+.wctl[data-tone="off"] i { background: var(--state-failed); }
+.wctl[data-tone="warn"] i { background: var(--state-waiting); }
 .wctl.limit .wctl-chip-row { color: var(--state-failed-fg); }
 
 /* Painel: abre ao lado do rail (o rail rola e cortaria um popover absoluto). */
@@ -327,11 +359,11 @@
 
 /* ------------------------------------------------------------ 3. Saúde do processo (health-check) */
 .whb {
-  display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px;
-  border-top: 1px solid var(--border); font-family: var(--mono); font-size: 11px; line-height: 16px;
+  display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 2px 12px 0;
+  font-family: var(--mono); font-size: 11px; line-height: 16px;
   color: var(--muted); font-variant-numeric: tabular-nums;
 }
-.whb-main { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; color: var(--text-secondary); }
+.whb-main { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 2px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; }
 .whb-main .label { font-size: 10px; }
 .whb i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--state-queued); }
 .whb[data-tone="on"] i { background: var(--state-done); }
@@ -345,16 +377,16 @@
 }
 
 /* ------------------------------------------------------------ 4. Saúde da configuração */
-.cfg-foot-row { display: grid; gap: 8px; padding: 8px; border-top: 1px solid var(--border); }
+.cfg-foot-row { display: grid; gap: 8px; min-width: 0; }
 .cfg-btn {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 0 8px;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 40px; padding: 0 12px;
   border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-secondary);
   font-size: 13px; text-align: left; cursor: pointer;
 }
 .cfg-btn:hover { background: var(--surface-hover); color: var(--text); }
 .cfg-btn svg { flex: none; color: var(--muted); }
 .cfg-btn-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cfg-state { flex: none; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.cfg-state { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 #cfgHealthBtn[data-state="ok"] .cfg-state { color: var(--state-done-fg); }
 #cfgHealthBtn[data-state="warn"] .cfg-state { color: var(--state-waiting-fg); }
 #cfgHealthBtn[data-state="err"] .cfg-state { color: var(--state-failed-fg); }
@@ -445,8 +477,8 @@
 .rm-check input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); }
 .rm-check small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
 .rm-foot { margin: 0; padding: 4px 10px 8px; font-size: 12px; color: var(--muted); }
-/* Mantido de refresh.js: em telas médias o "Ir para…" vira só o atalho e a busca encolhe. */
-@media (max-width: 1560px) { .cmd-btn > span { display: none; } .topbar .search { flex: 0 1 210px; min-width: 150px; } }
+/* Mantido de refresh.js: em telas médias a busca encolhe. */
+@media (max-width: 1560px) { .topbar .search { flex: 0 1 210px; min-width: 150px; } }
 
 /* ------------------------------------------------------------ 6. Banner DRY-RUN */
 .dryrun-banner {
