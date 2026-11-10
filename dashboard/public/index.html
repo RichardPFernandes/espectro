@@ -514,7 +514,7 @@
   .seg-ctl .count { color: var(--faint); font-weight: 500; }
   .lamp { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--idle); flex-shrink: 0; }
 
-  /* Quadro, Tabela, Linha do tempo, Relatório semanal e Tickets e PRs (views.js): screens/run-views.css. */
+  /* Quadro, Tabela, Linha do tempo e Tickets e PRs (views.js): screens/run-views.css. Relatório semanal (weekly-report.js): screens/weekly-report.css. */
   /* Tabela genérica rolável. */
   .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 
@@ -571,6 +571,7 @@
 <!-- Uma folha por tela (design Espectro); depois do <style> para vencer na mesma especificidade. -->
 <link rel="stylesheet" href="screens/runs.css">
 <link rel="stylesheet" href="screens/run-views.css">
+<link rel="stylesheet" href="screens/weekly-report.css">
 <link rel="stylesheet" href="screens/redmine.css">
 <link rel="stylesheet" href="screens/prs.css">
 <link rel="stylesheet" href="screens/graph.css">
@@ -3333,6 +3334,7 @@ document.addEventListener('click', async e => {
 <script src="schema-checklist.js"></script>
 <script src="markdown.js"></script>
 <script src="views.js"></script>
+<script src="weekly-report.js"></script>
 <script src="graph.js"></script>
 <script src="patterns.js"></script>
 <script src="would-route-metrics.js"></script>
