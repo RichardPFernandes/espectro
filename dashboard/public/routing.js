@@ -212,20 +212,32 @@
     tail.replaceChildren(...(label ? [attr(el('span', '›'), { 'aria-hidden': 'true' }), el('span', `◆ ${label}`)] : []));
     hint.title = 'Fonte: /api/routing · runs_total';
     hint.textContent = data && Number.isInteger(data.runs_total)
-      ? `A sombra calcula em paralelo o que a policy escolheria nas ${data.runs_total} Runs lidas, sem afetar o despacho.`
+      ? `A sombra roda a regra nova em paralelo nas ${data.runs_total} Runs lidas, sem afetar nada.`
       : '';
   }
 
   // ── lista ────────────────────────────────────────────────────────────────────────
+  // Linha do classificador no padrão das linhas de nó (artboard: chip curto "<quem> ativo",
+  // trilho da barra vazio e uma linha de apoio). O acerto do artboard não tem fonte de dado.
+  const CLS_SHORT = { policy_only: 'só policy', 'policy_jev:shadow': 'Jev em sombra', 'policy_jev:active': 'Jev' };
   function clsRow() {
     let st;
-    if (cls.busy) st = { k: 'running', glyph: '◐', label: 'troca enviada' };
-    else if (cls.data) st = { k: 'done', glyph: '✓', label: clsCurrentLabel() };
-    else st = { k: 'queued', glyph: '?', label: cls.missing ? 'indisponível' : cls.error ? 'desconhecido' : 'carregando' };
     const c = cls.data?.current;
+    if (cls.busy) st = { k: 'running', glyph: '◐', label: 'troca enviada' };
+    else if (c?.source === 'INVALID') st = { k: 'waiting', glyph: '‖', label: 'registro ilegível' };
+    else if (c?.source === 'POLICY') st = { k: 'done', glyph: '✓', label: `${c.provider || 'desconhecido'} ativo` };
+    else if (c?.source === 'SELECTION') {
+      const short = CLS_SHORT[c.choice === 'policy_only' ? 'policy_only' : `${c.choice}:${c.mode}`];
+      st = short ? { k: 'done', glyph: '✓', label: `${short} ativo` } : { k: 'queued', glyph: '?', label: 'desconhecido' };
+    } else if (cls.data) st = { k: 'queued', glyph: '?', label: 'desconhecido' };
+    else st = { k: 'queued', glyph: '?', label: cls.missing ? 'indisponível' : cls.error ? 'desconhecido' : 'carregando' };
+    let split = '';
+    if (c?.source === 'POLICY') split = 'definido pela policy';
+    else if (c?.source === 'SELECTION') split = `versão ${c.version ?? '?'}${c.by ? ` · por ${c.by}` : ''}`;
+    else if (c?.source === 'INVALID') split = `classificador efetivo: ${c.provider || 'desconhecido'}`;
     return {
       key: 'cls', node: 'classificador', name: 'Quem decide o modelo de cada subtarefa', st,
-      split: c ? `versão ${c.version ?? '?'}${c.by ? ` · por ${c.by}` : ''}` : '', bar: null,
+      split, bar: { same: '0%', cheaper: '0%', pricier: '0%' }, barSrc: false,
     };
   }
 
@@ -251,7 +263,7 @@
       line.append(bar);
     }
     const split = el('span', r.split, 'num');
-    if (r.bar) split.title = SRC_SHADOW;
+    if (r.bar && r.barSrc !== false) split.title = SRC_SHADOW;
     line.append(split);
     b.append(top, el('span', r.name, 'rt-row-name'), line);
     b.addEventListener('click', () => { ui.sel = r.key; refresh(); });
@@ -577,7 +589,7 @@
     const cheaper = nodes.filter(n => n.status === 'economia').length;
     const tabIdx = M.VIEWS.findIndex(v => v[0] === ui.view) + 1;
     const nodeCount = nodes.length + 1;
-    const left = attr(el('span', `${visible.length} de ${nodeCount} linhas · aba ${tabIdx} de ${M.VIEWS.length} · ${cheaper} nó(s) com sombra mais barata · classificador: ${cls.data ? clsCurrentLabel() : 'desconhecido'}`), { role: 'status' });
+    const left = attr(el('span', `${visible.length} de ${nodeCount} nós · aba ${tabIdx} de ${M.VIEWS.length} · ${cheaper} com sombra mais barata · classificador: ${cls.data ? clsCurrentLabel() : 'desconhecido'}`), { role: 'status' });
     left.title = SRC_SHADOW;
     bar.append(left, el('span', 'J K navegar · Enter abrir · 1–3 abas · Esc fechar · ⌘K paleta', 'rt-statusbar-keys'));
     root.append(bar);
