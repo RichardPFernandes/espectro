@@ -291,6 +291,8 @@
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '?') { e.preventDefault(); openHelp(); return; }
     const n = Number(e.key);
+    // Tela com abas próprias nos dígitos (data-local-digits, ex.: Roteamento) trata 1–N ela mesma.
+    if (document.activeElement?.closest?.('[data-local-digits]')) return;
     if (n >= 1 && n <= VIEW_KEYS.length && !selecting) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
   }, true);
 

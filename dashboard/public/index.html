@@ -515,7 +515,7 @@
   .lamp { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--idle); flex-shrink: 0; }
 
   /* Quadro, Tabela, Linha do tempo, Relatório semanal e Tickets e PRs (views.js): screens/run-views.css. */
-  /* Tabela genérica rolável (would-route-metrics.js). */
+  /* Tabela genérica rolável. */
   .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 
   /* Badge de status do TICKET Redmine (ticketStatusBadge, index.html) — reusado na
@@ -575,7 +575,6 @@
 <link rel="stylesheet" href="screens/prs.css">
 <link rel="stylesheet" href="screens/graph.css">
 <link rel="stylesheet" href="screens/patterns.css">
-<link rel="stylesheet" href="screens/would-route.css">
 <link rel="stylesheet" href="screens/routing.css">
 <link rel="stylesheet" href="screens/run-subtasks.css">
 <link rel="stylesheet" href="screens/system.css">
@@ -3280,6 +3279,7 @@ document.addEventListener('click', async e => {
 <script src="graph.js"></script>
 <script src="patterns.js"></script>
 <script src="would-route-metrics.js"></script>
+<script src="routing-model.js"></script>
 <script src="routing.js"></script>
 <script src="system-model.js"></script>
 <script src="version.js"></script>

@@ -16,7 +16,7 @@ Isto **não** liga a troca real de modelo. O watcher continua despachando como h
 
 Hoje quase tudo vai para o modelo mais caro e o limite acaba rápido. Antes de mudar o despacho, precisamos **medir** quantas tarefas leves queimariam Opus à toa. Sem esse número, ligar a troca automática é chute — risco de qualidade e de retrabalho.
 
-No dia a dia: a aba **Operação › Roteamento de modelo › Sombra × real** deixa o Richard (e a equipe) ver o desvio potencial **antes** de qualquer decisão de ativar roteamento real.
+No dia a dia: a tela **Agentes e modelos › Roteamento** ("Hoje contra a sombra", por nó) deixa o Richard (e a equipe) ver o desvio potencial **antes** de qualquer decisão de ativar roteamento real.
 
 ## Quando
 
@@ -29,9 +29,9 @@ Vale quando há Attempts com `would_route` gravado. Com classificador **desligad
 
 ## Próximos passos
 
-1. Abrir o dashboard → **Operação › Roteamento de modelo**, aba **Sombra × real**, e conferir contagens / lista.
+1. Abrir o dashboard → **Agentes e modelos › Roteamento** e conferir, nó a nó, onde a sombra diverge do despacho real. A contagem por faixa, a economia potencial e a lista recente continuam em `GET /api/would-route-metrics`; saíram da tela na onda 1 do design (PRI-328) até entrarem no canvas.
 2. Policy de sombra na plataforma usa **`cheap_rule`** (medição). Attempts **antigos** com `CLASSIFIER_OFF` não reclassificam — só **novos** fechamentos de implement enchem leve/médio/Opus.
-3. Se ainda houver zeros: painel **Diagnóstico dos zeros** (Attempts velhos off, ou falta de sinais). Detalhe histórico: store `docs/medicao-sombra-zeros-humano.md` · ligar medição: `docs/cheap-rule-ligado-humano.md`.
+3. Se ainda houver zeros: o aviso no topo da lista da tela Roteamento traz o diagnóstico (Attempts velhos off, ou falta de sinais). Detalhe histórico: store `docs/medicao-sombra-zeros-humano.md` · ligar medição: `docs/cheap-rule-ligado-humano.md`.
 4. Usar a economia potencial e a contagem “sairia do Opus” como evidência **antes** de qualquer autorização de troca real.
 5. **Não** autorizar S4 nesta fatia.
 
@@ -67,8 +67,8 @@ Sem UI de medição, o dado sombra fica só no JSON dos Attempts — difícil ca
 | --- | --- |
 | Agregação | `dashboard/would-route-metrics.js` |
 | API | `GET /api/would-route-metrics` (`dashboard/server.js`) |
-| UI | `dashboard/public/would-route-metrics.js` + `screens/would-route.css` |
-| Nav | Operação › Roteamento de modelo, aba Sombra × real (`routing.js`; o hash antigo `#medicao-modelo` continua abrindo essa aba) |
+| UI | `dashboard/public/routing.js` + `routing-model.js` (`screens/routing.css`); `would-route-metrics.js` só lê o diagnóstico para o aviso |
+| Nav | Agentes e modelos › Roteamento (o hash antigo `#medicao-modelo` abre essa tela) |
 | Base sombra | `scripts/lib/would-route.js`, `cost-tracking`, schema Attempt |
 
 ## Economia potencial (hipótese)
@@ -91,7 +91,7 @@ node --test dashboard/would-route-metrics.test.js dashboard/would-route-metrics-
 node --test scripts/lib/would-route.test.js
 ```
 
-No UI: aba Sombra × real de Roteamento (hash antigo `#medicao-modelo` redireciona); banner “Só medição em sombra”.
+No UI: tela Roteamento (hash antigo `#medicao-modelo` redireciona); legenda “Efeito na qualidade não medido”.
 
 ## O que isto **não** é
 
