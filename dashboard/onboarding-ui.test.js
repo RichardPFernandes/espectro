@@ -25,7 +25,11 @@ test('toolRow: pronta mostra versão e uso; ausente mostra o pedido do servidor 
     assert.strictEqual(node.ver, 'node 18.2.0');
     assert.strictEqual(node.note, 'v18.2.0 · exige 20 ou mais. Instale o Node 20.');
     const codex = O.toolRow({ id: 'codex', name: 'Codex', requirement: 'opcional', version: null, state: 'queued', detail: 'não encontrado' });
-    assert.deepStrictEqual([codex.glyph, codex.tone, codex.command], ['○', 'opt', '']);
+    assert.deepStrictEqual([codex.glyph, codex.tone, codex.command, codex.ver], ['○', 'opt', '', 'não encontrado']);
+    // Opcional ausente: nota e comando de instalação do artboard (o comando vem do servidor).
+    assert.strictEqual(codex.note, 'Só faz falta se algum nó do fluxo usar Codex.');
+    assert.strictEqual(O.toolRow({ id: 'codex', state: 'queued', command: 'npm install -g @openai/codex' }).command, 'npm install -g @openai/codex');
+    assert.strictEqual(O.toolRow({ id: 'codex', state: 'done', version: 'codex 0.48.0' }).note, 'O watcher ainda despacha só Claude Code.');
     // respondeu sem número de versão: nunca "não encontrado" ao lado de um ✓
     assert.strictEqual(O.toolRow({ id: 'claude', state: 'done', version: null }).ver, 'versão desconhecida');
 });

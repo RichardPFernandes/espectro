@@ -229,6 +229,11 @@ test('Sistema: abre na aba Watcher; sem leitura do watcher nem da configuração
         assert.match(text, /Plataforma · watcher e configuração/);
         assert.match(text, /Watcher · UNKNOWN/);
         assert.match(text, /aba 1 de 2/);
+        // Dependências: /api/graph sem resposta (404 aqui) fica UNKNOWN; barra de status com os atalhos.
+        assert.match(text, /Dependências do watcher/);
+        assert.match(text, /Knowledge graph/);
+        assert.match(text, /J K abas · 1–2 · ⌘K busca · Esc fechar/);
+        assert.match(text, /Sistema · Watcher · watcher UNKNOWN/);
         assert.equal(/Watcher · ativo|✓ ok/.test(text), false);
         for (const key of ['sys-w-start', 'sys-w-stop', 'sys-w-restart']) assert.equal(ui.byKey(key).disabled, true, key);
         await ui.openTab('config');

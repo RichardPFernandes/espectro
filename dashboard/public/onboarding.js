@@ -10,13 +10,15 @@
   // como falta (✕), como no artboard; no teste, waiting é aviso (!).
   const TOOL_TONE = { done: ['✓', 'ok'], queued: ['○', 'opt'], waiting: ['✕', 'no'], failed: ['✕', 'no'] };
   const CHECK_TONE = { done: ['✓', 'ok'], queued: ['○', 'opt'], waiting: ['!', 'warn'], failed: ['✕', 'no'], running: ['◐', 'run'] };
-  // Para que serve cada ferramenta (texto do artboard). Codex: o watcher ainda não o despacha.
+  // Para que serve cada ferramenta (texto do artboard). Codex encontrado: o watcher ainda não o despacha.
   const TOOL_NOTE = {
     git: 'Usado para worktrees e para ler o repositório.',
     node: 'Roda o watcher e o dashboard.',
     claude: 'Executa os nós plan, implement, review, test e verify.',
     codex: 'O watcher ainda despacha só Claude Code.',
   };
+  // Opcional ausente (queued): por que pode faltar, com o comando de instalação do servidor (artboard).
+  const TOOL_NOTE_MISSING = { codex: 'Só faz falta se algum nó do fluxo usar Codex.' };
   // Ordem e nomes do artboard; o servidor identifica cada teste pelo id.
   const CHECKS = [['repo', 'Repositório'], ['redmine', 'Redmine'], ['bitbucket', 'Bitbucket'], ['project', 'Contrato de configuração'], ['agent', 'Claude']];
 
@@ -29,7 +31,8 @@
   function toolRow(item) {
     const [glyph, tone] = TOOL_TONE[item.state] || TOOL_TONE.queued;
     const asks = item.state === 'waiting' || item.state === 'failed';
-    const note = asks ? [item.detail, item.hint].filter(Boolean).join(' ') : TOOL_NOTE[item.id] || item.detail || '';
+    const note = asks ? [item.detail, item.hint].filter(Boolean).join(' ')
+      : (item.state === 'queued' && TOOL_NOTE_MISSING[item.id]) || TOOL_NOTE[item.id] || item.detail || '';
     return { id: item.id, glyph, tone, name: item.name, req: item.requirement || '', ver: item.version || (item.state === 'done' ? 'versão desconhecida' : 'não encontrado'), note, command: item.command || '' };
   }
 
