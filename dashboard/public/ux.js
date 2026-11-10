@@ -34,7 +34,8 @@
   if (linked) { prefs.selected = linked; persist(); }
   window.addEventListener('hashchange', () => {
     const id = runFromHash();
-    if (id && id !== selected) Views.openRun(id);
+    // Link direto abre o detalhe inteiro da run (artboard RunDetail).
+    if (id && id !== selected) { Views.openRun(id); openRunDetail(); }
   });
 
   // ------------------------------------------------------------------ visão geral
@@ -126,11 +127,12 @@
     const reply = e.target.closest('[data-ov-reply]');
     if (reply) {
       Views.openRun(reply.dataset.ovReply);
+      openRunDetail('chat'); // detalhe aberto na aba Conversa (artboard RunDetail)
       requestAnimationFrame(() => { const ta = $('message'); if (ta && !ta.disabled) { ta.focus(); ta.scrollIntoView({ block: 'center', behavior: 'smooth' }); } });
       return;
     }
     const open = e.target.closest('[data-ov-open]');
-    if (open) Views.openRun(open.dataset.ovOpen);
+    if (open) { Views.openRun(open.dataset.ovOpen); openRunDetail(); }
   });
 
   // ------------------------------------------------------------------ overlays
@@ -293,7 +295,8 @@
     const n = Number(e.key);
     // Tela com abas próprias nos dígitos (data-local-digits, ex.: Roteamento) trata 1–N ela mesma.
     if (document.activeElement?.closest?.('[data-local-digits]')) return;
-    if (n >= 1 && n <= VIEW_KEYS.length && !selecting) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
+    // Com o detalhe da run aberto, 1–6 pulam entre os grupos de abas dele (index.html).
+    if (n >= 1 && n <= VIEW_KEYS.length && !selecting && !(document.body.classList.contains('run-open') && currentView() === 'runs')) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
   }, true);
 
   window.UX = { overview, route, notifyNeedsYou, openPalette, openHelp };

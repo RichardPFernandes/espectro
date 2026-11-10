@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-11-03T14:09:25.021Z",
         "reason": "coordinator: design artboards Main.dc.html and RunDetail.dc.html themselves use 2-3px left edges (state edge on run rows, accent edge on human messages, quote edge on notes); runs.css mirrors them"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "public/screens/runs-main.css"
+        ],
+        "createdAt": "2026-11-09T20:14:17.552Z",
+        "reason": "Richard's rule (09/11/2026) is strict fidelity to the artboard: the 2px border-left on the agent-note block comes straight from Main.dc.html (hasNote)"
       }
     ]
   }
