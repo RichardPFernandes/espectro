@@ -283,3 +283,12 @@ test('resumo sem semana anterior e delta de custo partindo de zero', () => {
     assert.match(A.summary[0], /^Foram registrados 1 run concluído/);
     assert.match(A.summary[1], /^O custo foi de US\$ 1,50\. O custo médio por run concluído ficou em US\$ 1,50\.$/);
 });
+
+test('semana anterior sem loop_count: diz "sem medição"; média igual não vira "acima"', () => {
+    const list = [run(1, '2026-11-10T12:00:00Z', { usd: 2, loops: 1 }), run(2, '2026-11-04T12:00:00Z', { usd: 2, nodes: {}, loops: undefined })];
+    list[1].state.cost_tracking.totals.loop_count = undefined;
+    const M = W.buildReport(list, env(), { win: 'cur', now: NOW });
+    assert.strictEqual(M.k.rate.t, 'semana anterior sem medição');
+    assert.match(M.summary[1], /igual aos US\$ 2,00 da semana anterior\.$/);
+    assert.doesNotMatch(M.summary[1], /acima/);
+});

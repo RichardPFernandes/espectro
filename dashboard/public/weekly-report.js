@@ -293,7 +293,6 @@
       avg: delta(cur.avg, prev?.avg, false, () => prc(cur.avg, prev.avg), { ...o, field: 'custo em US$' }),
       rate: delta(cur.rate, prev?.rate, false, d => `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(2).replace('.', ',')}`, { ...o, field: 'loop_count' }),
     };
-    if (prev && cur.rate != null && prev.rate == null) k.rate = { t: 'sem semana anterior carregada', tone: 'muted' };
     // Contagem de tickets com parte ainda não consultada no Redmine: não compara nem finge ser total.
     if (cur.ticketsPartial) k.tickets = { t: `parcial: ${cur.ticketsKnown} de ${cur.ticketsTotal} tickets consultados no Redmine`, tone: 'muted' };
     else if (prev?.ticketsPartial && !isAll) k.tickets = { t: 'semana anterior com consulta parcial no Redmine', tone: 'muted' };
@@ -324,7 +323,7 @@
       s2 = `O custo foi de ${money(cur.cost)}.`;
       if (cur.avg != null) {
         s2 += ` O custo médio por run concluído ficou em ${money(cur.avg)}`;
-        if (!isAll && prev?.avg != null) s2 += `, ${cur.avg >= prev.avg ? 'acima' : 'abaixo'} dos ${money(prev.avg)} da semana anterior (${prc(cur.avg, prev.avg)})`;
+        if (!isAll && prev?.avg != null) s2 += `, ${Math.abs(cur.avg - prev.avg) < 1e-9 ? `igual aos ${money(prev.avg)} da semana anterior` : `${cur.avg > prev.avg ? 'acima' : 'abaixo'} dos ${money(prev.avg)} da semana anterior (${prc(cur.avg, prev.avg)})`}`;
         s2 += '.';
       }
     }
