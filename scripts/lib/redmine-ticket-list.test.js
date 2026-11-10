@@ -21,11 +21,22 @@ test('fetchAssignedTickets: monta a URL com assigned_to_id=me&status_id=open e m
     ] }));
     const out = await tickets.fetchAssignedTickets(base(fn));
     assert.deepStrictEqual(out, [
-        { id: 43666, subject: 'Painel de tickets', status: 'Novo', priority: 'Alta', updated_on: '2026-09-26T10:00:00Z' },
-        { id: 43590, subject: 'Outro', status: 'Recusa QA', priority: 'Normal', updated_on: '2026-09-25T10:00:00Z' },
+        { id: 43666, subject: 'Painel de tickets', status: 'Novo', priority: 'Alta', updated_on: '2026-09-26T10:00:00Z', tracker: null, assignee: null, estimated_hours: null, done_ratio: null },
+        { id: 43590, subject: 'Outro', status: 'Recusa QA', priority: 'Normal', updated_on: '2026-09-25T10:00:00Z', tracker: null, assignee: null, estimated_hours: null, done_ratio: null },
     ]);
     assert.strictEqual(calls[0].url, 'http://redmine.test/issues.json?assigned_to_id=me&status_id=open&sort=updated_on:desc');
     assert.strictEqual(calls[0].init.headers['X-Redmine-API-Key'], KEY);
+});
+
+test('fetchAssignedTickets: tipo, responsável, horas estimadas e % feito; ausente vira null, nunca 0', async () => {
+    const { fn } = stub(() => json(200, { issues: [
+        { id: 1, subject: 'A', status: { name: 'Aprovada' }, priority: { name: 'Alta' }, updated_on: null,
+            tracker: { name: 'Bug' }, assigned_to: { name: 'Fulano' }, estimated_hours: 5.5, done_ratio: 0 },
+        { id: 2, subject: 'B', status: { name: 'Nova' }, priority: { name: 'Baixa' }, estimated_hours: '', done_ratio: 'x' },
+    ] }));
+    const [a, b] = await tickets.fetchAssignedTickets(base(fn));
+    assert.deepStrictEqual([a.tracker, a.assignee, a.estimated_hours, a.done_ratio], ['Bug', 'Fulano', 5.5, 0]);
+    assert.deepStrictEqual([b.tracker, b.assignee, b.estimated_hours, b.done_ratio], [null, null, null, null]);
 });
 
 test('fetchAssignedTickets: sem issues no payload => []', async () => {
@@ -78,6 +89,16 @@ test('getTicketDetail: inclui journals e traduz status_id/priority_id em nome', 
     assert.strictEqual(out.journals[0].details[0].old_label, 'Em Desenvolvimento');
     assert.strictEqual(out.journals[0].details[0].new_label, 'Recusada QA');
     assert.strictEqual(out.journals[0].details[1].new_label, 'Urgente');
+    assert.deepStrictEqual([out.version, out.estimated_hours, out.spent_hours, out.done_ratio], [null, null, null, null]);
+});
+
+test('getTicketDetail: versão, horas estimadas/gastas e % feito vêm da mesma resposta', async () => {
+    const { fn } = redmineStub({
+        id: 43701, subject: 'Y', status: { id: 2, name: 'Em Desenvolvimento' }, priority: { id: 2, name: 'Normal' },
+        fixed_version: { id: 9, name: 'Sprint 42' }, estimated_hours: 5, spent_hours: 6.5, done_ratio: 40, journals: [],
+    });
+    const out = await tickets.getTicketDetail(43701, { ...base(fn), noCache: true });
+    assert.deepStrictEqual([out.version, out.estimated_hours, out.spent_hours, out.done_ratio], ['Sprint 42', 5, 6.5, 40]);
 });
 
 test('getTicketDetail: 404 do Redmine lança com status 404; id inválido => 400 sem chamar fetch', async () => {

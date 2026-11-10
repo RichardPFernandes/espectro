@@ -131,7 +131,7 @@ test('nav: itens e rótulos do AppNav da onda 1; Coordenação fora e #coordenac
     const ui = boot();
     ui.setView('runs');
     const items = [...ui.tabs().matchAll(/data-view="([^"]+)"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span>([^<]+)</g)].map(m => `${m[1]}:${m[2]}`);
-    assert.deepEqual(items, ['runs:Runs', 'redmine:Tickets', 'prs:Pull requests', 'metricas:Relatório semanal', 'tickets:Tickets e PRs',
+    assert.deepEqual(items, ['runs:Runs', 'redmine:Tickets', 'prs:Pull requests', 'metricas:Relatório semanal',
         'padroes:Padrões de falha', 'grafo:Knowledge Graph', 'roteamento:Roteamento', 'versao:Sistema', 'computador:Este computador']);
     assert.doesNotMatch(ui.tabs(), /coordenacao/);
     ui.setView('coordenacao');
@@ -156,4 +156,12 @@ test('nav: #run/<id> na carga fica intacto mesmo com pref antiga em coordenacao'
     assert.equal(ui.context.window.Views.current(), 'runs');
     assert.equal(ui.context.location.hash, '#run/t1');
     assert.equal(ui.context.prefs.view, 'runs');
+});
+
+test('nav: "Tickets e PRs" saiu do menu e #tickets cai em Tickets (PRI-325/PRI-326)', () => {
+    const ui = boot({ hash: '#tickets' });
+    assert.equal(ui.context.window.Views.current(), 'redmine');
+    assert.doesNotMatch(ui.tabs(), /data-view="tickets"/);
+    ui.setView('tickets');
+    assert.equal(ui.context.window.Views.current(), 'redmine');
 });
