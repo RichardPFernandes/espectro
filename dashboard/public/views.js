@@ -40,9 +40,12 @@
 
   // ------------------------------------------------------------------ helpers
   // Filtro por estado e filtro do kcard do topo (runs-main.js) valem também aqui (artboard Main).
+  // Só nas visões de Runs (Quadro, Tabela, Linha do tempo), onde o filtro aparece no topo; Relatório
+  // semanal e Tickets e PRs continuam com tudo.
+  const RUN_FILTERED = new Set(['quadro', 'tabela', 'timeline']);
   const shownRuns = (includeHidden = false) => {
     const list = visibleRuns().filter(r => includeHidden || !isHidden(r));
-    return window.RunsMain ? RunsMain.applyFilters(list, [...runs.values()].filter(r => !isHidden(r))) : list;
+    return window.RunsMain && RUN_FILTERED.has(view) ? RunsMain.applyFilters(list, [...runs.values()].filter(r => !isHidden(r))) : list;
   };
   const ticketOf = r => { const t = titleOf(r); return { num: t.num, text: t.text, id: ticketIdOfRun(r) }; };
   const statusLabel = r => STATUS[r.status] || r.status;
@@ -187,6 +190,8 @@
   function setView(v) {
     v = alias(v);
     view = v; prefs.view = v; openNavGroupOf(v); persist();
+    // Saiu de Runs com o detalhe aberto: o detalhe fecha (a run continua selecionada).
+    if (v !== 'runs' && typeof runOpen !== 'undefined' && runOpen) { runOpen = false; document.body.classList.remove('run-open'); }
     const want = v === 'runs' ? (selected ? `#run/${encodeURIComponent(selected)}` : '') : `#${v}`;
     if (location.hash !== want) history.replaceState(null, '', want || location.pathname);
     document.body.dataset.view = v;
@@ -432,7 +437,7 @@
     }).join('');
     const rangeBtn = (n, label) => `<button type="button" data-vact="range" data-range="${n}" aria-pressed="${tl.range === n}">${label}</button>`;
     const legend = `<div class="rv-legend" aria-label="Legenda">${PHASES.map((p, i) => `<span><i class="rv-sw ph${i}" aria-hidden="true"></i>${p.label} <small>(${p.nodes.map(n => NODE_LABEL[n]).join(', ')})</small></span>`).join('')}
-      <span><i class="rv-sw rv-tail blocked" aria-hidden="true"></i>esperando você</span><span><i class="rv-sw rv-tail" aria-hidden="true"></i>na fila do watcher</span></div>`;
+      <span><i class="rv-sw rv-tail blocked" aria-hidden="true"></i>esperando você</span><span><i class="rv-sw rv-tail" aria-hidden="true"></i>esperando o próximo passo</span></div>`;
     // Artboard Main: faixas e legenda embaixo; o período (7/30 dias/tudo) é do app.
     return `<div class="rv-tl-tools"><div class="seg" role="group" aria-label="Período">${rangeBtn(7, '7 dias')}${rangeBtn(30, '30 dias')}${rangeBtn(0, 'Tudo')}</div></div>
       ${inRange.length ? `<div class="panel rv-timeline">

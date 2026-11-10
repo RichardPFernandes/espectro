@@ -124,3 +124,17 @@ test('detailTabs: 6 grupos numerados só com as abas que têm dado; J/K e 1–6'
     assert.equal(M.validTab(few, 'costs'), 'summary');
     assert.equal(M.validTab(all, 'costs'), 'costs');
 });
+
+test('nodeCost marca nó sem medição; windowStat sem base anterior não inventa delta; retrabalho soma loops', () => {
+    const nc = M.nodeCost([run('a', 1, {}, { cost_tracking: cost([['plan', 1, 0, 0, 0], ['review', 0, 0, 0, 0]]) })], NOW);
+    assert.equal(nc.rows.find(x => x.node === 'plan').measured, true);
+    assert.equal(nc.rows.find(x => x.node === 'review').measured, true); // medido 0 ≠ sem medição
+    assert.equal(nc.rows.find(x => x.node === 'commit').measured, false);
+    const k = M.kpis([
+        run('a', 1, {}, { cost_tracking: cost([['plan', 1, 0, 0, 0]], 2), retries: { review: 1 } }),
+        run('b', 9, {}, { cost_tracking: cost([['plan', 0, 0, 0, 0]]) }),
+    ], NOW);
+    assert.equal(k.cost.delta, null); // período anterior custou 0: sem base para %
+    assert.equal(k.rework.value, 3);
+    assert.equal(M.kfMatch('rework', run('c', 1, {}, { cost_tracking: cost([['plan', 1, 0, 0, 0]], 1) }), k), true);
+});

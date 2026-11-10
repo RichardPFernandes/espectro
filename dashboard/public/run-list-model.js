@@ -29,6 +29,12 @@
       loops: typeof t.loop_count === 'number' ? t.loop_count : null };
   }
   const retriesOf = r => Object.values(r?.state?.retries || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+  // Retrabalho do run: tentativas extras + loops. Sem nenhum dos dois campos gravados = sem medição.
+  function reworkOf(r) {
+    const hasRetries = !!(r?.state && 'retries' in r.state), loops = totalsOf(r).loops;
+    if (!hasRetries && loops == null) return null;
+    return retriesOf(r) + (loops || 0);
+  }
   const startOf = r => Date.parse(r?.state?.started_at) || Date.parse(r?.updatedAt) || null;
 
   const median = xs => {
@@ -68,7 +74,8 @@
       cost: windowStat(runs, now, r => totalsOf(r).usd, mean),
       tokens: windowStat(runs, now, r => totalsOf(r).tokens, median),
       // Retrabalho só conta run que já tem state.retries gravado (sem o campo = sem medição).
-      rework: windowStat(runs, now, r => (r?.state && 'retries' in r.state ? retriesOf(r) : null), mean),
+      // Mesma regra do filtro do card: novas tentativas (state.retries) + loops (cost_tracking.totals.loop_count).
+      rework: windowStat(runs, now, reworkOf, mean),
     };
   }
 
@@ -76,24 +83,27 @@
   const KF = {
     cost: (r, k) => k.cost.value != null && (totalsOf(r).usd ?? -1) > k.cost.value,
     tokens: r => r.status === 'running',
-    rework: r => retriesOf(r) > 0 || (totalsOf(r).loops || 0) > 0,
+    rework: r => (reworkOf(r) || 0) > 0,
   };
   const kfMatch = (key, r, k) => (KF[key] ? KF[key](r, k) : true);
 
   // Custo por nó nos últimos 7 dias, em % do total medido. Sem medição: null.
   function nodeCost(runs, now = Date.now()) {
     const sum = Object.fromEntries(NODE_KEYS.map(k => [k, 0]));
+    const measured = new Set();
     let total = 0;
     for (const r of runs) {
       const at = startOf(r), c = costOf(r);
       if (!c || at == null || now - at >= 7 * DAY || now - at < 0) continue;
       for (const k of NODE_KEYS) {
         const v = c.nodes[k]?.cost_usd;
+        if (typeof v === 'number') measured.add(k);
         if (typeof v === 'number' && v > 0) { sum[k] += v; total += v; }
       }
     }
     if (!(total > 0)) return null;
-    const rows = NODE_KEYS.map(k => ({ node: k, usd: sum[k], share: Math.round((sum[k] / total) * 100) }));
+    // measured: o nó teve custo gravado em algum run da janela (sem isso a tela escreve "sem medição", não 0%).
+    const rows = NODE_KEYS.map(k => ({ node: k, usd: sum[k], share: Math.round((sum[k] / total) * 100), measured: measured.has(k) }));
     const top = [...rows].sort((a, b) => b.usd - a.usd).filter(x => x.usd > 0).slice(0, 2).map(x => x.node);
     return { total, rows, top };
   }

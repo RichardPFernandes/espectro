@@ -45,7 +45,7 @@
     const nc = M.nodeCost(all);
     const cards = KCARDS.map(([key, label, source, kfLabel, value, good]) => {
       const st = k[key], n = all.filter(r => M.kfMatch(key, r, k)).length, on = kf === key;
-      const tone = st.delta == null ? 'flat' : (st.delta < 0) === (good === 'down') ? 'up' : 'waiting';
+      const tone = st.delta == null || st.delta === 0 ? 'flat' : (st.delta < 0) === (good === 'down') ? 'up' : 'waiting';
       return K.kcard({ key, label, value: value(k), source, tip: `Mostrar só: ${kfLabel}`, pressed: on,
         delta: st.delta == null ? '' : pct(st.delta), deltaTone: tone,
         series: st.series.length > 1 ? st.series : null, sparkLabel: `${label} por dia, últimos 14 dias`,
@@ -55,7 +55,7 @@
         <span class="rl-nc-title">Custo por nó · 7 dias${nc.top.length ? ` · ${nc.top.map(n => NODE_LABEL[n] || n).join(' e ')} concentram o gasto` : ''}</span>
         <span class="rl-nc-bar" role="img" aria-label="${esc(`Custo por nó em 7 dias: ${nc.rows.map(x => `${NODE_LABEL[x.node] || x.node} ${x.share}%`).join(', ')}`)}">${nc.rows.filter(x => x.usd > 0).map(x =>
           `<span class="${x.share >= 20 ? 'hi' : ''}" style="flex:${x.usd} 1 0" title="${esc(`${NODE_LABEL[x.node] || x.node} · ${x.share}% · ${fmtUsd(x.usd)}`)}"></span>`).join('')}</span>
-        <span class="rl-nc-legend">${nc.rows.map(x => `<span>${esc(NODE_LABEL[x.node] || x.node)} ${x.share}%</span>`).join('')}</span>
+        <span class="rl-nc-legend">${nc.rows.map(x => `<span>${esc(NODE_LABEL[x.node] || x.node)} ${x.measured ? `${x.share}%` : NONE}</span>`).join('')}</span>
       </div>` : '';
     const sort = sortOf();
     const kfLabel = kf ? KCARDS.find(c => c[0] === kf)[3] : '';
@@ -82,7 +82,8 @@
   };
   const NODE_TEXT = { done: 'concluído', running: 'em execução', waiting: 'esperando você', failed: 'falhou', queued: 'na fila', pend: '—' };
   // size 'sm' = painel da run (artboard Main); 'lg' = detalhe (artboard RunDetail).
-  function pipelineHtml(r, size = 'sm') {
+  // extra: HTML a mais por etapa (ex.: portão de pre-build na Implementação), já escapado por quem chama.
+  function pipelineHtml(r, size = 'sm', extra = {}) {
     const keys = NODES.map(([k]) => k);
     const items = keys.map((key, i) => {
       const st = nodeState(r, key), next = i < keys.length - 1 ? nodeState(r, keys[i + 1]) : null;
@@ -92,6 +93,8 @@
         <span class="pl-name">${esc(NODE_LABEL[key] || key)}<span class="sr-only"> — ${NODE_TEXT[st] === '—' ? 'pendente' : NODE_TEXT[st]}</span></span>
         ${size === 'lg' ? `<span class="pl-state">${esc(st === 'pend' ? 'Pendente' : NODE_TEXT[st][0].toUpperCase() + NODE_TEXT[st].slice(1))}</span>` : ''}
         ${meta ? `<span class="pl-meta">${esc(meta)}</span>` : ''}
+        ${extra[key] || ''}
+        ${size === 'lg' && key === 'commit' && isHighRisk(r) ? '<span class="pl-flag" title="O PR deste run abre como Draft com [HIGH-RISK] no título">HIGH-RISK</span>' : ''}
       </li>`;
     }).join('');
     return `<ol class="pl pl-${size}" aria-label="Pipeline">${items}</ol>`;
@@ -174,11 +177,13 @@
   }
 
   // ---------------------------------------------------------------- detalhe (RunDetail)
-  function detailHeadHtml(r) {
+  // opts.label: rótulo de estado especial (Build quebrado, Churn); opts.badges: selos do app (HTML já escapado).
+  function detailHeadHtml(r, opts = {}) {
     const t = titleOf(r), k = stateKey(r), tt = M.totalsOf(r);
     return `<header class="rd-head">
       <nav class="rd-crumbs" aria-label="Caminho"><button type="button" class="rd-back" data-run-back>Runs</button><span aria-hidden="true">›</span><span class="mono">${esc(t.num || r.taskId)}</span><span class="rd-crumb-title">${esc(t.text)}</span></nav>
-      <span class="pill ${k}"><span aria-hidden="true">${STATE_GLYPH[k]} </span>${esc(r.state?.status === 'pre-build-failed' ? 'Build quebrado' : stateLabel(r))}</span>
+      <span class="pill ${k}"><span aria-hidden="true">${STATE_GLYPH[k]} </span>${esc(opts.label || stateLabel(r))}</span>
+      ${opts.badges ? `<span class="rd-badges">${opts.badges}</span>` : ''}
       ${tt.usd == null && tt.tokens == null && tt.ms == null ? '' : `<span class="rd-totals num" title="Totais medidos pelo watcher · fonte: cost_tracking do state.json"><span>${esc(usd(tt.usd))}</span><span>${esc(tt.tokens == null ? NONE : `${fmtTok(tt.tokens)} tokens`)}</span><span>${esc(tt.ms == null ? NONE : fmtMs(tt.ms))}</span></span>`}
       <span class="rd-actions hero-top">
         <button type="button" class="ghost" data-copy-link>Copiar link</button>
@@ -188,11 +193,11 @@
   }
 
   // Faixa do pipeline + chips (loops, risco, onde foi lido) + faixa de parada.
-  function detailBandHtml(r, stop) {
+  function detailBandHtml(r, stop, extra = {}) {
     const tt = M.totalsOf(r);
     const loops = tt.loops || 0;
     return `<div class="rd-band">
-      ${pipelineHtml(r, 'lg')}
+      ${pipelineHtml(r, 'lg', extra)}
       <div class="rd-chips">
         ${loops ? `<span class="rd-loops mono">↺ ${loops} ${loops === 1 ? 'loop' : 'loops'} de retrabalho</span>` : ''}
         <span class="rd-chip-row">

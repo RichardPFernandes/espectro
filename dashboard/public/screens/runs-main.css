@@ -201,6 +201,11 @@ body.run-open .detail { padding: 0; gap: 0; display: flex; flex-direction: colum
 .lnk { padding: 0; border: 0; background: none; color: var(--link); font: inherit; font-size: 13px; cursor: pointer; }
 .lnk:hover { color: var(--link-hover); }
 .rd-clock { flex: 0 0 auto; padding: 6px 20px; border-bottom: 1px solid var(--border); background: var(--state-running-bg); color: var(--state-running-fg); font-size: 12px; }
+.rd-clock.lvl-warn { background: var(--state-waiting-bg); color: var(--state-waiting-fg); }
+.rd-clock.lvl-hot, .rd-clock.lvl-over { background: var(--state-failed-bg); color: var(--state-failed-fg); font-weight: 600; }
+.rd-badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pl-flag { padding: 0 6px; border-radius: var(--radius-tag); background: var(--state-failed-bg); color: var(--state-failed-fg); font-family: var(--mono); font-size: 10px; font-weight: 600; }
+.pl-node .pre-gate, .pl-node [class*="gate"] { position: static; }
 .rd-panes { flex: 1 1 auto; min-height: 0; display: flex; }
 .rd-side { flex: 0 0 232px; width: 232px; border-right: 1px solid var(--border); padding: 8px 0; box-sizing: border-box; overflow-y: auto; }
 .rd-grp { display: flex; flex-direction: column; padding: 6px 8px; }
@@ -214,6 +219,7 @@ body.run-open .detail { padding: 0; gap: 0; display: flex; flex-direction: colum
 .rd-main { flex: 1 1 auto; min-width: 0; overflow-y: auto; }
 .rd-sec { box-sizing: border-box; max-width: 1680px; padding: 20px 28px 40px; display: flex; flex-direction: column; gap: 20px; }
 .rd-sec[hidden] { display: none; }
+.rd-sec > :empty { display: none; }
 .rd-sec.hero { background: none; border: 0; border-radius: 0; }
 .rd-sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
 .rd-sec-head h1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }

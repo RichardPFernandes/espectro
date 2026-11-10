@@ -1088,9 +1088,10 @@ setInterval(() => {
     const elapsed = Math.max(0, now - started);
     el.textContent = NodeClock.fmtDuration(elapsed);
     const lvl = NodeClock.levelOf(elapsed / timeout);
-    const station = el.closest('.station');
-    station.classList.remove('lvl-warn', 'lvl-hot', 'lvl-over');
-    if (lvl) station.classList.add(`lvl-${lvl}`);
+    // Faixa "Em execução" do detalhe (RunDetail); .station fica para quem ainda usar o trilho antigo.
+    const box = el.closest('.rd-clock, .station');
+    box?.classList.remove('lvl-warn', 'lvl-hot', 'lvl-over');
+    if (box && lvl) box.classList.add(`lvl-${lvl}`);
     if (lvl === 'over' && !document.querySelector('#intBanner [data-kind]')) renderDetail();
   }
 }, 1000);
@@ -1711,8 +1712,9 @@ function renderDetail() {
 
   $('detail').innerHTML = `
     <div class="stale-banner" id="staleBanner" role="status" aria-live="polite" hidden><span>${esc(StateVersion.MESSAGE)}</span><button type="button" class="ghost-btn" id="staleReload">Atualizar</button></div>
-    ${RunsMain.detailHeadHtml(r)}
-    ${RunsMain.detailBandHtml(r, stop)}
+    ${RunsMain.detailHeadHtml(r, { label: s.status === 'pre-build-failed' ? 'Build quebrado' : isChurn(r) ? 'Churn' : null,
+      badges: `${churnBadge(r)}${schemaBadge(r)}${specBadge(r)}${qaRetryBlockedBadge(r)}` })}
+    ${RunsMain.detailBandHtml(r, stop, { implement: preBuildGateHtml(r) })}
     ${clk ? `<div class="rd-clock">Em execução: ${esc(NODE_LABEL[r.node] || r.node)} há <span class="elapsed num" data-node-clock data-started="${clk.startedAt}" data-timeout="${clk.timeoutMs}" title="Tempo desde node_started_at · timeout ${esc(NodeClock.fmtDuration(clk.timeoutMs))}">${esc(NodeClock.fmtDuration(clk.elapsedMs))}</span></div>` : ''}
     <div class="rd-panes">
       ${RunsMain.sideNavHtml(groups, runTab)}
@@ -3229,8 +3231,8 @@ document.addEventListener('keydown', e => {
     if (n >= 1 && n <= 6) { const id = RunListModel.groupTab(groups, n); if (id) { e.preventDefault(); setRunTab(id); } return; }
     if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); runTab === 'summary' ? backToList() : setRunTab('summary'); return; }
   }
-  if (!typing && !drawerOpen && e.key === 'Escape' && !e.defaultPrevented && !runOpen && selected && document.body.dataset.view === 'runs') { e.preventDefault(); closeRun(); return; }
-  if (!typing && !selecting && document.body.dataset.view === 'runs' && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k')) {
+  if (!typing && !drawerOpen && e.key === 'Escape' && !e.defaultPrevented && !runOpen && selected && !window.Compare?.active() && document.body.dataset.view === 'runs') { e.preventDefault(); closeRun(); return; }
+  if (!typing && !selecting && !runOpen && document.body.dataset.view === 'runs' && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k')) {
     const ids = [...document.querySelectorAll('.run')].map(b => b.dataset.id);
     if (!ids.length) return;
     e.preventDefault();

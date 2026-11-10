@@ -294,7 +294,7 @@
     if (e.key === '?') { e.preventDefault(); openHelp(); return; }
     const n = Number(e.key);
     // Com o detalhe da run aberto, 1–6 pulam entre os grupos de abas dele (index.html).
-    if (n >= 1 && n <= VIEW_KEYS.length && !selecting && !document.body.classList.contains('run-open')) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
+    if (n >= 1 && n <= VIEW_KEYS.length && !selecting && !(document.body.classList.contains('run-open') && currentView() === 'runs')) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
   }, true);
 
   window.UX = { overview, route, notifyNeedsYou, openPalette, openHelp };
