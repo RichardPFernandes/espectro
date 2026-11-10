@@ -17,6 +17,20 @@
   let lastSeq = 0;
   let clearedSeq = 0;     // "Limpar" só esconde localmente o que veio até aqui
   let instance = null;
+  let polledAt = 0;       // quando o st chegou (a tela Sistema extrapola o uptime a partir daqui)
+
+  // Tela Sistema (version.js) lê este mesmo estado: um só poll, um só SSE, os mesmos endpoints.
+  // Só repinta a tela quando algo visível muda (uptime anda no ticker da própria tela).
+  let lastSig = '';
+  function notifyScreen(force) {
+    if (window.Views?.current?.() !== 'versao') return;
+    const { uptime_ms, ...rest } = st || {};
+    // Linha nova de log não entra na assinatura: a tela acrescenta a linha no lugar (SystemView.appendLog).
+    const sig = JSON.stringify([rest, reachable, busy, autoStart, clearedSeq, prefs.watcherLevels]);
+    if (!force && sig === lastSig) return;
+    lastSig = sig;
+    window.Views.refresh();
+  }
 
   // ------------------------------------------------------------------ formatação
   function dur(ms) {
@@ -205,6 +219,7 @@
         <button type="button" class="btn" data-wopen="${esc(cur.taskId)}">Ver run atual</button>`;
     }
     if (autoStart !== null) $('wctlAuto').checked = autoStart;
+    notifyScreen();
   }
 
   function lineHtml(e) {
@@ -221,6 +236,7 @@
     lastSeq = e.seq;
     lines.push(e);
     if (lines.length > MAX_LINES) lines.splice(0, lines.length - MAX_LINES);
+    if (window.Views?.current?.() === 'versao') window.SystemView?.appendLog(e);
     if (panel.hidden || prefs.watcherLevels[e.level] === false) return;
     const stick = nearBottom(logEl);
     logEl.querySelector('.wl-empty')?.remove();
@@ -231,13 +247,13 @@
 
   // ------------------------------------------------------------------ dados
   async function poll() {
-    try { st = await api('/api/watcher/status'); reachable = true; } catch { reachable = false; }
+    try { st = await api('/api/watcher/status'); reachable = true; polledAt = Date.now(); } catch { reachable = false; }
     paint();
   }
   async function act(action) {
     busy = action; paint();
     try {
-      st = await api(`/api/watcher/${action}`, { method: 'POST' });
+      st = await api(`/api/watcher/${action}`, { method: 'POST' }); polledAt = Date.now();
       if (action === 'stop') toast('Watcher parado.');
     } catch (e) {
       toast(`Falha ao executar ${action}: ${e.message}`);
@@ -333,6 +349,26 @@
     loadUsage(false);
   }
 
+  async function setAuto(want) {
+    try { autoStart = (await api('/api/watcher/prefs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_start: want }) })).auto_start; }
+    catch (err) { toast(`Não foi possível salvar: ${err.message}`); }
+    paint();
+  }
+  // Rail e tela Sistema compartilham os níveis e o "Limpar"; o checkbox do rail acompanha a tela.
+  function setLevel(level, on) {
+    prefs.watcherLevels[level] = on; persist();
+    const box = panel.querySelector(`[data-wlevel="${level}"]`);
+    if (box) box.checked = on;
+    if (!panel.hidden) renderLog();
+    notifyScreen();
+  }
+  // clear=false ("Mostrar log" da tela) volta a mostrar o que estava escondido.
+  function clearLog(clear) {
+    clearedSeq = clear ? lastSeq : 0;
+    if (!panel.hidden) renderLog();
+    notifyScreen();
+  }
+
   async function loadPrefs() {
     try { autoStart = (await api('/api/watcher/prefs')).auto_start; paint(); } catch {}
   }
@@ -344,7 +380,7 @@
     const es = new EventSource('/api/watcher/log-stream');
     es.addEventListener('hello', ev => {
       let h; try { h = JSON.parse(ev.data); } catch { return; }
-      if (instance && h.instance !== instance) { lines.length = 0; lastSeq = 0; clearedSeq = 0; if (!panel.hidden) renderLog(); }
+      if (instance && h.instance !== instance) { lines.length = 0; lastSeq = 0; clearedSeq = 0; if (!panel.hidden) renderLog(); notifyScreen(); }
       instance = h.instance;
     });
     es.onmessage = ev => { try { appendLine(JSON.parse(ev.data)); } catch {} };
@@ -366,7 +402,7 @@
     const o = e.target.closest('[data-wopen]');
     if (o) { setOpen(false); window.Views?.openRun ? Views.openRun(o.dataset.wopen) : select(o.dataset.wopen); }
   });
-  $('wctlClear').addEventListener('click', () => { clearedSeq = lastSeq; renderLog(); });
+  $('wctlClear').addEventListener('click', () => clearLog(true));
   $('wctlNotifyTest').addEventListener('click', testNotify);
   $('wctlUsageRefresh').addEventListener('click', () => loadUsage(true));
 
@@ -460,14 +496,11 @@
 
   panel.addEventListener('change', async e => {
     if (e.target.dataset.wlevel) {
-      prefs.watcherLevels[e.target.dataset.wlevel] = e.target.checked; persist(); renderLog();
+      setLevel(e.target.dataset.wlevel, e.target.checked);
     } else if (e.target.id === 'wctlAccount') {
       chooseAccount(e.target.value);
     } else if (e.target.id === 'wctlAuto') {
-      const want = e.target.checked;
-      try { autoStart = (await api('/api/watcher/prefs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_start: want }) })).auto_start; }
-      catch (err) { toast(`Não foi possível salvar: ${err.message}`); }
-      paint();
+      setAuto(e.target.checked);
     }
   });
 
@@ -479,4 +512,8 @@
   loadPrefs();
   connectLog();
   window.WatcherPanel = { poll, open: () => setOpen(true) };
+  window.WatcherCtl = {
+    snapshot: () => ({ st, reachable, busy, autoStart, polledAt, lines, clearedSeq, levels: prefs.watcherLevels }),
+    act, setLevel, setAuto, clearLog, LEVELS,
+  };
 })();

@@ -75,6 +75,7 @@ test('AC-01: GET mostra revisão em execução, origin/main e commits entre elas
     assert.equal(r.status, 'ok');
     assert.equal(r.current.sha, shas[0]); assert.equal(r.latest.sha, shas[2]);
     assert.deepEqual(r.behind.map(c => c.sha), [shas[2], shas[1]]);
+    assert.ok(r.behind.every(c => !Number.isNaN(Date.parse(c.date))), "behind[].date é a data ISO do commit (coluna quando da tela Sistema)");
     assert.ok(!JSON.stringify(r).includes('abc123segredo'));
     assert.equal(r.fetch_error, null);
     assert.deepEqual(r.update, { configured: true, enabled: true, reason: null, restart: false });

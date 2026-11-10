@@ -2625,6 +2625,36 @@ function createDashboard(options = {}) {
         return index;
     }
 
+    // PRs gravados no state.json dos runs ATIVOS (não arquivados) que não vieram na lista do
+    // Bitbucket (outro autor, recusado, SUPERSEDED, estado vazio). Lado de PR da antiga
+    // "Tickets e PRs" (PRI-326): a aba "PRs" mostra o estado registrado no run, com a hora do
+    // polling (last_checked_at), sem nova chamada ao Bitbucket. MERGED fica de fora: a lista já
+    // traz os 20 mergeados mais recentes e o resto é histórico. Revisores e conflito: null =
+    // não consultado (a tela mostra "sem medição", nunca zero).
+    function runOnlyPrs(listedKeys, prIndex) {
+        const out = new Map();
+        for (const [taskId, candidates] of collectCandidates()) {
+            const chosen = pickCandidate(taskId, candidates);
+            const state = chosen && readJson(path.join(chosen.dir, 'state.json'));
+            if (!state) continue;
+            for (const p of projectPrs(state.pull_request)) {
+                if (!p.id) continue;
+                const repo = p.repo || primaryRepo;
+                const key = `${repo}#${p.id}`;
+                if (listedKeys.has(key) || out.has(key) || p.state === 'MERGED') continue;
+                out.set(key, {
+                    id: p.id, repo, title: null, url: p.url, state: p.state || null, draft: false,
+                    sourceBranch: null, targetBranch: null, author: null, reviewers: null,
+                    createdOn: null, updatedOn: p.last_checked_at, hasConflicts: null, conflictFiles: [],
+                    commentCount: null, taskCount: null,
+                    source: 'run', stateCheckedAt: p.last_checked_at,
+                    linkedRun: prIndex.get(key) || null, canApprove: false,
+                });
+            }
+        }
+        return [...out.values()];
+    }
+
     // Identidade dona do BITBUCKET_API_TOKEN (GET /2.0/user). Cacheada por 5 min,
     // inclusive a falha: token sem o escopo read:user:bitbucket dá 403 sempre.
     let currentUserCache = null;
@@ -2720,7 +2750,8 @@ function createDashboard(options = {}) {
             const open = await Promise.all(perRepo.flatMap(r => r?.open || []).map(pr => withConflicts(pr, cfg)));
             const merged = perRepo.flatMap(r => r?.merged || [])
                 .sort((a, b) => (Date.parse(b.updatedOn) || 0) - (Date.parse(a.updatedOn) || 0)).slice(0, 20);
-            const prs = [...open, ...merged].map(pr => decoratePr(pr, cfg, me, prIndex));
+            const listed = [...open, ...merged].map(pr => decoratePr(pr, cfg, me, prIndex));
+            const prs = [...listed, ...runOnlyPrs(new Set(listed.map(p => `${p.repo}#${p.id}`)), prIndex)];
             const linkedRuns = Object.fromEntries(prs.filter(p => p.linkedRun).map(p => [`${p.repo}#${p.id}`, p.linkedRun]));
             res.json(redactDeep({
                 prs, linkedRuns, repos: cfg.repos, warnings,
