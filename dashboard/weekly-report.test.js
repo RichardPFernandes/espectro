@@ -134,7 +134,7 @@ test('buildReport: janela atual contra a anterior, sem misturar runs de fora', (
     assert.strictEqual(M.highlights[0].pr, '#1');
     assert.strictEqual(M.gates.length, 1);
     assert.strictEqual(M.summary.length, 3);
-    assert.match(M.summary[0], /2 runs concluídos, 1 a mais que na semana anterior/);
+    assert.match(M.summary[0], /^Todos os projetos concluiu 2 runs, 1 a mais que na semana anterior, mergeou 1 PR/);
     const P = W.buildReport(list, env(), { win: 'prev', now: NOW });
     assert.strictEqual(P.cur.done, 1);
     const A = W.buildReport(list, env(), { win: 'all', now: NOW });
@@ -239,7 +239,7 @@ test('parsePatterns e patternDots: formato fixo de memory/patterns.md', () => {
 test('copyText: resumo copiável sem inventar número', () => {
     const M = W.buildReport([run(1, '2026-11-10T12:00:00Z', { usd: null })], env(), { win: 'cur', now: NOW });
     const t = W.copyText(M, '');
-    assert.match(t, /^Relatório semanal · 09–15\/11\/2026/);
+    assert.match(t, /^Relatório semanal do Espectro · 09–15\/11\/2026 · todos os projetos\n/);
     assert.match(t, /Tokens: sem medição/);
     assert.match(t, /Custo: sem medição/);
     assert.doesNotMatch(t, /US\$ 0,00/);
@@ -280,7 +280,7 @@ test('resumo sem semana anterior e delta de custo partindo de zero', () => {
     const M = W.buildReport([run(1, '2026-11-10T12:00:00Z', { usd: 1.5 }), run(2, '2026-11-04T12:00:00Z', { usd: 0 })], env(), { win: 'cur', now: NOW });
     assert.strictEqual(M.k.total.t, '▲ +US$ 1,50 (era US$ 0,00) contra a semana anterior');
     const A = W.buildReport([run(1, '2026-11-10T12:00:00Z', { usd: 1.5 })], env(), { win: 'all', now: NOW });
-    assert.match(A.summary[0], /^Foram registrados 1 run concluído/);
+    assert.match(A.summary[0], /^Todos os projetos registrou 1 run concluído em 1 semana \(/);
     assert.match(A.summary[1], /^O custo foi de US\$ 1,50\. O custo médio por run concluído ficou em US\$ 1,50\.$/);
 });
 
@@ -291,4 +291,34 @@ test('semana anterior sem loop_count: diz "sem medição"; média igual não vir
     assert.strictEqual(M.k.rate.t, 'semana anterior sem medição');
     assert.match(M.summary[1], /igual aos US\$ 2,00 da semana anterior\.$/);
     assert.doesNotMatch(M.summary[1], /acima/);
+});
+
+test('escopo: rótulo do projeto no resumo e no texto copiado; "em N semanas" conta semanas de calendário', () => {
+    const list = [run(1, '2026-11-10T12:00:00Z', { usd: 2 }), run(2, '2026-10-28T12:00:00Z', { usd: 1 })];
+    const M = W.buildReport(list, env(), { win: 'cur', now: NOW, scopeLabel: 'app-back' });
+    assert.strictEqual(M.scopeLabel, 'app-back');
+    assert.match(M.summary[0], /^App-back concluiu 1 run, o mesmo número da semana anterior|^App-back concluiu 1 run, 1 a mais que na semana anterior/);
+    assert.match(W.copyText(M, M.scopeLabel), /^Relatório semanal do Espectro · 09–15\/11\/2026 · app-back\n/);
+    const A = W.buildReport(list, env(), { win: 'all', now: NOW, scopeLabel: 'app-back' });
+    assert.match(A.summary[0], /^App-back registrou 2 runs concluídos em 3 semanas \(28\/10–10\/11\/2026\)/);
+    assert.match(W.copyText(A, ''), /· todos os runs · app-back\n/);
+});
+
+test('projectCosts: participação no total medido e média por run concluído; run sem custo fica fora', () => {
+    const a = run(1, '2026-11-10T12:00:00Z', { usd: 3 }), b = run(2, '2026-11-10T12:00:00Z', { usd: 1 });
+    const c = run(3, '2026-11-10T12:00:00Z', { usd: 2, done: false }), d = run(4, '2026-11-10T12:00:00Z', { usd: null });
+    b.location = 'app-front'; c.location = 'app-front';
+    const rows = W.projectCosts([a, b, c, d], env());
+    assert.deepStrictEqual(rows.map(x => [x.name, x.usd, x.runs, x.avg, x.w]), [['main', 3, 1, 3, 50], ['app-front', 3, 2, 1, 50]]);
+    assert.deepStrictEqual(W.projectCosts([d], env()), []);
+    const M = W.buildReport([a, b], env(), { win: 'cur', now: NOW });
+    assert.strictEqual(M.projects.length, 2);
+});
+
+test('captureLabel e sinceLabel: hora de Brasília e "há N s/min/h"', () => {
+    assert.strictEqual(W.captureLabel(Date.parse('2026-10-27T17:56:00Z')), '27/10, 14:56');
+    assert.strictEqual(W.sinceLabel(2400), '2 s');
+    assert.strictEqual(W.sinceLabel(-5), '0 s');
+    assert.strictEqual(W.sinceLabel(125000), '2 min');
+    assert.strictEqual(W.sinceLabel(7300000), '2 h');
 });

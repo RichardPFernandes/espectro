@@ -2,7 +2,7 @@
 // Learning embutido na aba "Aprendizado e fonte". Substitui a antiga tela Métricas (PRI-327).
 //
 // Regra da onda 1: o que o artboard mostra e o app não mede fica FORA da tela (lista "Pendente de
-// implementação" na PRI-327): teto/orçamento, custo por projeto, escopo, custo do retrabalho,
+// implementação" na PRI-327): teto/orçamento, custo do retrabalho,
 // padrões com custo, gates respondidos/espera, sugestões e envio, Comparar runs embutido. Nada de
 // zero no lugar de "sem medição": valor que não foi medido sai como null e vira "sem medição".
 //
@@ -244,6 +244,30 @@
     const max = Math.max(0, ...rows.map(x => x.usd));
     return rows.map(x => ({ ...x, w: max ? Math.round((x.usd / max) * 100) : 0 }));
   }
+  // Custo por projeto (artboard "Custo por projeto"): projeto = location do run. Participação no total
+  // medido da janela e custo médio por run concluído com custo medido; run sem custo fica fora.
+  function projectCosts(list, env) {
+    const acc = new Map();
+    for (const r of list) {
+      const usd = usdOf(r);
+      if (usd == null) continue;
+      const k = r.location || 'Sem projeto';
+      const a = acc.get(k) || { usd: 0, runs: 0, doneUsd: 0, done: 0 };
+      a.usd += usd; a.runs += 1;
+      if (env.isDone(r)) { a.doneUsd += usd; a.done += 1; }
+      acc.set(k, a);
+    }
+    const total = sum([...acc.values()].map(a => a.usd));
+    return [...acc.entries()].map(([name, a]) => ({ name, usd: r2(a.usd), runs: a.runs, avg: a.done ? a.doneUsd / a.done : null,
+      w: total ? Math.round((a.usd / total) * 100) : 0 })).sort((a, b) => b.usd - a.usd);
+  }
+  // "dados capturados em 27/10, 14:56" (Brasília) e "atualizado há 12 s".
+  function captureLabel(ts) { const d = local(ts); return `${dm(ts)}, ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`; }
+  function sinceLabel(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    return s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3600)} h`;
+  }
+
   // state.json.retries por nó: cada tentativa extra do nó é uma volta (loop) que saiu dele.
   function retryRows(list, nodes) {
     const acc = new Map();
@@ -274,7 +298,7 @@
   }
 
   // ---------------------------------------------------------------- modelo do relatório
-  function buildReport(all, env, { win = 'cur', now = Date.now() } = {}) {
+  function buildReport(all, env, { win = 'cur', now = Date.now(), scopeLabel = 'todos os projetos' } = {}) {
     const w = windowOf(win, now);
     const isAll = w.from === -Infinity;
     const list = all.filter(r => inWindow(r, w));
@@ -282,6 +306,8 @@
     const prev = w.prev ? aggregate(all.filter(r => inWindow(r, w.prev)), env) : null;
     const ts = all.map(tsOf).filter(Number.isFinite);
     const range = isAll ? (ts.length ? rangeLabel(Math.min(...ts), Math.max(...ts) + 1) : 'sem runs') : rangeLabel(w.from, w.to);
+    // "em 3 semanas": semanas de calendário (segunda a domingo) entre o primeiro e o último run registrado.
+    const weeks = isAll && ts.length ? Math.round((weekStart(Math.max(...ts)) - weekStart(Math.min(...ts))) / (7 * DAY)) + 1 : 0;
     const o = { all: isAll };
     const k = {
       runs: delta(cur.done, prev?.done, true, cnt, o),
@@ -298,24 +324,25 @@
     else if (prev?.ticketsPartial && !isAll) k.tickets = { t: 'semana anterior com consulta parcial no Redmine', tone: 'muted' };
     const sr = series(list, w, env, now);
     return {
-      win, isAll, w, range, list, cur, prev, k, series: sr,
-      nodes: nodeCosts(list, env.nodes), stages: stageTokens(list, env.nodes), types: trackerCosts(list),
+      win, isAll, w, range, scopeLabel, list, cur, prev, k, series: sr,
+      nodes: nodeCosts(list, env.nodes), stages: stageTokens(list, env.nodes), types: trackerCosts(list), projects: projectCosts(list, env),
       retries: retryRows(list, env.nodes), highlights: highlights(list, env), gates: openGates(all, env, now),
-      summary: summaryText({ isAll, range, cur, prev }),
+      summary: summaryText({ isAll, range, cur, prev, scopeLabel, weeks }),
     };
   }
 
   // Resumo escrito (artboard: 4 parágrafos; o de sugestões fica fora — sem dado no app).
-  function summaryText({ isAll, range, cur, prev }) {
+  function summaryText({ isAll, range, cur, prev, scopeLabel = 'todos os projetos', weeks = 0 }) {
+    const capS = scopeLabel.charAt(0).toUpperCase() + scopeLabel.slice(1);
     const tk = cur.tickets == null ? 'tickets fechados sem medição (Redmine não consultado)'
       : cur.ticketsPartial ? `fechou ao menos ${plural(cur.tickets, 'ticket', 'tickets')} (${cur.ticketsKnown} de ${cur.ticketsTotal} consultados no Redmine)`
       : `fechou ${plural(cur.tickets, 'ticket', 'tickets')}`;
     let s1;
-    if (isAll) s1 = `Foram registrados ${plural(cur.done, 'run concluído', 'runs concluídos')} em todos os runs (${range}), com ${plural(cur.merged, 'PR mergeado', 'PRs mergeados')}; ${tk}.`;
+    if (isAll) s1 = `${capS} registrou ${plural(cur.done, 'run concluído', 'runs concluídos')}${weeks ? ` em ${plural(weeks, 'semana', 'semanas')}` : ''} (${range}), mergeou ${plural(cur.merged, 'PR', 'PRs')} e ${tk}.`;
     else {
       const d = prev ? cur.done - prev.done : 0;
       const cmp = !prev ? '' : d === 0 ? ', o mesmo número da semana anterior' : `, ${Math.abs(d)} ${d > 0 ? 'a mais' : 'a menos'} que na semana anterior`;
-      s1 = `A semana teve ${plural(cur.done, 'run concluído', 'runs concluídos')}${cmp}, mergeou ${plural(cur.merged, 'PR', 'PRs')} e ${tk}.`;
+      s1 = `${capS} concluiu ${plural(cur.done, 'run', 'runs')}${cmp}, mergeou ${plural(cur.merged, 'PR', 'PRs')} e ${tk}.`;
     }
     let s2;
     if (cur.cost == null) s2 = 'Custo sem medição: nenhum run da janela tem cost_tracking com preço.';
@@ -334,7 +361,7 @@
 
   // Texto do "Copiar resumo" (artboard buildText, sem as partes que o app não mede).
   function copyText(M, scope) {
-    const L = [`Relatório semanal · ${M.range}${M.isAll ? ' · todos os runs' : ''}${scope ? ` · ${scope}` : ''}`, '', ...M.summary, ''];
+    const L = [`Relatório semanal do Espectro · ${M.range}${M.isAll ? ' · todos os runs' : ''} · ${scope || M.scopeLabel || 'todos os projetos'}`, '', ...M.summary, ''];
     L.push(`Entregas: ${M.cur.done} runs concluídos, ${M.cur.merged} PRs mergeados, ${M.cur.tickets == null ? 'tickets fechados sem medição' : `${M.cur.tickets} tickets fechados`}.`);
     L.push(`Tokens: ${tok(M.cur.tokens)}; mensagens ao agente: ${M.cur.msgs}.`);
     L.push(`Custo: ${money(M.cur.cost)}; média por run ${money(M.cur.avg)}${!M.isAll && M.prev?.avg != null ? ` contra ${money(M.prev.avg)} na semana anterior` : ''}.`);
@@ -434,17 +461,19 @@
   }
 
   const pub = { DAY, TZ, money, tok, pct1, modelName, msLabel, weekStart, rangeLabel, isoWeek, windowOf, inWindow, aggregate, delta, series, ticks,
-    nodeCosts, stageTokens, trackerCosts, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
+    nodeCosts, stageTokens, trackerCosts, projectCosts, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
   if (typeof module !== 'undefined' && module.exports) { module.exports = pub; return; }
 
   // ================================================================ navegador
   const savedPrefs = (typeof prefs !== 'undefined' && prefs.weekly) || {};
   const st = {
     win: ['cur', 'prev', 'all'].includes(savedPrefs.win) ? savedPrefs.win : 'cur',
-    tab: 'summary', mode: 'cost', q: '', period: '30', ltab: 'metrics', copied: '', loadedAt: null,
+    scope: typeof savedPrefs.scope === 'string' && savedPrefs.scope ? savedPrefs.scope : 'all',
+    tab: 'summary', mode: 'cost', q: '', period: '30', ltab: 'metrics', copied: '', toast: '',
+    capturedAt: null, wasLoading: false, renderedAt: null,
     pat: { data: null, loading: false, error: null },
   };
-  const save = () => { try { prefs.weekly = { win: st.win }; persist(); } catch { /* prefs indisponível */ } };
+  const save = () => { try { prefs.weekly = { win: st.win, scope: st.scope }; persist(); } catch { /* prefs indisponível */ } };
   const TABS = [['summary', 'Resumo e entregas'], ['cost', 'Custo'], ['rework', 'Retrabalho e padrões'], ['learn', 'Aprendizado e fonte']];
 
   function env() {
@@ -470,30 +499,37 @@
       segmentsOf: V.segmentsOf,
     };
   }
-  const shown = () => visibleRuns().filter(r => !isHidden(r));
+  const shownAll = () => visibleRuns().filter(r => !isHidden(r));
+  // Escopo (artboard "Escopo"): projeto = location do run; "all" = todos os projetos.
+  const shown = () => (st.scope === 'all' ? shownAll() : shownAll().filter(r => r.location === st.scope));
+  const scopeLabelOf = () => (st.scope === 'all' ? 'todos os projetos' : st.scope);
+  const model = () => buildReport(shown(), env(), { win: st.win, scopeLabel: scopeLabelOf() });
+  const WINS = [['cur', 'Semana atual'], ['prev', 'Semana anterior'], ['all', 'Todos os runs']];
   const toneCls = t => `wr-tone-${t || 'muted'}`;
   const matches = (q, ...xs) => !q || xs.join(' ').toLowerCase().includes(q);
 
-  function head(M, scope, health, info) {
-    const wins = [['cur', 'Semana atual'], ['prev', 'Semana anterior'], ['all', 'Todos os runs']];
+  function head(M, eyebrow, health, info, locs) {
+    const scopes = [['all', 'Todos os projetos'], ...locs.map(l => [l, l])];
     return `<header class="wr-head">
       <div class="wr-head-row"><div class="wr-head-text">
-        <span class="wr-eyebrow">Relatório semanal${scope ? ` · ${esc(scope)}` : ''}</span>
+        <span class="wr-eyebrow">Relatório semanal${eyebrow ? ` · ${esc(eyebrow)}` : ''}</span>
         <span class="wr-title-row"><h2 class="wr-h1">Relatório semanal</h2>
           <span class="wr-pill wr-pill-${health.k}"><span aria-hidden="true">${health.glyph}</span>${esc(health.label)}</span>
-          <span class="wr-seg" role="radiogroup" aria-label="Janela do relatório">${wins.map(([id, label]) =>
+          <span class="wr-seg" role="radiogroup" aria-label="Janela do relatório">${WINS.map(([id, label]) =>
             `<button type="button" role="radio" aria-checked="${st.win === id}" data-wract="win" data-v="${id}">${label}</button>`).join('')}</span></span>
-        <p class="wr-muted">${esc(M.isAll ? `${M.range}, todos os runs registrados` : M.range)} · ${esc(info)}</p>
+        <p class="wr-muted">${esc(M.isAll ? `${M.range}, todos os runs registrados` : M.range)} · ${esc(M.scopeLabel)} · ${info}</p>
       </div></div>
       ${health.k === 'partial' ? `<div class="wr-alert" role="alert"><span aria-hidden="true">‖</span><span>${esc(health.note)}</span></div>` : ''}
       <div class="wr-tools">
+        <label class="wr-scope">Escopo
+          <select data-wrscope>${scopes.map(([v, l]) => `<option value="${esc(v)}"${st.scope === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
         <label class="wr-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
           <input type="search" data-wrq aria-label="Filtrar entregas, gates e padrões" placeholder="Filtrar ticket, PR, padrão…" value="${esc(st.q)}"></label>
       </div>
       <div class="wr-tools">
         <button type="button" class="wr-btn wr-btn-primary" data-wract="copy">Copiar resumo</button>
         <span role="status" aria-live="polite" class="wr-copy ${st.copied === 'ok' ? 'wr-tone-good' : 'wr-tone-fail'}">${st.copied === 'ok' ? '✓ Resumo copiado para a área de transferência'
-          : st.copied === 'fail' ? '✕ Não foi possível copiar. Selecione o texto do resumo e copie com Ctrl+C' : ''}</span>
+          : st.copied === 'fail' ? '✕ Não foi possível copiar. Selecione o texto do resumo acima e copie com Ctrl+C' : ''}</span>
       </div>
     </header>`;
   }
@@ -550,7 +586,7 @@
       </section>
       <section class="wr-sec wr-sec-rule" aria-labelledby="wr-gt-h">
         ${secHead('wr-gt-h', 'Gates e decisões da semana', 'quanto tempo os runs esperaram por uma pessoa')}
-        <div class="wr-grid">
+        <div class="wr-grid wr-grid-thirds">
           <div class="wr-card"><span class="wr-k">Gates abertos agora</span><span class="wr-gv">${M.gates.length}</span><span class="wr-gd">${plural(over24, 'passou', 'passaram')} de 24 h</span></div>
         </div>
         ${gates.length ? `<div class="wr-box">${gates.map(g => `<div class="wr-row">
@@ -626,14 +662,21 @@
           : '<p class="wr-empty">Nenhum run com custo medido nesta janela.</p>'}
           <span class="wr-foot">Fonte: tracker do Redmine + state.json · cost_tracking${unpriced ? ` · ${plural(unpriced, 'run sem custo fica', 'runs sem custo ficam')} fora das barras` : ''}</span></div>
       </div>
-    </section>`;
+    </section>
+    ${M.projects.length ? `<section class="wr-sec wr-sec-rule" aria-labelledby="wr-bp-h">
+      ${secHead('wr-bp-h', 'Custo por projeto', `participação no total ${M.isAll ? 'da janela' : 'da semana'}, com o custo médio por run`)}
+      <div class="wr-proj-box">${M.projects.map(x => `<div class="wr-proj-row">
+          <span class="wr-proj-name">${esc(x.name)}</span>${bar(x.w)}
+          <span class="wr-num wr-secondary"${usdTip(x.usd)}>${esc(money(x.usd))}${x.avg == null ? '' : ` · ${esc(money(x.avg))}/run`}</span></div>`).join('')}
+      </div>
+    </section>` : ''}`;
   }
 
   function panelRework(M) {
     const c = M.cur;
     return `<section class="wr-sec wr-sec-rule" aria-labelledby="wr-ret-h">
       ${secHead('wr-ret-h', 'Retrabalho', 'cada tentativa extra de um nó conta como uma volta (loop)')}
-      <div class="wr-grid wr-grid-300">
+      <div class="wr-grid wr-grid-halves">
         <div class="wr-card"><span class="wr-k">Taxa de loops</span>
           <span class="wr-big-row"><span class="wr-big${c.rate == null ? ' wr-none' : ''}">${c.rate == null ? 'sem medição' : c.rate.toFixed(2).replace('.', ',')}</span><span class="wr-mono wr-muted">loops por run</span></span>
           <span class="wr-k">${c.loops == null ? 'nenhum run concluído com loop_count na janela' : `${plural(c.loops, 'loop', 'loops')} em ${plural(c.loopRuns, 'run concluído', 'runs concluídos')} com telemetria${c.done - c.loopRuns ? ` · ${c.done - c.loopRuns} sem medição` : ''}`}</span>
@@ -686,7 +729,7 @@
     return `<footer class="wr-origin"><span class="wr-eyebrow wr-muted">Origem dos dados</span>
         <p>Runs, custo por nó, tokens, loops, tentativas e mensagens ao agente vêm do state.json de cada run (cost_tracking gravado pelo watcher, retries e human_inputs). PRs vêm do Bitbucket onde já foram consultados, senão do state.json; tickets e tipo do ticket vêm do Redmine. Padrões vêm de memory/patterns.md, gerado pelo consolidador. O run entra na janela pela data da última atualização do state.json; semana de segunda a domingo, fuso de Brasília. Custo é o preço de API por modelo (equivalente, se for assinatura). Esta página é um relatório de leitura: copiar o resumo não altera nenhum run. Os números são sinal, não verdade contábil.</p></footer>
       <section class="wr-sec wr-learn" aria-labelledby="wr-learn-h">
-        <span class="wr-col-4"><h2 id="wr-learn-h" class="wr-h1">Aprendizado da semana</h2><span class="wr-muted">Padrões, métricas por etapa e comparação com a semana anterior. Antes era a tela Aprendizado.</span></span>
+        <span class="wr-col-4"><h2 id="wr-learn-h" class="wr-h2-20">Aprendizado da semana</h2><span class="wr-muted">Padrões, métricas por etapa e comparação com a semana anterior. Antes era a tela Aprendizado.</span></span>
         <div class="wr-l">
           <header class="wr-l-hd"><div class="wr-col-4"><span class="wr-eyebrow wr-muted">Agentes e modelos · histórico</span><h1 class="wr-l-h1">Aprendizado</h1>
             <p class="wr-muted">O que o histórico de runs ensina: onde o tempo e o custo vão e o que se repete.</p></div>
@@ -705,32 +748,48 @@
     return `<div class="wr-tabs-row"><div role="tablist" aria-label="Seções do relatório" class="wr-tabs">${TABS.map(([k, l], i) =>
         `<button type="button" role="tab" id="wr-tab-${k}" aria-selected="${st.tab === k}" aria-controls="wr-panel" data-wract="tab" data-v="${k}"><span class="wr-tab-n">${i + 1}</span>${l}<span class="wr-tab-c">${counts[k]}</span></button>`).join('')}</div>
         <span class="wr-tab-pos">aba ${pos} de ${TABS.length}</span></div>
-      ${!M.cur.runs ? `<div class="wr-empty-note" role="note"><strong>Nenhum run nesta janela.</strong><span>Para ver runs em andamento, abra <a href="#runs" data-wract="runs">Runs</a>.</span></div>` : ''}
+      ${!M.cur.done ? `<div class="wr-empty-note" role="note"><strong>Nenhum run concluído ${M.isAll ? 'registrado' : st.win === 'prev' ? 'na semana anterior' : 'nesta semana'} para ${esc(M.scopeLabel)}.</strong><span>Para ver runs em andamento, abra <a href="#runs" data-wract="runs">Runs</a>.</span></div>` : ''}
       <div id="wr-panel" role="tabpanel" aria-labelledby="wr-tab-${st.tab}" class="wr-panel">${panel}</div>`;
   }
 
   let lastModel = null;
+  const tabPos = () => TABS.findIndex(([k]) => k === st.tab) + 1;
+  // Barra de status do artboard: à esquerda o recorte (ou o aviso da última ação); à direita os atalhos.
+  const statusLeft = M => st.toast || `Relatório ${M.range}${M.isAll ? ' · todos os runs' : ''} · ${M.scopeLabel} · aba ${tabPos()} de ${TABS.length}${st.q.trim() ? ` · filtro “${st.q.trim()}”` : ''}`;
+  const agoText = () => `atualizado há ${sinceLabel(Date.now() - (st.renderedAt || Date.now()))}`;
   function render() {
     const V = window.Views;
     const b = V?.bulkState?.() || {};
     if (V && runs.size && !b.running && !b.loadedOnce) setTimeout(() => V.loadAll(false), 0);
     if (st.tab === 'learn' && st.ltab === 'patterns' && !st.pat.data && !st.pat.loading && !st.pat.error) loadPatterns();
-    const list = shown();
-    st.loadedAt = st.loadedAt || Date.now();
-    const M = buildReport(list, env(), { win: st.win });
+    // Captura = fim da última consulta a Redmine/Bitbucket (ou a primeira montagem, sem consulta).
+    if (b.running) st.wasLoading = true;
+    else if (st.wasLoading || !st.capturedAt) { st.capturedAt = Date.now(); st.wasLoading = false; }
+    st.renderedAt = Date.now();
+    const all = shownAll();
+    const locs = [...new Set(all.map(r => r.location).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    // Projeto salvo que sumiu dos runs volta a "todos" (só depois que há runs, para não perder a preferência na carga).
+    if (all.length && st.scope !== 'all' && !locs.includes(st.scope)) st.scope = 'all';
+    const M = model();
     lastModel = M;
-    const locs = [...new Set(list.map(r => r.location).filter(Boolean))];
-    const scope = locs.length === 1 ? locs[0] : '';
+    const eyebrow = st.scope !== 'all' ? st.scope : locs.length === 1 ? locs[0] : '';
     const errs = V?.bulkErrors?.() || { tickets: 0, prs: 0 };
     const health = !M.cur.runs ? { k: 'queued', glyph: '○', label: 'Sem runs' }
       : errs.tickets || errs.prs ? { k: 'partial', glyph: '‖', label: 'Dados parciais',
         note: `A consulta falhou para ${[errs.tickets ? plural(errs.tickets, 'ticket no Redmine', 'tickets no Redmine') : '', errs.prs ? plural(errs.prs, 'run no Bitbucket', 'runs no Bitbucket') : ''].filter(Boolean).join(' e ')}. Tickets fechados e estados de PR podem estar incompletos; custo e tokens vêm do state.json.` }
       : st.win === 'prev' ? { k: 'done', glyph: '✓', label: 'Fechado' }
       : st.win === 'cur' ? { k: 'running', glyph: '◐', label: 'Em andamento' } : { k: 'done', glyph: '✓', label: 'Todos os runs' };
-    const info = b.running ? `consultando Redmine e Bitbucket… ${b.done}/${b.total}` : `dados atualizados ${typeof ago === 'function' ? ago(new Date(st.loadedAt).toISOString()) : ''}`.trim();
-    return `<div class="wr-screen" tabindex="-1" aria-label="Relatório semanal. 1 a 4 pulam direto para a aba, J e K percorrem as abas, Esc volta ao Resumo ou limpa o filtro.">
-      ${head(M, scope, health, info)}<div class="wr-body">${body(M, st.q.trim().toLowerCase())}</div></div>`;
+    const info = b.running ? esc(`consultando Redmine e Bitbucket… ${b.done}/${b.total}`)
+      : `dados capturados em ${esc(captureLabel(st.capturedAt))} · <span data-wr-ago>${esc(agoText())}</span>`;
+    return `<div class="wr-screen" tabindex="-1" aria-label="Relatório semanal. J e K percorrem as abas, 1 a ${TABS.length} pulam direto, Esc volta ao Resumo ou limpa o filtro.">
+      ${head(M, eyebrow, health, info, locs)}<div class="wr-body">${body(M, st.q.trim().toLowerCase())}</div>
+      <footer class="wr-status"><span role="status" class="${st.toast ? 'wr-status-toast' : ''}" data-wr-status>${esc(statusLeft(M))}</span><span class="wr-status-keys">J K abas · 1–${TABS.length} · Esc volta ao Resumo · ⌘K paleta</span></footer></div>`;
   }
+  // "atualizado há N s" anda sozinho, sem re-renderizar a tela (não tira o foco de nenhum campo).
+  setInterval(() => {
+    const el = document.querySelector('.wr-screen [data-wr-ago]');
+    if (el) el.textContent = agoText();
+  }, 1000);
 
   async function loadPatterns() {
     st.pat.loading = true;
@@ -739,16 +798,20 @@
     window.Views?.refresh();
   }
   const refresh = () => window.Views?.refresh();
-  // Filtro: re-renderiza só o corpo, para o campo não perder o foco nem o cursor.
+  // Filtro: re-renderiza só o corpo e a barra de status, para o campo não perder o foco nem o cursor.
   function rerenderBody() {
     const el = document.querySelector('.wr-screen .wr-body');
-    if (el && lastModel) el.innerHTML = body(buildReport(shown(), env(), { win: st.win }), st.q.trim().toLowerCase());
+    if (!el || !lastModel) return;
+    const M = model();
+    el.innerHTML = body(M, st.q.trim().toLowerCase());
+    const sb = document.querySelector('.wr-screen [data-wr-status]');
+    if (sb) { sb.textContent = statusLeft(M); sb.className = st.toast ? 'wr-status-toast' : ''; }
   }
-  function setTab(k) { if (TABS.some(([t]) => t === k)) { st.tab = k; refresh(); } }
+  function setTab(k) { if (TABS.some(([t]) => t === k)) { st.tab = k; st.toast = ''; refresh(); } }
 
   async function copy() {
-    const M = lastModel || buildReport(shown(), env(), { win: st.win });
-    const text = copyText(M, '');
+    const M = lastModel || model();
+    const text = copyText(M, M.scopeLabel);
     let ok = false;
     try { await navigator.clipboard.writeText(text); ok = true; } catch {
       try {
@@ -768,7 +831,7 @@
     if (!a || !inScreen(a)) return;
     const v = a.dataset.v;
     switch (a.dataset.wract) {
-      case 'win': st.win = v; save(); refresh(); break;
+      case 'win': st.win = v; st.toast = `Janela: ${(WINS.find(([id]) => id === v) || [])[1] || v}`; save(); refresh(); break;
       case 'tab': setTab(v); break;
       case 'mode': st.mode = v; refresh(); break;
       case 'ltab': st.ltab = v; refresh(); break;
@@ -784,6 +847,9 @@
     rerenderBody();
   });
   document.addEventListener('change', e => {
+    if (e.target.matches?.('[data-wrscope]') && inScreen(e.target)) {
+      st.scope = e.target.value; st.toast = `Escopo: ${scopeLabelOf()}`; save(); refresh(); return;
+    }
     if (!e.target.matches?.('[data-wrperiod]')) return;
     st.period = e.target.value;
     refresh();
@@ -794,14 +860,14 @@
     const t = e.target;
     if (!inScreen(t) && t !== document.body) return;
     if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || '')) {
-      if (e.key === 'Escape' && t.matches?.('[data-wrq]') && st.q) { st.q = ''; t.value = ''; rerenderBody(); e.preventDefault(); }
+      if (e.key === 'Escape' && t.matches?.('[data-wrq]') && st.q) { st.q = ''; t.value = ''; st.toast = 'Filtro limpo'; rerenderBody(); e.preventDefault(); }
       return;
     }
     const order = TABS.map(([k]) => k), i = order.indexOf(st.tab);
     if (e.key >= '1' && e.key <= String(order.length)) { e.preventDefault(); setTab(order[+e.key - 1]); }
     else if (e.key === 'j' || e.key === 'k') { e.preventDefault(); setTab(order[Math.max(0, Math.min(order.length - 1, i + (e.key === 'j' ? 1 : -1)))]); }
     else if (e.key === 'Escape' && inScreen(t)) {
-      if (st.q) { st.q = ''; refresh(); e.preventDefault(); } else if (st.tab !== 'summary') { setTab('summary'); e.preventDefault(); }
+      if (st.q) { st.q = ''; st.toast = 'Filtro limpo'; refresh(); e.preventDefault(); } else if (st.tab !== 'summary') { setTab('summary'); e.preventDefault(); }
     }
   });
 
