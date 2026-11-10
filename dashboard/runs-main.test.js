@@ -53,3 +53,37 @@ test('sem medição, nunca zero: kcards, painel da run e cabeçalho do detalhe',
     // nó sem custo gravado na janela: "sem medição" na legenda, não 0%
     assert.match(M.headHtml([measured], ''), /Commit sem medição/);
 });
+
+test('detalhe (RunDetail): pipeline com nome do nó em mono, estado por extenso e "—" no pendente', () => {
+    const M = boot().RunsMain;
+    const waiting = r('w', { status: 'awaiting_approval', node: 'implement', nodes: { fetch_ticket: 'done', plan: 'done' } });
+    const html = M.pipelineHtml(waiting, 'lg');
+    assert.match(html, /class="pl-name" title="fetch-ticket">fetch-ticket/);
+    assert.match(html, /pl-node waiting reached">[\s\S]*?<span class="pl-state">Aguardando você</);
+    assert.match(html, /pl-node done reached next-reached/); // plan → implement alcançado: linha contínua
+    assert.match(html, /<span class="pl-state">Pendente<\/span>\s*<span class="pl-meta">—</);
+    assert.doesNotMatch(M.pipelineHtml(waiting, 'sm'), /pl-state/);
+});
+
+test('detalhe: cabeçalho numa linha (selos vão para a faixa), faixa de parada e rodapé de status', () => {
+    const M = boot().RunsMain;
+    const head = M.detailHeadHtml(measured);
+    assert.match(head, /<span>Trabalho<\/span><span aria-hidden="true">›<\/span><button type="button" class="rd-back" data-run-back>Runs/);
+    assert.doesNotMatch(head, /rd-badges/);
+    const stop = { node: 'implement', since: '4 min', title: 'Pediu decisão.', tab: 'summary', link: 'Ver detalhes do gate', actions: '<button data-band-approval="approve">A</button>' };
+    const band = M.detailBandHtml(measured, stop, {}, { badges: '<span class="x">selo</span>' });
+    assert.match(band, /<span class="rd-badges"><span class="x">selo<\/span><\/span>/);
+    assert.match(band, /<strong class="num">Parado em implement há 4 min\.<\/strong> Pediu decisão\./);
+    assert.match(band, /data-band-approval="approve"[\s\S]*data-dtab-go="summary">Ver detalhes do gate/);
+    const groups = [{ n: 1, label: 'Resumo', tabs: [{ id: 'summary', label: 'Resumo' }] }, { n: 2, label: 'Custos', tabs: [{ id: 'costs', label: 'Custos' }] }];
+    assert.match(M.statusBarHtml(groups, 'costs', stop), /Aba: Custos · 2 de 2 · parado em implement há 4 min<\/span><span class="rd-status-keys">J K abas · 1–2 grupos · Esc volta ao Resumo/);
+    assert.match(M.statusBarHtml(groups, 'summary', null), />Aba: Resumo · 1 de 2</);
+});
+
+test('detalhe: abas com contagem só quando há dado; aba ativa marcada', () => {
+    const M = boot().RunsMain;
+    const groups = [{ n: 1, label: 'Resumo', tabs: [{ id: 'summary', label: 'Resumo' }, { id: 'log', label: 'Log do agente' }] }];
+    const nav = M.sideNavHtml(groups, 'log', { log: { text: '● ao vivo', tone: 'done' }, summary: null });
+    assert.match(nav, /data-rd-tab="log" aria-current="true"><span class="rd-tab-l">Log do agente<\/span><span class="rd-tab-c done">● ao vivo</);
+    assert.match(nav, /data-rd-tab="summary" aria-current="false"><span class="rd-tab-l">Resumo<\/span><\/button>/);
+});

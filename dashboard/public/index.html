@@ -1560,10 +1560,14 @@ $('runFilter').addEventListener('click', e => {
 });
 $('q').addEventListener('input', () => { searchOverride = {}; renderSidebar(); });
 
+// Grupos e parada do detalhe aberto, para o rodapé de status acompanhar a troca de aba.
+let detailStatus = null;
 function setRunTab(id) {
   runTab = id;
   document.querySelectorAll('#detail [data-rd-sec]').forEach(x => { x.hidden = x.dataset.rdSec !== id; });
   document.querySelectorAll('#detail [data-rd-tab]').forEach(x => x.setAttribute('aria-current', x.dataset.rdTab === id));
+  const bar = document.querySelector('#detail .rd-status');
+  if (bar && detailStatus) bar.outerHTML = RunsMain.statusBarHtml(detailStatus.groups, id, detailStatus.stop);
   if (id === 'context') renderContext(false);
 }
 function closeRun() {
@@ -1703,37 +1707,53 @@ function renderDetail() {
   const groups = RunListModel.detailTabs({ tasks: !!tasksHtml, api: !!r.hasOpenApiContract, replay: !!replay,
     events: Array.isArray(s.events) && s.events.length > 0, transcripts: transcriptsOf(s).length > 0, cost: !!cost });
   runTab = RunListModel.validTab(groups, runTab);
+  // Título da aba e subtítulo "grupo · o que tem nela" (artboard RunDetail, sectionHint).
   const SEC = {
-    summary: ['Resumo', 'estado, decisões pendentes, plano e build'], tasks: ['Tasks', 'subtarefas do plano e roteamento sombra'],
-    api: ['Contrato API', 'openapi-contract.yaml gerado pelo Plan'], log: ['Log do agente', 'saída do claude -p deste run'],
-    timeline: ['Timeline', 'eventos gravados no state.json'], replay: ['Replay', 'retomar a partir de um nó num run novo'],
-    env: ['Ambiente & PRs', 'PRs, recusa do QA, preview, schema e ticket'], chat: ['Conversa', 'lida entre um passo e outro'],
-    context: ['Contexto', 'context.md da tarefa'], transcripts: ['Transcrições', 'conversa de cada nó (post-mortem)'], costs: ['Custos', 'medidos pelo watcher · cost_tracking'],
+    summary: ['Resumo', 'estado, decisões pendentes, plano e tentativas'], tasks: ['Tasks', 'as tarefas do plano e o roteamento sombra de cada uma'],
+    api: ['Contrato API', 'o contrato OpenAPI gerado pelo Plan'], log: ['Log do agente', 'o que o agente fez, linha a linha'],
+    timeline: ['Timeline', 'cada passo da run, com tempo'], replay: ['Replay', 'retomar a partir de um nó num run novo'],
+    env: ['Ambiente & PRs', 'PRs, preview do ambiente e recusa do QA'], chat: ['Conversa', 'fale com o agente sem parar a run'],
+    context: ['Contexto', 'o que entrou no prompt do agente'], transcripts: ['Transcrições', 'a conversa completa de cada nó'], costs: ['Custos', 'quanto custou cada tentativa e onde economizar'],
   };
+  const groupOf = id => groups.find(g => g.tabs.some(x => x.id === id));
   const sec = (id, html, cls = '') => `<section class="rd-sec${cls}" data-rd-sec="${id}"${id === runTab ? '' : ' hidden'}>
-      <div class="rd-sec-head"><h1>${SEC[id][0]}</h1><span>${SEC[id][1]}</span></div>${html}</section>`;
+      <div class="rd-sec-head"><h1>${SEC[id][0]}</h1><span>${esc(groupOf(id)?.label || '')} · ${SEC[id][1]}</span></div>${html}</section>`;
   const clk = r.status === 'running' && s.status === 'running' ? NodeClock.clock(s) : null;
+  // Faixa de parada: com SPEC_CHANGE publicada, os mesmos botões da caixa de aprovação (mesmas funções, com confirmação).
+  const scPublished = s.status === 'spec-change-pending-approval' && !!s.spec_change_pending?.posted_at;
   const stop = RunListModel.needsYou(r) && !RunListModel.isDone(r) ? {
-    title: ex.title, since: ago(r.updatedAt).replace(/^há /, ''),
-    tab: r.status === 'needs_human_review' ? 'chat' : 'summary', link: r.status === 'needs_human_review' ? 'Responder na conversa' : 'Ver o pedido',
+    node: r.node, title: ex.title.replace(/^Parado em [^.]+\.\s*/, ''), since: ago(r.updatedAt).replace(/^há /, ''),
+    tab: r.status === 'needs_human_review' ? 'chat' : 'summary',
+    link: r.status === 'needs_human_review' ? 'Responder na conversa' : r.status === 'awaiting_approval' ? 'Ver detalhes do gate' : 'Ver o pedido',
+    actions: scPublished && !(approvalUi.get(r.taskId) || {}).sending ? `<button type="button" class="rd-stop-go" data-band-approval="approve">Aprovar mudança</button><button type="button" class="ghost rd-stop-alt" data-band-approval="reject">Rejeitar</button>` : '',
   } : null;
+  // Contagens à direita das abas, só com dado do app (nada inventado).
+  const tt = RunListModel.totalsOf(r);
+  const nSub = window.RunSubtasks && costOf(r) ? RunSubtasks.subtasksOfCostTracking(costOf(r)).summary.count : 0;
+  const nTr = transcriptsOf(s).length;
+  const counts = {
+    tasks: nSub ? { text: String(nSub) } : null,
+    log: clk ? { text: '● ao vivo', tone: 'done' } : null,
+    transcripts: nTr ? { text: String(nTr) } : null,
+    costs: tt.usd != null ? { text: fmtUsd(tt.usd) } : null,
+    env: prInconsistency(prRows(r)) || qaRetryBlockedInfo(r) ? { text: '!', tone: 'failed' } : null,
+  };
 
   $('detail').innerHTML = `
     <div class="stale-banner" id="staleBanner" role="status" aria-live="polite" hidden><span>${esc(StateVersion.MESSAGE)}</span><button type="button" class="ghost-btn" id="staleReload">Atualizar</button></div>
-    ${RunsMain.detailHeadHtml(r, { label: s.status === 'pre-build-failed' ? 'Build quebrado' : isChurn(r) ? 'Churn' : null,
-      badges: `${churnBadge(r)}${schemaBadge(r)}${specBadge(r)}${qaRetryBlockedBadge(r)}` })}
-    ${RunsMain.detailBandHtml(r, stop, { implement: preBuildGateHtml(r) })}
-    ${clk ? `<div class="rd-clock">Em execução: ${esc(NODE_LABEL[r.node] || r.node)} há <span class="elapsed num" data-node-clock data-started="${clk.startedAt}" data-timeout="${clk.timeoutMs}" title="Tempo desde node_started_at · timeout ${esc(NodeClock.fmtDuration(clk.timeoutMs))}">${esc(NodeClock.fmtDuration(clk.elapsedMs))}</span></div>` : ''}
+    ${RunsMain.detailHeadHtml(r, { label: s.status === 'pre-build-failed' ? 'Build quebrado' : isChurn(r) ? 'Churn' : null })}
+    ${RunsMain.detailBandHtml(r, stop, { implement: preBuildGateHtml(r) }, { badges: `${churnBadge(r)}${schemaBadge(r)}${specBadge(r)}${qaRetryBlockedBadge(r)}` })}
+    ${clk ? `<div class="rd-clock">Em execução: ${esc(RunsMain.nodeName(r.node))} há <span class="elapsed num" data-node-clock data-started="${clk.startedAt}" data-timeout="${clk.timeoutMs}" title="Tempo desde node_started_at · timeout ${esc(NodeClock.fmtDuration(clk.timeoutMs))}">${esc(NodeClock.fmtDuration(clk.elapsedMs))}</span></div>` : ''}
     <div class="rd-panes">
-      ${RunsMain.sideNavHtml(groups, runTab)}
+      ${RunsMain.sideNavHtml(groups, runTab, counts)}
       <div class="rd-main">
-      ${sec('summary', `
-        <div class="explain ${esc(r.status)}">
+      ${sec('summary', `<div class="rd-sum"><div class="rd-sum-main">
+        ${s.status === 'spec-change-pending-approval' ? '' /* o cartão do gate abaixo já explica (artboard: só o gate) */ : `<div class="explain ${esc(r.status)}">
           ${ICON[ex.icon]}
           <strong>${esc(ex.title)}</strong>
           <p>${esc(ex.body)}</p>
           ${ex.note ? `<p class="note" id="lastNote">${esc(ex.note)}</p><button class="link-btn" type="button" id="noteToggle">Ler nota inteira</button>` : ''}
-        </div>
+        </div>`}
         ${highRisk ? `
         <div class="risk-box" role="note">
           <h4>⚠ HIGH-RISK · Motivo do risco</h4>
@@ -1761,7 +1781,7 @@ function renderDetail() {
         </div>
         ${churnHtml(r)}
         ${planScoreHtml(r)}
-        ${preBuildHtml(r)}`)}
+        ${preBuildHtml(r)}</div>${summaryAsideHtml(r, groups)}</div>`)}
       ${tasksHtml ? sec('tasks', tasksHtml) : ''}
       ${r.hasOpenApiContract ? sec('api', `<div class="rd-card"><p>O Plan gerou um contrato OpenAPI para os endpoints desta task.</p><button class="btn" type="button" id="viewOpenApiBtn">Ver contrato OpenAPI</button></div>`) : ''}
       ${sec('log', `<div class="rd-card"><p>A saída do agente (claude -p) deste run, ao vivo enquanto ele roda.</p><button class="btn" type="button" id="viewLogBtn">Ver log do agente</button></div>`)}
@@ -1801,9 +1821,16 @@ function renderDetail() {
       ${transcriptsOf(s).length ? sec('transcripts', `<div id="trPane" class="ev-pane">${transcriptsHtml(s)}</div>`) : ''}
       ${cost ? sec('costs', cost) : ''}
       </div>
-    </div>`;
+    </div>
+    ${RunsMain.statusBarHtml(groups, runTab, stop)}`;
+  detailStatus = { groups, stop };
 
   wireDetail(r);
+  $('detail').querySelector('.rd-stop')?.addEventListener('click', e => {
+    const act = e.target.closest('[data-band-approval]')?.dataset.bandApproval;
+    if (act === 'approve') approveDraft(r.taskId);
+    else if (act === 'reject') decideSpecChange(r.taskId, 'reject');
+  });
   window.Authorization?.wire(r);
   window.RoutingRun?.wire(r);
   wireFolds(r);
@@ -1811,6 +1838,47 @@ function renderDetail() {
   wireTranscripts(r);
   renderThread();
   if (contextFor === selected) renderContext(false);
+}
+
+// Coluna à direita do Resumo (artboard RunDetail): Plano, Tentativas do agente e Trilha de
+// auditoria. Cada cartão só aparece com dado gravado: planScore/affectedServices, cost_tracking
+// e agent_log. Nada de número inventado.
+function summaryAsideHtml(r, groups) {
+  const s = r.state || {};
+  const has = id => groups.some(g => g.tabs.some(t => t.id === id));
+  const nodeName = RunsMain.nodeName;
+  const cards = [];
+  const score = typeof s.planScore === 'number' ? Math.max(0, Math.min(100, Math.round(s.planScore))) : null;
+  const min = typeof s.planScoreThreshold === 'number' ? s.planScoreThreshold : 60;
+  const svcs = svcChips(r);
+  if (score != null || svcs) {
+    const links = [has('api') ? '<button type="button" class="lnk" data-dtab-go="api">Ver contrato OpenAPI</button>' : '', '<button type="button" class="lnk" data-dtab-go="log">Ver log do agente</button>'].join('');
+    cards.push(`<section class="rd-acard" aria-labelledby="rd-plan-h">
+      <div class="rd-acard-h"><h2 id="rd-plan-h">Plano</h2><span class="mono">plan #${planAttempt(s)}${s.planAccepted ? ' · aceito' : ''}</span></div>
+      ${score != null ? `<div class="rd-plan-score"><span class="num">${score}</span><span class="rd-plan-bar"><span role="img" class="rd-plan-meter" aria-label="Score do plano: ${score} de 100, mínimo ${esc(String(min))}"><i class="${score >= min ? 'ok' : 'low'}" style="width:${score}%"></i><b style="left:${Math.max(0, Math.min(100, min))}%"></b></span><span class="mono rd-acard-k">score de 100 · mínimo ${esc(String(min))}</span></span></div>` : ''}
+      ${svcs ? `<div class="rd-acard-svcs"><span class="rd-acard-k">Serviços afetados</span><span class="svcs">${svcs}</span></div>` : ''}
+      <div class="rd-acard-links">${links}</div>
+    </section>`);
+  }
+  const at = RunListModel.attempts(r);
+  if (at.length) {
+    cards.push(`<section class="rd-acard" aria-labelledby="rd-att-h">
+      <div class="rd-acard-h"><h2 id="rd-att-h">Tentativas do agente</h2>${has('costs') ? '<button type="button" class="lnk" data-dtab-go="costs">Ver custos</button>' : ''}</div>
+      ${at.map(x => `<div class="rd-att"><i class="${x.usd == null ? '' : 'on'}" aria-hidden="true"></i><span class="mono">${esc(nodeName(x.node))}</span><span class="mono num rd-att-r">${esc(x.usd == null ? RunsMain.NONE : fmtUsd(x.usd))}</span>
+        <span class="rd-att-m">${esc(x.runs == null ? '' : `${x.runs} despacho${x.runs === 1 ? '' : 's'}${x.retries ? ` · ${x.retries} nova${x.retries === 1 ? '' : 's'} tentativa${x.retries === 1 ? '' : 's'}` : ''}${x.ms != null ? ` · ${fmtMs(x.ms)}` : ''}`)}</span>
+        <span class="rd-att-m rd-att-r">${esc(x.tokens == null ? RunsMain.NONE : `${fmtTok(x.tokens)} tokens`)}</span></div>`).join('')}
+    </section>`);
+  }
+  const log = (s.agent_log || []).filter(a => Date.parse(a.at)).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 7);
+  if (log.length) {
+    const hhmm = iso => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    cards.push(`<section class="rd-acard" aria-labelledby="rd-aud-h">
+      <div class="rd-acard-h"><h2 id="rd-aud-h">Trilha de auditoria</h2><span class="mono">agent_log</span></div>
+      <ol class="rd-aud">${log.map(a => { const nodes = (a.nodes || []).map(nodeName).join(', ');
+        return `<li><span class="mono num" title="${esc(when(a.at))}">${esc(hhmm(a.at))}</span><i aria-hidden="true"></i><span><span>${esc(a.note || `${nodes || 'passo'} registrado`)}</span>${nodes ? `<span class="mono rd-aud-who">${esc(nodes)}</span>` : ''}</span></li>`; }).join('')}</ol>
+    </section>`);
+  }
+  return cards.length ? `<aside class="rd-sum-aside" aria-label="Plano, tentativas e auditoria">${cards.join('')}</aside>` : '';
 }
 
 // ---------------------------------------------------------------- Redmine / PR folds
@@ -2680,28 +2748,43 @@ function specChangeHtml(r) {
   const ui = approvalUi.get(r.taskId) || {};
   const published = !!p.posted_at;
   const changes = Array.isArray(p.ac_changes) ? p.ac_changes : [];
+  const acs = (p.ac_affected || []).join(', ');
+  const opened = p.timestamp ? ago(p.timestamp) : '';
+  // Cartão do gate humano no desenho do artboard RunDetail (Resumo · Gate humano · SPEC_CHANGE).
   return `
-    <div class="approval-box" role="note">
-      <h4>⚖️ SPEC_CHANGE ${esc(p.id || '')} aguardando sua decisão</h4>
-      <p>A implementação encontrou uma decisão que muda requisito funcional. O agente não aprova mudança de spec: o pipeline está pausado.</p>
-      <div class="approval-meta">
-        <span>ACs <b>${esc((p.ac_affected || []).join(', ') || '—')}</b></span>
-        <span>Proposto <b>${esc(when(p.timestamp) || '—')}</b> por <b>${esc(p.agent || '—')}</b></span>
-        <span>Redmine <b>${published ? `publicado ${esc(when(p.posted_at) || '')}` : 'publica no próximo tick'}</b></span>
+    <section class="gate-card" aria-labelledby="gate-h">
+      <div class="gate-card-head">
+        <div class="gate-card-t">
+          <span class="gate-card-k">Gate humano · SPEC_CHANGE</span>
+          <h2 id="gate-h">Mudança de requisito proposta${p.id ? `: ${esc(p.id)}` : ''}</h2>
+          <p>A implementação encontrou uma decisão que muda requisito funcional durante <span class="mono">implement</span>. O agente não aprova mudança de spec: o run está parado até a sua decisão.</p>
+        </div>
+        <span class="gate-card-when mono">${esc([opened ? `aberto ${opened}` : '', p.agent ? `por ${p.agent}` : ''].filter(Boolean).join(' · '))}</span>
       </div>
-      <dl class="spec-change">
-        <dt>Hoje (spec)</dt><dd>${esc(p.previous_behavior || '—')}</dd>
-        <dt>Proposto</dt><dd>${esc(p.proposed_behavior || '—')}</dd>
-        <dt>Motivo</dt><dd>${esc(p.rationale || '—')}</dd>
-        ${p.reclassified_reason ? `<dt>Reclassificação</dt><dd>${esc(p.reclassified_reason)}</dd>` : ''}
-        ${changes.length ? `<dt>Edição da spec</dt><dd>${esc(changes.map(c => c.action === 'add' ? `adicionar AC: ${c.text}` : c.action === 'remove' ? `remover ${c.ac}` : `substituir ${c.ac}: ${c.text}`).join(' · '))}</dd>` : ''}
-      </dl>
-      <div class="approval-actions">
-        <button type="button" class="send" data-approval="approve" ${ui.sending || !published ? 'disabled' : ''}>${ui.sending ? 'Enviando…' : 'Aprovar mudança'}</button>
-        <button type="button" class="ghost-btn" data-approval="reject" ${ui.sending || !published ? 'disabled' : ''}>Rejeitar</button>
-        ${ui.msg ? `<span class="approval-msg ${esc(ui.msgCls || '')}" role="status">${esc(ui.msg)}</span>` : ''}
+      <div class="gate-card-body">
+        <div class="gate-diff-wrap">
+          <span class="gate-card-sub">${esc(acs || 'Critério')} · diferença</span>
+          <div class="gate-diff">
+            <div class="gate-del"><span aria-hidden="true">−</span><span><span class="sr-only">Hoje na spec: </span>${esc(p.previous_behavior || '—')}</span></div>
+            <div class="gate-add"><span aria-hidden="true">+</span><span><span class="sr-only">Proposto: </span>${esc(p.proposed_behavior || '—')}</span></div>
+          </div>
+          <span class="gate-card-note">Motivo: ${esc(p.rationale || '—')}</span>
+          ${p.reclassified_reason ? `<span class="gate-card-note">Reclassificação: ${esc(p.reclassified_reason)}</span>` : ''}
+          ${changes.length ? `<span class="gate-card-note">Edição da spec: ${esc(changes.map(c => c.action === 'add' ? `adicionar AC: ${c.text}` : c.action === 'remove' ? `remover ${c.ac}` : `substituir ${c.ac}: ${c.text}`).join(' · '))}</span>` : ''}
+        </div>
+        <div class="gate-cells">
+          <div class="gate-cell"><span>Critérios afetados</span><b>${esc(acs || '—')}</b></div>
+          <div class="gate-cell"><span>Proposto</span><b>${esc(when(p.timestamp) || '—')}</b></div>
+          <div class="gate-cell"><span>Redmine</span><b>${published ? `publicado ${esc(when(p.posted_at) || '')}` : 'publica no próximo tick'}</b></div>
+        </div>
+        <div class="gate-actions">
+          <button type="button" class="gate-go" data-approval="approve" ${ui.sending || !published ? 'disabled' : ''}>${ui.sending ? 'Enviando…' : 'Aprovar mudança'}</button>
+          <button type="button" class="gate-alt" data-approval="reject" ${ui.sending || !published ? 'disabled' : ''}>Rejeitar</button>
+          ${ui.msg ? `<span class="approval-msg ${esc(ui.msgCls || '')}" role="status">${esc(ui.msg)}</span>` : ''}
+        </div>
+        <p class="gate-card-note">Aprovar: a spec ganha a entrada no Histórico de Mudanças e o run volta para o Plano. Rejeitar: a spec não muda e o run fica parado. A decisão posta a palavra-chave no ticket do Redmine (ou responda lá); o watcher aplica no próximo tick.</p>
       </div>
-    </div>`;
+    </section>`;
 }
 function approvalHtml(r) {
   if (r.state?.status === 'spec-draft') return specDraftHtml(r);

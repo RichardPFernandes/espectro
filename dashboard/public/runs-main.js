@@ -81,17 +81,24 @@
     return r.nodes?.[key] === 'done' || r.status === 'committed' ? 'done' : 'pend';
   };
   const NODE_TEXT = { done: 'concluído', running: 'em execução', waiting: 'esperando você', failed: 'falhou', queued: 'na fila', pend: '—' };
+  // Estado por extenso no detalhe (artboard RunDetail: Concluído · Aguardando você · Falhou · Pendente).
+  const NODE_STATE = { done: 'Concluído', running: 'Em execução', waiting: 'Aguardando você', failed: 'Falhou', queued: 'Na fila', pend: 'Pendente' };
+  // Nome do nó como nos artboards Main e RunDetail: a chave do ciclo em mono (fetch-ticket, plan, …).
+  const nodeName = key => String(key).replace(/_/g, '-');
   // size 'sm' = painel da run (artboard Main); 'lg' = detalhe (artboard RunDetail).
   // extra: HTML a mais por etapa (ex.: portão de pre-build na Implementação), já escapado por quem chama.
   function pipelineHtml(r, size = 'sm', extra = {}) {
     const keys = NODES.map(([k]) => k);
     const items = keys.map((key, i) => {
       const st = nodeState(r, key), next = i < keys.length - 1 ? nodeState(r, keys[i + 1]) : null;
-      const meta = M.nodeMeta(r, key) || (size === 'lg' ? '' : NODE_TEXT[st]);
-      return `<li class="pl-node ${st}${next && st === 'done' && next !== 'pend' ? ' line-done' : ''}">
+      const meta = M.nodeMeta(r, key) || (size === 'lg' ? (st === 'pend' ? '—' : '') : NODE_TEXT[st]);
+      // lg: meia linha à esquerda acompanha este nó, à direita o próximo (alcançado = contínua, senão tracejada).
+      const cls = size === 'lg' ? `${st !== 'pend' ? ' reached' : ''}${next && next !== 'pend' ? ' next-reached' : ''}`
+        : (next && st === 'done' && next !== 'pend' ? ' line-done' : '');
+      return `<li class="pl-node ${st}${cls}">
         <span class="pl-track"><span class="pl-dot" aria-hidden="true">${st === 'pend' ? '' : STATE_GLYPH[st === 'done' ? 'done' : st]}</span></span>
-        <span class="pl-name">${esc(NODE_LABEL[key] || key)}<span class="sr-only"> — ${NODE_TEXT[st] === '—' ? 'pendente' : NODE_TEXT[st]}</span></span>
-        ${size === 'lg' ? `<span class="pl-state">${esc(st === 'pend' ? 'Pendente' : NODE_TEXT[st][0].toUpperCase() + NODE_TEXT[st].slice(1))}</span>` : ''}
+        <span class="pl-name" title="${esc(nodeName(key))}">${esc(nodeName(key))}<span class="sr-only"> (${esc(NODE_LABEL[key] || key)}) — ${NODE_TEXT[st] === '—' ? 'pendente' : NODE_TEXT[st]}</span></span>
+        ${size === 'lg' ? `<span class="pl-state">${esc(NODE_STATE[st])}</span>` : ''}
         ${meta ? `<span class="pl-meta">${esc(meta)}</span>` : ''}
         ${extra[key] || ''}
         ${size === 'lg' && key === 'commit' && isHighRisk(r) ? '<span class="pl-flag" title="O PR deste run abre como Draft com [HIGH-RISK] no título">HIGH-RISK</span>' : ''}
@@ -124,7 +131,7 @@
     const t = titleOf(r), k = stateKey(r), ex = explanation(r), tt = M.totalsOf(r);
     const prs = extractPrs(r.state?.pull_request);
     const need = M.needsYou(r) && !M.isDone(r);
-    const node = NODE_LABEL[r.node] || r.node || '—';
+    const node = r.node ? nodeName(r.node) : '—';
     const pos = NODES.findIndex(([x]) => x === r.node);
     const note = ex.note || (need ? lastNote(r) : '');
     const action = r.status === 'needs_human_review' ? ['Responder ao agente', 'chat'] : ['Abrir run', 'summary'];
@@ -164,11 +171,11 @@
             : `<p class="rs-empty">${r.status === 'pending' ? 'Ainda não começou: está na fila esperando um slot do watcher.' : 'Sem etapa registrada no agent_log nos últimos 7 dias.'}</p>`}
         </section>
         <section class="rs-card" aria-labelledby="rs-ac"><h2 id="rs-ac" class="rs-h">Atividade recente</h2>
-          ${act.length ? `<ol class="rs-act">${act.map(a => `<li><i aria-hidden="true"></i><span><span>${esc(a.note || `${a.nodes.map(n => NODE_LABEL[n] || n).join(', ')} registrado`)}</span><span class="rs-act-t">${esc(ago(a.at))} · agente</span></span></li>`).join('')}</ol>`
+          ${act.length ? `<ol class="rs-act">${act.map(a => `<li><i aria-hidden="true"></i><span><span>${esc(a.note || `${a.nodes.map(nodeName).join(', ')} registrado`)}</span><span class="rs-act-t">${esc(ago(a.at))} · agente</span></span></li>`).join('')}</ol>`
             : '<span class="rs-empty">Sem eventos recentes deste run.</span>'}
         </section>
         ${at.length ? `<section class="rs-sec" aria-labelledby="rs-tt"><h2 id="rs-tt" class="rs-h">Tentativas do agente</h2>
-          <table class="rs-att"><tbody>${at.map(x => `<tr><td class="mono"><i class="${x.usd == null ? '' : 'on'}" aria-hidden="true"></i>${esc(NODE_LABEL[x.node] || x.node)}</td>
+          <table class="rs-att"><tbody>${at.map(x => `<tr><td class="mono"><i class="${x.usd == null ? '' : 'on'}" aria-hidden="true"></i>${esc(nodeName(x.node))}</td>
             <td>${esc(x.runs == null ? '' : `${x.runs} despacho${x.runs === 1 ? '' : 's'}${x.retries ? ` · ${x.retries} nova${x.retries === 1 ? '' : 's'} tentativa${x.retries === 1 ? '' : 's'}` : ''}`)}</td>
             <td class="num mono muted">${esc(x.tokens == null ? NONE : `${fmtTok(x.tokens)} tok`)}</td><td class="num mono">${esc(usd(x.usd))}</td></tr>`).join('')}</tbody></table></section>` : ''}
         <p class="rs-foot">Projeção do estado das runs · não autoritativo · o state.json do run é a fonte.</p>
@@ -177,13 +184,13 @@
   }
 
   // ---------------------------------------------------------------- detalhe (RunDetail)
-  // opts.label: rótulo de estado especial (Build quebrado, Churn); opts.badges: selos do app (HTML já escapado).
+  // Cabeçalho numa linha só, como no artboard: Trabalho › Runs › ticket título [estado] · totais · ações.
+  // opts.label: rótulo de estado especial (Build quebrado, Churn). Os selos do app vão para a faixa de chips.
   function detailHeadHtml(r, opts = {}) {
     const t = titleOf(r), k = stateKey(r), tt = M.totalsOf(r);
     return `<header class="rd-head">
-      <nav class="rd-crumbs" aria-label="Caminho"><button type="button" class="rd-back" data-run-back>Runs</button><span aria-hidden="true">›</span><span class="mono">${esc(t.num || r.taskId)}</span><span class="rd-crumb-title">${esc(t.text)}</span></nav>
+      <nav class="rd-crumbs" aria-label="Caminho"><span>Trabalho</span><span aria-hidden="true">›</span><button type="button" class="rd-back" data-run-back>Runs</button><span aria-hidden="true">›</span><span class="mono">${esc(t.num || r.taskId)}</span><span class="rd-crumb-title">${esc(t.text)}</span></nav>
       <span class="pill ${k}"><span aria-hidden="true">${STATE_GLYPH[k]} </span>${esc(opts.label || stateLabel(r))}</span>
-      ${opts.badges ? `<span class="rd-badges">${opts.badges}</span>` : ''}
       ${tt.usd == null && tt.tokens == null && tt.ms == null ? '' : `<span class="rd-totals num" title="Totais medidos pelo watcher · fonte: cost_tracking do state.json"><span>${esc(usd(tt.usd))}</span><span>${esc(tt.tokens == null ? NONE : `${fmtTok(tt.tokens)} tokens`)}</span><span>${esc(tt.ms == null ? NONE : fmtMs(tt.ms))}</span></span>`}
       <span class="rd-actions hero-top">
         <button type="button" class="ghost" data-copy-link>Copiar link</button>
@@ -192,8 +199,10 @@
     </header>`;
   }
 
-  // Faixa do pipeline + chips (loops, risco, onde foi lido) + faixa de parada.
-  function detailBandHtml(r, stop, extra = {}) {
+  // Faixa do pipeline + chips (loops, selos do app, risco, onde foi lido) + faixa de parada.
+  // stop: { node, since, title, tab, link, actions } — actions: botões do gate (HTML já escapado).
+  // opts.badges: selos do app (churn, schema, spec, retry QA), HTML já escapado.
+  function detailBandHtml(r, stop, extra = {}, opts = {}) {
     const tt = M.totalsOf(r);
     const loops = tt.loops || 0;
     return `<div class="rd-band">
@@ -201,20 +210,31 @@
       <div class="rd-chips">
         ${loops ? `<span class="rd-loops mono">↺ ${loops} ${loops === 1 ? 'loop' : 'loops'} de retrabalho</span>` : ''}
         <span class="rd-chip-row">
+          ${opts.badges ? `<span class="rd-badges">${opts.badges}</span>` : ''}
           <span class="rd-chip">${isHighRisk(r) ? 'risco alto' : r.state?.risk_level ? `risco ${esc(r.state.risk_level === 'low' ? 'baixo' : r.state.risk_level)}` : 'risco não classificado'}</span>
           <button type="button" class="ghost rd-copy" data-copy="${esc(r.taskId)}" title="Copiar task-id">⎘ ${esc(r.taskId)}</button>
           <span class="rd-where">cópia: ${esc(r.pretask ? 'spec-gate (ainda sem task)' : r.location === 'main' ? 'checkout principal' : String(r.location || '').replace('worktree:', 'worktree '))}</span>
         </span>
       </div>
-      ${stop ? `<div class="rd-stop ${stateKey(r)}" role="status"><i aria-hidden="true"></i><span><strong>${esc(stop.title)}</strong>${stop.since ? ` <span class="num">Parado há ${esc(stop.since)}.</span>` : ''}</span>
-        <button type="button" class="lnk" data-dtab-go="${stop.tab}">${esc(stop.link)}</button></div>` : ''}
+      ${stop ? `<div class="rd-stop ${stateKey(r)}" role="status"><i aria-hidden="true"></i><span><strong class="num">Parado em ${esc(nodeName(stop.node || r.node || ''))}${stop.since ? ` há ${esc(stop.since)}` : ''}.</strong> ${esc(stop.title)}</span>
+        ${stop.actions || ''}<button type="button" class="lnk" data-dtab-go="${stop.tab}">${esc(stop.link)}</button></div>` : ''}
     </div>`;
   }
 
-  function sideNavHtml(groups, cur) {
+  // Abas laterais agrupadas e numeradas; counts: { [tabId]: { text, tone } } com tone done|failed|waiting|running.
+  function sideNavHtml(groups, cur, counts = {}) {
     return `<nav class="rd-side" aria-label="Abas da run">${groups.map(g => `<div class="rd-grp"><span class="rd-grp-h"><span>${g.n}</span>${esc(g.label)}</span>
-      ${g.tabs.map(t => `<button type="button" class="rd-tab" data-rd-tab="${t.id}" aria-current="${t.id === cur}">${esc(t.label)}</button>`).join('')}</div>`).join('')}</nav>`;
+      ${g.tabs.map(t => { const c = counts[t.id]; return `<button type="button" class="rd-tab" data-rd-tab="${t.id}" aria-current="${t.id === cur}"><span class="rd-tab-l">${esc(t.label)}</span>${c?.text ? `<span class="rd-tab-c${c.tone ? ` ${c.tone}` : ''}">${esc(c.text)}</span>` : ''}</button>`; }).join('')}</div>`).join('')}</nav>`;
   }
 
-  window.RunsMain = { stateKey, filterOf, sortOf, kfOf, applyFilters, stateFilterHtml, headHtml, pipelineHtml, summaryHtml, detailHeadHtml, detailBandHtml, sideNavHtml, NONE };
+  // Rodapé de status do detalhe: "Aba: Resumo · 1 de N · parado em … há …" e os atalhos.
+  function statusBarHtml(groups, cur, stop) {
+    const flat = groups.flatMap(g => g.tabs);
+    const i = flat.findIndex(t => t.id === cur);
+    const tab = flat[i] || flat[0];
+    const left = `Aba: ${tab ? tab.label : ''} · ${Math.max(i, 0) + 1} de ${flat.length}${stop ? ` · parado em ${nodeName(stop.node || '')}${stop.since ? ` há ${stop.since}` : ''}` : ''}`;
+    return `<footer class="rd-status" aria-label="Status do detalhe"><span role="status" id="rdStatusLeft">${esc(left)}</span><span class="rd-status-keys">J K abas · 1–${groups.length} grupos · Esc volta ao Resumo</span></footer>`;
+  }
+
+  window.RunsMain = { stateKey, filterOf, sortOf, kfOf, applyFilters, stateFilterHtml, headHtml, pipelineHtml, summaryHtml, detailHeadHtml, detailBandHtml, sideNavHtml, statusBarHtml, nodeName, NONE };
 })();
