@@ -127,11 +127,12 @@
     const reply = e.target.closest('[data-ov-reply]');
     if (reply) {
       Views.openRun(reply.dataset.ovReply);
+      openRunDetail('chat'); // detalhe aberto na aba Conversa (artboard RunDetail)
       requestAnimationFrame(() => { const ta = $('message'); if (ta && !ta.disabled) { ta.focus(); ta.scrollIntoView({ block: 'center', behavior: 'smooth' }); } });
       return;
     }
     const open = e.target.closest('[data-ov-open]');
-    if (open) Views.openRun(open.dataset.ovOpen);
+    if (open) { Views.openRun(open.dataset.ovOpen); openRunDetail(); }
   });
 
   // ------------------------------------------------------------------ overlays

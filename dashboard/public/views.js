@@ -14,10 +14,10 @@
   // Etapas agrupadas em 4 fases pra linha do tempo: 7 tons de um matiz não ficam
   // distinguíveis (validado), 4 ficam. O nome exato da etapa vai no tooltip.
   const PHASES = [
-    { key: 'prep', label: 'Preparação', nodes: ['fetch_ticket', 'plan'] },
-    { key: 'build', label: 'Construção', nodes: ['implement'] },
-    { key: 'check', label: 'Validação', nodes: ['review', 'test', 'verify'] },
-    { key: 'ship', label: 'Entrega', nodes: ['commit'] },
+    { key: 'prep', label: 'planejar', nodes: ['fetch_ticket', 'plan'] },
+    { key: 'build', label: 'implementar', nodes: ['implement'] },
+    { key: 'check', label: 'revisar e testar', nodes: ['review', 'test', 'verify'] },
+    { key: 'ship', label: 'commit', nodes: ['commit'] },
   ];
   const phaseOf = node => PHASES.findIndex(p => p.nodes.includes(node));
   const DAY = 86400000;
@@ -34,12 +34,16 @@
   let view = VIEWS.some(([k]) => k === alias(location.hash.slice(1))) ? alias(location.hash.slice(1))
     : location.hash.startsWith('#run/') ? 'runs' : (VIEWS.some(([k]) => k === alias(prefs.view)) ? alias(prefs.view) : 'runs');
   const table = Object.assign({ sort: 'updated', dir: -1, status: 'all', node: 'all', pr: 'all', hidden: false }, prefs.table || {});
-  const tl = Object.assign({ range: 30 }, prefs.timeline || {});
+  const tl = Object.assign({ range: 7 }, prefs.timeline || {});
   const tk = Object.assign({ filter: 'all' }, prefs.tickets || {});
   let bulk = { running: false, done: 0, total: 0 };
 
   // ------------------------------------------------------------------ helpers
-  const shownRuns = (includeHidden = false) => visibleRuns().filter(r => includeHidden || !isHidden(r));
+  // Filtro por estado e filtro do kcard do topo (runs-main.js) valem também aqui (artboard Main).
+  const shownRuns = (includeHidden = false) => {
+    const list = visibleRuns().filter(r => includeHidden || !isHidden(r));
+    return window.RunsMain ? RunsMain.applyFilters(list, [...runs.values()].filter(r => !isHidden(r))) : list;
+  };
   const ticketOf = r => { const t = titleOf(r); return { num: t.num, text: t.text, id: ticketIdOfRun(r) }; };
   const statusLabel = r => STATUS[r.status] || r.status;
   // Estado no design Espectro: glifo + cor, nunca só o matiz (✓ ◐ ‖ ✕ ○). O texto
@@ -232,7 +236,6 @@
     } else if (a === 'range') { tl.range = Number(el.dataset.range); prefs.timeline = tl; persist(); refresh(); }
     else if (a === 'tkfilter') { tk.filter = el.dataset.filter; prefs.tickets = tk; persist(); refresh(); }
     else if (a === 'loadall') loadAll(true);
-    else if (a === 'toggledone') { prefs.boardDone = !prefs.boardDone; persist(); refresh(); }
   }
 
   // ------------------------------------------------------------------ tooltip
@@ -266,7 +269,6 @@
     const by = Object.fromEntries(cols.map(c => [c.key, []]));
     for (const r of list) by[stageOf(r)].push(r);
     for (const k in by) by[k].sort((a, b) => (needsYou(b) - needsYou(a)) || (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
-    const showDone = !!prefs.boardDone;
     const card = r => {
       const t = ticketOf(r);
       const prs = prsOf(r);
@@ -279,20 +281,20 @@
         prs.length > 2 ? `<span class="pr-more">+${prs.length - 2}</span>` : '',
       ].join('');
       return `<div class="rv-card ${k}" role="button" tabindex="0" ${openAttr(r)}>
-        <div class="rv-card-top"><span class="rv-g ${k}" aria-hidden="true">${STATE_GLYPH[k]}</span><span class="rv-card-num">${esc(t.num || '')}</span><span class="rv-card-when">${esc(ago(r.updatedAt))}</span></div>
+        <div class="rv-card-top"><span class="rv-g ${k}" aria-hidden="true">${STATE_GLYPH[k]}</span><span class="rv-card-num">${esc(t.num || '')}</span><span class="rv-card-when num" title="${esc(usdOf(r) == null ? `Sem medição de custo · atualizado ${ago(r.updatedAt)}` : `Custo medido · fonte: cost_tracking do state.json · atualizado ${ago(r.updatedAt)}`)}">${esc(usdOf(r) == null ? ago(r.updatedAt) : fmtUsd(usdOf(r)))}</span></div>
         <div class="rv-card-title">${esc(t.text)}</div>
         <div class="rv-card-state ${k}">${esc(statusLabel(r))}</div>
         ${meta ? `<div class="rv-card-meta">${meta}</div>` : ''}
       </div>`;
     };
-    return `${vhead('Quadro por etapa', 'Cada run fica na etapa que vai rodar em seguida. Os parados esperando você têm borda âmbar (vermelha quando falharam) e vêm primeiro.',
-      `<button class="btn" type="button" data-vact="toggledone" aria-pressed="${showDone}">${showDone ? 'Esconder concluídos' : `Mostrar concluídos (${by.done.length})`}</button>`)}
-      <div class="rv-board">${cols.filter(c => c.key !== 'done' || showDone).map(c => `
+    // Artboard Main: 8 colunas fixas (7 etapas + concluído), texto de apoio embaixo.
+    return `<div class="rv-board">${cols.map(c => `
         <section class="rv-col" aria-label="${esc(c.label)}: ${by[c.key].length} run${by[c.key].length === 1 ? '' : 's'}">
           <header class="rv-col-head"><span>${esc(c.label)}</span><span class="rv-count">${by[c.key].length}</span></header>
           <div class="rv-col-body">${by[c.key].map(card).join('') || '<p class="rv-col-empty">Nenhum run</p>'}</div>
         </section>`).join('')}
-      </div>`;
+      </div>
+      <p class="rv-foot">Cada cartão fica na etapa em que a run está. Borda âmbar ou vermelha = parada esperando você; esses vêm primeiro.</p>`;
   }
 
   // ------------------------------------------------------------------ Tabela
@@ -430,15 +432,15 @@
     }).join('');
     const rangeBtn = (n, label) => `<button type="button" data-vact="range" data-range="${n}" aria-pressed="${tl.range === n}">${label}</button>`;
     const legend = `<div class="rv-legend" aria-label="Legenda">${PHASES.map((p, i) => `<span><i class="rv-sw ph${i}" aria-hidden="true"></i>${p.label} <small>(${p.nodes.map(n => NODE_LABEL[n]).join(', ')})</small></span>`).join('')}
-      <span><i class="rv-sw rv-tail" aria-hidden="true"></i>Esperando</span><span><i class="rv-sw rv-tail blocked" aria-hidden="true"></i>Parado esperando você</span></div>`;
-    return `${vhead('Linha do tempo', 'Uma faixa por run. Cada trecho é o tempo até o agente registrar uma etapa (pelo agent_log); a faixa tracejada é quanto tempo o run está esperando agora.',
-      `<div class="seg" role="group" aria-label="Período">${rangeBtn(7, '7 dias')}${rangeBtn(30, '30 dias')}${rangeBtn(0, 'Tudo')}</div>`)}
+      <span><i class="rv-sw rv-tail blocked" aria-hidden="true"></i>esperando você</span><span><i class="rv-sw rv-tail" aria-hidden="true"></i>na fila do watcher</span></div>`;
+    // Artboard Main: faixas e legenda embaixo; o período (7/30 dias/tudo) é do app.
+    return `<div class="rv-tl-tools"><div class="seg" role="group" aria-label="Período">${rangeBtn(7, '7 dias')}${rangeBtn(30, '30 dias')}${rangeBtn(0, 'Tudo')}</div></div>
       ${inRange.length ? `<div class="panel rv-timeline">
-        ${legend}
         <div class="rv-tl-scroll"><div class="rv-tl-grid">
           <div class="rv-lane rv-axis" aria-hidden="true"><span class="rv-axis-label">${tl.range ? `últimos ${tl.range} dias` : 'todo o período'}</span><div class="rv-track">${ticks.map(t => `<span class="rv-tick" style="left:${pct(t)}%">${fmtDay(t)}</span>`).join('')}<span class="rv-tick now" style="left:${pct(now)}%">agora</span></div></div>
           <div class="rv-lanes">${lanes}</div>
-        </div></div></div>` : '<div class="empty">Nenhum run com atividade nesse período.</div>'}`;
+        </div></div>
+        ${legend}</div>` : '<div class="empty">Nenhum run com atividade nesse período.</div>'}`;
   }
 
   // ------------------------------------------------------------------ Métricas

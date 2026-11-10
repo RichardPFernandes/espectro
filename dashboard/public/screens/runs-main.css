@@ -7,9 +7,13 @@
 #runFilter { display: none; }
 body:is([data-view="runs"], [data-view="quadro"], [data-view="tabela"], [data-view="timeline"]):not(.run-open) #runFilter { display: inline-flex; }
 #runFilter > button { display: inline-flex; align-items: center; gap: 6px; }
+/* Com o filtro por estado no topo, a busca encolhe para o cabeçalho caber numa linha. */
+body:is([data-view="runs"], [data-view="quadro"], [data-view="tabela"], [data-view="timeline"]) .topbar .search { flex: 0 1 200px; min-width: 120px; }
 .rl-count { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 400; }
 
 /* ------------------------------------------------------------ lista: indicadores */
+/* Painel da lista com a run selecionada: ~440 px como no artboard Main a 1440 px. */
+.layout { grid-template-columns: 440px minmax(0, 1fr); }
 .rl-kpis { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .rl-team { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; font-size: 12px; line-height: 16px; }
 .rl-team-t { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text); }
