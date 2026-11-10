@@ -42,6 +42,18 @@ writeRun('6001-teste-prs', {
     pull_request: { 'app-back': { url: 'https://bitbucket.org/ws/app-back/pull-requests/501', id: 501 } },
 });
 
+// Lado de PR da antiga "Tickets e PRs" (PRI-326): PRs gravados nos runs que não vêm na lista
+// do Bitbucket entram em /api/prs com o estado do state.json. MERGED do run é histórico: fica fora.
+writeRun('6002-teste-superseded', {
+    pull_request: {
+        'app-back': { url: 'https://bitbucket.org/ws/app-back/pull-requests/601', id: 601, state: 'SUPERSEDED', last_checked_at: '2026-09-22T10:00:00.000Z' },
+        'app-front': { url: 'https://bitbucket.org/ws/app-front/pull-requests/602', id: 602 },
+    },
+});
+writeRun('6003-teste-merged-historico', {
+    pull_request: { 'app-back': { url: 'https://bitbucket.org/ws/app-back/pull-requests/603', id: 603, state: 'MERGED' } },
+});
+
 const prBy = new Map(); // id -> raw PR (formato Bitbucket) usado no GET de detalhe/approve
 const openList = [];
 const mergedList = [];
@@ -177,7 +189,7 @@ test('GET /api/prs: shape (prs, linkedRuns, currentUser) e linkedRun do PR com r
     const r = await get('/api/prs');
     assert.strictEqual(r.status, 200, r.text);
     assert.ok(Array.isArray(r.body.prs));
-    assert.strictEqual(r.body.prs.length, 3, JSON.stringify(r.body.prs));
+    assert.strictEqual(r.body.prs.filter(p => p.source !== 'run').length, 3, JSON.stringify(r.body.prs));
     assert.ok(r.body.linkedRuns && typeof r.body.linkedRuns === 'object');
     assert.deepStrictEqual(r.body.currentUser, { displayName: 'Eu Mesmo' });
 
@@ -222,7 +234,7 @@ test('GET /api/prs/:id: detalhe de um PR existente inclui diffStat e linkedRun',
     const r = await get('/api/prs/501');
     assert.strictEqual(r.status, 200, r.text);
     assert.strictEqual(r.body.id, 501);
-    assert.deepStrictEqual(r.body.diffStat, { filesChanged: 0, linesAdded: 0, linesRemoved: 0 });
+    assert.deepStrictEqual(r.body.diffStat, { filesChanged: 0, linesAdded: 0, linesRemoved: 0, files: [] });
     assert.deepStrictEqual(r.body.linkedRun, { taskId: '6001-teste-prs', ticketId: 6001, ticketUrl: 'https://redmine.example.com/issues/6001' });
     assert.ok(!r.text.includes(TOKEN));
 });
@@ -289,7 +301,7 @@ test('GET /api/prs: BITBUCKET_ACCOUNT_ID tem precedência sobre /user', async ()
     try {
         const { status, body } = await get('/api/prs');
         assert.strictEqual(status, 200);
-        assert.deepStrictEqual(body.prs.map(p => p.id), [503]);
+        assert.deepStrictEqual(body.prs.filter(p => p.source !== 'run').map(p => p.id), [503]);
     } finally {
         await startDashboard();
     }
@@ -298,4 +310,23 @@ test('GET /api/prs: BITBUCKET_ACCOUNT_ID tem precedência sobre /user', async ()
 test('POST /api/prs/:id/approve: repo fora da lista configurada -> 400', async () => {
     const r = await post('/api/prs/501/approve?repo=outro-repo');
     assert.strictEqual(r.status, 400, r.text);
+});
+
+test('GET /api/prs: PR só do run (fora da lista do Bitbucket) entra com o estado do state.json; vazio = desconhecido; MERGED do run fica fora', async () => {
+    const r = await get('/api/prs');
+    assert.strictEqual(r.status, 200, r.text);
+    const fromRuns = r.body.prs.filter(p => p.source === 'run');
+    assert.deepStrictEqual(fromRuns.map(p => `${p.repo}#${p.id}`).sort(), ['app-back#601', 'app-front#602']);
+    const sup = fromRuns.find(p => p.id === 601);
+    assert.strictEqual(sup.state, 'SUPERSEDED');
+    assert.strictEqual(sup.stateCheckedAt, '2026-09-22T10:00:00.000Z');
+    assert.strictEqual(sup.canApprove, false, 'PR só do run nunca oferece aprovação');
+    assert.strictEqual(sup.reviewers, null, 'revisores não consultados: null, nunca lista vazia');
+    assert.strictEqual(sup.hasConflicts, null);
+    assert.deepStrictEqual(sup.linkedRun, { taskId: '6002-teste-superseded', ticketId: 6002, ticketUrl: 'https://redmine.example.com/issues/6002' });
+    const unk = fromRuns.find(p => p.id === 602);
+    assert.strictEqual(unk.state, null, 'sem estado no state.json: desconhecido');
+    assert.ok(!r.body.prs.some(p => p.id === 603), 'MERGED registrado só no run é histórico');
+    assert.ok(!r.body.prs.some(p => p.source === 'run' && p.id === 501 && p.repo === REPO), 'PR que já veio do Bitbucket não duplica');
+    assert.ok(`app-back#601` in r.body.linkedRuns);
 });
