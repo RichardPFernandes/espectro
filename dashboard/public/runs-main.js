@@ -117,7 +117,7 @@
     else if (r.status === 'needs_human_review') parts.push('esperando você');
     else if (r.status === 'running') parts.push(r.state?.status === 'running' ? 'rodando' : 'próximo nó');
     if (extra) parts.push(`tentativa ${extra + 1}`);
-    if (r.status === 'running' && pos >= 0) parts.push(`${pos + 1}/7`);
+    if (r.status === 'running' && pos >= 0) parts.push(`${pos + 1}/${NODES.length}`);
     return parts.join(' · ');
   }
   // Duração "1 h 0 min" / "31 min" / "2 d" (artboard: "parado 1 h 0 min").
@@ -159,7 +159,7 @@
       else { tone = 'off'; text = 'watcher parado'; }
     }
     return `<span class="sb-w" data-tone="${tone}"><i aria-hidden="true"></i>${esc(text)}</span>
-      <span class="sb-keys">${MOD}K buscar · J K navegar · X selecionar · Esc fechar · V lista/quadro/linha do tempo</span>`;
+      <span class="sb-keys sb-text">${MOD}K buscar · J K navegar · X selecionar · Esc fechar · V lista/quadro/tabela/linha do tempo</span>`;
   }
 
   // ---------------------------------------------------------------- pipeline
@@ -251,7 +251,7 @@
           <div class="rs-m" title="Fonte: cost_tracking.totals.cost_usd (watcher)"><span>Custo até agora</span><b class="num">${esc(usd(tt.usd))}</b></div>
           <div class="rs-m" title="Fonte: cost_tracking.totals, entrada + saída"><span>Tokens</span><b class="num">${esc(tok(tt.tokens))}</b></div>
           <div class="rs-m" title="Fonte: cost_tracking.totals.duration_ms"><span>Duração</span><b class="num">${esc(tt.ms == null ? NONE : fmtMs(tt.ms))}</b></div>
-          <div class="rs-m sm" title="Fonte: state.node"><span>Onde está</span><b class="num">${esc(r.status === 'committed' ? 'concluído' : `${node}${pos >= 0 ? ` · ${pos + 1}/7` : ''}`)}</b></div>
+          <div class="rs-m sm" title="Fonte: state.node"><span>Onde está</span><b class="num">${esc(r.status === 'committed' ? 'concluído' : `${node}${pos >= 0 ? ` · ${pos + 1}/${NODES.length}` : ''}`)}</b></div>
         </div>
         <section class="rs-sec" aria-labelledby="rs-pl"><h2 id="rs-pl" class="rs-h">Pipeline</h2>${pipelineHtml(r, 'sm')}</section>
         <section class="rs-sec" aria-labelledby="rs-tl"><h2 id="rs-tl" class="rs-h">Últimos 7 dias</h2>

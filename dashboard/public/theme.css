@@ -346,3 +346,6 @@ body:not([data-view="runs"]) .app-main:has(> .view :is([class*="statusbar"], foo
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Indicador de conexão na barra superior: ponto + rótulo curto, mono 11 como no rodapé. */
+.topbar .live { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; padding: 0 4px; }

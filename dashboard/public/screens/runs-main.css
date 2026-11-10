@@ -357,3 +357,4 @@ body.run-open .detail { padding: 0; gap: 0; display: flex; flex-direction: colum
 body.run-open .topbar :is(.crumbs-top, #runViews, #runFilter) { display: none; }
 body.run-open .topbar > :is(.search, .topbar-right):not([hidden]) { margin-left: auto; }
 body.run-open .topbar .search:not([hidden]) ~ .topbar-right { margin-left: 0; }
+#runsStatus .sb-text { cursor: default; }

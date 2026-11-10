@@ -292,6 +292,7 @@
   $('cmdk').addEventListener('click', openPalette);
   $('bell').addEventListener('click', toggleNotify);
   $('helpBtn').addEventListener('click', openHelp);
+  $('helpTop').addEventListener('click', openHelp);
   syncBell();
 
   // ------------------------------------------------------------------ teclado global

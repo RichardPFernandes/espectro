@@ -171,5 +171,5 @@ test('footerHtml: watcher ativo · tick N, parado ou verificando; atalhos do art
     assert.match(M.footerHtml({ reachable: true, st: { running: false, state: 'stopped' } }), /watcher parado/);
     assert.match(M.footerHtml({ reachable: false, st: null }), /watcher sem conexão/);
     assert.match(M.footerHtml(null), /watcher: verificando/);
-    assert.match(M.footerHtml(null), /K buscar · J K navegar · X selecionar · Esc fechar · V lista\/quadro\/linha do tempo/);
+    assert.match(M.footerHtml(null), /K buscar · J K navegar · X selecionar · Esc fechar · V lista\/quadro\/tabela\/linha do tempo/);
 });

@@ -329,12 +329,12 @@
     const ext = (lbl, url) => `<a class="${A.length ? 'kg-act2' : 'kg-act'}" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${lbl}${A.length ? ' ↗' : '<span aria-hidden="true">↗</span>'}</a>`;
     if (e.t === 'ticket') {
       A.push(sdd('Ver no Rastreio SDD', { taskId: e.num }));
-      if (e.raw.redmine_url) A.push(ext('Abrir no Redmine', e.raw.redmine_url));
+      if (/^https?:\/\//i.test(String(e.raw.redmine_url || ''))) A.push(ext('Abrir no Redmine', e.raw.redmine_url));
     } else if (e.t === 'spec') {
       if (e.num) A.push(sdd('Ver no Rastreio SDD', { taskId: e.num }));
     } else if (e.t === 'file') {
       A.push(sdd('Ver tickets que tocaram', { file: e.id }));
-    } else if (e.raw.url) {
+    } else if (/^https?:\/\//i.test(String(e.raw.url || ''))) {
       A.push(ext('Abrir o PR', e.raw.url));
     }
     return A.join('');
@@ -409,7 +409,7 @@
         ${updated ? `<div class="kg-pills"><span class="kg-pill" title="${esc(when(updated))}">captura ${esc(when(updated))}</span></div>` : ''}
       </header>
       ${updated ? `<div class="kg-liverow"><span class="kg-live" title="Última gravação de memory/knowledge-graph.json"><span aria-hidden="true">○</span>Último evento ${esc(agoShort(updated))}</span></div>` : ''}`;
-    const wrap = body => `<main role="tabpanel" aria-labelledby="kg-vt-own" class="kg-main">${hdr}${body}</main>`;
+    const wrap = body => `<div role="tabpanel" aria-labelledby="kg-vt-own" class="kg-main">${hdr}${body}</div>`;
     if (st.errorAll) return wrap(`<p class="kg-msg failed" role="alert"><span aria-hidden="true">✕</span> Não deu para ler o grafo: ${esc(st.errorAll)}</p>`);
     if (!d) return wrap('<div class="panel empty">Carregando…</div>');
     if (!d.exists) return wrap('<div class="panel empty">Ainda não existe <code>memory/knowledge-graph.json</code>. Ele é criado no próximo tick do watcher ou pelo <code>/commit</code>.</div>');

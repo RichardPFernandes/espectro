@@ -158,7 +158,7 @@
     };
   }
   // Tecla → aba ou null: J/K presos às pontas; 1–N pulam direto (artboard "1–4"). Os dígitos só chegam
-  // aqui com o foco dentro da tela (data-local-digits); fora dela continuam trocando de tela (ux.js).
+  // aqui com o foco dentro da tela (data-local-digits); fora dela o atalho global de dígitos (ux.js) só vale na tela Runs.
   function tabForKey(key, current) {
     const { idx } = tabs(current);
     if (key === 'j' || key === 'k') return TABS[Math.max(0, Math.min(TABS.length - 1, idx + (key === 'j' ? 1 : -1)))][0];

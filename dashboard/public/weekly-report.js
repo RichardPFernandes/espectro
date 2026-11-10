@@ -500,9 +500,11 @@
     };
   }
   const shownAll = () => visibleRuns().filter(r => !isHidden(r));
-  // Escopo (artboard "Escopo"): projeto = location do run; "all" = todos os projetos.
-  const shown = () => (st.scope === 'all' ? shownAll() : shownAll().filter(r => r.location === st.scope));
-  const scopeLabelOf = () => (st.scope === 'all' ? 'todos os projetos' : st.scope);
+  // Escopo e "Custo por projeto" do artboard ficam pendentes: o run não grava o projeto consumidor
+  // (location é a cópia do checkout: main, worktree:<ticket>…), então o relatório é sempre de todos.
+  const SCOPE_BY_PROJECT = false;
+  const shown = () => (!SCOPE_BY_PROJECT || st.scope === 'all' ? shownAll() : shownAll().filter(r => r.location === st.scope));
+  const scopeLabelOf = () => (!SCOPE_BY_PROJECT || st.scope === 'all' ? 'todos os projetos' : st.scope);
   const model = () => buildReport(shown(), env(), { win: st.win, scopeLabel: scopeLabelOf() });
   const WINS = [['cur', 'Semana atual'], ['prev', 'Semana anterior'], ['all', 'Todos os runs']];
   const toneCls = t => `wr-tone-${t || 'muted'}`;
@@ -521,8 +523,8 @@
       </div></div>
       ${health.k === 'partial' ? `<div class="wr-alert" role="alert"><span aria-hidden="true">‖</span><span>${esc(health.note)}</span></div>` : ''}
       <div class="wr-tools">
-        <label class="wr-scope">Escopo
-          <select data-wrscope>${scopes.map(([v, l]) => `<option value="${esc(v)}"${st.scope === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+        ${SCOPE_BY_PROJECT ? `<label class="wr-scope">Escopo
+          <select data-wrscope>${scopes.map(([v, l]) => `<option value="${esc(v)}"${st.scope === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>` : ''}
         <label class="wr-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
           <input type="search" data-wrq aria-label="Filtrar entregas, gates e padrões" placeholder="Filtrar ticket, PR, padrão…" value="${esc(st.q)}"></label>
       </div>
@@ -663,7 +665,7 @@
           <span class="wr-foot">Fonte: tracker do Redmine + state.json · cost_tracking${unpriced ? ` · ${plural(unpriced, 'run sem custo fica', 'runs sem custo ficam')} fora das barras` : ''}</span></div>
       </div>
     </section>
-    ${M.projects.length ? `<section class="wr-sec wr-sec-rule" aria-labelledby="wr-bp-h">
+    ${SCOPE_BY_PROJECT && M.projects.length ? `<section class="wr-sec wr-sec-rule" aria-labelledby="wr-bp-h">
       ${secHead('wr-bp-h', 'Custo por projeto', `participação no total ${M.isAll ? 'da janela' : 'da semana'}, com o custo médio por run`)}
       <div class="wr-proj-box">${M.projects.map(x => `<div class="wr-proj-row">
           <span class="wr-proj-name">${esc(x.name)}</span>${bar(x.w)}
@@ -772,7 +774,7 @@
     if (all.length && st.scope !== 'all' && !locs.includes(st.scope)) st.scope = 'all';
     const M = model();
     lastModel = M;
-    const eyebrow = st.scope !== 'all' ? st.scope : locs.length === 1 ? locs[0] : '';
+    const eyebrow = SCOPE_BY_PROJECT && st.scope !== 'all' ? st.scope : '';
     const errs = V?.bulkErrors?.() || { tickets: 0, prs: 0 };
     const health = !M.cur.runs ? { k: 'queued', glyph: '○', label: 'Sem runs' }
       : errs.tickets || errs.prs ? { k: 'partial', glyph: '‖', label: 'Dados parciais',

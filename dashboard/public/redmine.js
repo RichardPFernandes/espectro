@@ -222,7 +222,7 @@
     const v = TB.verdict(r);
     const VER = { ok: ['✓', 'done'], amber: ['‖', 'waiting'], red: ['✕', 'failed'], unk: ['?', 'queued'] }[v.kind];
     const s = TB.statusStyle(r.status);
-    const pending = d?.loading ? 'carregando…' : d?.error ? 'não carregou' : '—';
+    const pending = d?.loading ? 'carregando…' : d?.error ? 'não carregou' : d ? '—' : 'não consultado';
     const est = t ? t.estimated_hours : r.estimated_hours;
     const spent = t?.spent_hours ?? null;
     const pct = est && spent != null ? Math.min(100, Math.round(spent / est * 100)) : 0;
@@ -265,7 +265,7 @@
       </section>
       <section class="tk-sec tk-sec-last" aria-labelledby="jr-h">
         <h3 id="jr-h" class="tk-h3">Histórico no Redmine</h3>
-        ${d?.data ? journalList(d.data, 'tk-journal') : `<p class="tk-muted">${d?.error ? `Não foi possível carregar o histórico: ${esc(d.error)}` : 'Carregando histórico…'}</p>`}
+        ${d?.data ? journalList(d.data, 'tk-journal') : `<p class="tk-muted">${d?.error ? `Não foi possível carregar o histórico: ${esc(d.error)}` : d ? 'Carregando histórico…' : `Detalhe ainda não consultado no Redmine. <button type="button" class="tk-link" data-tk="pick" data-id="${r.id}">Consultar</button>`}</p>`}
       </section>
     </aside>`;
   }
@@ -365,13 +365,10 @@
     else if (!all.length) body = estBlock('empty');
     else {
       const vis = TB.filterRows(all, pref.view, st.q);
-      // Estado inicial do artboard: o primeiro ticket da lista já aberto no painel. Depois que a
-      // pessoa fecha (Esc / ×), a tela não reabre sozinha.
-      if (st.sel == null && !st.selClosed && vis.length) {
-        st.sel = order()[0] ?? vis[0].id;
-        const id = st.sel;
-        queueMicrotask(() => loadDetail(id));
-      }
+      // Estado inicial do artboard: o primeiro ticket da lista já aberto no painel, só com o que a
+      // lista já trouxe — o detalhe do Redmine (GET /api/tickets/:id) só é consultado num clique.
+      // Depois que a pessoa fecha (Esc / ×), a tela não reabre sozinha.
+      if (st.sel == null && !st.selClosed && vis.length) st.sel = order()[0] ?? vis[0].id;
       const views =TB.VIEWS.map(([id, label, fn], i) => {
         const on = pref.view === id;
         return `<button type="button" role="tab" class="tk-seg" data-tk="view" data-v="${id}" aria-selected="${on}"><kbd>${i + 1}</kbd>${label}<span class="num">${all.filter(fn).length}</span></button>`;

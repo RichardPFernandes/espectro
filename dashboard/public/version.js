@@ -117,7 +117,7 @@
       e.preventDefault(); window.Views?.refresh();
       return;
     }
-    // Dígito com o foco fora da tela é do atalho global (ux.js troca de tela); aqui só J/K.
+    // Dígito com o foco fora da tela: o atalho global (ux.js) só vale na tela Runs; aqui só J/K.
     if (/^[0-9]$/.test(e.key) && !document.activeElement?.closest?.('[data-local-digits]')) return;
     const next = M().tabForKey(e.key, tab);
     if (next) { e.preventDefault(); setTab(next); }
