@@ -31,7 +31,7 @@ function fakeExec(missing = []) {
     });
 }
 
-function make({ envFile = path.join(tmp, `dash-${Math.random()}.env`), env = {}, locked = false, missing = [], fetchFn, probe, nodeVersion = 'v22.1.0' } = {}) {
+function make({ envFile = path.join(tmp, `dash-${Math.random()}.env`), env = {}, locked = false, missing = [], fetchFn, probe, nodeVersion = 'v22.1.0', exec } = {}) {
     const saved = [];
     const probes = [];
     const ob = createOnboarding({
@@ -41,7 +41,7 @@ function make({ envFile = path.join(tmp, `dash-${Math.random()}.env`), env = {},
         probeUsage: async args => { probes.push(args); return probe || { ok: true }; },
         validateConfig: async () => ({ exitCode: 0, results: [] }),
         onSaved: u => saved.push(u),
-        exec: fakeExec(missing), fetchFn: fetchFn || (async () => ({ status: 200, json: async () => ({ user: { login: 'parceiro' } }) })),
+        exec: exec || fakeExec(missing), fetchFn: fetchFn || (async () => ({ status: 200, json: async () => ({ user: { login: 'parceiro' } }) })),
         platform: 'darwin', nodeVersion,
     });
     return { ob, saved, probes, envFile };
@@ -79,8 +79,25 @@ test('ferramentas: obrigatória ausente pede você com comando; Codex ausente é
     assert.match(by.claude.command, /claude-code/);
     assert.equal(by.codex.state, 'queued');
     assert.deepEqual(r.summary, { done: 2, optional: 1, waiting: 1 });
+    // versão e requisito prontos para a tela; ferramenta ausente não ganha versão inventada
+    assert.match(by.git.version, /^git \d+\.\d+/);
+    assert.equal(by.node.version, 'node 22.1.0 · npm 9.9.9');
+    assert.equal(by.node.requirement, 'obrigatório · Node 20 ou mais');
+    assert.equal(by.claude.version, null);
+    assert.equal(by.codex.version, null);
+    assert.equal(by.codex.requirement, 'opcional');
     const old = await make({ nodeVersion: 'v18.20.0' }).ob.tools();
+    assert.equal(old.items.find(i => i.id === 'node').version, 'node 18.20.0 · npm 9.9.9');
     assert.equal(old.items.find(i => i.id === 'node').state, 'waiting');
+});
+
+test('ferramentas: binário que responde sem número de versão não vira "não encontrado"', async () => {
+    const base = fakeExec();
+    const exec = (file, args, opts) => (file === 'claude' ? Promise.resolve({ code: 0, stdout: 'Claude Code\n', stderr: '' }) : base(file, args, opts));
+    const r = await make({ exec }).ob.tools();
+    const claude = r.items.find(i => i.id === 'claude');
+    assert.equal(claude.state, 'done');
+    assert.equal(claude.version, 'claude · versão desconhecida');
 });
 
 test('repoInfo recusa pasta sem git, subpasta e o próprio Prisma', async () => {
