@@ -73,7 +73,6 @@
   // Tokens totais (entrada + saída) de state.json.cost_tracking; null = sem medição
   // (run anterior ao rastreamento de custo, ou agente não reportou) — nunca 0.
   const usdOf = r => costOf(r)?.totals.cost_usd ?? null;
-  const moneyTip = usd => (usd == null ? '' : `${fmtUsd(usd)}${fx?.rate ? ` · ${fmtBrl(usd)}` : ''}`);
   const tokensOf = r => {
     const t = costOf(r)?.totals;
     if (!t || (t.input_tokens == null && t.output_tokens == null)) return null;
@@ -448,148 +447,7 @@
         ${legend}</div>` : '<div class="empty">Nenhum run com atividade nesse período.</div>'}`;
   }
 
-  // ------------------------------------------------------------------ Métricas
-  function median(xs) {
-    if (!xs.length) return null;
-    const s = [...xs].sort((a, b) => a - b), m = s.length >> 1;
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  }
-  function barChart(rows, { fmt = v => String(v), unit = '', empty = 'Sem dados.' } = {}) {
-    const max = Math.max(...rows.map(r => r.value), 0);
-    if (!max) return `<p class="rv-chart-empty">${empty}</p>`;
-    return `<div class="rv-bars">${rows.map(r => `
-      <div class="rv-bar-row" tabindex="0" data-tip="${esc(r.tip || `<strong>${esc(r.label)}</strong><br>${esc(fmt(r.value))}${unit}`)}">
-        <span class="rv-bar-label">${esc(r.label)}</span>
-        <span class="rv-bar-track"><span class="rv-bar ${r.cls || ''}" style="width:${r.value ? Math.max((r.value / max) * 100, 1.5) : 0}%"></span></span>
-        <span class="rv-bar-val">${r.value ? esc(fmt(r.value)) : '<span class="muted">0</span>'}</span>
-      </div>`).join('')}</div>`;
-  }
-  function renderMetrics() {
-    const list = shownRuns();
-    const count = f => list.filter(f).length;
-    // [rótulo, valor, estado, fonte] — a fonte vai na legenda do indicador.
-    const tiles = [
-      ['Precisa de você', count(r => !isDone(r) && needsYou(r)), 'waiting', 'status · state.json'],
-      ['Em andamento', count(r => !isDone(r) && !needsYou(r) && r.status === 'running'), '', 'status · state.json'],
-      ['Planejados e outros', count(r => !isDone(r) && !needsYou(r) && r.status !== 'running'), '', 'status · state.json'],
-      ['Concluídos', count(isDone), '', 'tipo do run · servidor'],
-      ['PRs', list.reduce((a, r) => a + prsOf(r).length, 0), '', 'state.json · pull_request'],
-      ['Mensagens ao agente', list.reduce((a, r) => a + msgsOf(r), 0), '', 'state.json · human_inputs'],
-    ];
-    const active = list.filter(r => !isDone(r));
-    const byStage = NODES.map(([k, label]) => ({ label, value: active.filter(r => stageOf(r) === k).length }));
-    // Tempo por etapa: run com cost_tracking usa a duração MEDIDA pelo watcher
-    // (duration_ms / runs = média por passagem); runs antigos seguem estimados pelo
-    // agent_log. O custo de fetch_ticket fica dentro de plan (mesmo despacho).
-    const durations = Object.fromEntries(NODES.map(([k]) => [k, []]));
-    const measured = Object.fromEntries(NODES.map(([k]) => [k, 0]));
-    for (const r of list) {
-      const c = costOf(r);
-      if (c) {
-        for (const [k, n] of Object.entries(c.nodes)) {
-          if (!durations[k] || !(n.duration_ms >= 0)) continue;
-          const runsN = Math.max(n.runs || 1, 1);
-          for (let i = 0; i < runsN; i++) durations[k].push(n.duration_ms / runsN);
-          measured[k] += runsN;
-        }
-      } else {
-        for (const s of segmentsOf(r).segs) durations[s.node].push(s.to - s.from);
-      }
-    }
-    const timeRows = NODES.map(([k, label]) => {
-      const m = median(durations[k]);
-      const src = measured[k] ? ` (${measured[k]} medida(s) pelo watcher)` : '';
-      return { label, value: m || 0, tip: `<strong>${esc(label)}</strong><br>mediana ${esc(dur(m))} em ${durations[k].length} passagem(ns)${esc(src)}` };
-    });
-    // Tokens: só runs com cost_tracking. Por etapa = soma; por tipo de ticket = média
-    // por run (é o que responde "que tipo de ticket custa mais").
-    const costed = list.filter(r => tokensOf(r) != null);
-    const nodeTok = n => (n.input_tokens == null && n.output_tokens == null) ? 0 : (n.input_tokens || 0) + (n.output_tokens || 0);
-    const tokenRows = NODES.map(([k, label]) => {
-      let sum = 0, inp = 0, out = 0, runsN = 0, silent = 0;
-      for (const r of costed) {
-        const n = costOf(r).nodes[k];
-        if (!n) continue;
-        sum += nodeTok(n); inp += n.input_tokens || 0; out += n.output_tokens || 0; runsN += n.runs || 1;
-        silent += n.runs_without_tokens || 0;
-      }
-      const silentTxt = silent ? `<br>${silent} execução(ões) sem tokens reportados (não contam como 0)` : '';
-      return { label, value: sum, tip: `<strong>${esc(label)}</strong><br>${esc(fmtTok(inp))} entrada · ${esc(fmtTok(out))} saída<br>${runsN} execução(ões)${silentTxt}` };
-    });
-    const byTracker = new Map();
-    for (const r of costed) {
-      const key = r.ticket?.tracker || 'Sem tipo';
-      const g = byTracker.get(key) || { tok: 0, ms: 0, loops: 0, n: 0 };
-      const t = costOf(r).totals;
-      g.tok += tokensOf(r); g.ms += t.duration_ms || 0; g.loops += t.loop_count || 0; g.n += 1;
-      byTracker.set(key, g);
-    }
-    const trackerRows = [...byTracker.entries()].sort((a, b) => b[1].tok / b[1].n - a[1].tok / a[1].n).map(([label, g]) => ({
-      label, value: Math.round(g.tok / g.n),
-      tip: `<strong>${esc(label)}</strong><br>média ${esc(fmtTok(Math.round(g.tok / g.n)))} tokens · ${esc(dur(g.ms / g.n))} por run<br>${g.n} run(s) · ${g.loops} reexecução(ões) no total`,
-    }));
-    const totalTok = costed.reduce((a, r) => a + tokensOf(r), 0);
-    const priced = list.filter(r => usdOf(r) != null);
-    const totalUsd = priced.reduce((a, r) => a + usdOf(r), 0);
-    const usdRows = NODES.map(([k, label]) => {
-      let usd = 0, runsN = 0;
-      for (const r of priced) { const n = costOf(r).nodes[k]; if (n?.cost_usd != null) { usd += n.cost_usd; runsN += n.runs || 1; } }
-      return { label, value: usd, tip: `<strong>${esc(label)}</strong><br>${esc(moneyTip(usd))}<br>${runsN} execução(ões)` };
-    });
-    const usdByTracker = new Map();
-    for (const r of priced) {
-      const key = r.ticket?.tracker || 'Sem tipo';
-      const g = usdByTracker.get(key) || { usd: 0, n: 0, loops: 0 };
-      g.usd += usdOf(r); g.n += 1; g.loops += costOf(r).totals.loop_count || 0;
-      usdByTracker.set(key, g);
-    }
-    const usdTrackerRows = [...usdByTracker.entries()].sort((a, b) => b[1].usd / b[1].n - a[1].usd / a[1].n).map(([label, g]) => ({
-      label, value: g.usd / g.n,
-      tip: `<strong>${esc(label)}</strong><br>média ${esc(moneyTip(g.usd / g.n))} por run<br>${g.n} run(s) · total ${esc(moneyTip(g.usd))} · ${g.loops} reexecução(ões)`,
-    }));
-    const totalLoops = list.reduce((a, r) => a + (costOf(r)?.totals.loop_count || 0), 0);
-    const retryRows = NODES.map(([k, label]) => ({ label, value: list.reduce((a, r) => a + (Number(r.state?.retries?.[k]) || 0), 0) }));
-    const prStates = { OPEN: 0, MERGED: 0, DECLINED: 0, SUPERSEDED: 0, '': 0 };
-    for (const r of list) for (const p of prsOf(r)) prStates[prState(r.taskId, p) || ''] += 1;
-    const prRows = [['OPEN', 'Abertos'], ['MERGED', 'Mergeados'], ['DECLINED', 'Recusados'], ['SUPERSEDED', 'Substituídos'], ['', 'Estado desconhecido']]
-      .map(([k, label]) => ({ label: k ? `${label} (${k})` : label, value: prStates[k], cls: `pr-${k || 'unknown'}` }));
-    const liveKnown = list.some(r => prCache.get(r.taskId)?.data);
-    // Faixa "custo por etapa" (design: barra empilhada de participação). Mesmos dados de
-    // usdRows; a parte é sobre a soma por etapa (não sobre totals, que pode divergir).
-    const nodeUsd = usdRows.reduce((a, x) => a + x.value, 0);
-    const pctTxt = p => `${p < 1 ? '< 1' : Math.round(p)}%`;
-    const shareParts = nodeUsd > 0 ? usdRows.filter(x => x.value > 0).map(x => ({ ...x, pct: (x.value / nodeUsd) * 100 })) : [];
-    const share = shareParts.length ? `<section class="rv-share" aria-label="Participação de cada etapa no custo estimado">
-        <span class="rv-share-cap">Custo por etapa · participação no custo estimado de ${priced.length} run${priced.length > 1 ? 's' : ''} · state.json.cost_tracking</span>
-        <span class="rv-share-bar" role="img" aria-label="${esc(`Custo por etapa: ${shareParts.map(p => `${p.label} ${pctTxt(p.pct)}`).join(', ')}`)}">${shareParts.map(p =>
-          `<span class="${p.pct >= 20 ? 'hi' : ''}" style="flex:${p.value} 1 0" data-tip="${esc(`<strong>${esc(p.label)}</strong><br>${esc(moneyTip(p.value))} · ${pctTxt(p.pct)}`)}"></span>`).join('')}</span>
-        <span class="rv-share-legend">${shareParts.map(p => `<span>${esc(p.label)} ${pctTxt(p.pct)}</span>`).join('')}</span>
-      </section>` : '';
-    const chart = (title, sub, body) => `<section class="panel rv-chart"><h3 class="rv-chart-title">${title}</h3><p class="rv-chart-sub">${sub}</p>${body}</section>`;
-    return `${vhead('Métricas', 'Números dos runs visíveis (a busca do topo filtra). Tempos vêm da medição do watcher quando o run tem cost_tracking; senão, são estimados pelos horários do agent_log.')}
-      <div class="kpis rv-kpis">${[...tiles, ...(costed.length ? [
-        [`Tokens (${costed.length} run${costed.length > 1 ? 's' : ''} medido${costed.length > 1 ? 's' : ''})`, fmtTok(totalTok), '', 'state.json · cost_tracking'],
-        ...(priced.length ? [[`Custo estimado${fx?.rate ? ` · ${esc(fmtBrl(totalUsd))}` : ''}`, esc(fmtUsd(totalUsd)), '', 'preço de API por modelo']] : []),
-        ['Reexecuções de etapa', totalLoops, '', 'cost_tracking · loop_count'],
-      ] : [])].map(([l, v, k, src]) => {
-        const on = k && Number(v) > 0;
-        return `<div class="kpi rv-kpi ${on ? k : ''}"><span class="kpi-label">${l}</span><span class="kpi-value">${on ? `<span aria-hidden="true">${STATE_GLYPH[k]} </span>` : ''}${v}</span><span class="kpi-hint">${src}</span></div>`;
-      }).join('')}</div>
-      ${share}
-      <div class="rv-charts">
-        ${chart('Runs ativos por etapa', 'Onde os runs em aberto estão agora.', barChart(byStage, { fmt: v => `${v} run${v > 1 ? 's' : ''}` }))}
-        ${chart('Tempo por etapa', 'Mediana de cada passagem pela etapa.', barChart(timeRows, { fmt: dur, empty: 'Nenhum agent_log com horários ainda.' }))}
-        ${chart('Tokens por etapa', 'Soma de entrada + saída medida pelo watcher (state.json.cost_tracking). Plan inclui o fetch_ticket.', barChart(tokenRows, { fmt: fmtTok, empty: 'Nenhum run com custo medido ainda.' }))}
-        ${chart('Custo por etapa', `US$ a preço de API por modelo (equivalente, se for assinatura).${fx?.rate ? ` Em R$ no tooltip — ${esc(fxNote())}` : ''}`, barChart(usdRows, { fmt: fmtUsd, empty: 'Nenhum run com custo em US$ ainda.' }))}
-        ${chart('Custo por tipo de ticket', priced.length ? 'Média em US$ por run, por tipo do Redmine.' : 'Média de tokens por run, por tipo do Redmine (sem custo em US$ ainda).', priced.length
-          ? barChart(usdTrackerRows, { fmt: fmtUsd })
-          : barChart(trackerRows, { fmt: fmtTok, empty: 'Nenhum run com custo medido ainda.' }))}
-        ${chart('Retrabalho', 'Tentativas extras registradas em state.json.retries.', barChart(retryRows, { fmt: v => `${v} tentativa${v > 1 ? 's' : ''}`, empty: 'Nenhuma tentativa extra registrada.' }))}
-        ${chart('Pull requests por estado', liveKnown ? 'Estado do Bitbucket onde já foi consultado; senão, o gravado no state.json.' : 'Estado gravado no state.json. Consulte o Bitbucket para o estado real.',
-          `${barChart(prRows, { fmt: v => `${v} PR${v > 1 ? 's' : ''}`, empty: 'Nenhum PR registrado.' })}
-          <button class="btn rv-chart-action" type="button" data-vact="loadall" ${bulk.running ? 'disabled' : ''}>${bulk.running ? `Consultando… ${bulk.done}/${bulk.total}` : '↻ Consultar Redmine e Bitbucket'}</button>`)}
-      </div>`;
-  }
+  // Relatório semanal (chave metricas): weekly-report.js (window.WeeklyReportView), PRI-327.
 
   // ------------------------------------------------------------------ Tickets e PRs
   // Busca em lote (sob demanda: ao abrir a visão ou no botão), 4 por vez, reaproveitando
@@ -614,7 +472,7 @@
       tasks.push(async () => {
         try {
           const res = await apiStatus(`/api/runs/${encodeURIComponent(taskId)}/ticket`);
-          if (res.ok) ticketCache.set(taskId, { data: res.body });
+          if (res.ok) { ticketCache.set(taskId, { data: res.body }); ticketErrors.delete(taskId); }
           else ticketErrors.set(taskId, res.status);
         } catch { ticketErrors.set(taskId, 0); }
       });
@@ -626,7 +484,7 @@
       tasks.push(async () => {
         try {
           const res = await apiStatus(`/api/runs/${encodeURIComponent(r.taskId)}/pr`);
-          if (res.ok) prCache.set(r.taskId, { data: res.body, at: Date.now() });
+          if (res.ok) { prCache.set(r.taskId, { data: res.body, at: Date.now() }); prErrors.delete(r.taskId); }
           else prErrors.set(r.taskId, res.status);
         } catch { prErrors.set(r.taskId, 0); }
       });
@@ -747,9 +605,10 @@
 
   // ------------------------------------------------------------------ render
   const RENDER = {
-    quadro: renderBoard, tabela: renderTable, timeline: renderTimeline, metricas: renderMetrics, tickets: renderTickets,
-    // graph.js/patterns.js/prs.js/redmine.js (carregados depois) montam as abas —
-    // ver window.GraphView/PatternsView/PrsView/RedmineView.
+    quadro: renderBoard, tabela: renderTable, timeline: renderTimeline, tickets: renderTickets,
+    metricas: () => (window.WeeklyReportView ? window.WeeklyReportView.render() : '<div class="vempty">Carregando…</div>'),
+    // weekly-report.js/graph.js/patterns.js/prs.js/redmine.js (carregados depois) montam as abas —
+    // ver window.WeeklyReportView/GraphView/PatternsView/PrsView/RedmineView.
     grafo: () => (window.GraphView ? window.GraphView.render() : '<div class="vempty">Carregando…</div>'),
     padroes: () => (window.PatternsView ? window.PatternsView.render() : '<div class="vempty">Carregando…</div>'),
     prs: () => (window.PrsView ? window.PrsView.render() : '<div class="vempty">Carregando…</div>'),
@@ -767,6 +626,8 @@
       const el = $('view');
       const keepY = el.scrollTop;
       const focusKey = document.activeElement?.dataset?.tfilter;
+      // Filtro do Relatório semanal (weekly-report.js): mantém foco e cursor durante a consulta em lote.
+      const wrq = document.activeElement?.matches?.('[data-wrq]') ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
       const domView = {
         roteamento: window.RoutingView,
         versao: window.VersionView,
@@ -779,10 +640,20 @@
         ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
       el.scrollTop = keepY;
       if (focusKey) el.querySelector(`[data-tfilter="${focusKey}"]`)?.focus();
+      if (wrq) { const q = el.querySelector('[data-wrq]'); if (q) { q.focus(); q.setSelectionRange(...wrq); } }
     });
   }
 
-  window.Views = { refresh, openRun, setView, loadAll, current: () => view };
+  // weekly-report.js: estado da consulta em lote (Redmine/Bitbucket), falhas e segmentos do agent_log.
+  window.Views = {
+    refresh, openRun, setView, loadAll, current: () => view, segmentsOf,
+    bulkState: () => ({ ...bulk }),
+    // 503 = integração não configurada (não é falha de consulta; o dado só fica sem medição).
+    bulkErrors: () => ({
+      tickets: [...ticketErrors.values()].filter(s => s !== 503).length, prs: [...prErrors.values()].filter(s => s !== 503).length,
+      unconfigured: [...ticketErrors.values(), ...prErrors.values()].includes(503),
+    }),
+  };
   renderTabs();
   document.body.dataset.view = view;
   if (view !== 'runs') setView(view);
