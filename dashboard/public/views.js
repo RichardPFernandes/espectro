@@ -1,5 +1,5 @@
 // Visões extras do dashboard (abas): Quadro, Tabela, Linha do tempo, Relatório semanal (chave
-// metricas), Tickets e PRs, Knowledge Graph (chave grafo, em graph.js). Script clássico carregado depois do principal: usa os globais de lá
+// metricas), Knowledge Graph (chave grafo, em graph.js). Script clássico carregado depois do principal: usa os globais de lá
 // (runs, NODES, NODE_LABEL, STATUS, esc, ago, when, titleOf, isHidden, isDone,
 // needsYou, visibleRuns, extractPrs, prBadge, prState, ticketIdOfRun, ticketCache,
 // prCache, apiStatus, select, setGroupOpen, GROUPS, prefs, persist, $,
@@ -7,7 +7,7 @@
 (() => {
   const VIEWS = [
     ['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'],
-    ['timeline', 'Linha do tempo'], ['metricas', 'Relatório semanal'], ['tickets', 'Tickets e PRs'],
+    ['timeline', 'Linha do tempo'], ['metricas', 'Relatório semanal'],
     ['redmine', 'Tickets'], ['grafo', 'Knowledge Graph'], ['padroes', 'Padrões de falha'], ['prs', 'Pull requests'],
     ['roteamento', 'Roteamento'], ['versao', 'Sistema'], ['computador', 'Este computador'],
   ];
@@ -27,6 +27,8 @@
   // #coordenacao: tela descartada na onda 1 do design (PRI-323); a API continua, a tela não.
   const alias = v => {
     if (v === 'my-tickets') return 'redmine';
+    // #tickets ("Tickets e PRs") saiu na onda 1: tickets em Tickets (PRI-325), PRs em Pull requests (PRI-326).
+    if (v === 'tickets') return 'redmine';
     if (v === 'coordenacao') return 'runs';
     if (v === 'medicao-modelo') { window.RoutingTabRequest = 'sombra'; return 'roteamento'; }
     return v;
@@ -35,7 +37,6 @@
     : location.hash.startsWith('#run/') ? 'runs' : (VIEWS.some(([k]) => k === alias(prefs.view)) ? alias(prefs.view) : 'runs');
   const table = Object.assign({ sort: 'updated', dir: -1, status: 'all', node: 'all', pr: 'all', hidden: false }, prefs.table || {});
   const tl = Object.assign({ range: 30 }, prefs.timeline || {});
-  const tk = Object.assign({ filter: 'all' }, prefs.tickets || {});
   let bulk = { running: false, done: 0, total: 0 };
 
   // ------------------------------------------------------------------ helpers
@@ -104,15 +105,13 @@
   // Grupos, ordem, rótulos e ícones do AppNav do design (Trabalho, Operação, Conhecimento, Agentes e
   // modelos, Plataforma). Só entram visões que existem no app: área sem tela não aparece.
   // Fora do AppNav, por enquanto: Relatório semanal (no design se chega pela Saúde do projeto, que o
-  // app não tem), Tickets e PRs (sai quando Tickets e Pull requests absorverem o cruzamento das três
-  // fontes, PRI-325/PRI-326) e Este computador.
+  // app não tem) e Este computador.
   const NAV = [
     ['Trabalho', [
       ['runs', 'Runs', 'M3 12h4l3-8 4 16 3-8h4'],
       ['redmine', 'Tickets', 'M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 7v12'],
       ['prs', 'Pull requests', 'M6 3v12M18 9a3 3 0 0 1-3 3H9a3 3 0 0 0-3 3M6 18h.01M18 6h.01'],
       ['metricas', 'Relatório semanal', 'M4 20V10M10 20V4M16 20v-7M22 20H2'],
-      ['tickets', 'Tickets e PRs', 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3'],
     ]],
     ['Operação', [
       ['padroes', 'Padrões de falha', 'M12 3l9 16H3zM12 10v4M12 17h.01'],
@@ -188,7 +187,6 @@
     document.body.dataset.view = v;
     renderTabs();
     refresh();
-    if (v === 'tickets' && !bulk.running && !bulk.loadedOnce) loadAll(false);
     if (v === 'redmine') window.RedmineView?.load(false);
     if (v === 'roteamento') window.RoutingView?.load();
     if (v === 'versao') window.VersionView?.load(false);
@@ -230,7 +228,6 @@
       table.dir = table.sort === k ? -table.dir : (k === 'updated' || k === 'started' ? -1 : 1);
       table.sort = k; prefs.table = table; persist(); refresh();
     } else if (a === 'range') { tl.range = Number(el.dataset.range); prefs.timeline = tl; persist(); refresh(); }
-    else if (a === 'tkfilter') { tk.filter = el.dataset.filter; prefs.tickets = tk; persist(); refresh(); }
     else if (a === 'loadall') loadAll(true);
     else if (a === 'toggledone') { prefs.boardDone = !prefs.boardDone; persist(); refresh(); }
   }
@@ -584,7 +581,8 @@
       </div>`;
   }
 
-  // ------------------------------------------------------------------ Tickets e PRs
+  // ------------------------------------------------------------------ Redmine e Bitbucket dos runs
+  // (tela Tickets, redmine.js, e Relatório semanal: ticketCache/prCache)
   // Busca em lote (sob demanda: ao abrir a visão ou no botão), 4 por vez, reaproveitando
   // os mesmos caches e endpoints do painel do run.
   async function pool(tasks, n) {
@@ -637,110 +635,10 @@
   }
   const ticketErrors = new Map();
   const prErrors = new Map();
-  const CLOSED_RE = /conclu|encerr|fechad|closed|rejeit|cancel/i;
-
-  function ticketFor(runsOfTicket) {
-    for (const r of runsOfTicket) { const c = ticketCache.get(r.taskId); if (c?.data) return c.data; }
-    return null;
-  }
-  function livePrs(r) {
-    const live = prCache.get(r.taskId)?.data?.prs;
-    return prsOf(r).map(p => {
-      const l = live?.find(x => x.id === p.id && (!p.repo || x.repo === p.repo));
-      return { ...p, state: (l?.state || p.state || '').toUpperCase(), title: l?.title, approvals: l?.participants || [], created_on: l?.created_on, error: l?.error };
-    });
-  }
-  function alertsFor(ticket, rs, prs) {
-    const out = [];
-    // Run sem state.json legível (unknown) não conta como ativo nem como concluído.
-    const known = rs.filter(r => r.status !== 'unknown');
-    const anyActive = known.some(r => !isDone(r));
-    const allDone = known.length > 0 && known.every(r => isDone(r));
-    if (ticket && CLOSED_RE.test(ticket.status || '') && anyActive) out.push(`Ticket está “${ticket.status}” no Redmine, mas há run ativo.`);
-    for (const p of prs) {
-      if (p.state === 'DECLINED' && allDone) out.push(`PR ${p.repo || ''} #${p.id} foi recusado no Bitbucket, mas o run está concluído.`);
-      if (p.state === 'DECLINED' && anyActive) out.push(`PR ${p.repo || ''} #${p.id} foi recusado no Bitbucket.`);
-      if (p.state === 'OPEN' && !p.approvals.length && p.created_on && Date.now() - Date.parse(p.created_on) > 7 * DAY) {
-        out.push(`PR ${p.repo || ''} #${p.id} está aberto há ${dur(Date.now() - Date.parse(p.created_on))} sem aprovação.`);
-      }
-    }
-    if (ticket && prs.length && prs.every(p => p.state === 'MERGED') && !CLOSED_RE.test(ticket.status || '') && allDone) {
-      out.push(`Todos os PRs estão mergeados; o ticket segue “${ticket.status}”.`);
-    }
-    return out;
-  }
-  function renderTickets() {
-    const list = shownRuns();
-    const groups = new Map();
-    for (const r of list) {
-      const id = ticketIdOfRun(r) || 'sem';
-      if (!groups.has(id)) groups.set(id, []);
-      groups.get(id).push(r);
-    }
-    let items = [...groups.entries()].map(([id, rs]) => {
-      const ticket = id === 'sem' ? null : ticketFor(rs);
-      const prs = rs.flatMap(r => livePrs(r).map(p => ({ ...p, taskId: r.taskId })));
-      const seen = new Set();
-      const uniq = prs.filter(p => { const k = `${p.repo}#${p.id || p.url}`; if (seen.has(k)) return false; seen.add(k); return true; });
-      const alerts = id === 'sem' ? [] : alertsFor(ticket, rs, uniq);
-      const errCode = rs.map(r => ticketErrors.get(r.taskId)).find(x => x !== undefined);
-      return { id, rs, ticket, prs: uniq, alerts, errCode, latest: Math.max(...rs.map(r => Date.parse(r.updatedAt) || 0)) };
-    });
-    const counts = {
-      all: items.length, alert: items.filter(i => i.alerts.length).length,
-      open: items.filter(i => i.prs.some(p => p.state === 'OPEN')).length, nopr: items.filter(i => !i.prs.length).length,
-    };
-    if (tk.filter === 'alert') items = items.filter(i => i.alerts.length);
-    if (tk.filter === 'open') items = items.filter(i => i.prs.some(p => p.state === 'OPEN'));
-    if (tk.filter === 'nopr') items = items.filter(i => !i.prs.length);
-    items.sort((a, b) => (a.id === 'sem') - (b.id === 'sem') || (b.alerts.length > 0) - (a.alerts.length > 0)
-      || (b.rs.some(needsYou) - a.rs.some(needsYou)) || b.latest - a.latest);
-    const chip = (k, label) => `<button type="button" data-vact="tkfilter" data-filter="${k}" aria-pressed="${tk.filter === k}">${label} <span class="num">${counts[k]}</span></button>`;
-    const config = [...ticketErrors.values(), ...prErrors.values()].includes(503);
-    // Estado do PR → tom de estado do design (o texto do estado continua visível).
-    const PR_TONE = { OPEN: 'running', MERGED: 'done', DECLINED: 'failed', SUPERSEDED: 'waiting' };
-    const card = i => {
-      const t = i.ticket;
-      const first = i.rs[0];
-      const title = t?.subject || ticketOf(first).text;
-      const redmine = i.id === 'sem' ? '<span class="muted">Runs sem número de ticket</span>'
-        : t ? `${ticketStatusBadge(t.status) || '<span class="muted">—</span>'}<span>${esc(t.assigned_to || 'sem responsável')}</span>
-               ${t.done_ratio != null ? `<span class="rv-ratio"><span class="rv-mono">${t.done_ratio}%</span><span class="meter rv-meter"><i style="width:${Math.max(0, Math.min(100, t.done_ratio))}%"></i></span></span>` : ''}
-               ${t.estimated_hours != null ? `<span><span class="rv-mono">${String(t.estimated_hours).replace('.', ',')} h</span> estimadas</span>` : ''}
-               <a class="rv-ext" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">Redmine ↗</a>`
-          : i.errCode === 503 ? '<span class="muted">Redmine não configurado</span>'
-            : i.errCode !== undefined ? '<span class="muted">Ticket não encontrado ou Redmine indisponível</span>'
-              : `<span class="muted">${bulk.running ? 'Consultando o Redmine…' : 'Ainda não consultado'}</span>`;
-      const prs = i.prs.length ? i.prs.map(p => {
-        const st = ['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED'].includes(p.state) ? p.state : '';
-        const label = `${p.repo || 'PR'}${p.id ? ` #${p.id}` : ''}`;
-        const inner = `<span class="rv-prst ${PR_TONE[st] || 'queued'}">${esc(st || '?')}</span><span class="rv-pr-id">${esc(label)}</span>${p.approvals.length ? `<span class="rv-approved">✓ ${p.approvals.length}</span>` : ''}`;
-        const tipText = [p.title, p.approvals.length ? `Aprovado por ${p.approvals.join(', ')}` : '', p.error || ''].filter(Boolean).join(' — ');
-        return p.url ? `<a class="rv-pr" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="${esc(tipText)}">${inner}</a>`
-          : `<span class="rv-pr" title="${esc(tipText)}">${inner}</span>`;
-      }).join('') : '<span class="muted">Nenhum PR</span>';
-      const runsHtml = i.rs.map(r => `<span class="rv-run" role="button" tabindex="0" ${openAttr(r)}>${glyphOf(r)}<span class="rv-run-id">${esc(r.taskId.replace(/^\d{4,6}-/, ''))}</span>
-        <small>${esc(stageOf(r) === 'done' ? 'concluído' : NODE_LABEL[stageOf(r)] || '')}</small></span>`).join('');
-      return `<article class="panel rv-tk ${i.alerts.length ? 'has-alert' : ''}">
-        <header class="rv-tk-head"><span class="rv-tk-id">${i.id === 'sem' ? '—' : `#${esc(i.id)}`}</span><h3 class="rv-tk-title">${esc(i.id === 'sem' ? 'Sem ticket' : title)}</h3></header>
-        <dl class="rv-tk-src">
-          <div><dt class="label">Redmine</dt><dd>${redmine}</dd></div>
-          <div><dt class="label">Bitbucket</dt><dd>${prs}</dd></div>
-          <div><dt class="label">Runs</dt><dd>${runsHtml}</dd></div>
-        </dl>
-        ${i.alerts.length ? `<div class="rv-tk-alert" role="status"><span class="rv-tk-alert-glyph" aria-hidden="true">‖</span><ul>${i.alerts.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>` : ''}
-      </article>`;
-    };
-    return `${vhead('Tickets e PRs', 'Um cartão por ticket do Redmine, com os PRs do Bitbucket e os runs do agente. Alertas apontam quando os três não batem.',
-      `<div class="seg" role="group" aria-label="Filtro">${chip('all', 'Todos')}${chip('alert', 'Com alerta')}${chip('open', 'PR aberto')}${chip('nopr', 'Sem PR')}</div>
-        <button class="btn" type="button" data-vact="loadall" ${bulk.running ? 'disabled' : ''}>${bulk.running ? `Consultando… ${bulk.done}/${bulk.total}` : '↻ Atualizar Redmine e Bitbucket'}</button>`)}
-      ${config ? '<p class="rv-banner" role="status"><span aria-hidden="true">‖</span>Redmine ou Bitbucket não configurado — defina REDMINE_URL/REDMINE_API_KEY e BITBUCKET_API_TOKEN.</p>' : ''}
-      <div class="rv-tk-grid">${items.map(card).join('') || '<div class="empty">Nenhum ticket com esse filtro.</div>'}</div>`;
-  }
 
   // ------------------------------------------------------------------ render
   const RENDER = {
-    quadro: renderBoard, tabela: renderTable, timeline: renderTimeline, metricas: renderMetrics, tickets: renderTickets,
+    quadro: renderBoard, tabela: renderTable, timeline: renderTimeline, metricas: renderMetrics,
     // graph.js/patterns.js/prs.js/redmine.js (carregados depois) montam as abas —
     // ver window.GraphView/PatternsView/PrsView/RedmineView.
     grafo: () => (window.GraphView ? window.GraphView.render() : '<div class="vempty">Carregando…</div>'),
@@ -751,7 +649,6 @@
   let pending = false;
   function refresh() {
     renderTabs(); // contador "pedem você" do item Runs acompanha os runs
-    if (view === 'tickets' && runs.size && !bulk.running && !bulk.loadedOnce) loadAll(false);
     if (view === 'runs' || pending) return;
     pending = true;
     requestAnimationFrame(() => {
@@ -764,11 +661,12 @@
         roteamento: window.RoutingView,
         versao: window.VersionView,
         computador: window.OnboardingView,
+        redmine: window.RedmineView,
       }[view];
       // Visão que devolve sempre o mesmo nó (formulário do onboarding) não é remontada: manter foco e digitação.
       const domNode = domView?.render();
       if (domNode) { if (el.firstChild !== domNode || el.lastChild !== domNode) el.replaceChildren(domNode); }
-      else el.innerHTML = view in { roteamento: 1, versao: 1, computador: 1 }
+      else el.innerHTML = view in { roteamento: 1, versao: 1, computador: 1, redmine: 1 }
         ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
       el.scrollTop = keepY;
       if (focusKey) el.querySelector(`[data-tfilter="${focusKey}"]`)?.focus();

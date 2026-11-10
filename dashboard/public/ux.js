@@ -4,7 +4,7 @@
 (() => {
   const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const MOD = IS_MAC ? '⌘' : 'Ctrl';
-  const VIEW_KEYS = [['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'], ['timeline', 'Linha do tempo'], ['metricas', 'Relatório semanal'], ['tickets', 'Tickets e PRs']];
+  const VIEW_KEYS = [['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'], ['timeline', 'Linha do tempo'], ['metricas', 'Relatório semanal'], ['redmine', 'Tickets']];
   const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const currentView = () => document.body.dataset.view || 'runs';
   // Resposta do watcher à sua mensagem (state.human_input_interpretations) vence a nota do
@@ -171,7 +171,7 @@
     act('Recolher todos os grupos', 'lista lateral', () => { Views.setView('runs'); GROUPS.forEach(g => setGroupOpen(g.key, false)); renderSidebar(); });
     act('Expandir todos os grupos', 'lista lateral', () => { Views.setView('runs'); GROUPS.forEach(g => setGroupOpen(g.key, true)); renderSidebar(); });
     act('Selecionar vários runs', 'para remover da lista', () => { Views.setView('runs'); setSelecting(true); });
-    act('Consultar Redmine e Bitbucket', 'abre Tickets e PRs', () => Views.setView('tickets'));
+    act('Consultar Redmine e Bitbucket', 'abre Tickets', () => Views.setView('redmine'));
     act(prefs.notify ? 'Desativar notificações' : 'Ativar notificações do sistema', 'quando um run parar esperando você', toggleNotify);
     act('Voltar para a visão geral', 'fecha o run aberto', () => { Views.setView('runs'); selected = null; prefs.selected = null; persist(); route(null); renderSidebar(); renderDetail(); });
     act('Atalhos de teclado', 'tecla ?', () => setTimeout(openHelp));
@@ -228,7 +228,7 @@
       <table>
         ${row([MOD, 'K'], 'Ir para qualquer run, ticket, visão ou ação')}
         ${row(['/'], 'Filtrar a lista e as visões')}
-        ${row(['1', '…', '6'], 'Trocar de aba (Runs, Quadro, Tabela, Linha do tempo, Relatório semanal, Tickets e PRs)')}
+        ${row(['1', '…', '6'], 'Trocar de aba (Runs, Quadro, Tabela, Linha do tempo, Relatório semanal, Tickets)')}
         ${row(['↑', '↓'], 'Trocar de run na lista (também j e k)')}
         ${row([MOD, '↵'], 'Enviar a mensagem ao agente')}
         ${row([MOD, 'clique'], 'Começar a selecionar vários runs')}
@@ -291,7 +291,8 @@
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '?') { e.preventDefault(); openHelp(); return; }
     const n = Number(e.key);
-    if (n >= 1 && n <= VIEW_KEYS.length && !selecting) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
+    // Na tela Tickets, 1–3 trocam a visão salva da própria tela (artboard Tickets.dc.html).
+    if (n >= 1 && n <= VIEW_KEYS.length && !selecting && !e.target?.closest?.('.tk')) { e.preventDefault(); Views.setView(VIEW_KEYS[n - 1][0]); }
   }, true);
 
   window.UX = { overview, route, notifyNeedsYou, openPalette, openHelp };
