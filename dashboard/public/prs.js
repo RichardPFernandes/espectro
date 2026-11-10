@@ -246,10 +246,12 @@
   function rowHtml(pr, cur) {
     const k = stateKey(pr), rs = revSummary(pr), h = waitHours(pr);
     const on = cur && keyOf(cur) === keyOf(pr);
+    // "+N −M" do artboard: a lista do Bitbucket não traz linhas; aparece quando o diffstat do PR já foi consultado.
+    const ds = st.detail.get(keyOf(pr))?.data?.diffStat;
     return `<div class="prs-row${on ? ' on' : ''}" data-state="${k.toLowerCase()}">
       <button type="button" data-pr-pick="${esc(keyOf(pr))}" aria-current="${on ? 'true' : 'false'}">
         ${icon(k)}
-        <span class="prs-meta mono"><span>#${esc(pr.id)}</span><span class="prs-repo">· ${esc(pr.repo || '')}</span></span>
+        <span class="prs-meta mono"><span>#${esc(pr.id)}</span><span class="prs-repo">· ${esc(pr.repo || '')}</span>${ds ? `<span class="prs-lines num"><span class="t-done">+${esc(ds.linesAdded)}</span> <span class="t-failed">−${esc(ds.linesRemoved)}</span></span>` : ''}</span>
         <span class="prs-title">${esc(titleOf(pr))}</span>
         <span class="prs-facts">${pill(k)}<span class="prs-rev t-${rs.tone}">${esc(rs.text)}</span>${pr.author ? `<span class="prs-author">${esc(pr.author)}</span>` : ''}</span>
         ${h ? `<span class="prs-wait"><span class="prs-wait-bar" aria-hidden="true"><span class="t-${waitTone(h)}" style="width:${waitWidth(h)}"></span></span><span class="prs-wait-l num t-${waitTone(h)}">sem review há ${esc(waitLabel(h))}</span></span>` : ''}
@@ -283,7 +285,7 @@
           <span class="prs-dmeta mono">${pill(k)}<span>#${esc(pr.id)} · ${esc(pr.repo || '')}</span>${t ? '<span class="prs-tag">Espectro</span>' : ''}</span>
           <h1 id="pr-h">${esc(titleOf(pr))}</h1>
           <span class="prs-branch">${pr.sourceBranch ? `<code>${esc(pr.sourceBranch)}</code><span aria-hidden="true">→</span><span class="sr-only">para</span><code>${esc(pr.targetBranch || '?')}</code>` : ''}
-            <span class="muted">${[pr.author, age].filter(Boolean).map(esc).join(' · ')}</span>${ticket}
+            ${pr.author || age ? `<span class="muted">· ${[pr.author, age].filter(Boolean).map(esc).join(' · ')}</span>` : ''}${ticket}
             ${diffUrl ? `<a class="prs-btn-s" href="${esc(diffUrl)}" target="_blank" rel="noopener noreferrer">Ver diff</a>` : ''}</span>
         </div>
         ${ban ? `<div class="prs-banner t-${ban.tone}" role="status"><span aria-hidden="true">${ban.tone === 'fail' ? '✕' : '‖'}</span><span>${esc(ban.text)}</span></div>` : ''}
