@@ -586,9 +586,14 @@
 <body class="app">
 <nav class="app-nav" aria-label="Navegação principal">
   <a class="app-brand" href="#runs" aria-label="Espectro — início">
-    <svg width="28" height="28" viewBox="0 0 48 48" aria-hidden="true"><path d="M6.1 15 A20 20 0 0 1 41.9 15 Z" style="fill: var(--accent)"/><path d="M4.9 18 H43.1 A20 20 0 0 1 43.1 30 H4.9 A20 20 0 0 1 4.9 18 Z" style="fill: var(--state-done)"/><path d="M6.1 33 H41.9 A20 20 0 0 1 6.1 33 Z" style="fill: var(--state-waiting)"/></svg>
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 4 L25 23 H3 Z" stroke-width="1.8" stroke-linejoin="round" style="stroke: var(--text)"/><path d="M14 14 L27 11" stroke-width="1.6" stroke-linecap="round" style="stroke: var(--accent)"/><path d="M14 14 L27 15" stroke-width="1.6" stroke-linecap="round" style="stroke: var(--state-done)"/><path d="M14 14 L27 19" stroke-width="1.6" stroke-linecap="round" style="stroke: var(--state-waiting)"/><path d="M1 16 L14 14" stroke-width="1.6" stroke-linecap="round" style="stroke: var(--muted)"/></svg>
     <span class="app-brand-name"><b>Espectro</b><span>dashboard local</span></span>
   </a>
+  <!-- Campo da paleta (CommandPalette do AppNav): abre a mesma paleta do ⌘K (ux.js). -->
+  <button id="cmdk" class="nav-search" type="button" title="Buscar ou ir para… (⌘K)">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>Buscar ou ir para…</span><kbd id="cmdkKey">⌘K</kbd>
+  </button>
   <div id="tabs" class="nav-groups"></div>
   <div id="navFoot" class="nav-foot"></div>
 </nav>
@@ -604,8 +609,10 @@
     <kbd>/</kbd>
   </label>
   <div class="topbar-right">
-    <div id="live" class="live" role="status"><i></i><span id="liveText">Conectando</span></div>
+    <!-- Conexão ao vivo: sempre visível (o rodapé comum some nas telas com rodapé próprio). -->
+    <div id="live" class="live" role="status"><i aria-hidden="true"></i><span id="liveText">Conectando</span></div>
     <a id="exportRuns" class="icon-btn" href="/api/export" download title="Exportar relatório (memory/runs/ em JSON)" aria-label="Exportar Relatório"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></a>
+    <button id="helpTop" class="icon-btn" type="button" title="Atalhos de teclado (?)" aria-label="Atalhos de teclado" aria-keyshortcuts="?">?</button>
     <button id="theme" class="icon-btn" type="button" title="Alternar tema" aria-label="Alternar tema claro/escuro">
       <svg data-pfx-theme-icon="moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
       <svg data-pfx-theme-icon="sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
@@ -619,6 +626,12 @@
 </div>
 
 <main id="view" class="view" aria-live="polite"></main>
+<!-- Rodapé de status comum (artboards: footer.statusbar). Telas com rodapé próprio escondem este. -->
+<footer id="appStatus" class="statusbar">
+  <span id="sbWatcher" class="sb-watcher" hidden></span>
+  <button id="helpBtn" class="sb-keys" type="button" title="Atalhos de teclado (?)" aria-keyshortcuts="?"></button>
+</footer>
+<footer id="runsStatus" class="statusbar" aria-label="Estado do watcher e atalhos"></footer>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -798,11 +811,9 @@ let lastPicked = null;
 let compareMode = false;
 const COMPARE_MAX = 2;
 const persist = () => save(PREFS_KEY, prefs);
-// Sem preferência salva, segue o sistema; os tokens (prisma-theme.css) leem só data-theme.
-const systemTheme = matchMedia('(prefers-color-scheme: light)');
-const applyTheme = () => { document.documentElement.dataset.theme = prefs.theme || (systemTheme.matches ? 'light' : 'dark'); };
+// Sem preferência salva, escuro (padrão do design, prisma-fx.js do canvas); os tokens leem só data-theme.
+const applyTheme = () => { document.documentElement.dataset.theme = prefs.theme || 'dark'; };
 applyTheme();
-systemTheme.addEventListener('change', () => { if (!prefs.theme) applyTheme(); });
 
 // ---------------------------------------------------------------- helpers
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1096,6 +1107,23 @@ setInterval(() => {
   }
 }, 1000);
 
+// Lista de Runs (artboard Main): relógio "12:04 no nó" das linhas com agente rodando e o rodapé
+// de status (watcher · tick · atalhos), que lê o mesmo estado do cartão do watcher (watcher.js).
+function paintRunsStatus() {
+  const html = RunsMain.footerHtml(window.WatcherCtl?.snapshot());
+  const el = $('runsStatus');
+  if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+}
+setInterval(() => {
+  if (document.hidden) return;
+  const now = Date.now();
+  for (const el of document.querySelectorAll('#sidebar [data-node-since]')) {
+    const w = RunsMain.rowWhen(runs.get(el.closest('.run')?.dataset.id) || {}, now);
+    if (w.since) el.textContent = w.text;
+  }
+  paintRunsStatus();
+}, 1000);
+
 // ---------------------------------------------------------------- sidebar
 let lastRunsHash = '';
 function setRuns(list) {
@@ -1151,10 +1179,11 @@ function visibleRuns() {
 function sidebarBar(list) {
   if (!selecting) {
     const anyOpen = GROUPS.some(g => groupOpen(g) && list.some(r => (g.hidden ? isHidden(r) : !isHidden(r) && g.match(r))));
-    return `<div class="side-bar"><span class="label">Runs</span><span class="spacer"></span>
+    // "Selecionar" vem do artboard Main; "Recolher tudo" e "Comparar" são do app (fora do design).
+    return `<div class="side-bar"><span class="label">Runs</span>
+      <button class="ghost-btn" type="button" data-act="select" aria-pressed="false" title="Ou ⌘/Ctrl+clique num run (X marca a run aberta)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"/></svg>Selecionar</button>
       <button class="ghost-btn" type="button" data-act="${anyOpen ? 'collapse' : 'expand'}">${anyOpen ? 'Recolher tudo' : 'Expandir tudo'}</button>
-      <button class="ghost-btn" type="button" data-act="compare-mode" title="Escolha 2 runs para ver as diferenças lado a lado">Comparar</button>
-      <button class="ghost-btn" type="button" data-act="select" title="Ou ⌘/Ctrl+clique num run">Selecionar</button></div>`;
+      <button class="ghost-btn" type="button" data-act="compare-mode" title="Escolha 2 runs para ver as diferenças lado a lado">Comparar</button></div>`;
   }
   const ids = list.map(r => r.taskId);
   const n = ids.filter(id => picked.has(id)).length;
@@ -1200,12 +1229,16 @@ function renderSidebar({ views = true } = {}) {
   if (views) window.Views?.refresh();
   // Filtro por estado e filtro do kcard (design Main) valem para a lista e para as outras visões.
   const all = [...runs.values()].filter(r => !isHidden(r));
-  const list = RunsMain.applyFilters(visibleRuns(), all);
+  // Campo "Filtrar por ticket, título ou nó" da lista (artboard Main): só nesta lista.
+  const list = RunsMain.applyFilters(visibleRuns(), all).filter(r => RunsMain.matchQuery(r));
   $('runFilter').innerHTML = RunsMain.stateFilterHtml(visibleRuns().filter(r => !isHidden(r)));
-  const q = $('q').value.trim();
+  const q = $('q').value.trim() || RunsMain.queryOf().trim();
   const side = $('sidebar');
   side.classList.toggle('selecting', selecting);
   const keep = side.scrollTop;
+  // O campo de filtro mora no HTML que se reescreve: devolve foco e cursor depois de pintar.
+  const qi = document.activeElement?.id === 'runsQ' ? { s: document.activeElement.selectionStart, e: document.activeElement.selectionEnd } : null;
+  const refocus = () => { const el = qi && $('runsQ'); if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(qi.s, qi.e); } catch { /* sem seleção */ } } };
   if (!runs.size) {
     side.innerHTML = '<div class="side-empty">Nenhum run encontrado em memory/runs. Quando o watcher pegar um ticket, ele aparece aqui sozinho.</div>';
     return;
@@ -1213,6 +1246,7 @@ function renderSidebar({ views = true } = {}) {
   const head = RunsMain.headHtml(all, sidebarBar(list));
   if (!list.length) {
     side.innerHTML = head + `<div class="side-empty">${q ? `Nada bate com “${esc(q)}”. Tente o número do ticket.` : 'Nenhuma run neste filtro.'}</div>`;
+    refocus();
     return;
   }
   let html = head;
@@ -1224,8 +1258,9 @@ function renderSidebar({ views = true } = {}) {
     const sum = items.reduce((a, r) => { const v = RunListModel.totalsOf(r).usd; return v == null ? a : (a ?? 0) + v; }, null);
     const open = groupOpen(g);
     const hasSel = !open && items.some(r => r.taskId === selected);
+    // Artboard Main: ponto · RÓTULO · contagem … soma à direita. A seta de recolher é do app (fica no fim).
     const title = `<button class="group-head ${g.cls || ''}" type="button" data-group="${g.key}" aria-expanded="${open}">
-      ${ICON.chevLeft}<span class="g-dot ${GROUP_TONE[g.key] || 'queued'}" aria-hidden="true"></span>${g.label} <span class="count">${items.length}</span>${hasSel ? '<span class="sel-dot" title="O run aberto está neste grupo"></span>' : ''}${sum == null ? '' : `<span class="g-sum num" title="Soma do custo medido · fonte: cost_tracking do state.json">${esc(fmtUsd(sum))}</span>`}</button>`;
+      <span class="g-dot ${GROUP_TONE[g.key] || 'queued'}" aria-hidden="true"></span>${g.label} <span class="count">${items.length}</span>${hasSel ? '<span class="sel-dot" title="O run aberto está neste grupo"></span>' : ''}${sum == null ? '' : `<span class="g-sum num" title="Soma do custo medido · fonte: cost_tracking do state.json">${esc(fmtUsd(sum))}</span>`}${ICON.chevLeft}</button>`;
     if (selecting && !compareMode) {
       const n = items.filter(r => picked.has(r.taskId)).length;
       const cls = n === 0 ? '' : n === items.length ? 'on' : 'some';
@@ -1238,6 +1273,7 @@ function renderSidebar({ views = true } = {}) {
   html += actionBar();
   side.innerHTML = html;
   side.scrollTop = keep;
+  refocus();
 }
 
 function groupItems(key) {
@@ -1303,7 +1339,7 @@ function miniRail(r) {
   if (!r.nodes) return '';
   const dots = NODES.map(([k, label]) => {
     const cur = r.status !== 'committed' && r.node === k;
-    const cls = cur ? (needsYou(r) ? 'cur stop' : 'cur') : r.nodes[k] === 'done' || r.status === 'committed' ? 'done' : '';
+    const cls = cur ? (r.status === 'failed' ? 'cur fail' : needsYou(r) ? 'cur stop' : 'cur') : r.nodes[k] === 'done' || r.status === 'committed' ? 'done' : '';
     return `<i class="${cls}"></i>`;
   }).join('');
   const label = NODES.map(([k, l]) => l).join(' → ');
@@ -1330,17 +1366,19 @@ function runRow(r) {
   const twin = [...runs.values()].some(o => o !== r && titleOf(o).num === t.num && titleOf(o).text === t.text);
   const slug = twin ? r.taskId.replace(/^\d{4,6}-/, '') : '';
   const prs = extractPrs(r.state?.pull_request);
-  const where = r.archived ? `${r.demand?.status || 'Aberto'} no Redmine` : r.status === 'committed' ? 'Commitado' : r.state?.status === 'spec-draft' ? 'Spec rascunho em revisão' : r.state?.status === 'spec-change-pending-approval' ? 'SPEC_CHANGE aguardando você' : r.status === 'awaiting_approval' ? 'Draft da spec no Redmine' : r.node === 'escalated' ? 'Escalado para você' : r.node ? `${r.state?.status === 'running' ? 'Rodando' : r.status === 'running' ? 'Próximo' : 'Parado em'}: ${NODE_LABEL[r.node] || r.node}` : '';
+  // Artboard Main: linha 1 = ticket · título · selos | custo; linha 2 = trilha de 7 nós · "nó · detalhe" | quando.
+  const where = RunsMain.rowWhere(r);
+  const w = RunsMain.rowWhen(r);
   return `
     <div class="run ${picked.has(r.taskId) ? 'picked' : ''} ${isHidden(r) ? 'hidden-run' : ''} ${r.qaRejected ? 'qa-rejected' : ''}" role="button" tabindex="0" data-id="${esc(r.taskId)}"
       aria-current="${r.taskId === selected}" ${selecting ? `aria-pressed="${picked.has(r.taskId)}"` : ''}>
       ${selecting
         ? `<span class="check ${picked.has(r.taskId) ? 'on' : ''}">${ICON.box}</span>`
         : stateGlyph(r.status)}
-      <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}${highlight(t.text, q)}${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${qaRetryBlockedBadge(r)}${routingBlockedBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
+      <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}<span class="t-text">${highlight(t.text, q)}</span>${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${qaRetryBlockedBadge(r)}${routingBlockedBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
       <span class="cost-top">${runCost(r)}</span>
-      ${svcChips(r) ? `<span class="svcs" aria-label="Serviços afetados">${svcChips(r, { max: 3 })}</span>` : ''}
-      <span class="sub">${miniRail(r)}${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}<span class="where">${esc(where)}</span>${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}${window.RunSubtasks?.chipHtml(costOf(r)) || ''}<span class="when" title="${esc(when(r.updatedAt))}">${esc(ago(r.updatedAt))}</span></span>
+      <span class="sub">${miniRail(r)}<span class="where">${esc(where)}</span>${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}${svcChips(r) ? `<span class="svcs" aria-label="Serviços afetados">${svcChips(r, { max: 3 })}</span>` : ''}${window.RunSubtasks?.chipHtml(costOf(r)) || ''}</span>
+      <span class="when${w.tone ? ` ${w.tone}` : ''}" title="${esc(when(r.updatedAt))}"${w.since ? ` data-node-since="${esc(w.since)}"` : ''}>${esc(w.text)}</span>
       ${qaActions(r)}
       ${sessionLimitActions(r)}
     </div>`;
@@ -1490,6 +1528,7 @@ async function resumeSession(taskId) {
 $('sidebar').addEventListener('click', e => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'select') return setSelecting(true);
+  if (act === 'clear-q') { RunsMain.setQuery(''); renderSidebar(); $('runsQ')?.focus(); return; }
   if (act === 'clear-kcard') { prefs.runsKf = null; persist(); return renderSidebar(); }
   const kc = e.target.closest('[data-kcard]');
   if (kc) { prefs.runsKf = prefs.runsKf === kc.dataset.kcard ? null : kc.dataset.kcard; persist(); return renderSidebar(); }
@@ -1551,11 +1590,24 @@ $('runFilter').addEventListener('click', e => {
   renderSidebar();
 });
 $('q').addEventListener('input', () => { searchOverride = {}; renderSidebar(); });
+// Campo "Filtrar por ticket, título ou nó" da lista (renderSidebar devolve o foco ao campo).
+$('sidebar').addEventListener('input', e => {
+  if (e.target.id !== 'runsQ' || e.isComposing) return;
+  RunsMain.setQuery(e.target.value); renderSidebar();
+});
+$('sidebar').addEventListener('compositionend', e => { if (e.target.id === 'runsQ') { RunsMain.setQuery(e.target.value); renderSidebar(); } });
+$('sidebar').addEventListener('keydown', e => {
+  if (e.target.id === 'runsQ' && e.key === 'Escape' && e.target.value) { e.preventDefault(); e.stopPropagation(); RunsMain.setQuery(''); renderSidebar(); }
+});
 
+// Grupos e parada do detalhe aberto, para o rodapé de status acompanhar a troca de aba.
+let detailStatus = null;
 function setRunTab(id) {
   runTab = id;
   document.querySelectorAll('#detail [data-rd-sec]').forEach(x => { x.hidden = x.dataset.rdSec !== id; });
   document.querySelectorAll('#detail [data-rd-tab]').forEach(x => x.setAttribute('aria-current', x.dataset.rdTab === id));
+  const bar = document.querySelector('#detail .rd-status');
+  if (bar && detailStatus) bar.outerHTML = RunsMain.statusBarHtml(detailStatus.groups, id, detailStatus.stop);
   if (id === 'context') renderContext(false);
 }
 function closeRun() {
@@ -1668,8 +1720,12 @@ function explanation(r) {
 
 function renderDetail() {
   document.body.classList.toggle('run-open', !!(runOpen && runs.get(selected)));
+  // Artboard Main: sem run aberta a lista ocupa a área toda. A Visão geral (fora do design) só
+  // aparece quando pedida (⌘K › Abrir visão geral) e fecha com Esc ou ×.
+  const wide = !window.Compare?.active() && !runs.get(selected) && !!window.UX && !UX.overviewOpen();
+  document.body.classList.toggle('runs-wide', wide);
   const r = runs.get(selected);
-  if (!r && window.UX) { $('detail').innerHTML = UX.overview(); return; }
+  if (!r && window.UX) { $('detail').innerHTML = wide ? '' : UX.overview(); return; }
   if (!r) {
     const waiting = [...runs.values()].filter(x => !isHidden(x) && needsYou(x)).length;
     $('detail').innerHTML = `
@@ -1694,37 +1750,53 @@ function renderDetail() {
   const groups = RunListModel.detailTabs({ tasks: !!tasksHtml, api: !!r.hasOpenApiContract, replay: !!replay,
     events: Array.isArray(s.events) && s.events.length > 0, transcripts: transcriptsOf(s).length > 0, cost: !!cost });
   runTab = RunListModel.validTab(groups, runTab);
+  // Título da aba e subtítulo "grupo · o que tem nela" (artboard RunDetail, sectionHint).
   const SEC = {
-    summary: ['Resumo', 'estado, decisões pendentes, plano e build'], tasks: ['Tasks', 'subtarefas do plano e roteamento sombra'],
-    api: ['Contrato API', 'openapi-contract.yaml gerado pelo Plan'], log: ['Log do agente', 'saída do claude -p deste run'],
-    timeline: ['Timeline', 'eventos gravados no state.json'], replay: ['Replay', 'retomar a partir de um nó num run novo'],
-    env: ['Ambiente & PRs', 'PRs, recusa do QA, preview, schema e ticket'], chat: ['Conversa', 'lida entre um passo e outro'],
-    context: ['Contexto', 'context.md da tarefa'], transcripts: ['Transcrições', 'conversa de cada nó (post-mortem)'], costs: ['Custos', 'medidos pelo watcher · cost_tracking'],
+    summary: ['Resumo', 'estado, decisões pendentes, plano e tentativas'], tasks: ['Tasks', 'as tarefas do plano e o roteamento sombra de cada uma'],
+    api: ['Contrato API', 'o contrato OpenAPI gerado pelo Plan'], log: ['Log do agente', 'o que o agente fez, linha a linha'],
+    timeline: ['Timeline', 'cada passo da run, com tempo'], replay: ['Replay', 'retomar a partir de um nó num run novo'],
+    env: ['Ambiente & PRs', 'PRs, preview do ambiente e recusa do QA'], chat: ['Conversa', 'fale com o agente sem parar a run'],
+    context: ['Contexto', 'o que entrou no prompt do agente'], transcripts: ['Transcrições', 'a conversa completa de cada nó'], costs: ['Custos', 'quanto custou cada tentativa e onde economizar'],
   };
+  const groupOf = id => groups.find(g => g.tabs.some(x => x.id === id));
   const sec = (id, html, cls = '') => `<section class="rd-sec${cls}" data-rd-sec="${id}"${id === runTab ? '' : ' hidden'}>
-      <div class="rd-sec-head"><h1>${SEC[id][0]}</h1><span>${SEC[id][1]}</span></div>${html}</section>`;
+      <div class="rd-sec-head"><h1>${SEC[id][0]}</h1><span>${esc(groupOf(id)?.label || '')} · ${SEC[id][1]}</span></div>${html}</section>`;
   const clk = r.status === 'running' && s.status === 'running' ? NodeClock.clock(s) : null;
+  // Faixa de parada: só leva ao cartão do gate (link). Aprovar/Rejeitar ficam só no cartão, que
+  // desabilita durante o envio — um segundo acionador de escrita no Redmine seria efeito novo.
   const stop = RunListModel.needsYou(r) && !RunListModel.isDone(r) ? {
-    title: ex.title, since: ago(r.updatedAt).replace(/^há /, ''),
-    tab: r.status === 'needs_human_review' ? 'chat' : 'summary', link: r.status === 'needs_human_review' ? 'Responder na conversa' : 'Ver o pedido',
+    node: r.node, title: ex.title.replace(/^Parado em [^.]+\.\s*/, ''), since: ago(r.updatedAt).replace(/^há /, ''),
+    tab: r.status === 'needs_human_review' ? 'chat' : 'summary',
+    link: r.status === 'needs_human_review' ? 'Responder na conversa' : r.status === 'awaiting_approval' ? 'Ver detalhes do gate' : 'Ver o pedido',
+    actions: '',
   } : null;
+  // Contagens à direita das abas, só com dado do app (nada inventado).
+  const tt = RunListModel.totalsOf(r);
+  const nSub = window.RunSubtasks && costOf(r) ? RunSubtasks.subtasksOfCostTracking(costOf(r)).summary.count : 0;
+  const nTr = transcriptsOf(s).length;
+  const counts = {
+    tasks: nSub ? { text: String(nSub) } : null,
+    log: clk ? { text: '● ao vivo', tone: 'done' } : null,
+    transcripts: nTr ? { text: String(nTr) } : null,
+    costs: tt.usd != null ? { text: fmtUsd(tt.usd) } : null,
+    env: prInconsistency(prRows(r)) || qaRetryBlockedInfo(r) ? { text: '!', tone: 'failed' } : null,
+  };
 
   $('detail').innerHTML = `
     <div class="stale-banner" id="staleBanner" role="status" aria-live="polite" hidden><span>${esc(StateVersion.MESSAGE)}</span><button type="button" class="ghost-btn" id="staleReload">Atualizar</button></div>
-    ${RunsMain.detailHeadHtml(r, { label: s.status === 'pre-build-failed' ? 'Build quebrado' : isChurn(r) ? 'Churn' : null,
-      badges: `${churnBadge(r)}${schemaBadge(r)}${specBadge(r)}${qaRetryBlockedBadge(r)}` })}
-    ${RunsMain.detailBandHtml(r, stop, { implement: preBuildGateHtml(r) })}
-    ${clk ? `<div class="rd-clock">Em execução: ${esc(NODE_LABEL[r.node] || r.node)} há <span class="elapsed num" data-node-clock data-started="${clk.startedAt}" data-timeout="${clk.timeoutMs}" title="Tempo desde node_started_at · timeout ${esc(NodeClock.fmtDuration(clk.timeoutMs))}">${esc(NodeClock.fmtDuration(clk.elapsedMs))}</span></div>` : ''}
+    ${RunsMain.detailHeadHtml(r, { label: s.status === 'pre-build-failed' ? 'Build quebrado' : isChurn(r) ? 'Churn' : null })}
+    ${RunsMain.detailBandHtml(r, stop, { implement: preBuildGateHtml(r) }, { badges: `${churnBadge(r)}${schemaBadge(r)}${specBadge(r)}${qaRetryBlockedBadge(r)}` })}
+    ${clk ? `<div class="rd-clock">Em execução: ${esc(RunsMain.nodeName(r.node))} há <span class="elapsed num" data-node-clock data-started="${clk.startedAt}" data-timeout="${clk.timeoutMs}" title="Tempo desde node_started_at · timeout ${esc(NodeClock.fmtDuration(clk.timeoutMs))}">${esc(NodeClock.fmtDuration(clk.elapsedMs))}</span></div>` : ''}
     <div class="rd-panes">
-      ${RunsMain.sideNavHtml(groups, runTab)}
+      ${RunsMain.sideNavHtml(groups, runTab, counts)}
       <div class="rd-main">
-      ${sec('summary', `
-        <div class="explain ${esc(r.status)}">
+      ${sec('summary', `<div class="rd-sum"><div class="rd-sum-main">
+        ${s.status === 'spec-change-pending-approval' ? '' /* o cartão do gate abaixo já explica (artboard: só o gate) */ : `<div class="explain ${esc(r.status)}">
           ${ICON[ex.icon]}
           <strong>${esc(ex.title)}</strong>
           <p>${esc(ex.body)}</p>
           ${ex.note ? `<p class="note" id="lastNote">${esc(ex.note)}</p><button class="link-btn" type="button" id="noteToggle">Ler nota inteira</button>` : ''}
-        </div>
+        </div>`}
         ${highRisk ? `
         <div class="risk-box" role="note">
           <h4>⚠ HIGH-RISK · Motivo do risco</h4>
@@ -1752,7 +1824,7 @@ function renderDetail() {
         </div>
         ${churnHtml(r)}
         ${planScoreHtml(r)}
-        ${preBuildHtml(r)}`)}
+        ${preBuildHtml(r)}</div>${summaryAsideHtml(r, groups)}</div>`)}
       ${tasksHtml ? sec('tasks', tasksHtml) : ''}
       ${r.hasOpenApiContract ? sec('api', `<div class="rd-card"><p>O Plan gerou um contrato OpenAPI para os endpoints desta task.</p><button class="btn" type="button" id="viewOpenApiBtn">Ver contrato OpenAPI</button></div>`) : ''}
       ${sec('log', `<div class="rd-card"><p>A saída do agente (claude -p) deste run, ao vivo enquanto ele roda.</p><button class="btn" type="button" id="viewLogBtn">Ver log do agente</button></div>`)}
@@ -1792,7 +1864,9 @@ function renderDetail() {
       ${transcriptsOf(s).length ? sec('transcripts', `<div id="trPane" class="ev-pane">${transcriptsHtml(s)}</div>`) : ''}
       ${cost ? sec('costs', cost) : ''}
       </div>
-    </div>`;
+    </div>
+    ${RunsMain.statusBarHtml(groups, runTab, stop)}`;
+  detailStatus = { groups, stop };
 
   wireDetail(r);
   window.Authorization?.wire(r);
@@ -1802,6 +1876,47 @@ function renderDetail() {
   wireTranscripts(r);
   renderThread();
   if (contextFor === selected) renderContext(false);
+}
+
+// Coluna à direita do Resumo (artboard RunDetail): Plano, Tentativas do agente e Trilha de
+// auditoria. Cada cartão só aparece com dado gravado: planScore/affectedServices, cost_tracking
+// e agent_log. Nada de número inventado.
+function summaryAsideHtml(r, groups) {
+  const s = r.state || {};
+  const has = id => groups.some(g => g.tabs.some(t => t.id === id));
+  const nodeName = RunsMain.nodeName;
+  const cards = [];
+  const score = typeof s.planScore === 'number' ? Math.max(0, Math.min(100, Math.round(s.planScore))) : null;
+  const min = typeof s.planScoreThreshold === 'number' ? s.planScoreThreshold : 60;
+  const svcs = svcChips(r);
+  if (score != null || svcs) {
+    const links = [has('api') ? '<button type="button" class="lnk" data-dtab-go="api">Ver contrato OpenAPI</button>' : '', '<button type="button" class="lnk" data-dtab-go="log">Ver log do agente</button>'].join('');
+    cards.push(`<section class="rd-acard" aria-labelledby="rd-plan-h">
+      <div class="rd-acard-h"><h2 id="rd-plan-h">Plano</h2><span class="mono">plan #${planAttempt(s)}${s.planAccepted ? ' · aceito' : ''}</span></div>
+      ${score != null ? `<div class="rd-plan-score"><span class="num">${score}</span><span class="rd-plan-bar"><span role="img" class="rd-plan-meter" aria-label="Score do plano: ${score} de 100, mínimo ${esc(String(min))}"><i class="${score >= min ? 'ok' : 'low'}" style="width:${score}%"></i><b style="left:${Math.max(0, Math.min(100, min))}%"></b></span><span class="mono rd-acard-k">score de 100 · mínimo ${esc(String(min))}</span></span></div>` : ''}
+      ${svcs ? `<div class="rd-acard-svcs"><span class="rd-acard-k">Serviços afetados</span><span class="svcs">${svcs}</span></div>` : ''}
+      <div class="rd-acard-links">${links}</div>
+    </section>`);
+  }
+  const at = RunListModel.attempts(r);
+  if (at.length) {
+    cards.push(`<section class="rd-acard" aria-labelledby="rd-att-h">
+      <div class="rd-acard-h"><h2 id="rd-att-h">Tentativas do agente</h2>${has('costs') ? '<button type="button" class="lnk" data-dtab-go="costs">Ver custos</button>' : ''}</div>
+      ${at.map(x => `<div class="rd-att"><i class="${x.usd == null ? '' : 'on'}" aria-hidden="true"></i><span class="mono">${esc(nodeName(x.node))}</span><span class="mono num rd-att-r">${esc(x.usd == null ? RunsMain.NONE : fmtUsd(x.usd))}</span>
+        <span class="rd-att-m">${esc(x.runs == null ? '' : `${x.runs} despacho${x.runs === 1 ? '' : 's'}${x.retries ? ` · ${x.retries} nova${x.retries === 1 ? '' : 's'} tentativa${x.retries === 1 ? '' : 's'}` : ''}${x.ms != null ? ` · ${fmtMs(x.ms)}` : ''}`)}</span>
+        <span class="rd-att-m rd-att-r">${esc(x.tokens == null ? RunsMain.NONE : `${fmtTok(x.tokens)} tokens`)}</span></div>`).join('')}
+    </section>`);
+  }
+  const log = (s.agent_log || []).filter(a => Date.parse(a.at)).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 7);
+  if (log.length) {
+    const hhmm = iso => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    cards.push(`<section class="rd-acard" aria-labelledby="rd-aud-h">
+      <div class="rd-acard-h"><h2 id="rd-aud-h">Trilha de auditoria</h2><span class="mono">agent_log</span></div>
+      <ol class="rd-aud">${log.map(a => { const nodes = (a.nodes || []).map(nodeName).join(', ');
+        return `<li><span class="mono num" title="${esc(when(a.at))}">${esc(hhmm(a.at))}</span><i aria-hidden="true"></i><span><span>${esc(a.note || `${nodes || 'passo'} registrado`)}</span>${nodes ? `<span class="mono rd-aud-who">${esc(nodes)}</span>` : ''}</span></li>`; }).join('')}</ol>
+    </section>`);
+  }
+  return cards.length ? `<aside class="rd-sum-aside" aria-label="Plano, tentativas e auditoria">${cards.join('')}</aside>` : '';
 }
 
 // ---------------------------------------------------------------- Redmine / PR folds
@@ -2671,28 +2786,43 @@ function specChangeHtml(r) {
   const ui = approvalUi.get(r.taskId) || {};
   const published = !!p.posted_at;
   const changes = Array.isArray(p.ac_changes) ? p.ac_changes : [];
+  const acs = (p.ac_affected || []).join(', ');
+  const opened = p.timestamp ? ago(p.timestamp) : '';
+  // Cartão do gate humano no desenho do artboard RunDetail (Resumo · Gate humano · SPEC_CHANGE).
   return `
-    <div class="approval-box" role="note">
-      <h4>⚖️ SPEC_CHANGE ${esc(p.id || '')} aguardando sua decisão</h4>
-      <p>A implementação encontrou uma decisão que muda requisito funcional. O agente não aprova mudança de spec: o pipeline está pausado.</p>
-      <div class="approval-meta">
-        <span>ACs <b>${esc((p.ac_affected || []).join(', ') || '—')}</b></span>
-        <span>Proposto <b>${esc(when(p.timestamp) || '—')}</b> por <b>${esc(p.agent || '—')}</b></span>
-        <span>Redmine <b>${published ? `publicado ${esc(when(p.posted_at) || '')}` : 'publica no próximo tick'}</b></span>
+    <section class="gate-card" aria-labelledby="gate-h">
+      <div class="gate-card-head">
+        <div class="gate-card-t">
+          <span class="gate-card-k">Gate humano · SPEC_CHANGE</span>
+          <h2 id="gate-h">Mudança de requisito proposta${p.id ? `: ${esc(p.id)}` : ''}</h2>
+          <p>A implementação encontrou uma decisão que muda requisito funcional durante <span class="mono">implement</span>. O agente não aprova mudança de spec: o run está parado até a sua decisão.</p>
+        </div>
+        <span class="gate-card-when mono">${esc([opened ? `aberto ${opened}` : '', p.agent ? `por ${p.agent}` : ''].filter(Boolean).join(' · '))}</span>
       </div>
-      <dl class="spec-change">
-        <dt>Hoje (spec)</dt><dd>${esc(p.previous_behavior || '—')}</dd>
-        <dt>Proposto</dt><dd>${esc(p.proposed_behavior || '—')}</dd>
-        <dt>Motivo</dt><dd>${esc(p.rationale || '—')}</dd>
-        ${p.reclassified_reason ? `<dt>Reclassificação</dt><dd>${esc(p.reclassified_reason)}</dd>` : ''}
-        ${changes.length ? `<dt>Edição da spec</dt><dd>${esc(changes.map(c => c.action === 'add' ? `adicionar AC: ${c.text}` : c.action === 'remove' ? `remover ${c.ac}` : `substituir ${c.ac}: ${c.text}`).join(' · '))}</dd>` : ''}
-      </dl>
-      <div class="approval-actions">
-        <button type="button" class="send" data-approval="approve" ${ui.sending || !published ? 'disabled' : ''}>${ui.sending ? 'Enviando…' : 'Aprovar mudança'}</button>
-        <button type="button" class="ghost-btn" data-approval="reject" ${ui.sending || !published ? 'disabled' : ''}>Rejeitar</button>
-        ${ui.msg ? `<span class="approval-msg ${esc(ui.msgCls || '')}" role="status">${esc(ui.msg)}</span>` : ''}
+      <div class="gate-card-body">
+        <div class="gate-diff-wrap">
+          <span class="gate-card-sub">${esc(acs || 'Critério')} · diferença</span>
+          <div class="gate-diff">
+            <div class="gate-del"><span aria-hidden="true">−</span><span><span class="sr-only">Hoje na spec: </span>${esc(p.previous_behavior || '—')}</span></div>
+            <div class="gate-add"><span aria-hidden="true">+</span><span><span class="sr-only">Proposto: </span>${esc(p.proposed_behavior || '—')}</span></div>
+          </div>
+          <span class="gate-card-note">Motivo: ${esc(p.rationale || '—')}</span>
+          ${p.reclassified_reason ? `<span class="gate-card-note">Reclassificação: ${esc(p.reclassified_reason)}</span>` : ''}
+          ${changes.length ? `<span class="gate-card-note">Edição da spec: ${esc(changes.map(c => c.action === 'add' ? `adicionar AC: ${c.text}` : c.action === 'remove' ? `remover ${c.ac}` : `substituir ${c.ac}: ${c.text}`).join(' · '))}</span>` : ''}
+        </div>
+        <div class="gate-cells">
+          <div class="gate-cell"><span>Critérios afetados</span><b>${esc(acs || '—')}</b></div>
+          <div class="gate-cell"><span>Proposto</span><b>${esc(when(p.timestamp) || '—')}</b></div>
+          <div class="gate-cell"><span>Redmine</span><b>${published ? `publicado ${esc(when(p.posted_at) || '')}` : 'publica no próximo tick'}</b></div>
+        </div>
+        <div class="gate-actions">
+          <button type="button" class="gate-go" data-approval="approve" ${ui.sending || !published ? 'disabled' : ''}>${ui.sending ? 'Enviando…' : 'Aprovar mudança'}</button>
+          <button type="button" class="gate-alt" data-approval="reject" ${ui.sending || !published ? 'disabled' : ''}>Rejeitar</button>
+          ${ui.msg ? `<span class="approval-msg ${esc(ui.msgCls || '')}" role="status">${esc(ui.msg)}</span>` : ''}
+        </div>
+        <p class="gate-card-note">Aprovar: a spec ganha a entrada no Histórico de Mudanças e o run volta para o Plano. Rejeitar: a spec não muda e o run fica parado. A decisão posta a palavra-chave no ticket do Redmine (ou responda lá); o watcher aplica no próximo tick.</p>
       </div>
-    </div>`;
+    </section>`;
 }
 function approvalHtml(r) {
   if (r.state?.status === 'spec-draft') return specDraftHtml(r);
@@ -3217,7 +3347,7 @@ function renderLog(src) {
 
 // ---------------------------------------------------------------- keyboard
 document.addEventListener('keydown', e => {
-  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
   if (e.key === '/' && !typing) { e.preventDefault(); $('q').focus(); return; }
   if (e.key === 'Escape' && document.activeElement === $('q')) { $('q').value = ''; renderSidebar(); $('q').blur(); return; }
   if (e.key === 'Escape' && selecting && !typing) { setSelecting(false); return; }
@@ -3231,6 +3361,12 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); runTab === 'summary' ? backToList() : setRunTab('summary'); return; }
   }
   if (!typing && !drawerOpen && e.key === 'Escape' && !e.defaultPrevented && !runOpen && selected && !window.Compare?.active() && document.body.dataset.view === 'runs') { e.preventDefault(); closeRun(); return; }
+  // Artboard Main: V alterna Lista/Quadro/(Tabela)/Linha do tempo; X marca a run aberta para a seleção.
+  const RUN_VIEW_KEYS = ['runs', 'quadro', 'tabela', 'timeline'];
+  if (!typing && !drawerOpen && !runOpen && !e.metaKey && !e.ctrlKey && !e.altKey && RUN_VIEW_KEYS.includes(document.body.dataset.view)) {
+    if (e.key === 'v' || e.key === 'V') { e.preventDefault(); const i = RUN_VIEW_KEYS.indexOf(document.body.dataset.view); Views.setView(RUN_VIEW_KEYS[(i + 1) % RUN_VIEW_KEYS.length]); return; }
+    if ((e.key === 'x' || e.key === 'X') && selected && !compareMode && document.body.dataset.view === 'runs') { e.preventDefault(); if (!selecting) setSelecting(true); togglePick(selected); renderSidebar(); return; }
+  }
   if (!typing && !selecting && !runOpen && document.body.dataset.view === 'runs' && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k')) {
     const ids = [...document.querySelectorAll('.run')].map(b => b.dataset.id);
     if (!ids.length) return;
@@ -3243,9 +3379,7 @@ document.addEventListener('keydown', e => {
 });
 
 $('theme').addEventListener('click', () => {
-  const dark = document.documentElement.dataset.theme
-    ? document.documentElement.dataset.theme === 'dark'
-    : matchMedia('(prefers-color-scheme: dark)').matches;
+  const dark = document.documentElement.dataset.theme !== 'light';
   prefs.theme = dark ? 'light' : 'dark';
   document.documentElement.dataset.theme = prefs.theme;
   persist();

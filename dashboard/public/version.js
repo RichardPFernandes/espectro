@@ -1,4 +1,5 @@
-// Tela Sistema (chave `versao`; artboard System): abas Watcher e Configuração e versão. A versão
+// Tela Sistema (chave `versao`; artboard System): abas Watcher e Configuração e versão, dependências do
+// watcher com fonte local e barra de status. A versão
 // (revisão em execução vs origin/main e o botão de atualizar o pin) é carregada aqui; watcher e
 // configuração vêm de watcher.js e config-health.js. Tudo renderizado como texto/DOM; o servidor
 // decide se a atualização está liberada.
@@ -72,6 +73,20 @@
   const save = () => { try { if (typeof persist === 'function') persist(); } catch { /* sem prefs */ } };
   let tab = M()?.tabs(store.systemTab).id || 'watch';
   let kf = null, flash = '', liveRoot = null, logStick = true;
+  // Dependências do watcher: só o knowledge graph tem leitura local (GET /api/graph), relida a cada 30 s
+  // enquanto a aba Watcher está aberta. As outras dependências não têm fonte sem chamar o serviço.
+  const DEPS_EVERY = 30000;
+  let graphRead = null, graphLoading = false;
+  async function loadGraph() {
+    if (graphLoading || typeof api !== 'function') return;
+    graphLoading = true;
+    let next;
+    try { next = { graph: await api('/api/graph'), err: null, at: Date.now() }; }
+    catch (e) { next = { graph: null, err: e?.message || 'erro desconhecido', at: Date.now() }; }
+    graphLoading = false;
+    graphRead = next;
+    if (window.Views?.current?.() === 'versao' && tab === 'watch') window.Views.refresh();
+  }
 
   const attr = (node, name, value) => { node.setAttribute(name, value); return node; };
   const focusKey = (node, key) => { node.dataset.tfilter = key; return node; };
@@ -102,6 +117,8 @@
       e.preventDefault(); window.Views?.refresh();
       return;
     }
+    // Dígito com o foco fora da tela: o atalho global (ux.js) só vale na tela Runs; aqui só J/K.
+    if (/^[0-9]$/.test(e.key) && !document.activeElement?.closest?.('[data-local-digits]')) return;
     const next = M().tabForKey(e.key, tab);
     if (next) { e.preventDefault(); setTab(next); }
   }
@@ -221,9 +238,32 @@
     runs.addEventListener('click', ev => { ev.preventDefault?.(); window.Views?.setView('runs'); });
     note.append(w.note, runs, '.');
     sec.append(note);
-    grid.append(sec);
+    grid.append(sec, depsCard());
     out.push(grid);
     return out;
+  }
+
+  function depsCard() {
+    const meta = el('span', M().depsAgo(graphRead?.at, DEPS_EVERY, Date.now()), 'sys-mono sys-meta');
+    meta.dataset.sysLive = 'deps-ago';
+    const sec = card('sysDepsTitle', 'Dependências do watcher', meta);
+    sec.classList.add('sys-deps');
+    const list = el('ul', null, 'sys-deps-list');
+    for (const d of M().deps(graphRead, Date.now())) {
+      const li = el('li'); li.dataset.tone = d.tone; li.title = `Fonte: ${d.source}`;
+      const who = el('span', null, 'sys-dep-who');
+      who.append(el('span', d.name, 'sys-dep-name'), el('span', d.note, 'sys-dep-note'));
+      li.append(who);
+      if (d.lat) li.append(el('span', d.lat, 'sys-mono sys-dep-lat'));
+      const pill = el('span', null, 'sys-dep-state');
+      pill.append(attr(el('span', d.glyph), 'aria-hidden', 'true'), d.state);
+      const link = el('a', d.link); link.href = d.href;
+      link.addEventListener('click', ev => { ev.preventDefault?.(); window.Views?.setView(d.view); });
+      li.append(pill, link);
+      list.append(li);
+    }
+    sec.append(list);
+    return sec;
   }
 
   function logRow(e) {
@@ -248,10 +288,27 @@
     if (stick) log.scrollTop = log.scrollHeight;
   }
 
-  // Uptime, fase e "próximo em N s" andam a cada segundo sem repintar a tela (foco e scroll ficam).
+  // Barra de status do artboard: aviso ou "Sistema · aba · watcher · próximo tick", e os atalhos.
+  function statusNodes(w) {
+    const bar = el('footer', null, 'sys-statusbar');
+    const s = M().statusLine(M().tabs(tab).list.find(x => x.selected).label, w, notice ? notice.text : flash);
+    const left = attr(el('span', s.text, 'sys-status-left'), 'role', 'status');
+    left.dataset.sysLive = 'status';
+    if (s.tone) left.dataset.tone = s.tone;
+    bar.append(left, el('span', M().KEYS_HINT, 'sys-status-keys'));
+    return bar;
+  }
+  // Uptime, fase, "próximo em N s", barra de status e "checado há" andam a cada segundo sem repintar a
+  // tela (foco e scroll ficam); a leitura do knowledge graph é refeita quando passa de 30 s.
   function paintLive() {
-    if (!liveRoot || tab !== 'watch' || window.Views?.current?.() !== 'versao') return;
+    if (!liveRoot || window.Views?.current?.() !== 'versao') return;
     const { w } = liveState();
+    const status = liveRoot.querySelector?.('[data-sys-live="status"]');
+    if (status && !status.dataset.tone) status.textContent = M().statusLine(M().tabs(tab).list.find(x => x.selected).label, w).text;
+    if (tab !== 'watch') return;
+    const ago = liveRoot.querySelector?.('[data-sys-live="deps-ago"]');
+    if (ago) ago.textContent = M().depsAgo(graphRead?.at, DEPS_EVERY, Date.now());
+    if ((!graphRead || Date.now() - graphRead.at >= DEPS_EVERY) && (typeof document.hidden === 'undefined' || !document.hidden)) loadGraph();
     const sub = liveRoot.querySelector?.('[data-sys-live="sub"]');
     if (sub) sub.textContent = w.sub;
     const cyc = liveRoot.querySelector?.('[data-sys-live="cycle"]');
@@ -262,7 +319,7 @@
     if (legend.length === 2) { legend[0].textContent = w.cycle.left; legend[1].textContent = w.cycle.right; }
   }
   // J/K e Esc valem na tela inteira (foco no menu ou no body também), não só dentro dela.
-  // Dígitos ficam com o atalho global (ux.js, capture), que troca de tela.
+  // Dígitos só com o foco dentro da tela (data-local-digits); fora dela ficam com o atalho global (ux.js).
   if (typeof document.addEventListener === 'function') document.addEventListener('keydown', e => {
     if (window.Views?.current?.() !== 'versao' || e.defaultPrevented) return;
     if (document.querySelector?.('.overlay:not([hidden]), .wctl-panel:not([hidden])')) return;
@@ -369,7 +426,16 @@
     const prevLog = liveRoot?.querySelector?.('.sys-log');
     if (prevLog && prevLog.scrollHeight) logStick = prevLog.scrollHeight - prevLog.scrollTop - prevLog.clientHeight < 40;
     const prevScroll = prevLog?.scrollTop;
-    const root = attr(el('section', null, 'sys-page'), 'aria-label', 'Sistema. J e K percorrem as abas, Esc fecha o aviso ou limpa o filtro.');
+    const prevPane = liveRoot?.querySelector?.('.sys-scroll');
+    const paneY = prevPane ? prevPane.scrollTop : 0;
+    // Tela inteira (artboard: área rolável + barra de status de 28 px). Com o foco aqui dentro, 1–2 trocam
+    // de aba (data-local-digits: o atalho global de dígitos do ux.js cede); data-tfilter devolve o foco no repaint.
+    const screen = attr(el('div', null, 'sys-screen'), 'aria-label', 'Sistema. J e K percorrem as abas, 1 e 2 pulam direto, Cmd K abre a busca, Esc fecha o aviso ou limpa o filtro.');
+    screen.dataset.localDigits = '';
+    screen.tabIndex = 0;
+    focusKey(screen, 'sys-screen');
+    const pane = el('div', null, 'sys-scroll');
+    const root = el('section', null, 'sys-page');
     const t = toastBox();
     if (t) root.append(t);
     const head = el('header', null, 'sys-head');
@@ -385,8 +451,7 @@
     for (const x of tb.list) {
       const b = attr(attr(button(null, 'sys-tab', `sys-tab-${x.id}`, () => setTab(x.id)), 'role', 'tab'), 'aria-selected', String(x.selected));
       b.tabIndex = x.selected ? 0 : -1;
-      // O artboard mostra "1"/"2", mas os dígitos trocam de tela no app (ux.js); a aba só mostra o nome.
-      b.append(x.label);
+      b.append(attr(el('span', x.key, 'sys-tab-key'), 'aria-hidden', 'true'), x.label);
       if (x.count) b.append(el('span', x.count, 'sys-tab-count'));
       list.append(b);
     }
@@ -400,13 +465,17 @@
       grid.append(col);
       root.append(grid);
     }
-    liveRoot = root;
+    pane.append(root);
+    screen.append(pane, statusNodes(liveState().w));
+    liveRoot = screen;
+    if (tab === 'watch' && !graphRead && !graphLoading) loadGraph();
     // Log grudado no fim (como o painel do rail), a menos que a pessoa tenha rolado para cima.
     Promise.resolve().then(() => {
       const log = root.querySelector?.('.sys-log');
       if (log) log.scrollTop = logStick ? log.scrollHeight : (prevScroll ?? log.scrollHeight);
+      pane.scrollTop = paneY;
     });
-    return root;
+    return screen;
   }
   window.VersionView = { render, load };
   window.SystemView = { appendLog };

@@ -4,10 +4,12 @@
 // J/K percorrem, Esc fecha o detalhe.
 //
 // Só entra o que o arquivo diz (comparação elemento a elemento na PRI-329). Fica fora, por falta de
-// dado: origem (Execução / Recusa do QA), severidade, custo em US$, tendência por semana, "última", status do padrão, causa
-// provável, correção selecionável e o pedido de correção, abas Ao vivo e Histórico. A seção de alto
-// custo e as recomendações que não citam um padrão também ficam fora: não estão no artboard (prompt de
-// atualização do canvas no PR).
+// dado: origem (Execução / Recusa do QA) e seu seletor, cenário, projeto e janela de 30 dias, total em
+// US$ perdido, severidade e seu filtro, custo em US$, tendência por semana, "última", "desde", status do
+// padrão, custo e economia da correção, faixa "Mesma raiz que…", causa provável, correção selecionável e
+// o pedido de correção, quando/custo/nota por run, abas Ao vivo e Histórico. O nó é sempre review: a
+// única seção de padrões do consolidador é a de reprovações de review. A seção de alto custo e as
+// recomendações que não citam um padrão também ficam fora: não estão no artboard.
 //
 // O modelo (parse/model/filtro) é puro e exportado para teste (CommonJS); no navegador o mesmo arquivo
 // monta a tela (window.PatternsView), com UIKit (ui-kit.js) para o fechar do detalhe e o passo do J/K.
@@ -28,7 +30,9 @@
   // review: padrões com contagem; reviewNotes: linhas da seção fora do formato (ex.: "Nenhuma
   // reprovação…"); recs: recomendações; known: o arquivo tem ao menos uma seção do consolidador.
   function parse(markdown) {
-    const out = { review: [], reviewNotes: [], recs: [], known: false, hasReview: false };
+    const out = { review: [], reviewNotes: [], recs: [], known: false, hasReview: false, runsAnalyzed: null };
+    const meta = String(markdown || '').match(/<!--\s*metadata:[^>]*\bruns_analyzed=(\d+)/);
+    if (meta) out.runsAnalyzed = +meta[1];
     let kind = null;
     for (const raw of String(markdown || '').split('\n')) {
       const line = raw.replace(/\s+$/, '');
@@ -67,12 +71,14 @@
     return cut < 0 ? { action: hit, evidence: '' } : { action: hit.slice(0, cut), evidence: hit.slice(cut + 3) };
   }
 
-  // Busca do artboard ("sintoma, nó ou run"): aqui sintoma (assinatura) e run de exemplo — o arquivo
-  // não diz nó por padrão além de review, que vale para todos.
+  // Nó de todos os padrões do arquivo: a seção "Padrões de Falha no Review" só junta reprovações do review.
+  const NODE = 'review';
+
+  // Busca do artboard ("sintoma, nó ou run"): sintoma (assinatura), nó (review) e run de exemplo.
   function filter(list, q) {
     const s = String(q || '').trim().toLowerCase();
     if (!s) return list;
-    return list.filter(p => `${p.sig} ${p.examples.join(' ')}`.toLowerCase().includes(s));
+    return list.filter(p => `${p.sig} ${NODE} ${p.examples.join(' ')}`.toLowerCase().includes(s));
   }
 
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -89,6 +95,8 @@
     const x = vis.find(r => r.sig === cur) || null;
     return {
       state: 'ok', all: p.review, vis, hasReview: p.hasReview,
+      // Cauda do caminho no topo (no artboard, projeto e janela): aqui só os runs que a consolidação leu.
+      crumb: p.runsAnalyzed == null ? '' : plural(p.runsAnalyzed, 'run analisado', 'runs analisados'),
       clean: p.hasReview && !p.review.length ? (p.reviewNotes[0] || 'Nenhuma reprovação de review registrada.') : '',
       sel: x ? x.sig : null,
       detail: x && {
@@ -98,7 +106,7 @@
         fix: recFor(x, p.recs),
       },
       // Sem a seção de review no arquivo não há contagem: nada, em vez de "0 de 0".
-      status: p.hasReview ? `${vis.length} de ${plural(p.review.length, 'padrão', 'padrões')} no arquivo` : '',
+      status: p.hasReview ? `${vis.length} de ${plural(p.review.length, 'padrão', 'padrões')}` : '',
     };
   }
 
@@ -114,9 +122,9 @@
   function rowHtml(r, cur) {
     const on = r.sig === cur;
     return `<button type="button" class="pat-row" data-pat-sel="${escHtml(r.sig)}" aria-current="${on}" title="${escHtml(`${r.count} de ${r.total} runs revisados · ${SRC}`)}">
-      <span class="pat-row-meta">review</span>
+      <span class="pat-row-meta">${NODE}</span>
       <span class="pat-row-sig">${inline(r.sig)}</span>
-      <span class="pat-row-foot"><span class="num">${plural(r.count, 'run', 'runs')}</span></span>
+      <span class="pat-row-foot"><span class="num">${plural(r.count, 'ocorrência', 'ocorrências')}</span></span>
     </button>`;
   }
 
@@ -125,29 +133,37 @@
     const fix = d.fix ? `<section aria-labelledby="pat-fx-h" class="pat-col-main">
         <h2 id="pat-fx-h" class="pat-cap">Como corrigir na origem</h2>
         <div class="pat-fix">
-          <span class="pat-fix-label">${inline(d.fix.action)}</span>
-          ${d.fix.evidence ? `<span class="pat-fix-what">${inline(d.fix.evidence)}</span>` : ''}
-          <span class="pat-fix-where">recomendação do consolidador · memory/patterns.md</span>
+          <span class="pat-fix-ring" aria-hidden="true"><span></span></span>
+          <span class="pat-fix-body">
+            <span class="pat-fix-label">${inline(d.fix.action)} <span class="pat-fix-rec">· recomendada</span></span>
+            ${d.fix.evidence ? `<span class="pat-fix-what">${inline(d.fix.evidence)}</span>` : ''}
+            <span class="pat-fix-where">recomendação do consolidador · memory/patterns.md</span>
+          </span>
         </div>
       </section>` : '';
     const ex = d.examples.length ? `<aside aria-labelledby="pat-ex-h" class="pat-where">
         <h2 id="pat-ex-h" class="pat-cap">Onde aconteceu</h2>
-        ${d.examples.map(id => `<a href="#run/${encodeURIComponent(id)}" data-pat-run="${escHtml(id)}" title="Abrir o run"><span class="pat-run">${escHtml(id)}</span></a>`).join('')}
+        ${d.examples.map(id => `<a href="#run/${encodeURIComponent(id)}" data-pat-run="${escHtml(id)}" title="Abrir o run"><span class="pat-ex-top"><span class="pat-run">${escHtml(id)}</span><span class="pat-ex-node">${NODE}</span></span></a>`).join('')}
         ${d.exampleNote ? `<span class="pat-where-note">${escHtml(d.exampleNote)} · memory/patterns.md</span>` : ''}
       </aside>` : '';
     return `<section class="pat-detail" aria-labelledby="pat-h">
       ${closeHtml}
       <article class="pat-article">
-        <div class="pat-title"><span class="pat-title-meta">nó review</span><h1 id="pat-h">${inline(d.sig)}</h1></div>
+        <div class="pat-title"><span class="pat-title-meta">nó ${NODE}</span><h1 id="pat-h">${inline(d.sig)}</h1></div>
         <div class="pat-stats">
           <div class="pat-stat" title="${SRC} · contagem por run"><span class="pat-stat-k">Ocorrências</span><span class="pat-stat-v num">${d.count}</span><span class="pat-stat-d">${escHtml(d.reviewed)}</span></div>
         </div>
-        ${fix || ex ? `<div class="pat-cols">${fix}${ex}</div>` : ''}
+        <div role="tablist" aria-label="Partes do padrão" class="pat-tabs">
+          <button type="button" role="tab" id="pat-tab-fix" class="pat-tab" aria-selected="true" aria-controls="pat-panel-fix" tabindex="0"><kbd>1</kbd>Causa e correção<span class="num">${d.fix ? 1 : 0}</span></button>
+        </div>
+        <div role="tabpanel" id="pat-panel-fix" aria-labelledby="pat-tab-fix" class="pat-panel">
+          ${fix || ex ? `<div class="pat-cols">${fix}${ex}</div>` : '<span class="pat-empty-h">O arquivo não traz recomendação nem run de exemplo para este padrão.</span>'}
+        </div>
       </article>
     </section>`;
   }
 
-  const exported = { RE_REVIEW, GENERIC_SIGNATURE, parse, recFor, filter, model, inline, rowHtml, detailHtml };
+  const exported = { RE_REVIEW, GENERIC_SIGNATURE, NODE, parse, recFor, filter, model, inline, rowHtml, detailHtml };
   if (typeof module !== 'undefined' && module.exports) { module.exports = exported; return; }
 
   // ---------------------------------------------------------------- navegador
@@ -194,15 +210,16 @@
   function render() {
     if (!st.loadedOnce && !st.loading) load();
     keepFocus();
-    const search = `<input type="search" class="pat-q" data-pat-q aria-label="Buscar padrões" placeholder="Buscar por sintoma ou run" value="${escHtml(st.q)}">`;
+    const search = `<input type="search" class="pat-q" data-pat-q aria-label="Buscar padrões" placeholder="Buscar por sintoma, nó ou run" value="${escHtml(st.q)}">`;
     const shell = (side, detail = '', status = '') => `<div class="pat">
       <div class="pat-panes" tabindex="0" aria-label="Padrões de falha. J e K navegam, Esc fecha.">
         <section class="pat-side${detail ? ' has-sel' : ''}" aria-label="Padrões, do mais frequente ao menos frequente">${side}</section>${detail}
       </div>
-      <footer class="pat-status"><span role="status">${status}</span><span class="pat-keys">J K navegar · Esc fechar</span></footer>
+      <footer class="pat-status"><span role="status">${status}</span><span class="pat-keys">J K navegar · Esc fechar · ⌘K paleta</span></footer>
     </div>`;
     const top = extra => `<div class="pat-tools">${search}${extra || ''}</div>`;
 
+    paintTopbar(st.data && !st.error ? model(st.data).crumb || '' : '');
     if (st.error) return shell(top(note('failed', '✕', `Não deu para ler os padrões: ${escHtml(st.error)}. Saia e volte para esta tela para tentar de novo.`)));
     if (!st.data) return shell(top(), '', 'Carregando…');
     const m = model(st.data, { q: st.q, sel: st.sel });
@@ -214,6 +231,20 @@
       + list;
     return shell(side, m.detail ? detailHtml(m.detail, root.UIKit.drawerClose('pat-close')) : '',
       m.status ? `<span title="${SRC}">${m.status}</span>` : '');
+  }
+
+  // Cauda do caminho no topbar do shell (como em Roteamento); some nas outras telas pelo CSS.
+  function paintTopbar(text) {
+    const crumbs = root.document.querySelector?.('.topbar .crumbs-top');
+    if (!crumbs) return;
+    let tail = root.document.getElementById('patCrumbTail');
+    if (!tail) {
+      tail = root.document.createElement('span');
+      tail.id = 'patCrumbTail'; tail.className = 'pat-crumb-tail';
+      crumbs.append(tail);
+    }
+    const html = text ? `<span aria-hidden="true">›</span><span title="${SRC} · runs_analyzed">${escHtml(text)}</span>` : '';
+    if (tail.innerHTML !== html) tail.innerHTML = html;
   }
 
   // #view é remontado a cada refresh (eventos ao vivo): devolve foco, cursor da busca e rolagem

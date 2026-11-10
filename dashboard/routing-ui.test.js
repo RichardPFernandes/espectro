@@ -413,7 +413,8 @@ test('classificador: estado atual, aviso de Runs novas e opções recusadas com 
     const ui = await openCls(body(), { get: () => ({ body: st }), post: async () => ({ status: 500, body: {} }) });
     try {
         const t = ui.text();
-        assert.match(flatText(byKey(ui, 'cls')), /✓[\s\S]*definido pela policy \(cheap_rule\)[\s\S]*versão 0/);
+        assert.match(flatText(byKey(ui, 'cls')), /✓[\s\S]*cheap_rule ativo[\s\S]*definido pela policy/, 'linha no padrão do artboard: chip curto "<quem> ativo"');
+        assert.doesNotMatch(flatText(byKey(ui, 'cls')), /versão 0/, 'sem troca registrada, a linha não mostra versão');
         assert.match(t, /Hoje[\s\S]*definido pela policy \(cheap_rule\)[\s\S]*versão 0/);
         assert.match(t, /Escolhido[\s\S]*nenhuma opção marcada/);
         assert.match(t, /Vale só para Runs novas/);
@@ -465,6 +466,7 @@ test('classificador: troca: "enviado" até a resposta, "aplicado" só depois do 
         release();
         await until(() => /Aplicado/.test(ui.text()));
         await until(() => /versão 1 · por richard/.test(flatText(byKey(ui, 'cls'))));
+        assert.match(flatText(byKey(ui, 'cls')), /✓[\s\S]*Jev em sombra ativo/);
         assert.match(ui.text(), /Histórico do classificador[\s\S]*versão 1[\s\S]*medir o Jev em sombra/);
         const p = ui.posts[0];
         assert.deepEqual({ choice: p.choice, mode: p.mode, expected_version: p.expected_version, reason: p.reason }, { choice: 'policy_jev', mode: 'shadow', expected_version: 0, reason: 'medir o Jev em sombra' });

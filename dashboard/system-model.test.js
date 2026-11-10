@@ -125,16 +125,42 @@ test('configuração: cards, filtro, ordem, contador da aba; sem relatório nada
     assert.equal(M.config(report, 'bogus', NOW).filter, null);
 });
 
-test('abas e teclas: J/K presos às pontas; dígitos ficam com o atalho global', () => {
+test('abas e teclas: J/K presos às pontas; 1–2 pulam direto (só com o foco na tela, em version.js)', () => {
     const t = M.tabs('config', '1 aviso');
     assert.equal(t.pos, 'aba 2 de 2');
     assert.deepEqual(t.list.map(x => [x.id, x.key, x.selected, x.count]), [['watch', '1', false, ''], ['config', '2', true, '1 aviso']]);
     assert.equal(M.tabs('inexistente').id, 'watch');
-    assert.equal(M.tabForKey('2', 'watch'), null);
+    assert.equal(M.tabForKey('2', 'watch'), 'config');
+    assert.equal(M.tabForKey('1', 'config'), 'watch');
+    assert.equal(M.tabForKey('3', 'watch'), null);
+    assert.equal(M.tabForKey('0', 'watch'), null);
+    assert.equal(M.KEYS_HINT, 'J K abas · 1–2 · ⌘K busca · Esc fechar');
     assert.equal(M.tabForKey('j', 'watch'), 'config');
     assert.equal(M.tabForKey('j', 'config'), 'config');
     assert.equal(M.tabForKey('k', 'watch'), 'watch');
     assert.equal(M.tabForKey('x', 'watch'), null);
+});
+
+test('barra de status: aviso tem prioridade; senão tela · aba · watcher · próximo tick', () => {
+    const w = M.watcher(base, {}, NOW, hhmm);
+    assert.deepEqual(M.statusLine('Watcher', w), { text: 'Sistema · Watcher · watcher ativo · próximo em 42 s', tone: '' });
+    assert.deepEqual(M.statusLine('Watcher', w, 'Filtros limpos.'), { text: 'Filtros limpos.', tone: 'notice' });
+    assert.equal(M.statusLine('Configuração e versão', M.watcher(null, {}, NOW, hhmm)).text, 'Sistema · Configuração e versão · watcher UNKNOWN');
+});
+
+test('dependências: só o knowledge graph (fonte local); sem leitura é UNKNOWN, nunca ok', () => {
+    const one = g => { const r = M.deps(g, NOW); assert.equal(r.length, 1); return r[0]; };
+    const ok = one({ graph: { exists: true, updatedAt: new Date(NOW - 2 * 60000).toISOString(), nodes: { a: {}, b: {} } }, err: null });
+    assert.deepEqual([ok.name, ok.note, ok.lat, ok.glyph, ok.state, ok.link, ok.source], ['Knowledge graph', 'última gravação há 2 min', '2 nós', '✓', 'ok', 'Grafo', 'GET /api/graph']);
+    assert.equal(one({ graph: { exists: true, updatedAt: null, nodes: { a: {} } } }).lat, '1 nó');
+    for (const g of [null, { graph: null, err: 'HTTP 500' }, { graph: { exists: false, nodes: {} } }]) {
+        const r = one(g);
+        assert.deepEqual([r.state, r.glyph, r.lat], ['UNKNOWN', '?', ''], JSON.stringify(g));
+    }
+    assert.match(one({ graph: null, err: 'HTTP 500' }).note, /HTTP 500/);
+    assert.equal(M.depsAgo(NOW - 12000, 30000, NOW), 'checado há 12 s · a cada 30 s');
+    assert.equal(M.depsAgo(NOW - 125000, 30000, NOW), 'checado há 2 min · a cada 30 s');
+    assert.equal(M.depsAgo(null, 30000, NOW), '');
 });
 
 test('sha ausente vira UNKNOWN', () => {

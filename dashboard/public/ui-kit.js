@@ -5,6 +5,8 @@
 //   bulkBar    barra de ações em lote (role="toolbar")
 //   drawerClose botão de fechar do painel de detalhe (Esc)
 //   listKeys   J/K percorrem a lista, Enter abre, Esc fecha o detalhe
+//   statusbar  rodapé de status da tela (linha mono de 28 px, atalhos à direita); dentro da visão,
+//              esconde o rodapé comum do shell (#appStatus) para não haver duas barras
 // O estilo de cada um fica em theme.css (seção 5). Funções de HTML devolvem string e escapam o
 // texto; quem chama decide onde inserir. Script clássico (window.UIKit) e módulo CommonJS (testes).
 (root => {
@@ -64,6 +66,12 @@
       + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>';
   }
 
+  // left: texto de estado da tela (role="status"); keys: atalhos que existem nesta tela.
+  function statusbar({ left = '', keys = '' } = {}) {
+    return `<footer class="statusbar"><span role="status">${esc(left)}</span>`
+      + (keys ? `<span class="statusbar-keys">${esc(keys)}</span>` : '') + '</footer>';
+  }
+
   // Próximo índice para J/K, preso às pontas (sem dar a volta, como no design).
   const step = (i, dir, n) => (n ? Math.max(0, Math.min(n - 1, (i < 0 ? (dir > 0 ? -1 : n) : i) + dir)) : -1);
 
@@ -86,7 +94,7 @@
     return () => container.removeEventListener('keydown', handler);
   }
 
-  const api = { esc, sparkPoints, spark, kcard, filterChip, bulkBar, drawerClose, step, listKeys };
+  const api = { esc, sparkPoints, spark, kcard, filterChip, bulkBar, drawerClose, statusbar, step, listKeys };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.UIKit = api;
 })(typeof window !== 'undefined' ? window : globalThis);

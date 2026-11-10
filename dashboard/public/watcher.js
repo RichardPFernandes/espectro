@@ -165,7 +165,17 @@
     }
     return st.last_run?.ended_at ? `parou às ${hhmm(st.last_run.ended_at)}` : '';
   }
-  function paintSub() { $('wctlSub').textContent = subText(); }
+  // Rodapé de status comum (#sbWatcher, index.html): "watcher ativo · tick N", como o footer dos artboards.
+  function paintStatusbar() {
+    const sb = $('sbWatcher');
+    if (!sb) return;
+    const short = $('wctlShort').textContent;
+    const text = [short.charAt(0).toLowerCase() + short.slice(1), subText()].filter(Boolean).join(' · ');
+    sb.hidden = false;
+    sb.dataset.tone = $('wctl').dataset.tone;
+    if (sb.dataset.text !== text) { sb.dataset.text = text; sb.innerHTML = `<i aria-hidden="true"></i>${esc(text)}`; }
+  }
+  function paintSub() { $('wctlSub').textContent = subText(); paintStatusbar(); }
 
   function paint() {
     const t = tone(), text = label();

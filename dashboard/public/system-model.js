@@ -157,17 +157,48 @@
       list: TABS.map(([id, label, key], i) => ({ id, label, key, selected: i === idx, count: id === 'config' ? configCount : '' })),
     };
   }
-  // Tecla → aba (J/K presos às pontas) ou null. Os dígitos ficam com o atalho global do app, que já
-  // troca de tela (ux.js); o "1–4" do artboard não entra para não mudar esse comportamento.
+  // Tecla → aba ou null: J/K presos às pontas; 1–N pulam direto (artboard "1–4"). Os dígitos só chegam
+  // aqui com o foco dentro da tela (data-local-digits); fora dela o atalho global de dígitos (ux.js) só vale na tela Runs.
   function tabForKey(key, current) {
     const { idx } = tabs(current);
     if (key === 'j' || key === 'k') return TABS[Math.max(0, Math.min(TABS.length - 1, idx + (key === 'j' ? 1 : -1)))][0];
+    const n = Number(key);
+    if (Number.isInteger(n) && n >= 1 && n <= TABS.length && String(n) === key) return TABS[n - 1][0];
     return null;
+  }
+  const KEYS_HINT = `J K abas · 1–${TABS.length} · ⌘K busca · Esc fechar`;
+
+  // Barra de status (rodapé do artboard): aviso, se houver; senão tela · aba · watcher · próximo tick.
+  function statusLine(tabLabel, w, notice = '') {
+    if (notice) return { text: notice, tone: 'notice' };
+    const tail = w.cycle?.right ? ` · ${w.cycle.right}` : '';
+    return { text: `Sistema · ${tabLabel} · watcher ${w.label}${tail}`, tone: '' };
+  }
+
+  // Dependências do watcher. Só entra a linha com fonte local, sem chamada externa: o knowledge graph
+  // (GET /api/graph). Gestor de tickets, Bitbucket, provedor e containers não têm leitura sem
+  // consultar o serviço; ficam fora (pendentes). g = { graph, err } da última leitura.
+  const GRAPH_SRC = 'GET /api/graph';
+  function deps(g, now = Date.now()) {
+    const row = { id: 'graph', name: 'Knowledge graph', href: '#grafo', view: 'grafo', link: 'Grafo', source: GRAPH_SRC };
+    const unknown = note => ({ ...row, note, lat: '', glyph: '?', state: UNKNOWN, tone: 'unknown' });
+    if (!g || (!g.graph && !g.err)) return [unknown('lendo knowledge-graph.json…')];
+    if (g.err) return [unknown(`leitura falhou: ${g.err}`)];
+    if (!g.graph.exists) return [unknown('knowledge-graph.json ainda não foi gravado')];
+    const n = Object.keys(g.graph.nodes || {}).length;
+    const when = ago(g.graph.updatedAt, now);
+    return [{ ...row, note: when ? `última gravação ${when}` : 'gravado · data da gravação ausente', lat: plural(n, 'nó', 'nós'), glyph: '✓', state: 'ok', tone: 'ok' }];
+  }
+  // "checado há 12 s · a cada 30 s" (cabeçalho do cartão).
+  function depsAgo(checkedAt, every, now = Date.now()) {
+    if (!checkedAt) return '';
+    const s = Math.max(0, Math.floor((now - checkedAt) / 1000));
+    return `checado há ${s < 60 ? `${s} s` : `${Math.floor(s / 60)} min`} · a cada ${Math.round(every / 1000)} s`;
   }
 
   const short = sha => (typeof sha === 'string' && sha ? sha.slice(0, 7) : UNKNOWN);
 
-  const api = { UNKNOWN, TABS, STATUS_SRC, CONFIG_SRC, VERSION_SRC, durLong, ago, watcher, cycle, logLines, logEmpty, config, tabs, tabForKey, short };
+  const api = { UNKNOWN, TABS, STATUS_SRC, CONFIG_SRC, VERSION_SRC, GRAPH_SRC, KEYS_HINT, durLong, ago, watcher, cycle, logLines, logEmpty, config, tabs, tabForKey, statusLine, deps, depsAgo, short };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SystemModel = api;
 })(typeof window !== 'undefined' ? window : globalThis);
