@@ -59,6 +59,8 @@ test('filter: busca por sintoma e por run de exemplo, sem diferenciar caixa', ()
     assert.deepEqual(P.filter(list, 'app-9').map(r => r.sig), ['idx']);
     assert.equal(P.filter(list, '  ').length, list.length);
     assert.equal(P.filter(list, 'nada-disso').length, 0);
+    // nó: todos os padrões do arquivo são do review
+    assert.equal(P.filter(list, 'REVIEW').length, list.length);
 });
 
 test('model: sem arquivo, fora do formato e arquivo do consolidador', () => {
@@ -68,7 +70,7 @@ test('model: sem arquivo, fora do formato e arquivo do consolidador', () => {
     assert.equal(raw.state, 'raw');
     const m = P.model({ exists: true, content: realFile({ review: REVIEW }) });
     assert.equal(m.state, 'ok');
-    assert.equal(m.status, '4 de 4 padrões no arquivo');
+    assert.equal(m.status, '4 de 4 padrões');
     assert.equal(m.clean, '');
 });
 
@@ -89,14 +91,14 @@ test('model: seleção padrão é o primeiro visível; Esc (null) fecha; busca r
     // escolhido que saiu da busca: detalhe fecha, como no artboard
     const gone = P.model(data, { q: 'codsap', sel: 'idx' });
     assert.equal(gone.sel, null);
-    assert.equal(gone.status, '1 de 4 padrões no arquivo');
+    assert.equal(gone.status, '1 de 4 padrões');
     assert.equal(P.model(data, { q: 'codsap' }).sel, 'codSap');
 });
 
 test('model: histórico sem reprovação mostra a nota do arquivo; sem a seção, nenhuma nota', () => {
     const clean = P.model({ exists: true, content: realFile() });
     assert.match(clean.clean, /Nenhuma reprovação de review/);
-    assert.equal(clean.status, '0 de 0 padrões no arquivo');
+    assert.equal(clean.status, '0 de 0 padrões');
     const noSection = P.model({ exists: true, content: '## Recomendações para Specs Futuras\n- algo' });
     assert.equal(noSection.state, 'ok');
     assert.equal(noSection.hasReview, false);
@@ -116,7 +118,8 @@ test('HTML: assinatura e id de run vindos do arquivo saem escapados; sem origem 
     assert.ok(!row.includes('<img'));
     assert.match(row, /&lt;img src=x onerror=alert\(1\)&gt;/);
     assert.match(row, /aria-current="true"/);
-    assert.match(row, /2 runs/);
+    assert.match(row, /2 ocorrências/);
+    assert.match(P.rowHtml({ ...evil, count: 1 }, null), /1 ocorrência</);
     assert.ok(!/Execução/.test(row));
     const det = P.detailHtml({ ...evil, reviewed: 'em 2 de 3 runs revisados', exampleNote: '1 exemplo de 2 runs', fix: { action: '**x** <b>', evidence: '' } }, '<X>');
     assert.ok(!det.includes('<img') && !det.includes('<b>'));
@@ -125,4 +128,17 @@ test('HTML: assinatura e id de run vindos do arquivo saem escapados; sem origem 
     assert.match(det, /^<section class="pat-detail"/);
     assert.ok(!/<main/.test(det));
     assert.ok(det.includes('<X>'));
+    // estrutura do artboard: aba única "Causa e correção" com a contagem de correções e a opção recomendada
+    assert.match(det, /role="tab"[^>]*aria-selected="true"[^>]*><kbd>1<\/kbd>Causa e correção<span class="num">1<\/span>/);
+    assert.match(det, /· recomendada/);
+    assert.ok(!/Ao vivo|Histórico|US\$|confiança/.test(det));
+    const bare = P.detailHtml({ sig: 's', count: 1, total: 2, examples: [], reviewed: 'em 1 de 2 runs revisados', exampleNote: '', fix: null });
+    assert.match(bare, /Causa e correção<span class="num">0<\/span>/);
+    assert.ok(!/recomendada/.test(bare));
+});
+
+test('model: cauda do caminho com os runs analisados da metadata; sem metadata, vazia', () => {
+    const m = P.model({ exists: true, content: realFile({ review: REVIEW }) });
+    assert.equal(m.crumb, '12 runs analisados');
+    assert.equal(P.model({ exists: true, content: '## Padrões de Falha no Review\n- **a**: ocorreu em 1/2 run(s) revisado(s)' }).crumb, '');
 });

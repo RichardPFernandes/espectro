@@ -3,6 +3,10 @@
    linha com borda esquerda de 2 px na seleção, detalhe com artigo de até 1280 px e barra de status de 28 px.
    Carregado depois do <style> de index.html. */
 
+body:not([data-view="padroes"]) .pat-crumb-tail { display: none; }
+.pat-crumb-tail { display: inline-flex; align-items: center; gap: 8px; }
+.pat-crumb-tail:empty { display: none; }
+
 body[data-view="padroes"] .view { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 
 .pat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; font-size: 14px; line-height: 20px; color: var(--text); }
@@ -60,13 +64,33 @@ body[data-view="padroes"] .view { padding: 0; overflow: hidden; display: flex; f
   margin: 0; font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: 0.1em;
   text-transform: uppercase; font-weight: 500; color: var(--muted);
 }
+/* Abas do detalhe */
+.pat-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); }
+.pat-tab {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px;
+  border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted);
+  font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.pat-tab[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
+.pat-tab kbd { font-family: var(--mono); font-size: 10px; color: var(--muted); background: none; border: 0; padding: 0; }
+.pat-tab .num { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.pat-panel { display: flex; flex-direction: column; gap: 22px; }
+
 .pat-cols { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
 .pat-col-main { flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+/* Opção de correção no estado escolhido do artboard (borda accent, fundo raised, anel com ponto). */
 .pat-fix {
-  display: flex; flex-direction: column; gap: 2px; padding: 12px 14px;
-  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px;
+  border: 1px solid var(--accent); border-radius: 10px; background: var(--raised);
 }
+.pat-fix-ring {
+  flex: 0 0 auto; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--link);
+  box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+}
+.pat-fix-ring > span { width: 6px; height: 6px; border-radius: 50%; background: var(--link); }
+.pat-fix-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .pat-fix-label { font-weight: 500; }
+.pat-fix-rec { font-size: 12px; font-weight: 400; color: var(--state-done-fg); }
 .pat-fix-what { font-size: 12px; color: var(--text-secondary); }
 .pat-fix-where { font-size: 12px; color: var(--muted); }
 
@@ -74,7 +98,9 @@ body[data-view="padroes"] .view { padding: 0; overflow: hidden; display: flex; f
 .pat-where .pat-cap { padding: 12px 14px 8px; }
 .pat-where a { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-top: 1px solid var(--border); color: var(--text); font-size: 12px; text-decoration: none; }
 .pat-where a:hover { background: var(--surface-hover); }
+.pat-ex-top { display: flex; gap: 8px; font-size: 12px; }
 .pat-run { font-family: var(--mono); color: var(--link); }
+.pat-ex-node { color: var(--muted); }
 .pat-where-note { padding: 8px 14px 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
 
 .pat code {
