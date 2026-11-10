@@ -1435,13 +1435,65 @@
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
+    "decomposition": {
+      "type": "object",
+      "description": "PRI-311 (PRI-287 S5.2b, SPEC B2): decomposição do Implement da Run decomposta (snapshot com decomposition \"on\"), gravada pelo watcher (writeTaskState com CAS) na primeira visita e no replan. plan_version = SHA-256 do bloco do plano (D14); groups = subtarefas por arquivos em comum (S2/S5.1); NOT_DECOMPOSABLE (sem plano ou grupos intercalados) segue o caminho da S4. superseded[] guarda as chaves de versões anteriores; plan_visits = visitas ao Plan na gravação (replan só depois de uma nova); a resolução inicial de cada chave é a classe da RoutingDecision do primeiro Attempt dela (DOM-06), sem cópia aqui; rework é o mapeamento da última volta de gate (B5.7). Só caminhos declarados no plano, nunca do manifesto.",
+      "required": ["plan_version", "status", "groups", "recorded_at"],
+      "additionalProperties": false,
+      "properties": {
+        "plan_version": { "type": ["string", "null"] },
+        "status": { "enum": ["DECOMPOSABLE", "NOT_DECOMPOSABLE"] },
+        "cause": { "type": ["string", "null"] },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["subtask_key", "steps", "paths_decl"],
+            "additionalProperties": false,
+            "properties": {
+              "subtask_key": { "type": "string" },
+              "steps": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+              "paths_decl": { "oneOf": [{ "type": "array", "items": { "type": "string" } }, { "const": "UNKNOWN" }] },
+              "acs": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "scope_paths": { "type": "array", "items": { "type": "string" } },
+        "plan_visits": { "type": "integer", "minimum": 0 },
+        "superseded": {
+          "type": "array",
+          "items": { "type": "object", "required": ["subtask_key", "plan_version", "status"], "properties": { "subtask_key": { "type": "string" }, "plan_version": { "type": "string" }, "status": { "const": "SUPERSEDED" } } }
+        },
+        "rework": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["gate_attempt_id", "gate_node", "after_seq", "keys", "failure_class", "recorded_at"],
+              "additionalProperties": false,
+              "properties": {
+                "gate_attempt_id": { "type": "string" },
+                "gate_node": { "enum": ["review", "test", "verify"] },
+                "after_seq": { "type": "integer" },
+                "keys": { "type": "array", "items": { "type": "string" } },
+                "mapped": { "type": "integer" },
+                "unmapped": { "type": "integer" },
+                "failure_class": { "type": "null" },
+                "recorded_at": { "type": "string", "format": "date-time" }
+              }
+            }
+          ]
+        },
+        "recorded_at": { "type": "string", "format": "date-time" }
+      }
+    },
     "decomposition_block_applied": {
       "type": "object",
-      "description": "PRI-311 (PRI-287 S5.2a, H6): último Attempt com papel (Run decomposta) cujo acceptance não aceito levou a Run a blocked. Gravado pelo watcher (writeTaskState com CAS) uma vez por Attempt, para o desbloqueio humano (unblocked) não ser desfeito no tick seguinte. Só códigos, nunca caminhos.",
+      "description": "PRI-311 (PRI-287 S5.2a, H6): último Attempt com papel (Run decomposta) cujo acceptance não aceito levou a Run a blocked. Gravado pelo watcher (writeTaskState com CAS) uma vez por Attempt, para o desbloqueio humano (unblocked) não ser desfeito no tick seguinte. Só códigos, nunca caminhos. PRI-311 (S5.2b): attempt_id null quando o bloqueio vem antes de existir Attempt (cadeia quebrada no despacho, Review sem agregação, agregação pendente, plano alterado fora do Plan).",
       "required": ["attempt_id", "reason", "at"],
       "additionalProperties": false,
       "properties": {
-        "attempt_id": { "type": "string" },
+        "attempt_id": { "type": ["string", "null"] },
         "reason": { "type": "string" },
         "at": { "type": "string", "format": "date-time" }
       }

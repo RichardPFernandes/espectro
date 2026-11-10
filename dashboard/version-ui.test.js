@@ -141,7 +141,8 @@ function boot({ restart }) {
             await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
             base = `http://127.0.0.1:${server.address().port}`;
             vm.createContext(context);
-            vm.runInContext(fs.readFileSync(path.join(__dirname, 'public', 'version.js'), 'utf8'), context, { filename: 'version.js' });
+            for (const file of ['ui-kit.js', 'system-model.js', 'version.js'])
+                vm.runInContext(fs.readFileSync(path.join(__dirname, 'public', file), 'utf8'), context, { filename: file });
             vm.runInContext(fs.readFileSync(path.join(__dirname, 'public', 'views.js'), 'utf8'), context, { filename: 'views.js' });
         },
         tabsHtml: () => dollar('tabs').innerHTML,
@@ -150,6 +151,11 @@ function boot({ restart }) {
         root: () => dollar('view').children[0],
         text: () => flatText(dollar('view')),
         button: () => walk(dollar('view')).find(node => String(node.className || '').includes('version-go')),
+        byKey: key => walk(dollar('view')).find(node => node.dataset?.tfilter === key),
+        async openTab(id) {
+            await until(() => this.byKey(`sys-tab-${id}`));
+            this.byKey(`sys-tab-${id}`).click();
+        },
         allow(value) { allow = value; },
         async close() {
             await new Promise(resolve => server.close(resolve));
@@ -165,11 +171,13 @@ test('AC-06: abrir Versão, confirmar Atualizar, pin na revisão nova e PID novo
         assert.match(ui.tabsHtml(), /data-view="versao"/);
         assert.match(ui.tabsHtml(), /Sistema/);
         ui.setView('versao');
+        await ui.openTab('config');
         await until(() => ui.button() && ui.button().disabled === false);
         assert.equal(ui.viewName(), 'versao');
         assert.match(ui.tabsHtml(), /data-view="versao" aria-selected="true"/);
         const text = ui.text();
-        assert.match(text, /Versão/);
+        assert.match(text, /Versão do Espectro/);
+        assert.match(text, /Sistema/);
         assert.match(text, /feat: um/);
         assert.match(text, /TOKEN=\*\*\*/);
         assert.equal(text.includes('abc123segredo'), false);
@@ -198,6 +206,7 @@ test('AC-06: sem bump a aba mostra o delta e o botão fica desabilitado com o mo
     try {
         await ui.open();
         ui.setView('versao');
+        await ui.openTab('config');
         await until(() => ui.button());
         assert.equal(ui.button().disabled, true);
         assert.match(ui.button().textContent, /Atualizar para /);
@@ -206,5 +215,25 @@ test('AC-06: sem bump a aba mostra o delta e o botão fica desabilitado com o mo
         ui.button().click();
         assert.equal(ui.confirms.length, 0);
         assert.equal(fs.existsSync(ui.bumpLog), false);
+    } finally { await ui.close(); }
+});
+
+test('Sistema: abre na aba Watcher; sem leitura do watcher nem da configuração mostra UNKNOWN, nunca ok', async () => {
+    const ui = boot({ restart: false });
+    try {
+        await ui.open();
+        ui.setView('versao');
+        await until(() => ui.byKey('sys-tab-watch'));
+        assert.equal(ui.byKey('sys-tab-watch').attributes['aria-selected'], 'true');
+        const text = ui.text();
+        assert.match(text, /Plataforma · watcher e configuração/);
+        assert.match(text, /Watcher · UNKNOWN/);
+        assert.match(text, /aba 1 de 2/);
+        assert.equal(/Watcher · ativo|✓ ok/.test(text), false);
+        for (const key of ['sys-w-start', 'sys-w-stop', 'sys-w-restart']) assert.equal(ui.byKey(key).disabled, true, key);
+        await ui.openTab('config');
+        await until(() => ui.text().includes('Saúde da configuração'));
+        assert.match(ui.text(), /UNKNOWN · validação indisponível/);
+        assert.equal(ui.byKey('sys-kc-ok'), undefined, 'sem relatório não há cards com zero');
     } finally { await ui.close(); }
 });
