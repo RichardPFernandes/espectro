@@ -351,3 +351,9 @@ body.run-open .detail { padding: 0; gap: 0; display: flex; flex-direction: colum
   .pl { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 12px; }
   .rd-status { display: none; }
 }
+
+/* Página cheia da run (artboard RunDetail): o caminho e os controles da lista já estão no
+   cabeçalho da run; a barra superior fica só com o cromo global, sem caminho duplicado. */
+body.run-open .topbar :is(.crumbs-top, #runViews, #runFilter) { display: none; }
+body.run-open .topbar > :is(.search, .topbar-right):not([hidden]) { margin-left: auto; }
+body.run-open .topbar .search:not([hidden]) ~ .topbar-right { margin-left: 0; }
