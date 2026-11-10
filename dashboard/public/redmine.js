@@ -119,7 +119,16 @@
     const t = TB.TRACKERS[k];
     return `<svg class="tk-tr" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke:${t.c}"><path d="${t.icon}"/></svg>`;
   }
-  const prChips = r => r.prs.map(p => { const b = TB.prBadge(p); return `<span class="tk-pr" style="color:${b.fg};background:${b.bg}" title="${esc([p.repo, p.title, b.word].filter(Boolean).join(' · '))}">${esc(b.label)}</span>`; }).join('');
+  // Selo do PR (artboard: um selo "#81" / "#85 merged" por linha). Run com vários PRs mostra o
+  // primeiro e "+N" (os outros no title): selos encolhidos viravam "#." ilegíveis na coluna de 150 px.
+  const prTip = p => [p.repo, p.id ? `#${p.id}` : null, p.title, TB.prBadge(p).word].filter(Boolean).join(' · ');
+  const prChips = r => {
+    if (!r.prs.length) return '';
+    const b = TB.prBadge(r.prs[0]);
+    const first = `<span class="tk-pr" style="color:${b.fg};background:${b.bg}" title="${esc(prTip(r.prs[0]))}">${esc(b.label)}</span>`;
+    const rest = r.prs.slice(1);
+    return first + (rest.length ? `<span class="tk-pr tk-pr-more num" title="${esc(rest.map(prTip).join('\n'))}">+${rest.length}</span>` : '');
+  };
   const alertChip = r => {
     if (!r.alerts.length) return '';
     const red = r.alerts.some(a => a.level === 'red');
@@ -171,7 +180,7 @@
           <div><button type="button" class="tk-btn-primary" data-tk="refresh" ${st.loading ? 'disabled' : ''}>Tentar novamente</button></div></div></div></section>`;
     }
     return `<section class="tk-est" aria-label="Nenhum ticket"><div class="tk-est-in">${head}
-      <div class="tk-est-empty" role="status"><h2>Nenhum ticket para mostrar</h2>
+      <div class="tk-est-empty" role="status"><h2>Nenhum ticket nesta visão</h2>
         <p>O Redmine devolveu lista vazia e nenhum run aponta para um ticket. O dashboard também recebe lista vazia quando REDMINE_URL/REDMINE_API_KEY não estão configurados ou a consulta falha, então isto não confirma zero tickets.</p>
         <button type="button" class="tk-btn-primary" data-tk="refresh" ${st.loading ? 'disabled' : ''}>Consultar agora</button></div></div></section>`;
   }
@@ -244,9 +253,9 @@
         <dt>Status</dt><dd class="tk-inline">${ring(s)}${esc(r.status || 'não consultado')}</dd>
         <dt>Prioridade</dt><dd class="tk-inline">${bars(r.priority)}${esc(r.priority || '—')}</dd>
         <dt>Responsável</dt><dd>${esc(r.assignee || t?.assignee || 'sem responsável')}</dd>
-        <dt>Sprint</dt><dd>${t ? esc(t.version || 'sem versão') : pending}</dd>
+        <dt>Sprint</dt><dd${t && !t.version ? ' title="Sem versão-alvo no Redmine"' : ''}>${t ? esc(t.version || 'Backlog') : pending}</dd>
         <dt>Horas</dt><dd class="tk-inline"><span class="tk-hbar" aria-hidden="true"><i style="width:${pct}%;background:${spent != null && est != null && spent > est ? 'var(--state-failed)' : 'var(--accent)'}"></i></span><span class="num" title="Gastas / estimadas no Redmine">${esc(hours)}</span></dd>
-        ${r.branch ? `<dt>Branch</dt><dd class="tk-mono">${esc(r.branch)}</dd>` : ''}
+        <dt>Branch</dt><dd class="tk-mono"${r.branch ? '' : ' title="Nenhum run gravou a branch base"'}>${esc(r.branch || '—')}</dd>
       </dl>
       <section class="tk-sec" aria-labelledby="sync-h">
         <h3 id="sync-h" class="tk-h3">Três fontes, uma história?</h3>
@@ -350,20 +359,20 @@
       const r = byId.get(st.page) || { id: st.page, subject: '', run: null, prs: [], alerts: [] };
       return actionsPage(r);
     }
-    const alerts = all.filter(r => r.alerts.length).length;
-    const sync = st.loading ? 'consultando…' : st.error ? 'última consulta falhou' : st.at ? `consultado ${ago(new Date(st.at).toISOString())}` : 'ainda não consultado';
-    const head = `<div class="tk-head">
-      ${alerts ? `<span class="tk-alert-pill num">${alerts} com divergência</span>` : ''}
-      <span class="tk-sync-l" title="${esc(st.error && all.length ? `${st.error} — a lista é a da última leitura que funcionou` : st.at ? when(new Date(st.at).toISOString()) : '')}">Redmine · ${esc(sync)}</span>
-      <button type="button" class="tk-btn2" data-tk="refresh" ${st.loading ? 'disabled' : ''}>${st.loading ? 'Consultando…' : 'Consultar agora'}</button>
-    </div>`;
     let body;
     if (!st.at && !all.length) body = estBlock('load');
     else if (st.error && !all.length) body = estBlock('err');
     else if (!all.length) body = estBlock('empty');
     else {
       const vis = TB.filterRows(all, pref.view, st.q);
-      const views = TB.VIEWS.map(([id, label, fn], i) => {
+      // Estado inicial do artboard: o primeiro ticket da lista já aberto no painel. Depois que a
+      // pessoa fecha (Esc / ×), a tela não reabre sozinha.
+      if (st.sel == null && !st.selClosed && vis.length) {
+        st.sel = order()[0] ?? vis[0].id;
+        const id = st.sel;
+        queueMicrotask(() => loadDetail(id));
+      }
+      const views =TB.VIEWS.map(([id, label, fn], i) => {
         const on = pref.view === id;
         return `<button type="button" role="tab" class="tk-seg" data-tk="view" data-v="${id}" aria-selected="${on}"><kbd>${i + 1}</kbd>${label}<span class="num">${all.filter(fn).length}</span></button>`;
       }).join('');
@@ -395,14 +404,52 @@
         </div>
         <div class="tk-panes" tabindex="0" aria-label="Tickets. J e K navegam, 1 a 3 trocam a visão, L troca lista e quadro, Esc fecha o detalhe.">
           <section class="tk-main" aria-label="Tickets" data-keep="main">${main}
-            <p class="tk-note">Status, prioridade, horas e responsável vêm do Redmine. A trilha de 7 segmentos é o run do Espectro; os selos de PR vêm do Bitbucket. “Divergência” = as três fontes não contam a mesma história.</p>
+            <p class="tk-note">Status, prioridade e responsável vêm do Redmine. A trilha de 7 segmentos é o run do Espectro; os selos de PR vêm do Bitbucket. “Divergência” = as três fontes não contam a mesma história.</p>
           </section>
           ${sel ? aside(sel) : ''}
         </div>
-        <footer class="tk-status"><span>${vis.length} tickets em “${esc(viewLabel)}” · ${esc(st.toast || 'Redmine é a fonte dos status')}</span><span class="tk-keys">J K navegar · 1–3 visão · L lista/quadro · Esc fechar</span></footer>`;
+        <footer class="tk-status"><span>${vis.length} tickets em “${esc(viewLabel)}” · ${esc(st.toast || 'Redmine é a fonte dos status')}</span><span class="tk-keys">⌘K buscar · J K navegar · 1–3 visão · L lista/quadro · Esc fechar</span></footer>`;
     }
-    return head + body;
+    return body;
   }
+
+  // Cabeçalho do artboard ("Tickets [N com divergência] … Redmine · consultado há N · Consultar
+  // agora") na mesma linha do caminho, no topbar do shell — mesmo padrão da tela Pull requests
+  // (prs.js > paintTopbar). Na página de ações, o caminho ganha a cauda "› #id" (TicketActions).
+  // Os nós somem nas outras telas (hidden aqui + CSS por body[data-view]).
+  let top = null, tail = null;
+  function paintTopbar() {
+    const crumbs = document.querySelector('.topbar .crumbs-top');
+    if (!crumbs) return;
+    if (!top) {
+      top = document.createElement('div');
+      top.id = 'tkTop'; top.className = 'tk-top';
+      top.addEventListener('click', e => { if (e.target.closest('[data-tk="refresh"]')) onAction(e.target.closest('[data-tk]')); });
+      crumbs.after(top);
+    }
+    if (!tail) {
+      tail = document.createElement('span');
+      tail.id = 'tkCrumbTail'; tail.className = 'tk-crumb-tail';
+      crumbs.append(tail);
+    }
+    const on = document.body.dataset.view === 'redmine';
+    const tailHtml = on && st.page != null ? `<span aria-hidden="true">›</span><span aria-current="page">#${esc(String(st.page))}</span>` : '';
+    if (tail.innerHTML !== tailHtml) tail.innerHTML = tailHtml;
+    top.hidden = !on || st.page != null;
+    if (top.hidden) { if (top.innerHTML) top.innerHTML = ''; return; }
+    const all = rows();
+    const alerts = all.filter(r => r.alerts.length).length;
+    const sync = st.loading ? 'consultando…' : st.error ? 'última consulta falhou' : st.at ? `consultado ${ago(new Date(st.at).toISOString())}` : 'ainda não consultado';
+    const html = `${alerts ? `<span class="tk-alert-pill num">${alerts} com divergência</span>` : ''}
+      <span class="tk-sync-l" title="${esc(st.error && all.length ? `${st.error} — a lista é a da última leitura que funcionou` : st.at ? when(new Date(st.at).toISOString()) : '')}">Redmine · ${esc(sync)}</span>
+      <button type="button" class="tk-btn2" data-tk="refresh" ${st.loading ? 'disabled' : ''}>${st.loading ? 'Consultando…' : 'Consultar agora'}</button>`;
+    if (top.innerHTML !== html) {
+      const hadFocus = top.contains(document.activeElement);
+      top.innerHTML = html;
+      if (hadFocus) top.querySelector('[data-tk="refresh"]')?.focus({ preventScroll: true });
+    }
+  }
+  new MutationObserver(() => paintTopbar()).observe(document.body, { attributes: true, attributeFilter: ['data-view'] });
 
   // Remonta o conteúdo do nó fixo preservando rolagem dos painéis e foco/seleção de campos.
   function paint() {
@@ -423,6 +470,7 @@
     const focus = a && root.contains(a) ? { id: a.id, tk: a.dataset?.tk, k: a.dataset?.id || a.dataset?.v || a.dataset?.l || a.dataset?.g || a.dataset?.st, s: a.selectionStart, e: a.selectionEnd } : null;
     if (a?.id === 'tkNote') st.note = a.value;
     root.innerHTML = html();
+    paintTopbar();
     root.querySelectorAll('[data-keep]').forEach(el => { if (scroll[el.dataset.keep] != null) el.scrollTop = scroll[el.dataset.keep]; });
     if (focus) {
       const el = focus.id ? root.querySelector(`#${focus.id}`)
@@ -436,6 +484,7 @@
   // ------------------------------------------------------------------ eventos
   function select(id) {
     st.sel = id;
+    st.selClosed = id == null;
     if (id != null) loadDetail(id);
     render();
   }

@@ -1,7 +1,8 @@
 /* screens/redmine.css — tela "Tickets" (public/redmine.js), fiel aos artboards Tickets.dc.html e
    TicketActions.dc.html do design Espectro. Medidas, cores e tokens copiados do artboard.
-   O caminho "Trabalho › Tickets", tema e busca global ficam no topbar do shell (onda 0); a tela
-   começa na faixa de consulta do Redmine. Estado sempre com forma + cor (anel, barras, glifo). */
+   O caminho "Trabalho › Tickets" e o tema ficam no topbar do shell (onda 0); o chip de divergência,
+   a fonte e "Consultar agora" entram na mesma linha (redmine.js > paintTopbar), como no artboard;
+   a tela começa na barra das visões. Estado sempre com forma + cor (anel, barras, glifo). */
 
 body[data-view="redmine"] .view { padding: 0; overflow: hidden; display: flex !important; flex-direction: column; }
 .tk { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; font-size: 14px; line-height: 20px; color: var(--text); }
@@ -12,11 +13,13 @@ body[data-view="redmine"] .view { padding: 0; overflow: hidden; display: flex !i
 .tk-muted { margin: 0; font-size: 13px; color: var(--muted); }
 .tk-mono { font-family: var(--font-mono); font-size: 12px; }
 
-/* ------------------------------------------------------------ Faixa do Redmine (parte da tela no header do artboard) */
-.tk-head {
-  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
-  padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--rail);
-}
+/* ------------------------------------------------------------ Cabeçalho do artboard, no topbar do shell (redmine.js > paintTopbar) */
+.tk-top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; flex: 1 1 auto; min-width: 0; }
+.tk-top[hidden], body:not([data-view="redmine"]) .tk-top, body:not([data-view="redmine"]) .tk-crumb-tail { display: none; }
+.tk-crumb-tail { display: contents; }
+.tk-crumb-tail [aria-current] { color: var(--text); font-weight: 600; }
+/* O artboard não tem a busca global neste cabeçalho; a busca da tela fica na barra das visões. */
+body[data-view="redmine"] .topbar .search { display: none; }
 .tk-alert-pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 999px;
   background: var(--state-waiting); color: var(--on-waiting); font-family: var(--font-mono); font-size: 11px; font-weight: 600; line-height: 18px;
@@ -95,7 +98,9 @@ body[data-view="redmine"] .view { padding: 0; overflow: hidden; display: flex !i
 .tk-ttl-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c-alert { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
 .tk-div, .tk-pr { flex: 0 0 auto; padding: 0 6px; border-radius: 4px; font-size: 11px; line-height: 18px; white-space: nowrap; }
+/* Selo do PR encolhe com reticências; o "+N" (outros PRs do ticket) nunca some. */
 .tk-pr { font-family: var(--font-mono); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tk-pr-more { flex: 0 0 auto; color: var(--text-secondary); background: var(--raised); }
 .tk-div.amber { color: var(--state-waiting-fg); background: var(--state-waiting-bg); }
 .tk-div.red { color: var(--state-failed-fg); background: var(--state-failed-bg); }
 .c-run { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
