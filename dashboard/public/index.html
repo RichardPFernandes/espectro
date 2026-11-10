@@ -580,6 +580,7 @@
 <link rel="stylesheet" href="screens/system.css">
 <link rel="stylesheet" href="screens/compare.css">
 <link rel="stylesheet" href="screens/onboarding.css">
+<link rel="stylesheet" href="screens/runs-main.css">
 </head>
 <body class="app">
 <nav class="app-nav" aria-label="Navegação principal">
@@ -595,6 +596,7 @@
 <header class="topbar">
   <nav class="crumbs-top" aria-label="Caminho"><span id="crumbGroup">Trabalho</span><span aria-hidden="true">›</span><b id="crumbView">Runs</b></nav>
   <div id="runViews" class="seg" role="tablist" aria-label="Visão dos runs"></div>
+  <div id="runFilter" class="seg rl-state" role="group" aria-label="Filtrar por estado"></div>
   <label class="search">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     <input id="q" type="search" placeholder="Buscar por ticket ou assunto" aria-label="Buscar runs" autocomplete="off">
@@ -768,6 +770,10 @@ const PREFS_KEY = 'graph-dashboard:prefs';
 const $ = id => document.getElementById(id);
 const runs = new Map();
 let selected = null;
+// Run selecionada mostra o painel do artboard Main; "Abrir run" (ou o link #run/<id>) abre o detalhe
+// inteiro (artboard RunDetail), com a lista escondida. runTab = aba lateral do detalhe.
+let runOpen = false;
+let runTab = 'summary';
 // Cache de sessão (memória): ticket do Redmine não é rebuscado; PR vale 60s.
 const ticketCache = new Map();
 const prCache = new Map();
@@ -1081,9 +1087,10 @@ setInterval(() => {
     const elapsed = Math.max(0, now - started);
     el.textContent = NodeClock.fmtDuration(elapsed);
     const lvl = NodeClock.levelOf(elapsed / timeout);
-    const station = el.closest('.station');
-    station.classList.remove('lvl-warn', 'lvl-hot', 'lvl-over');
-    if (lvl) station.classList.add(`lvl-${lvl}`);
+    // Faixa "Em execução" do detalhe (RunDetail); .station fica para quem ainda usar o trilho antigo.
+    const box = el.closest('.rd-clock, .station');
+    box?.classList.remove('lvl-warn', 'lvl-hot', 'lvl-over');
+    if (box && lvl) box.classList.add(`lvl-${lvl}`);
     if (lvl === 'over' && !document.querySelector('#intBanner [data-kind]')) renderDetail();
   }
 }, 1000);
@@ -1098,7 +1105,7 @@ function setRuns(list) {
   for (const r of list) runs.set(r.taskId, r);
   if (!selected) {
     const want = prefs.selected && runs.has(prefs.selected) && !isHidden(runs.get(prefs.selected)) ? prefs.selected : null;
-    if (want) { select(want, { quiet: true }); return; }
+    if (want) { select(want, { quiet: true, open: /^#run\//.test(location.hash) }); return; }
   }
   renderSidebar({ views: changed });
   renderDetail();
@@ -1190,7 +1197,10 @@ function actionBar() {
 // re-renderiza a aba ativa inteira — tabelas grandes piscavam a cada evento).
 function renderSidebar({ views = true } = {}) {
   if (views) window.Views?.refresh();
-  const list = visibleRuns();
+  // Filtro por estado e filtro do kcard (design Main) valem para a lista e para as outras visões.
+  const all = [...runs.values()].filter(r => !isHidden(r));
+  const list = RunsMain.applyFilters(visibleRuns(), all);
+  $('runFilter').innerHTML = RunsMain.stateFilterHtml(visibleRuns().filter(r => !isHidden(r)));
   const q = $('q').value.trim();
   const side = $('sidebar');
   side.classList.toggle('selecting', selecting);
@@ -1199,20 +1209,22 @@ function renderSidebar({ views = true } = {}) {
     side.innerHTML = '<div class="side-empty">Nenhum run encontrado em memory/runs. Quando o watcher pegar um ticket, ele aparece aqui sozinho.</div>';
     return;
   }
+  const head = RunsMain.headHtml(all, sidebarBar(list));
   if (!list.length) {
-    side.innerHTML = sidebarBar(list) + `<div class="side-empty">Nada bate com “${esc(q)}”. Tente o número do ticket.</div>`;
+    side.innerHTML = head + `<div class="side-empty">${q ? `Nada bate com “${esc(q)}”. Tente o número do ticket.` : 'Nenhuma run neste filtro.'}</div>`;
     return;
   }
-  let html = sidebarBar(list);
+  let html = head;
   const shown = list.filter(r => !isHidden(r));
   const hidden = list.filter(r => isHidden(r));
   for (const g of GROUPS) {
-    const items = g.hidden ? hidden : shown.filter(g.match);
+    const items = RunListModel.sortRuns(g.hidden ? hidden : shown.filter(g.match), RunsMain.sortOf());
     if (!items.length) continue;
+    const sum = items.reduce((a, r) => { const v = RunListModel.totalsOf(r).usd; return v == null ? a : (a ?? 0) + v; }, null);
     const open = groupOpen(g);
     const hasSel = !open && items.some(r => r.taskId === selected);
     const title = `<button class="group-head ${g.cls || ''}" type="button" data-group="${g.key}" aria-expanded="${open}">
-      ${ICON.chevLeft}<span class="g-dot ${GROUP_TONE[g.key] || 'queued'}" aria-hidden="true"></span>${g.label} <span class="count">${items.length}</span>${hasSel ? '<span class="sel-dot" title="O run aberto está neste grupo"></span>' : ''}</button>`;
+      ${ICON.chevLeft}<span class="g-dot ${GROUP_TONE[g.key] || 'queued'}" aria-hidden="true"></span>${g.label} <span class="count">${items.length}</span>${hasSel ? '<span class="sel-dot" title="O run aberto está neste grupo"></span>' : ''}${sum == null ? '' : `<span class="g-sum num" title="Soma do custo medido · fonte: cost_tracking do state.json">${esc(fmtUsd(sum))}</span>`}</button>`;
     if (selecting && !compareMode) {
       const n = items.filter(r => picked.has(r.taskId)).length;
       const cls = n === 0 ? '' : n === items.length ? 'on' : 'some';
@@ -1325,9 +1337,9 @@ function runRow(r) {
         ? `<span class="check ${picked.has(r.taskId) ? 'on' : ''}">${ICON.box}</span>`
         : stateGlyph(r.status)}
       <span class="title">${t.num ? `<span class="ticket">${highlight(t.num, q)}</span>` : ''}${highlight(t.text, q)}${isHighRisk(r) ? RISK_BADGE : ''}${churnBadge(r)}${r.status === 'awaiting_approval' ? APPROVAL_BADGE : ''}${specBadge(r)}${qaBadge(r)}${qaRetryBlockedBadge(r)}${routingBlockedBadge(r)}${!r.qaRejected ? ticketStatusBadge(r.ticketStatus) : ''}${sessionLimitBadge(r)}</span>
-      <span class="when" title="${esc(when(r.updatedAt))}">${esc(ago(r.updatedAt))}</span>
+      <span class="cost-top">${runCost(r)}</span>
       ${svcChips(r) ? `<span class="svcs" aria-label="Serviços afetados">${svcChips(r, { max: 3 })}</span>` : ''}
-      <span class="sub">${miniRail(r)}${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}<span class="where">${esc(where)}</span>${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}${window.RunSubtasks?.chipHtml(costOf(r)) || ''}${runCost(r)}</span>
+      <span class="sub">${miniRail(r)}${schemaBadge(r) ? `<span>${schemaBadge(r)}</span>` : ''}${prs.length ? `<span>${prBadge(r.taskId, prs[0])}${prs.length > 1 ? ` <span class="pr-more">+${prs.length - 1}</span>` : ''}</span>` : ''}<span class="where">${esc(where)}</span>${slug ? `<span class="slug">${highlight(slug, q)}</span>` : ''}${r.pendingHumanInput ? '<span class="mail">Mensagem na fila</span>' : ''}${window.RunSubtasks?.chipHtml(costOf(r)) || ''}<span class="when" title="${esc(when(r.updatedAt))}">${esc(ago(r.updatedAt))}</span></span>
       ${qaActions(r)}
       ${sessionLimitActions(r)}
     </div>`;
@@ -1477,6 +1489,11 @@ async function resumeSession(taskId) {
 $('sidebar').addEventListener('click', e => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'select') return setSelecting(true);
+  if (act === 'clear-kcard') { prefs.runsKf = null; persist(); return renderSidebar(); }
+  const kc = e.target.closest('[data-kcard]');
+  if (kc) { prefs.runsKf = prefs.runsKf === kc.dataset.kcard ? null : kc.dataset.kcard; persist(); return renderSidebar(); }
+  const so = e.target.closest('[data-runs-sort]');
+  if (so) { prefs.runsSort = so.dataset.runsSort; persist(); return renderSidebar(); }
   if (act === 'compare-mode') return setSelecting(true, { compare: true });
   if (act === 'compare') {
     const ids = [...picked].filter(id => runs.has(id));
@@ -1520,13 +1537,62 @@ $('sidebar').addEventListener('click', e => {
 });
 $('sidebar').addEventListener('keydown', e => {
   const row = e.target.closest('.run');
-  if (row && e.target === row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); row.click(); }
+  if (!row || e.target !== row || (e.key !== 'Enter' && e.key !== ' ')) return;
+  e.preventDefault();
+  // Enter na run já selecionada abre o detalhe ("Abrir run ↵" do artboard Main).
+  if (e.key === 'Enter' && !selecting && row.dataset.id === selected) openRunDetail();
+  else row.click();
+});
+$('runFilter').addEventListener('click', e => {
+  const b = e.target.closest('[data-runs-filter]');
+  if (!b) return;
+  prefs.runsFilter = b.dataset.runsFilter; persist();
+  renderSidebar();
 });
 $('q').addEventListener('input', () => { searchOverride = {}; renderSidebar(); });
 
-function select(taskId, { quiet } = {}) {
+function setRunTab(id) {
+  runTab = id;
+  document.querySelectorAll('#detail [data-rd-sec]').forEach(x => { x.hidden = x.dataset.rdSec !== id; });
+  document.querySelectorAll('#detail [data-rd-tab]').forEach(x => x.setAttribute('aria-current', x.dataset.rdTab === id));
+  if (id === 'context') renderContext(false);
+}
+function closeRun() {
+  saveDraft();
+  selected = null; prefs.selected = null; runOpen = false; persist();
+  window.UX?.route(null);
+  renderSidebar(); renderDetail(); updateTitle();
+}
+// Do detalhe de volta à lista, com a run ainda selecionada (painel do Main).
+function backToList() {
+  runOpen = false;
+  renderDetail();
+  document.querySelector(`#sidebar .run[data-id="${CSS.escape(selected || '')}"]`)?.focus();
+}
+function openRunDetail(tab = 'summary') {
+  if (!selected) return;
+  runOpen = true; runTab = tab;
+  renderDetail();
+  if (contextFor === selected) renderContext(false);
+  $('detail').querySelector(`[data-rd-tab="${CSS.escape(runTab)}"]`)?.focus();
+}
+$('detail').addEventListener('click', e => {
+  const o = e.target.closest('[data-run-open]');
+  if (o) { openRunDetail(o.dataset.runOpen); return; }
+  if (e.target.closest('[data-run-close]')) { closeRun(); return; }
+  if (e.target.closest('[data-run-back]')) { backToList(); return; }
+  if (e.target.closest('[data-run-compare]')) {
+    const id = selected; backToList(); setSelecting(true, { compare: true }); picked.add(id); renderSidebar(); return;
+  }
+  const tb = e.target.closest('[data-rd-tab], [data-dtab-go]');
+  if (tb) setRunTab(tb.dataset.rdTab || tb.dataset.dtabGo);
+});
+
+function select(taskId, { quiet, open = false } = {}) {
   window.Compare?.close();
   saveDraft();
+  if (taskId !== selected) runTab = 'summary';
+  runOpen = !!(taskId && open);
   selected = taskId;
   prefs.selected = taskId; persist();
   contextText = ''; contextFor = null; ctxQuery = '';
@@ -1600,6 +1666,7 @@ function explanation(r) {
 }
 
 function renderDetail() {
+  document.body.classList.toggle('run-open', !!(runOpen && runs.get(selected)));
   if (window.Compare?.active()) { $('detail').innerHTML = Compare.html(); return; }
   const r = runs.get(selected);
   if (!r && window.UX) { $('detail').innerHTML = UX.overview(); return; }
@@ -1614,132 +1681,117 @@ function renderDetail() {
       </div>`;
     return;
   }
+  document.body.classList.toggle('run-open', runOpen);
+  // Painel da run selecionada (artboard Main): o detalhe inteiro só abre com "Abrir run".
+  if (!runOpen) { $('detail').innerHTML = RunsMain.summaryHtml(r); return; }
   const t = titleOf(r);
   const s = r.state || {};
   const ex = explanation(r);
-  const retries = s.retries || {};
   const committedLocked = r.status === 'committed' || r.pretask;
   const highRisk = isHighRisk(r);
-  const stations = NODES.map(([key, label]) => {
-    const st = stationState(r, key);
-    // Glifo do estado da etapa (design Espectro): ✓ feita, ◐ rodando, ‖ esperando você, ✕ falhou.
-    const inner = st.done ? ICON.check : st.cls.includes('running') ? '◐' : st.cls.includes('failed') ? '✕' : st.cls.includes('current') ? '‖' : '';
-    const riskHere = highRisk && key === 'commit';
-    const clk = r.node === key && st.cls.includes('running') ? NodeClock.clock(s) : null;
-    const lvl = clk?.level ? ` lvl-${clk.level}` : '';
-    return `
-      <div class="station ${st.cls}${riskHere ? ' high-risk' : ''}${lvl}${key === 'implement' && r.preBuild ? ' has-gate' : ''}" role="listitem">
-        ${riskHere ? '<div class="risk-flag" title="O PR deste run abre como Draft com [HIGH-RISK] no título">HIGH-RISK</div>' : ''}
-        ${key === 'implement' ? preBuildGateHtml(r) : ''}
-        <div class="stop" aria-hidden="true">${inner}</div>
-        <div class="name">${label}<span class="sr-only"> — ${st.done ? 'concluída' : st.cls.includes('running') ? 'em execução' : st.cls.includes('failed') ? 'falhou' : st.cls.includes('current') ? 'parada aqui' : 'pendente'}</span></div>
-        ${clk ? `<div class="elapsed" data-node-clock data-started="${clk.startedAt}" data-timeout="${clk.timeoutMs}" title="Tempo desde node_started_at · timeout ${esc(NodeClock.fmtDuration(clk.timeoutMs))}">${esc(NodeClock.fmtDuration(clk.elapsedMs))}</div>` : ''}
-        ${retries[key] ? `<div class="retry">${retries[key]}ª tentativa extra</div>` : ''}
-        ${key === 'plan' && planAttempt(s) > 1 ? `<div class="retry">Tentativa ${planAttempt(s)}</div>` : ''}
-      </div>`;
-  }).join('');
+  // Abas laterais do RunDetail: só entra a aba que tem dado no app (RunListModel.detailTabs).
+  const tasksHtml = subtasksFoldHtml(r), replay = replayHtml(r), cost = costFoldHtml(r);
+  const groups = RunListModel.detailTabs({ tasks: !!tasksHtml, api: !!r.hasOpenApiContract, replay: !!replay,
+    events: Array.isArray(s.events) && s.events.length > 0, transcripts: transcriptsOf(s).length > 0, cost: !!cost });
+  runTab = RunListModel.validTab(groups, runTab);
+  const SEC = {
+    summary: ['Resumo', 'estado, decisões pendentes, plano e build'], tasks: ['Tasks', 'subtarefas do plano e roteamento sombra'],
+    api: ['Contrato API', 'openapi-contract.yaml gerado pelo Plan'], log: ['Log do agente', 'saída do claude -p deste run'],
+    timeline: ['Timeline', 'eventos gravados no state.json'], replay: ['Replay', 'retomar a partir de um nó num run novo'],
+    env: ['Ambiente & PRs', 'PRs, recusa do QA, preview, schema e ticket'], chat: ['Conversa', 'lida entre um passo e outro'],
+    context: ['Contexto', 'context.md da tarefa'], transcripts: ['Transcrições', 'conversa de cada nó (post-mortem)'], costs: ['Custos', 'medidos pelo watcher · cost_tracking'],
+  };
+  const sec = (id, html, cls = '') => `<section class="rd-sec${cls}" data-rd-sec="${id}"${id === runTab ? '' : ' hidden'}>
+      <div class="rd-sec-head"><h1>${SEC[id][0]}</h1><span>${SEC[id][1]}</span></div>${html}</section>`;
+  const clk = r.status === 'running' && s.status === 'running' ? NodeClock.clock(s) : null;
+  const stop = RunListModel.needsYou(r) && !RunListModel.isDone(r) ? {
+    title: ex.title, since: ago(r.updatedAt).replace(/^há /, ''),
+    tab: r.status === 'needs_human_review' ? 'chat' : 'summary', link: r.status === 'needs_human_review' ? 'Responder na conversa' : 'Ver o pedido',
+  } : null;
 
   $('detail').innerHTML = `
     <div class="stale-banner" id="staleBanner" role="status" aria-live="polite" hidden><span>${esc(StateVersion.MESSAGE)}</span><button type="button" class="ghost-btn" id="staleReload">Atualizar</button></div>
-    <nav class="crumbs" aria-label="Navegação"><button type="button" class="back-link" id="backOverview">← Visão geral</button><span aria-hidden="true">›</span><span class="crumb-id">${esc(t.num || r.taskId)}</span></nav>
-    <section class="hero" aria-labelledby="runTitle">
-      <div class="hero-top">
-        <div>
-          <h1 id="runTitle">${t.num ? `<span class="num">${esc(t.num)}</span> ` : ''}${esc(t.text)}${churnBadge(r)}${schemaBadge(r)}${specBadge(r)}${qaRetryBlockedBadge(r)}</h1>
-          <div class="hero-meta">
-            ${r.ticket?.tracker ? `<span>${esc(r.ticket.tracker)}</span>` : ''}
-            ${r.ticket?.base_branch ? `<span>Base ${esc(r.ticket.base_branch)}</span>` : ''}
-            <span>Atualizado ${esc(ago(r.updatedAt))}</span>
-            ${heroCost(r)}
-            <button class="copy-chip" type="button" data-copy="${esc(r.taskId)}" title="Copiar task-id"><code>${esc(r.taskId)}</code>${ICON.copy}</button>
-            <button class="copy-chip" type="button" data-copy-link title="Copiar link direto para este run">${ICON.link} Copiar link</button>
-            <button class="copy-chip" type="button" id="viewLogBtn" title="Ver o log do agente (claude -p) deste run">📋 Ver log</button>
-            ${r.hasOpenApiContract ? `<button class="copy-chip" type="button" id="viewOpenApiBtn" title="Contrato OpenAPI gerado pelo Plan para os endpoints desta task (openapi-contract.yaml)">📄 Ver contrato OpenAPI</button>` : ''}
-          </div>
-          ${svcChips(r) ? `<div class="hero-svcs" aria-label="Serviços afetados"><span class="lbl">Escopo de teste</span><span class="svcs">${svcChips(r)}</span><code>${esc(svcCommand(r))}</code></div>` : ''}
+    ${RunsMain.detailHeadHtml(r, { label: s.status === 'pre-build-failed' ? 'Build quebrado' : isChurn(r) ? 'Churn' : null,
+      badges: `${churnBadge(r)}${schemaBadge(r)}${specBadge(r)}${qaRetryBlockedBadge(r)}` })}
+    ${RunsMain.detailBandHtml(r, stop, { implement: preBuildGateHtml(r) })}
+    ${clk ? `<div class="rd-clock">Em execução: ${esc(NODE_LABEL[r.node] || r.node)} há <span class="elapsed num" data-node-clock data-started="${clk.startedAt}" data-timeout="${clk.timeoutMs}" title="Tempo desde node_started_at · timeout ${esc(NodeClock.fmtDuration(clk.timeoutMs))}">${esc(NodeClock.fmtDuration(clk.elapsedMs))}</span></div>` : ''}
+    <div class="rd-panes">
+      ${RunsMain.sideNavHtml(groups, runTab)}
+      <div class="rd-main">
+      ${sec('summary', `
+        <div class="explain ${esc(r.status)}">
+          ${ICON[ex.icon]}
+          <strong>${esc(ex.title)}</strong>
+          <p>${esc(ex.body)}</p>
+          ${ex.note ? `<p class="note" id="lastNote">${esc(ex.note)}</p><button class="link-btn" type="button" id="noteToggle">Ler nota inteira</button>` : ''}
         </div>
-        <span class="status-chip pill ${stateTone(r.status).tone} ${esc(r.status)}"><span aria-hidden="true">${stateTone(r.status).glyph}</span>${esc(r.state?.status === 'pre-build-failed' ? 'Build quebrado' : isChurn(r) ? 'Churn' : STATUS[r.status] || r.status)}</span>
-      </div>
-      <div class="rail" role="list" aria-label="Etapas do ciclo">${stations}</div>
-      <div class="explain ${esc(r.status)}">
-        ${ICON[ex.icon]}
-        <strong>${esc(ex.title)}</strong>
-        <p>${esc(ex.body)}</p>
-        ${ex.note ? `<p class="note" id="lastNote">${esc(ex.note)}</p><button class="link-btn" type="button" id="noteToggle">Ler nota inteira</button>` : ''}
-      </div>
-      ${highRisk ? `
-      <div class="risk-box" role="note">
-        <h4>⚠ HIGH-RISK · Motivo do risco</h4>
-        <p>${esc(s.risk_reason || 'O Verify não registrou o motivo (risk_reason ausente).')}</p>
-        <small>O PR abre como Draft, com [HIGH-RISK] no título. Faça uma revisão redobrada antes do merge.</small>
-      </div>` : ''}
-      ${r.status === 'awaiting_approval' && s.status !== 'authorization-pending' ? `<div id="approvalBox">${approvalHtml(r)}</div>` : ''}
-      ${window.Authorization ? Authorization.html(r) : ''}
-      ${window.RoutingRun ? RoutingRun.html(r) : ''}
-      <div id="intBanner">${interruptedHtml(s)}</div>
-      <div id="prAlert">${prAlertHtml(prRows(r))}</div>
-      ${qaRetryBlockedInfo(r) ? `<div class="risk-box" role="status"><h4>⚠ Retry QA bloqueado</h4><p>${esc(QA_RETRY_BLOCKED_LABEL[qaRetryBlockedInfo(r).reason] || qaRetryBlockedInfo(r).reason)}</p><small>O sinal retry-signal.json permanece; o watcher não despacha em duplicata. Resolva a causa — o próximo tick tenta de novo.${qaRetryBlockedInfo(r).at ? ` Registrado em ${esc(when(qaRetryBlockedInfo(r).at))}.` : ''}</small></div>` : ''}
-      <div class="facts">
-        <span>Lido de <b>${esc(r.pretask ? `memory/runs/${r.ticket?.id}-spec-gate.json (ainda sem task)` : r.location === 'main' ? 'checkout principal' : r.location.replace('worktree:', 'worktree '))}</b>${r.copies > 1 ? ` (${r.copies} cópias; esta é a que o watcher usa)` : ''}</span>
-        ${s.started_at ? `<span>Iniciado <b>${esc(when(s.started_at))}</b></span>` : ''}
-        ${(s.history || []).length ? `<span>Passos executados <b>${s.history.length}</b></span>` : ''}
-        ${s.status === 'fully_merged' ? '<span>PRs <b>todos mergeados</b></span>' : ''}
-        ${r.preBuild?.status === 'passed' ? `<span>Pré-build <b>compilou em ${esc(fmtSecs(r.preBuild.durationMs))}</b></span>` : ''}
-        ${r.preBuild?.status === 'skipped' ? `<span title="${esc(r.preBuild.skipReason || 'SKIP_PRE_BUILD_VALIDATION=true')}">Pré-build <b>pulado${r.preBuild.skipReason ? ' (ambiente)' : ''}</b></span>` : ''}
-      </div>
-      ${qaFoldHtml(r)}
-      ${churnHtml(r)}
-      ${planScoreHtml(r)}
-      ${preBuildHtml(r)}
-      ${schemaFoldHtml(r)}
-      ${foldsHtml(r)}
-      ${subtasksFoldHtml(r)}
-      ${costFoldHtml(r)}
-      ${prMatrixHtml(r)}
-      ${replayHtml(r)}
-    </section>
-
-    <div class="work">
-      <section class="panel" aria-labelledby="convTitle">
-        <div class="panel-head">
-          <h3 id="convTitle">Conversa com o agente</h3>
-          <span class="hint">lida entre um passo e outro</span>
+        ${highRisk ? `
+        <div class="risk-box" role="note">
+          <h4>⚠ HIGH-RISK · Motivo do risco</h4>
+          <p>${esc(s.risk_reason || 'O Verify não registrou o motivo (risk_reason ausente).')}</p>
+          <small>O PR abre como Draft, com [HIGH-RISK] no título. Faça uma revisão redobrada antes do merge.</small>
+        </div>` : ''}
+        ${r.status === 'awaiting_approval' && s.status !== 'authorization-pending' ? `<div id="approvalBox">${approvalHtml(r)}</div>` : ''}
+        ${window.Authorization ? Authorization.html(r) : ''}
+        ${window.RoutingRun ? RoutingRun.html(r) : ''}
+        <div id="intBanner">${interruptedHtml(s)}</div>
+        <div id="prAlert">${prAlertHtml(prRows(r))}</div>
+        ${qaRetryBlockedInfo(r) ? `<div class="risk-box" role="status"><h4>⚠ Retry QA bloqueado</h4><p>${esc(QA_RETRY_BLOCKED_LABEL[qaRetryBlockedInfo(r).reason] || qaRetryBlockedInfo(r).reason)}</p><small>O sinal retry-signal.json permanece; o watcher não despacha em duplicata. Resolva a causa — o próximo tick tenta de novo.${qaRetryBlockedInfo(r).at ? ` Registrado em ${esc(when(qaRetryBlockedInfo(r).at))}.` : ''}</small></div>` : ''}
+        ${svcChips(r) ? `<div class="hero-svcs" aria-label="Serviços afetados"><span class="lbl">Escopo de teste</span><span class="svcs">${svcChips(r)}</span><code>${esc(svcCommand(r))}</code></div>` : ''}
+        <div class="facts">
+          ${r.ticket?.tracker ? `<span>Tipo <b>${esc(r.ticket.tracker)}</b></span>` : ''}
+          ${r.ticket?.base_branch ? `<span>Base <b>${esc(r.ticket.base_branch)}</b></span>` : ''}
+          <span>Atualizado <b>${esc(ago(r.updatedAt))}</b></span>
+          ${s.started_at ? `<span>Iniciado <b>${esc(when(s.started_at))}</b></span>` : ''}
+          ${(s.history || []).length ? `<span>Passos executados <b>${s.history.length}</b></span>` : ''}
+          ${r.copies > 1 ? `<span><b>${r.copies} cópias</b>; esta é a que o watcher usa</span>` : ''}
+          ${s.status === 'fully_merged' ? '<span>PRs <b>todos mergeados</b></span>' : ''}
+          ${r.preBuild?.status === 'passed' ? `<span>Pré-build <b>compilou em ${esc(fmtSecs(r.preBuild.durationMs))}</b></span>` : ''}
+          ${r.preBuild?.status === 'skipped' ? `<span title="${esc(r.preBuild.skipReason || 'SKIP_PRE_BUILD_VALIDATION=true')}">Pré-build <b>pulado${r.preBuild.skipReason ? ' (ambiente)' : ''}</b></span>` : ''}
+          ${planAttempt(s) > 1 ? `<span>Plano <b>tentativa ${planAttempt(s)}</b></span>` : ''}
         </div>
-        <div id="thread" class="thread" aria-live="polite"></div>
-        <form id="composer" class="composer">
-          ${committedLocked ? '' : `<div class="quick" role="group" aria-label="Respostas rápidas">${QUICK_REPLIES.map((q, i) => `<button type="button" class="quick-btn" data-quick="${i}">${esc(q.label)}</button>`).join('')}</div>`}
-          <textarea id="message" rows="3" ${committedLocked ? 'disabled' : ''}
-            placeholder="${r.pretask ? 'O ciclo ainda não começou: não há agente para ler mensagens.' : committedLocked ? 'Este run já foi concluído.' : 'Ex.: reaproveite a tabela LOG_INTEGRACAO em vez de criar uma nova'}"
-            aria-label="Mensagem para o agente"></textarea>
-          <div class="composer-row">
-            <span id="composerHelp" class="composer-help">${composerHint(r)}</span>
-            <button id="send" class="send" type="submit" disabled>${ICON.send} Enviar ao agente <kbd>⌘↵</kbd></button>
-          </div>
-        </form>
-      </section>
-
-      <section class="panel" aria-labelledby="ctxTitle">
-        <div class="panel-head">
-          <h3 id="ctxTitle">Contexto da tarefa</h3>
-          <div class="tabs ctx-tabs" role="tablist" aria-labelledby="ctxTitle">
-            <button type="button" role="tab" id="dtab-ctx" data-dtab="ctx" aria-controls="ctxPane" aria-selected="${detailTab() === 'ctx'}">context.md</button>
-            <button type="button" role="tab" id="dtab-events" data-dtab="events" aria-controls="evPane" aria-selected="${detailTab() === 'events'}">Timeline de Eventos<span class="count">${(Array.isArray(s.events) ? s.events.length : 0) || ''}</span></button>
-            <button type="button" role="tab" id="dtab-transcripts" data-dtab="transcripts" aria-controls="trPane" aria-selected="${detailTab() === 'transcripts'}">Transcrições<span class="count">${transcriptsOf(s).length || ''}</span></button>
-          </div>
-          <div class="right" id="ctxControls"${detailTab() === 'ctx' ? '' : ' hidden'}>
-            <label class="ctx-find"><input id="ctxFind" type="search" placeholder="Buscar no contexto" aria-label="Buscar no contexto" value="${esc(ctxQuery)}"><span id="ctxCount"></span></label>
-            <div class="seg" role="group" aria-label="Quanto mostrar">
-              <button type="button" data-mode="tail" aria-pressed="${prefs.ctxMode !== 'all'}">Últimas 100 linhas</button>
-              <button type="button" data-mode="all" aria-pressed="${prefs.ctxMode === 'all'}">Tudo</button>
+        ${churnHtml(r)}
+        ${planScoreHtml(r)}
+        ${preBuildHtml(r)}`)}
+      ${tasksHtml ? sec('tasks', tasksHtml) : ''}
+      ${r.hasOpenApiContract ? sec('api', `<div class="rd-card"><p>O Plan gerou um contrato OpenAPI para os endpoints desta task.</p><button class="btn" type="button" id="viewOpenApiBtn">Ver contrato OpenAPI</button></div>`) : ''}
+      ${sec('log', `<div class="rd-card"><p>A saída do agente (claude -p) deste run, ao vivo enquanto ele roda.</p><button class="btn" type="button" id="viewLogBtn">Ver log do agente</button></div>`)}
+      ${Array.isArray(s.events) && s.events.length ? sec('timeline', `<div id="evPane" class="ev-pane">${eventsTimelineHtml(s)}</div>`) : ''}
+      ${replay ? sec('replay', replay) : ''}
+      ${sec('env', `${prMatrixHtml(r)}${qaFoldHtml(r)}${schemaFoldHtml(r)}${foldsHtml(r)}`, ' hero')}
+      ${sec('chat', `
+        <section class="panel" aria-label="Conversa com o agente">
+          <div id="thread" class="thread" aria-live="polite"></div>
+          <form id="composer" class="composer">
+            ${committedLocked ? '' : `<div class="quick" role="group" aria-label="Respostas rápidas">${QUICK_REPLIES.map((q, i) => `<button type="button" class="quick-btn" data-quick="${i}">${esc(q.label)}</button>`).join('')}</div>`}
+            <textarea id="message" rows="3" ${committedLocked ? 'disabled' : ''}
+              placeholder="${r.pretask ? 'O ciclo ainda não começou: não há agente para ler mensagens.' : committedLocked ? 'Este run já foi concluído.' : 'Ex.: reaproveite a tabela LOG_INTEGRACAO em vez de criar uma nova'}"
+              aria-label="Mensagem para o agente"></textarea>
+            <div class="composer-row">
+              <span id="composerHelp" class="composer-help">${composerHint(r)}</span>
+              <button id="send" class="send" type="submit" disabled>${ICON.send} Enviar ao agente <kbd>⌘↵</kbd></button>
+            </div>
+          </form>
+        </section>`)}
+      ${sec('context', `
+        <section class="panel" aria-label="context.md">
+          <div class="panel-head">
+            <div class="hero-meta rd-ctx-tools"></div>
+            <div class="right" id="ctxControls">
+              <label class="ctx-find"><input id="ctxFind" type="search" placeholder="Buscar no contexto" aria-label="Buscar no contexto" value="${esc(ctxQuery)}"><span id="ctxCount"></span></label>
+              <div class="seg" role="group" aria-label="Quanto mostrar">
+                <button type="button" data-mode="tail" aria-pressed="${prefs.ctxMode !== 'all'}">Últimas 100 linhas</button>
+                <button type="button" data-mode="all" aria-pressed="${prefs.ctxMode === 'all'}">Tudo</button>
+              </div>
             </div>
           </div>
-        </div>
-        <div id="ctxPane" role="tabpanel" aria-labelledby="dtab-ctx"${detailTab() === 'ctx' ? '' : ' hidden'}>
-          <div id="ctx" class="ctx"><div class="ctx-empty">Carregando…</div><button id="jump" class="jump" type="button">Ir para o fim</button></div>
-        </div>
-        <div id="evPane" class="ev-pane" role="tabpanel" aria-labelledby="dtab-events"${detailTab() === 'events' ? '' : ' hidden'}>${eventsTimelineHtml(s)}</div>
-        <div id="trPane" class="ev-pane" role="tabpanel" aria-labelledby="dtab-transcripts"${detailTab() === 'transcripts' ? '' : ' hidden'}>${transcriptsHtml(s)}</div>
-      </section>
+          <div id="ctxPane">
+            <div id="ctx" class="ctx"><div class="ctx-empty">Carregando…</div><button id="jump" class="jump" type="button">Ir para o fim</button></div>
+          </div>
+        </section>`)}
+      ${transcriptsOf(s).length ? sec('transcripts', `<div id="trPane" class="ev-pane">${transcriptsHtml(s)}</div>`) : ''}
+      ${cost ? sec('costs', cost) : ''}
+      </div>
     </div>`;
 
   wireDetail(r);
@@ -2764,12 +2816,6 @@ function wireDetail(r) {
   $('composer').onsubmit = sendMessage;
 
   renderStaleBanner();
-  $('backOverview')?.addEventListener('click', () => {
-    saveDraft();
-    selected = null; prefs.selected = null; persist();
-    window.UX?.route(null);
-    renderSidebar(); renderDetail(); updateTitle();
-  });
   $('approvalBox')?.addEventListener('click', e => {
     const act = e.target.closest('[data-approval]')?.dataset.approval;
     if (act === 'draft') toggleDraft(r.taskId);
@@ -3176,7 +3222,16 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.activeElement === $('q')) { $('q').value = ''; renderSidebar(); $('q').blur(); return; }
   if (e.key === 'Escape' && selecting && !typing) { setSelecting(false); return; }
   if ((e.key === 'Delete' || e.key === 'Backspace') && selecting && !typing && picked.size) { e.preventDefault(); applyHide(); return; }
-  if (!typing && !selecting && document.body.dataset.view === 'runs' && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k')) {
+  const drawerOpen = !!document.querySelector('.log-drawer.open');
+  if (!typing && !drawerOpen && !e.metaKey && !e.ctrlKey && !e.altKey && runOpen && runs.get(selected) && document.body.dataset.view === 'runs') {
+    const groups = [...document.querySelectorAll('#detail .rd-grp')].map((g, i) => ({ n: i + 1, tabs: [...g.querySelectorAll('[data-rd-tab]')].map(b => ({ id: b.dataset.rdTab })) }));
+    const n = Number(e.key);
+    if (e.key === 'j' || e.key === 'k') { e.preventDefault(); setRunTab(RunListModel.stepTab(groups, runTab, e.key === 'j' ? 1 : -1)); return; }
+    if (n >= 1 && n <= 6) { const id = RunListModel.groupTab(groups, n); if (id) { e.preventDefault(); setRunTab(id); } return; }
+    if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); runTab === 'summary' ? backToList() : setRunTab('summary'); return; }
+  }
+  if (!typing && !drawerOpen && e.key === 'Escape' && !e.defaultPrevented && !runOpen && selected && !window.Compare?.active() && document.body.dataset.view === 'runs') { e.preventDefault(); closeRun(); return; }
+  if (!typing && !selecting && !runOpen && document.body.dataset.view === 'runs' && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k')) {
     const ids = [...document.querySelectorAll('.run')].map(b => b.dataset.id);
     if (!ids.length) return;
     e.preventDefault();
@@ -3272,6 +3327,8 @@ document.addEventListener('click', async e => {
 });
 </script>
 <script src="ui-kit.js"></script>
+<script src="run-list-model.js"></script>
+<script src="runs-main.js"></script>
 <script src="node-clock.js"></script>
 <script src="schema-checklist.js"></script>
 <script src="markdown.js"></script>

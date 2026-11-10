@@ -30,11 +30,11 @@
 
 /* ------------------------------------------------------------ Quadro */
 .rv-board {
-  display: grid; grid-auto-flow: column; grid-auto-columns: 216px; gap: 8px; align-items: start;
+  display: grid; grid-auto-flow: column; grid-auto-columns: 200px; gap: 10px; align-items: start;
   overflow-x: auto; padding-bottom: 8px;
 }
 .rv-col {
-  display: flex; flex-direction: column; gap: 8px; min-height: 360px; padding: 8px;
+  display: flex; flex-direction: column; gap: 8px; min-height: 360px; padding: 10px;
   background: var(--rail); border: 1px solid var(--border); border-radius: var(--radius-panel);
 }
 .rv-col-head {
@@ -95,7 +95,6 @@
 /* Fases = escala ordinal de um matiz, clara → escura no tema claro e escura → clara no
    escuro (luminosidade monotônica nos dois; validado). Escuro: rampa do artboard Main. */
 .rv-timeline { --rv-ph0: var(--c-2b3f70); --rv-ph1: var(--c-4467b8); --rv-ph2: var(--c-7da4ff); --rv-ph3: var(--c-c4d6ff); }
-:root[data-theme="light"] .rv-timeline { --rv-ph0: #A9C0EE; --rv-ph1: #6F93E0; --rv-ph2: #3A62C4; --rv-ph3: #1F3F8F; }
 .rv-timeline { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
 .rv-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; line-height: 16px; color: var(--text-secondary); }
 .rv-legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -105,7 +104,7 @@
 .rv-tl-grid { display: flex; flex-direction: column; gap: 2px; min-width: 720px; }
 .rv-lanes { display: flex; flex-direction: column; gap: 2px; }
 .rv-lane {
-  display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; align-items: center;
+  display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 12px; align-items: center;
   min-height: 40px; padding: 0 8px; border-left: 2px solid transparent; border-radius: var(--radius-tag);
 }
 .rv-lanes .rv-lane:hover { background: var(--surface-hover); }
@@ -116,7 +115,9 @@
 .rv-lane-num { font-family: var(--mono); font-size: 12px; line-height: 16px; font-weight: 500; }
 .rv-lane-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--muted); }
 .rv-lane-label:hover .rv-lane-title { color: var(--text); text-decoration: underline; }
-.rv-track { position: relative; height: 20px; background: var(--rail); border-radius: var(--radius-tag); }
+.rv-tl-tools { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.rv-foot { margin: 0; padding: 12px 0 0; font-size: 12px; color: var(--muted); }
+.rv-track { position: relative; height: 18px; background: var(--rail); border-radius: var(--radius-tag); }
 .rv-axis { min-height: 28px; }
 .rv-axis .rv-track { height: 24px; background: transparent; border-bottom: 1px solid var(--border); border-radius: 0; }
 .rv-axis-label { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--muted); }
@@ -126,7 +127,7 @@
 }
 .rv-tick.now { color: var(--link); font-weight: 600; }
 /* Trechos: 12 px, cantos 3 px; anel da cor do trilho separa trechos vizinhos. */
-.rv-seg { position: absolute; top: 4px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 1px var(--rail); }
+.rv-seg { position: absolute; top: 3px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 1px var(--rail); }
 .rv-seg:hover { filter: brightness(1.15); }
 .rv-seg:focus-visible { z-index: 1; outline: 2px solid var(--link); outline-offset: 2px; }
 .rv-seg.ph0, .rv-sw.ph0 { background: var(--rv-ph0); }
