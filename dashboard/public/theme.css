@@ -74,7 +74,7 @@ a:hover { color: var(--link-hover); }
 /* ------------------------------------------------------------ 3. Shell */
 body.app { display: flex; height: 100vh; overflow: hidden; }
 .app-nav {
-  flex: 0 0 var(--rail-width); width: var(--rail-width); overflow-y: auto;
+  flex: 0 0 var(--rail-width); width: var(--rail-width); overflow-y: auto; overflow-x: hidden;
   display: flex; flex-direction: column; gap: 16px; padding: 20px 14px;
   background: var(--rail); border-right: 1px solid var(--border);
 }
@@ -83,6 +83,16 @@ body.app { display: flex; height: 100vh; overflow: hidden; }
 .app-brand-name { display: flex; flex-direction: column; }
 .app-brand-name b { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
 .app-brand-name span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+/* Campo da paleta no menu (CommandPalette do AppNav, 100% × 40 px): abre o ⌘K. */
+.nav-search {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 0 8px 0 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-control); background: transparent;
+  color: var(--muted); font-size: 13px; text-align: left; cursor: pointer;
+}
+.nav-search:hover { background: var(--surface-hover); color: var(--text); }
+.nav-search svg { flex: 0 0 auto; }
+.nav-search > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-search kbd { flex: 0 0 auto; font: 11px var(--mono); color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
 
 .nav-groups { display: flex; flex-direction: column; gap: 4px; }
 .nav-group, .nav-group-items { display: flex; flex-direction: column; gap: 2px; }
@@ -94,6 +104,8 @@ body.app { display: flex; height: 100vh; overflow: hidden; }
 }
 .nav-group-label > span:first-of-type { flex: 1 1 auto; }
 .nav-group-label:hover { color: var(--text); }
+.nav-group.has-current > .nav-group-label { color: var(--text-secondary); }
+.nav-group.has-current > .nav-group-label:hover { color: var(--text); }
 .nav-group-label svg { flex: 0 0 auto; transition: transform var(--dur-micro) var(--ease-out); }
 .nav-group-label[aria-expanded="true"] svg { transform: rotate(90deg); }
 .nav-group-label .nav-count { letter-spacing: 0; padding: 0 7px; }
@@ -102,10 +114,10 @@ body.app { display: flex; height: 100vh; overflow: hidden; }
   border: 0; border-radius: var(--radius-control); background: transparent;
   color: var(--text-secondary); font-size: 14px; text-align: left; cursor: pointer;
 }
-.nav-item svg { flex: 0 0 auto; stroke: var(--muted); }
+.nav-item svg { flex: 0 0 auto; stroke: currentColor; }
 .nav-item > span:first-of-type { flex: 1 1 auto; }
 .nav-item:hover { background: var(--surface-hover); color: var(--text); }
-.nav-item[aria-selected="true"] { background: var(--raised); color: var(--text); font-weight: 600; }
+.nav-item[aria-selected="true"] { background: var(--raised); color: var(--text); font-weight: 500; }
 .nav-item[aria-selected="true"] svg { stroke: var(--link); }
 .nav-count {
   font-family: var(--mono); font-size: 11px; font-weight: 600; line-height: 18px;
@@ -131,11 +143,32 @@ body.app { display: flex; height: 100vh; overflow: hidden; }
   position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
   font: 11px var(--mono); color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px;
 }
-.topbar-right { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.live { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
-.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--state-queued); }
-.live.on i { background: var(--state-done); }
-.live.off i { background: var(--state-failed); }
+/* Grupo global à direita (atualizar, exportar, sino, tema): sem o campo de busca de uma tela antes,
+   ele mesmo encosta à direita. */
+.topbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.topbar .search:not([hidden]) ~ .topbar-right { margin-left: 0; }
+
+/* Rodapé de status comum (footer.statusbar dos artboards): 28 px, mono 11, atalhos à direita.
+   Telas que montam o próprio rodapé dentro da visão escondem este (sem duas barras). */
+.statusbar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 16px; height: 28px; padding: 0 16px; overflow: hidden;
+  border-top: 1px solid var(--border); background: var(--rail);
+  font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--muted); white-space: nowrap;
+}
+.statusbar > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+body:not([data-view="runs"]) .app-main:has(> .view :is([class*="statusbar"], footer[class*="-status"])) > #appStatus { display: none; }
+.sb-watcher, .live { display: inline-flex; align-items: center; gap: 6px; }
+.sb-watcher i, .live i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--state-queued); }
+.sb-watcher[data-tone="on"] i, .live.on i { background: var(--state-done); animation: sb-pulse 1.4s ease-in-out infinite; }
+.sb-watcher[data-tone="off"] i, .live.off i { background: var(--state-failed); }
+.sb-watcher[data-tone="warn"] i { background: var(--state-waiting); }
+@keyframes sb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.sb-keys {
+  margin-left: auto; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; color: var(--muted); white-space: nowrap;
+}
+.sb-keys:hover { color: var(--text); }
+.statusbar-keys { margin-left: auto; }
 .icon-btn {
   width: 40px; height: 40px; display: inline-grid; place-items: center; cursor: pointer;
   border: 1px solid var(--c-252a3d); border-radius: var(--radius-control); background: transparent; color: var(--text-secondary);
@@ -304,6 +337,7 @@ body.app { display: flex; height: 100vh; overflow: hidden; }
   .nav-group-items { flex-direction: row; flex-wrap: wrap; }
   .nav-item { width: auto; }
   .nav-foot { display: none; }
+  .statusbar { display: none; }
   .topbar { padding: 8px 16px; }
   .search { order: 3; flex: 1 1 100%; margin-left: 0; }
   .view { padding: 16px; }

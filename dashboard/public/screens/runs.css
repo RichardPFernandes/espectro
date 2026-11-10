@@ -498,14 +498,8 @@ kbd {
 .ov-tips { margin: 0; color: var(--muted); font-size: 12px; }
 
 /* ------------------------------------------------------------ Paleta ⌘K e ajuda */
-.cmd-btn {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px 0 12px;
-  border: 1px solid var(--border-control); border-radius: var(--radius-control); background: transparent;
-  color: var(--muted); font-size: 13px; cursor: pointer; white-space: nowrap;
-}
-.cmd-btn:hover { color: var(--text); background: var(--surface-hover); }
+/* Campo da paleta (.nav-search) e botão de atalhos (.sb-keys): cromo global, em theme.css. */
 .icon-btn[aria-pressed="true"] { color: var(--link); border-color: var(--link); background: var(--state-running-bg); }
-#helpBtn { font-weight: 700; font-size: 14px; }
 .overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: start center; padding: 12vh 16px 16px; }
 .overlay[hidden] { display: none; }
 .ov-backdrop { position: fixed; inset: 0; background: rgba(5, 7, 12, .6); }

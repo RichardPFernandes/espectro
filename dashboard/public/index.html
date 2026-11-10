@@ -586,9 +586,14 @@
 <body class="app">
 <nav class="app-nav" aria-label="Navegação principal">
   <a class="app-brand" href="#runs" aria-label="Espectro — início">
-    <svg width="28" height="28" viewBox="0 0 48 48" aria-hidden="true"><path d="M6.1 15 A20 20 0 0 1 41.9 15 Z" style="fill: var(--accent)"/><path d="M4.9 18 H43.1 A20 20 0 0 1 43.1 30 H4.9 A20 20 0 0 1 4.9 18 Z" style="fill: var(--state-done)"/><path d="M6.1 33 H41.9 A20 20 0 0 1 6.1 33 Z" style="fill: var(--state-waiting)"/></svg>
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 4 L25 23 H3 Z" stroke-width="1.8" stroke-linejoin="round" style="stroke: var(--text)"/><path d="M14 14 L27 11" stroke-width="1.6" stroke-linecap="round" style="stroke: var(--accent)"/><path d="M14 14 L27 15" stroke-width="1.6" stroke-linecap="round" style="stroke: var(--state-done)"/><path d="M14 14 L27 19" stroke-width="1.6" stroke-linecap="round" style="stroke: var(--state-waiting)"/><path d="M1 16 L14 14" stroke-width="1.6" stroke-linecap="round" style="stroke: var(--muted)"/></svg>
     <span class="app-brand-name"><b>Espectro</b><span>dashboard local</span></span>
   </a>
+  <!-- Campo da paleta (CommandPalette do AppNav): abre a mesma paleta do ⌘K (ux.js). -->
+  <button id="cmdk" class="nav-search" type="button" title="Buscar ou ir para… (⌘K)">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span>Buscar ou ir para…</span><kbd id="cmdkKey">⌘K</kbd>
+  </button>
   <div id="tabs" class="nav-groups"></div>
   <div id="navFoot" class="nav-foot"></div>
 </nav>
@@ -604,7 +609,6 @@
     <kbd>/</kbd>
   </label>
   <div class="topbar-right">
-    <div id="live" class="live" role="status"><i></i><span id="liveText">Conectando</span></div>
     <a id="exportRuns" class="icon-btn" href="/api/export" download title="Exportar relatório (memory/runs/ em JSON)" aria-label="Exportar Relatório"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></a>
     <button id="theme" class="icon-btn" type="button" title="Alternar tema" aria-label="Alternar tema claro/escuro">
       <svg data-pfx-theme-icon="moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
@@ -619,6 +623,12 @@
 </div>
 
 <main id="view" class="view" aria-live="polite"></main>
+<!-- Rodapé de status comum (artboards: footer.statusbar). Telas com rodapé próprio escondem este. -->
+<footer id="appStatus" class="statusbar">
+  <span id="sbWatcher" class="sb-watcher" hidden></span>
+  <div id="live" class="live" role="status"><i aria-hidden="true"></i><span id="liveText">Conectando</span></div>
+  <button id="helpBtn" class="sb-keys" type="button" title="Atalhos de teclado (?)" aria-keyshortcuts="?"></button>
+</footer>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -798,11 +808,9 @@ let lastPicked = null;
 let compareMode = false;
 const COMPARE_MAX = 2;
 const persist = () => save(PREFS_KEY, prefs);
-// Sem preferência salva, segue o sistema; os tokens (prisma-theme.css) leem só data-theme.
-const systemTheme = matchMedia('(prefers-color-scheme: light)');
-const applyTheme = () => { document.documentElement.dataset.theme = prefs.theme || (systemTheme.matches ? 'light' : 'dark'); };
+// Sem preferência salva, escuro (padrão do design, prisma-fx.js do canvas); os tokens leem só data-theme.
+const applyTheme = () => { document.documentElement.dataset.theme = prefs.theme || 'dark'; };
 applyTheme();
-systemTheme.addEventListener('change', () => { if (!prefs.theme) applyTheme(); });
 
 // ---------------------------------------------------------------- helpers
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3244,9 +3252,7 @@ document.addEventListener('keydown', e => {
 });
 
 $('theme').addEventListener('click', () => {
-  const dark = document.documentElement.dataset.theme
-    ? document.documentElement.dataset.theme === 'dark'
-    : matchMedia('(prefers-color-scheme: dark)').matches;
+  const dark = document.documentElement.dataset.theme !== 'light';
   prefs.theme = dark ? 'light' : 'dark';
   document.documentElement.dataset.theme = prefs.theme;
   persist();

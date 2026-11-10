@@ -264,15 +264,15 @@
     b.title = prefs.notify ? 'Notificações ativas: clique para desativar' : 'Avisar quando um run parar esperando você';
   }
 
-  // ------------------------------------------------------------------ topbar
-  const right = document.querySelector('.topbar-right');
-  right.insertAdjacentHTML('afterbegin', `
-    <button id="cmdk" class="cmd-btn" type="button" title="Ir para… (${MOD} K)"><span>Ir para…</span><kbd>${MOD} K</kbd></button>`);
+  // ------------------------------------------------------------------ cromo global
+  // Paleta: campo no menu lateral (#cmdk, CommandPalette do AppNav). Topbar: sino (NotifBell)
+  // antes do tema. Atalhos: botão à direita do rodapé de status (#helpBtn, index.html).
+  $('cmdk').title = `Buscar ou ir para… (${MOD} K)`;
+  $('cmdkKey').textContent = MOD === '⌘' ? '⌘K' : `${MOD} K`;
   $('theme').insertAdjacentHTML('beforebegin', `
     <button id="bell" class="icon-btn" type="button" aria-pressed="false" aria-label="Notificações">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 20a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-    </button>
-    <button id="helpBtn" class="icon-btn" type="button" title="Atalhos de teclado (?)" aria-label="Atalhos de teclado">?</button>`);
+    </button>`);
   $('cmdk').addEventListener('click', openPalette);
   $('bell').addEventListener('click', toggleNotify);
   $('helpBtn').addEventListener('click', openHelp);
