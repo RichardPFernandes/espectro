@@ -1668,7 +1668,6 @@ function explanation(r) {
 
 function renderDetail() {
   document.body.classList.toggle('run-open', !!(runOpen && runs.get(selected)));
-  if (window.Compare?.active()) { $('detail').innerHTML = Compare.html(); return; }
   const r = runs.get(selected);
   if (!r && window.UX) { $('detail').innerHTML = UX.overview(); return; }
   if (!r) {
@@ -3349,6 +3348,7 @@ document.addEventListener('click', async e => {
 <script src="ux.js"></script>
 <script src="refresh.js"></script>
 <script src="archive.js"></script>
+<script src="compare-model.js"></script>
 <script src="compare.js"></script>
 <script src="watcher.js"></script>
 <script src="watcher-health.js"></script>

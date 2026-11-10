@@ -211,3 +211,32 @@ test('loadRun: acha em memory/runs, _archive, worktree do ticket e memory/archiv
     assert.deepStrictEqual(snapshot(), before, 'nenhum arquivo foi criado/alterado');
     fs.rmSync(repo, { recursive: true, force: true });
 });
+
+test('facts e nodeDiff.detail: entradas, provider, modelos, custo e duração por nó (tela Comparar runs)', () => {
+    const at = provider => ({ provider });
+    const A = {
+        status: 'committed', history: ['plan', 'implement', 'implement'], spec_path: 'memory/spec/x.md', spec_hash: 'sha256:aa',
+        planScore: 82, transcripts_total: 3, started_at: '2026-11-01T10:00:00Z', updated_at: '2026-11-01T10:40:00Z',
+        cost_tracking: cost({
+            plan: node(100, 10, { models: ['claude-sonnet-5-5'], duration_ms: 4000, cost_usd: 0.1, attempts: [at('anthropic')] }),
+            implement: node(300, 30, { runs: 2, models: ['claude-opus-5-5'], duration_ms: 9000, cost_usd: null, runs_without_cost: 1, attempts: [at('anthropic'), at('UNKNOWN')] }),
+        }),
+    };
+    const B = { status: 'escalated', history: ['plan'], cost_tracking: cost({ plan: node(null, null, { runs_without_tokens: 1, attempts: [at('openai')] }) }) };
+    const r = cmp.compareRuns(A, B);
+    assert.deepStrictEqual(r.facts.a, { specPath: 'memory/spec/x.md', specHash: 'sha256:aa', providers: ['anthropic'], planScore: 82, transcripts: 3,
+        startedAt: '2026-11-01T10:00:00Z', updatedAt: '2026-11-01T10:40:00Z' });
+    assert.deepStrictEqual(r.facts.b, { specPath: null, specHash: null, providers: ['openai'], planScore: null, transcripts: null, startedAt: null, updatedAt: null });
+    const impl = r.nodeDiff.detail.implement;
+    assert.deepStrictEqual(impl.a, { coveredBy: null, executions: 2, models: ['claude-opus-5-5'], providers: ['anthropic'], durationMs: 9000, costUsd: null,
+        tokens: 330, runsWithoutCost: 1, runsWithoutTokens: 0, tracked: true });
+    assert.strictEqual(impl.b, null, 'nó que não executou em B = null');
+    const plan = r.nodeDiff.detail.plan.b;
+    assert.deepStrictEqual([plan.tokens, plan.costUsd, plan.runsWithoutTokens, plan.models], [null, null, 1, []]);
+    // history sem cost_tracking: executou, mas sem medição (tracked: false, tudo null)
+    const h = cmp.compareRuns({ history: ['plan'] }, {}).nodeDiff.detail.plan.a;
+    assert.deepStrictEqual([h.executions, h.tracked, h.costUsd, h.durationMs], [1, false, null, null]);
+    // also_covers: fetch_ticket rodou dentro do plan
+    const cov = cmp.compareRuns({ cost_tracking: cost({ plan: node(1, 1, { also_covers: ['fetch_ticket'] }) }) }, {}).nodeDiff.detail.fetch_ticket.a;
+    assert.deepStrictEqual([cov.executions, cov.tracked, cov.coveredBy], [1, false, 'plan']);
+});
