@@ -50,6 +50,8 @@ function normalizeReviewers(raw) {
             uuid: r.uuid || null,
             displayName: r.display_name || r.nickname || 'Reviewer',
             approved: p?.approved === true,
+            // "Pedir mudanças" no Bitbucket: participant.state === 'changes_requested'.
+            changesRequested: p?.state === 'changes_requested',
         };
     });
 }
@@ -114,6 +116,7 @@ async function getPR({ workspace, repo, prId, token, apiBase = DEFAULT_API_BASE,
 async function getPRDetail({ workspace, repo, prId, token, apiBase = DEFAULT_API_BASE, timeoutMs = DEFAULT_TIMEOUT_MS }) {
     const detail = await bitbucketJson(prUrl(apiBase, workspace, repo, prId), token, timeoutMs);
     let filesChanged = 0, linesAdded = 0, linesRemoved = 0;
+    const files = []; // por arquivo, para a lista "Arquivos" do detalhe na aba "PRs"
     let next = `${prUrl(apiBase, workspace, repo, prId)}/diffstat?pagelen=100`;
     while (next) {
         const page = await bitbucketJson(next, token, timeoutMs);
@@ -121,10 +124,16 @@ async function getPRDetail({ workspace, repo, prId, token, apiBase = DEFAULT_API
             filesChanged += 1;
             linesAdded += entry.lines_added || 0;
             linesRemoved += entry.lines_removed || 0;
+            files.push({
+                path: entry.new?.path || entry.old?.path || null,
+                added: entry.lines_added || 0,
+                removed: entry.lines_removed || 0,
+                status: entry.status || null,
+            });
         }
         next = page.next || null;
     }
-    return { ...normalizePR(detail, repo), diffStat: { filesChanged, linesAdded, linesRemoved } };
+    return { ...normalizePR(detail, repo), diffStat: { filesChanged, linesAdded, linesRemoved, files } };
 }
 
 // POST /2.0/repositories/{workspace}/{repo}/pullrequests/{id}/approve — aprova
