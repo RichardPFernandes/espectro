@@ -135,3 +135,25 @@ test('start 202 → SSE com log prefixado e fases até running → 409 pra outro
     assert.strictEqual(stopped.body.phase, 'idle');
     assert.strictEqual((await call('GET', '/api/preview/7777/status')).body.activeTicket, null);
 });
+
+test('modo commit: start repassa source/commit (4242 tem worktree, mas sem branch → 404 em vez de subir o worktree); fonte inválida → 400; GET /commits sem branch → 404', async () => {
+    const post = body => fetch(`${base}/api/preview/4242/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(async r => ({ status: r.status, body: await r.json() }));
+    const semBranch = await post({ source: 'commit' });
+    assert.strictEqual(semBranch.status, 404);
+    assert.strictEqual(semBranch.body.error, 'branch 4242 do app-back não encontrada (nem origin/4242)');
+    assert.strictEqual((await post({ source: 'commit', commit: 'abc1234' })).status, 404);
+    // SHA malformado é recusado antes de procurar a branch: prova que o servidor repassa `commit`.
+    const sha = await post({ source: 'commit', commit: '--upload-pack=x' });
+    assert.strictEqual(sha.status, 400);
+    assert.match(sha.body.error, /commit inválido/);
+    const fonte = await post({ source: 'qualquer' });
+    assert.strictEqual(fonte.status, 400);
+    assert.match(fonte.body.error, /fonte inválida/);
+
+    const commits = await call('GET', '/api/preview/4242/commits');
+    assert.strictEqual(commits.status, 404);
+    assert.strictEqual(commits.body.error, 'branch 4242 do app-back não encontrada (nem origin/4242)');
+    assert.strictEqual((await call('GET', '/api/preview/..%2Fx/commits')).status, 400);
+    assert.strictEqual((await call('GET', '/api/preview/4242/status')).body.phase, 'idle');
+});

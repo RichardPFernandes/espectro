@@ -1,13 +1,79 @@
 // Painel "Preview de Ambiente" no detalhe do run (scripts/preview-manager.js via
-// /api/preview/:ticketId/*): builda os worktrees do ticket e sobe app-back (:8081) +
-// app-front (:9000). Script clássico carregado depois do principal; usa os globais
-// runs, selected, esc, api, toast, nearBottom, ticketIdOfRun e $.
+// /api/preview/:ticketId/*): builda o código do ticket — do worktree ou de um commit da
+// branch dele — e sobe app-back (:8081) + app-front (:9100). Script clássico carregado
+// depois do principal; usa os globais runs, selected, esc, api, toast, nearBottom,
+// ticketIdOfRun e $.
 //
 // renderDetail() reescreve #detail com innerHTML a cada atualização do run, então o
 // painel se remonta via MutationObserver; estado (status, log, fold aberto) vive aqui.
+
+// Fonte do código (worktree × commit): regras e HTML puros, testados no Node
+// (preview-ui.test.js) como o ui-kit.js.
+const PreviewSource = (() => {
+  const esc = (typeof UIKit !== 'undefined' ? UIKit : require('./ui-kit')).esc;
+  const short = sha => String(sha || '').slice(0, 8);
+  const when = iso => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Worktree quando existe (o que o watcher está mexendo agora); senão a branch.
+  function defaultSource(st) {
+    if (st?.worktrees?.back) return 'worktree';
+    return st?.branches?.back ? 'commit' : 'worktree';
+  }
+
+  function sourceHtml(st, source, busy) {
+    const opt = (key, label, why) => `<button type="button" data-pvsrc="${key}" aria-pressed="${source === key}"${busy || why ? ' disabled' : ''}${why ? ` title="${esc(why)}"` : ''}>${label}</button>`;
+    return `<span class="pv-meta pv-db">Fonte <span class="seg" role="group" aria-label="Fonte do código">${
+      opt('worktree', 'Worktree', st?.worktrees?.back ? '' : 'worktree não encontrado')}${
+      opt('commit', 'Commit', st?.branches?.back ? '' : 'sem branch do ticket no app-back')}</span></span>`;
+  }
+
+  // SHA escolhido se ainda está na lista; senão o mais recente.
+  function pickCommit(state, choice) {
+    const list = state?.data?.commits || [];
+    return list.some(c => c.sha === choice) ? choice : list[0]?.sha || null;
+  }
+
+  function commitPickerHtml(state, choice, busy) {
+    if (state?.loading) return '<span class="pv-meta">Buscando commits da branch do ticket…</span>';
+    if (state?.error) return `<span class="pv-meta">Não foi possível listar os commits: ${esc(state.error)}</span> <button type="button" class="link-btn" data-pvcommitsload>Tentar de novo</button>`;
+    if (!state?.data) return '';
+    const { ref, commits, front } = state.data;
+    if (!commits.length) return `<span class="pv-meta">Nenhum commit em ${esc(ref)}.</span>`;
+    const cur = pickCommit(state, choice);
+    const opts = commits.map((c, i) => `<option value="${esc(c.sha)}" ${c.sha === cur ? 'selected' : ''}>${esc(short(c.sha))} · ${esc(c.subject)}${
+      when(c.date) ? ` · ${esc(when(c.date))}` : ''}${i === 0 ? ' · mais recente' : ''}</option>`).join('');
+    return `<label class="pv-meta pv-db pv-commit">Commit de ${esc(ref)}
+        <select data-pvcommit ${busy ? 'disabled' : ''}>${opts}</select></label>
+      <span class="pv-meta">${front ? `front: ${esc(front.ref)} @ ${esc(short(front.sha))} (ponta)` : 'front: sem branch do ticket — sobe só o back'}</span>`;
+  }
+
+  function canStart(st, source, state) {
+    return source === 'commit' ? !!state?.data?.commits?.length : !!st?.worktrees?.back;
+  }
+
+  function startBody(source, state, choice) {
+    return source === 'commit' ? { source, commit: pickCommit(state, choice) } : { source };
+  }
+
+  function liveSourceText(st) {
+    if (st?.source === 'worktree') return 'worktree do ticket';
+    if (st?.source !== 'commit' || !st.commit) return '';
+    const front = st.refs?.front;
+    return `commit ${short(st.commit.sha)} de ${st.commit.ref}${front ? ` · front ${short(front.sha)}` : ''}`;
+  }
+
+  return { defaultSource, sourceHtml, commitPickerHtml, canStart, startBody, liveSourceText };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = PreviewSource;
+
 (() => {
+  if (typeof document === 'undefined') return; // Node (testes): só o PreviewSource
+  const PS = PreviewSource;
   const MAX_LINES = 300;
-  const BUILDING = ['building-mo-entity', 'building-app-core', 'building-app-back', 'starting-back', 'starting-front'];
+  const BUILDING = ['exporting', 'building-mo-entity', 'building-app-core', 'building-app-back', 'starting-back', 'starting-front'];
   const CHIPS = [
     ['mo-entity', 'mo-entity', s => s['mo-entity']],
     ['app-core', 'app-core', s => s['app-core']],
@@ -43,6 +109,11 @@
   let libRefs = {};        // { loading } | { data: { need, libs: [{ key, refs }] } } | { error }
   let libRefChoice = null;
   let pendingLibRef = null;
+  // Fonte do código: null = PS.defaultSource(st). Commits da branch (GET /commits) e o escolhido.
+  let source = null;
+  let commitsState = {};   // { loading } | { data: { ref, sha, commits, front } } | { error }
+  let commitChoice = null;
+  const curSource = () => source || PS.defaultSource(st);
 
   // Worktree do app-back = .claude/worktrees/<id>; run lido de um worktree usa o nome
   // dele (inclui os sem número de ticket), senão o ticket-id. location vem como
@@ -129,17 +200,36 @@
     paint();
   }
 
+  async function loadCommits() {
+    if (!key || commitsState.loading) return;
+    const k = key;
+    commitsState = { loading: true };
+    paint();
+    try {
+      const r = await api(`/api/preview/${encodeURIComponent(k)}/commits`);
+      if (k === key) commitsState = { data: r };
+    } catch (e) {
+      if (k === key) commitsState = { error: e.message };
+    }
+    paint();
+  }
+  // Modo commit parado: a lista aparece sozinha (uma busca por ticket; "Tentar de novo" refaz).
+  function ensureCommits() {
+    const idle = st && (st.phase === 'idle' || st.phase === 'error');
+    if (idle && st.configured !== false && curSource() === 'commit' && !commitsState.loading && !commitsState.data && !commitsState.error) loadCommits();
+  }
+
   async function act(action) {
     if (!key) return;
     const k = key;
-    if (action === 'clean' && !confirm(`Apagar o cache do build de ${k}?\n\n• target/ dos worktrees (e .tmp do front)\n• mo-entity/app-core instalados no ~/.m2 pelo preview — o checkout principal volta a baixar do repositório remoto`)) return;
+    if (action === 'clean' && !confirm(`Apagar o cache do build de ${k}?\n\n• target/ dos worktrees (e .tmp do front)\n• código extraído no modo commit\n• mo-entity/app-core que o preview instalou no repositório Maven dele (o seu ~/.m2 não é tocado)`)) return;
     busy = action; paint();
     try {
       const opts = { method: 'POST' };
       if (action === 'start') {
         const db = selectedDb();
         opts.headers = { 'Content-Type': 'application/json' };
-        opts.body = JSON.stringify({ db: db?.key ?? null, libRef: pendingLibRef || undefined });
+        opts.body = JSON.stringify({ db: db?.key ?? null, libRef: pendingLibRef || undefined, ...PS.startBody(curSource(), commitsState, commitChoice) });
         pendingLibRef = null; // vale só pro clique de "Reconstruir libs"
         libRefs = {};         // lista de branches fica velha após um novo start
       }
@@ -278,7 +368,7 @@
     if (BUILDING.includes(p)) return '<span class="pv-dot warn"></span>Construindo…';
     if (p === 'error') return '<span class="pv-dot off"></span>Erro';
     if (!st && loadError) return '<span class="pv-dot off"></span>indisponível';
-    return st && !st.worktrees?.back ? 'sem worktree' : 'parado';
+    return st && !st.worktrees?.back && !st.branches?.back ? 'sem worktree nem branch' : 'parado';
   }
 
   function detected(w) {
@@ -288,6 +378,7 @@
   function chips(steps) {
     return CHIPS.map(([, label, f]) => { const v = f(steps || {}) || 'pending'; return `<span class="pv-chip ${v}">${label} ${MARK[v] || '–'}</span>`; }).join('');
   }
+  const CLEAN_TIP = 'Apaga target/ dos worktrees, o código extraído no modo commit e o que o preview instalou no repositório Maven dele (o ~/.m2 fica)';
   const logBox = () => '<pre class="pv-log" id="pvLog" tabindex="0" aria-label="Log do preview" aria-live="off"></pre>';
   const btn = (act, label, extra = '') => `<button type="button" class="ghost-btn" data-pvact="${act}" ${busy ? 'disabled' : ''} ${extra}>${label}</button>`;
 
@@ -325,7 +416,7 @@
         const cur = all.includes(libRefChoice) ? libRefChoice : all[0];
         picker = `<label class="pv-meta pv-db">Branch das libs (versão ${esc(libRefs.data.need)})
           <select data-pvlibref ${busy ? 'disabled' : ''}>${all.map(r => `<option value="${esc(r)}" ${r === cur ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
-          <button type="button" class="ghost-btn" data-pvlibgo="${esc(cur)}" ${busy ? 'disabled' : ''} title="Reconstrói ${esc(names)} a partir dessa branch (ignora o cache do ~/.m2) e reinicia o preview">🔧 Reconstruir libs e tentar de novo</button>`;
+          <button type="button" class="ghost-btn" data-pvlibgo="${esc(cur)}" ${busy ? 'disabled' : ''} title="Reconstrói ${esc(names)} a partir dessa branch (ignora o cache do repositório do preview; o ~/.m2 não é tocado) e reinicia o preview">🔧 Reconstruir libs e tentar de novo</button>`;
       }
     }
     return `
@@ -350,6 +441,7 @@
           <a class="ghost-btn" href="http://localhost:${st.ports.back}" target="_blank" rel="noopener">Abrir :${st.ports.back}</a>
           ${front ? `<a class="ghost-btn" href="http://localhost:${st.ports.front}" target="_blank" rel="noopener">Abrir :${st.ports.front}</a>` : ''}
           ${runningDb()}
+          ${PS.liveSourceText(st) ? `<span class="pv-meta">${esc(PS.liveSourceText(st))}</span>` : ''}
           <span class="pv-meta">uptime: <span id="pvUptime">${dur(Date.now() - Date.parse(st.runningAt))}</span></span>
           <button type="button" class="link-btn" data-pvlog>${showLog ? 'Ocultar log' : 'Mostrar log'}</button>
         </div>
@@ -358,7 +450,8 @@
     }
     if (BUILDING.includes(p) || p === 'stopping') {
       return `
-        <p class="pv-state">🔨 Construindo... ${chips(st.steps)}</p>
+        <p class="pv-state">🔨 ${p === 'exporting' ? 'Extraindo o commit...' : 'Construindo...'} ${chips(st.steps)}</p>
+        ${PS.liveSourceText(st) ? `<p class="pv-meta" style="margin:0">${esc(PS.liveSourceText(st))}</p>` : ''}
         ${logBox()}
         <div class="pv-actions">${btn('stop', '■ Parar')}</div>`;
     }
@@ -369,17 +462,23 @@
         ${libFixHtml()}
         ${logBox()}
         ${other}
-        <div class="pv-actions">${dbSelect()} ${btn('start', '↺ Tentar novamente', w.back ? '' : 'disabled title="worktree não encontrado"')} ${btn('stop', '■ Parar')} ${btn('clean', '🧹 Limpar cache', 'title="Apaga target/ dos worktrees e o que o preview instalou no ~/.m2"')}</div>`;
+        <div class="pv-actions">${PS.sourceHtml(st, curSource(), !!busy)} ${curSource() === 'commit' ? PS.commitPickerHtml(commitsState, commitChoice, !!busy) : ''}</div>
+        <div class="pv-actions">${dbSelect()} ${btn('start', '↺ Tentar novamente', PS.canStart(st, curSource(), commitsState) ? '' : 'disabled')} ${btn('stop', '■ Parar')} ${btn('clean', '🧹 Limpar cache', `title="${CLEAN_TIP}"`)}</div>`;
     }
-    const noWt = !w.back;
+    const src = curSource();
+    const noWt = src === 'worktree' && !w.back;
+    const ready = PS.canStart(st, src, commitsState);
     return `
       <div class="pv-actions">
-        ${dbSelect()}
-        <button type="button" class="ghost-btn pv-start" data-pvact="start" ${busy || noWt ? 'disabled' : ''} ${noWt ? `title="worktree não encontrado (.claude/worktrees/${esc(key)})"` : ''}>▶ Iniciar Preview</button>
-        ${btn('clean', '🧹 Limpar cache', noWt ? 'disabled' : 'title="Apaga target/ dos worktrees e o que o preview instalou no ~/.m2"')}
-        <span class="pv-meta">${detected(w)}</span>
+        ${PS.sourceHtml(st, src, !!busy)}
+        ${src === 'commit' ? PS.commitPickerHtml(commitsState, commitChoice, !!busy) : `<span class="pv-meta">${detected(w)}</span>`}
       </div>
-      ${noWt ? `<p class="fold-msg">worktree não encontrado: <code>.claude/worktrees/${esc(key)}</code></p>` : ''}
+      <div class="pv-actions">
+        ${dbSelect()}
+        <button type="button" class="ghost-btn pv-start" data-pvact="start" ${busy || !ready ? 'disabled' : ''} ${noWt ? `title="worktree não encontrado (.claude/worktrees/${esc(key)})"` : ''}>▶ Iniciar Preview</button>
+        ${btn('clean', '🧹 Limpar cache', `title="${CLEAN_TIP}"`)}
+      </div>
+      ${noWt ? `<p class="fold-msg">worktree não encontrado: <code>.claude/worktrees/${esc(key)}</code>${st.branches?.back ? ' — use a fonte <b>Commit</b> para subir a branch do ticket' : ''}</p>` : ''}
       ${other}
       ${lines.length ? `<details class="pv-last"><summary>Log do último preview</summary>${logBox()}</details>` : ''}`;
   }
@@ -394,6 +493,7 @@
     body.innerHTML = prHtml() + bodyHtml() + lcHtml();
     renderLog();
     if (keepScroll !== null && logEl()) logEl().scrollTop = keepScroll;
+    ensureCommits();
   }
 
   function mount() {
@@ -401,7 +501,7 @@
     const hero = document.querySelector('#detail section.hero');
     if (!r || !hero || document.getElementById('foldPreview')) return;
     const k = previewKey(r);
-    if (k !== key) { key = k; st = null; loadError = null; showLog = true; prError = null; lc = null; lcError = null; libRefs = {}; libRefChoice = pendingLibRef = null; connect(); refresh(); }
+    if (k !== key) { key = k; st = null; loadError = null; showLog = true; prError = null; lc = null; lcError = null; libRefs = {}; libRefChoice = pendingLibRef = null; source = null; commitsState = {}; commitChoice = null; connect(); refresh(); }
     // Aberto sozinho enquanto há preview deste ticket em andamento.
     const open = openKeys.has(k) || (st && st.phase !== 'idle');
     hero.insertAdjacentHTML('beforeend', `
@@ -413,6 +513,8 @@
     fold.addEventListener('change', e => {
       const lr = e.target.closest('[data-pvlibref]');
       if (lr) { libRefChoice = lr.value; paint(); return; }
+      const cm = e.target.closest('[data-pvcommit]');
+      if (cm) { commitChoice = cm.value; return; }
       const sel = e.target.closest('[data-pvdb]');
       if (!sel) return;
       dbChoice = sel.value;
@@ -421,6 +523,9 @@
     fold.addEventListener('toggle', () => { if (fold.open) openKeys.add(key); else openKeys.delete(key); });
     fold.addEventListener('click', e => {
       if (e.target.closest('[data-pvlibload]')) { libRefs = {}; return loadLibRefs(); }
+      if (e.target.closest('[data-pvcommitsload]')) { commitsState = {}; return loadCommits(); }
+      const sb = e.target.closest('[data-pvsrc]');
+      if (sb && !sb.disabled) { source = sb.dataset.pvsrc; paint(); return; }
       const lg = e.target.closest('[data-pvlibgo]');
       if (lg && !lg.disabled) { libRefChoice = pendingLibRef = lg.dataset.pvlibgo; return act('start'); }
       const a = e.target.closest('[data-pvact]');
@@ -461,6 +566,10 @@
     .pv-dot.off { background: var(--stop); box-shadow: 0 0 0 3px var(--stop-bg); }
     .pv-dot.warn { background: var(--attention); box-shadow: 0 0 0 3px var(--attention-bg); }
     #foldPreview .fold-body { display: grid; gap: 10px; }
+    /* Item de grid não encolhe abaixo do conteúdo por padrão: um select longo esticava o fold além da tela. */
+    #foldPreview, #foldPreview .fold-body > * { min-width: 0; }
+    .pv-commit { flex: 1 1 18rem; min-width: 0; flex-wrap: wrap; }
+    .pv-commit select { flex: 1 1 12rem; min-width: 0; width: 100%; max-width: 36rem; text-overflow: ellipsis; }
     .pv-actions { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
     .pv-actions a.ghost-btn { text-decoration: none; }
     .pv-actions .ghost-btn:disabled { opacity: .45; cursor: default; }
