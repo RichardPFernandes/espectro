@@ -30,7 +30,7 @@ execution:
   status: "COMPLETED"
   summary: "Schema ampliado e apertado para as duas formas que o attemptRecord grava (sem roteamento e roteada), com vocabulário único e coerência entre campos. Golden ON passa a validar cada state.json contra o schema, por cenário. Teste com resolveRoute real nas 5 origens alcançáveis e teste que amarra os literais do código ao vocabulário. G3 r1 e r2 (Opus + Arquiteto): APPROVED_WITH_CHANGES sem BLOCKER, todos os achados aplicados ou em follow-up registrado (PRI-335, PRI-336). Nada no consumidor muda nesta entrega."
   branch: "fernandesrichard312/pri-334-roteamento-on-tentativa-roteada"
-  commit: null
+  commit: "4c2ba2f"
 
 artifacts:
   - path: ".graph/schemas/state.schema.json"
