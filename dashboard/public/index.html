@@ -1724,7 +1724,6 @@ function renderDetail() {
   // aparece quando pedida (⌘K › Abrir visão geral) e fecha com Esc ou ×.
   const wide = !window.Compare?.active() && !runs.get(selected) && !!window.UX && !UX.overviewOpen();
   document.body.classList.toggle('runs-wide', wide);
-  if (window.Compare?.active()) { $('detail').innerHTML = Compare.html(); return; }
   const r = runs.get(selected);
   if (!r && window.UX) { $('detail').innerHTML = wide ? '' : UX.overview(); return; }
   if (!r) {
@@ -3483,6 +3482,7 @@ document.addEventListener('click', async e => {
 <script src="ux.js"></script>
 <script src="refresh.js"></script>
 <script src="archive.js"></script>
+<script src="compare-model.js"></script>
 <script src="compare.js"></script>
 <script src="watcher.js"></script>
 <script src="watcher-health.js"></script>

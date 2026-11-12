@@ -6,7 +6,7 @@
 // ticketStatusBadge, retryQaRejection, refreshRuns, toast).
 (() => {
   const VIEWS = [
-    ['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'],
+    ['runs', 'Runs'], ['comparar', 'Comparar runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'],
     ['timeline', 'Linha do tempo'], ['metricas', 'Relatório semanal'],
     ['redmine', 'Tickets'], ['grafo', 'Knowledge Graph'], ['padroes', 'Padrões de falha'], ['prs', 'Pull requests'],
     ['roteamento', 'Roteamento'], ['versao', 'Sistema'], ['computador', 'Este computador'],
@@ -115,6 +115,7 @@
   const NAV = [
     ['Trabalho', [
       ['runs', 'Runs', 'M3 12h4l3-8 4 16 3-8h4'],
+      ['comparar', 'Comparar runs', 'M4 4h6v16H4zM14 4h6v16h-6z'],
       ['redmine', 'Tickets', 'M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 7v12'],
       ['prs', 'Pull requests', 'M6 3v12M18 9a3 3 0 0 1-3 3H9a3 3 0 0 0-3 3M6 18h.01M18 6h.01'],
       ['metricas', 'Relatório semanal', 'M4 20V10M10 20V4M16 20v-7M22 20H2'],
@@ -547,11 +548,12 @@
         versao: window.VersionView,
         computador: window.OnboardingView,
         redmine: window.RedmineView,
+        comparar: window.Compare, // compare.js: nó persistente (select aberto e foco não caem)
       }[view];
       // Visão que devolve sempre o mesmo nó (formulário do onboarding) não é remontada: manter foco e digitação.
       const domNode = domView?.render();
       if (domNode) { if (el.firstChild !== domNode || el.lastChild !== domNode) el.replaceChildren(domNode); }
-      else el.innerHTML = view in { roteamento: 1, versao: 1, computador: 1, redmine: 1 }
+      else el.innerHTML = view in { roteamento: 1, versao: 1, computador: 1, redmine: 1, comparar: 1 }
         ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
       el.scrollTop = keepY;
       if (focusKey) el.querySelector(`[data-tfilter="${focusKey}"]`)?.focus();
