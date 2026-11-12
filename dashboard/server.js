@@ -19,7 +19,7 @@ function execFileSyncSafe(cmd, args, cwd) {
 // Controle do processo do watcher (start/stop/log). NÃO inicia nada no require — só
 // quando o usuário clica Start (ou marcou auto-start, ver main).
 const defaultWatcherManager = require('../scripts/watcher-manager');
-// Preview de ambiente de um worktree (build + app-back :8081 + app-front :9000).
+// Preview de ambiente de um ticket, por worktree ou por commit (build + app-back :8081 + app-front :9100).
 const { createPreviewManager } = require('../scripts/preview-manager');
 // "Usar na minha máquina": checkouts principais no commit do ticket (/api/local-checkout*).
 const { createLocalCheckout } = require('../scripts/local-checkout');
@@ -109,7 +109,7 @@ function loadDotEnv(envPath, only) {
 const INTEGRATION_KEYS = ['REDMINE_URL', 'REDMINE_API_KEY', 'BITBUCKET_WORKSPACE', 'BITBUCKET_REPO_SLUG', 'BITBUCKET_API_TOKEN'];
 // Configuração do preview (scripts/preview-manager.js), também lida do .env do repo.
 const PREVIEW_KEYS = ['PREVIEW_BACK_PORT', 'PREVIEW_FRONT_PORT', 'PREVIEW_JAVA_HOME', 'PREVIEW_PROFILE', 'PREVIEW_MVN_OFFLINE',
-    'PREVIEW_ADAPTER', 'PREVIEW_MO_ENTITY_REPO', 'PREVIEW_APP_CORE_REPO', 'PREVIEW_FRONT_REPO', 'MS_ROUTER', 'PREVIEW_DB_OPTIONS', 'PREVIEW_LIBS_FROM_BRANCH', 'PREVIEW_LIB_REFS', 'PREVIEW_GRUNT_FORCE', 'PREVIEW_GRUNT_WATCH'];
+    'PREVIEW_ADAPTER', 'PREVIEW_MO_ENTITY_REPO', 'PREVIEW_APP_CORE_REPO', 'PREVIEW_FRONT_REPO', 'MS_ROUTER', 'PREVIEW_DB_OPTIONS', 'PREVIEW_LIBS_FROM_BRANCH', 'PREVIEW_LIB_REFS', 'PREVIEW_M2_REPO', 'PREVIEW_GRUNT_FORCE', 'PREVIEW_GRUNT_WATCH'];
 // Palavra-chave de aprovação do draft de spec (spec-pending-approval). Não é segredo;
 // vem do .env do repo junto com as integrações, igual ao watcher.
 const APPROVAL_KEYS = ['SPEC_APPROVAL_KEYWORD', 'SPEC_REJECTION_KEYWORD'];
@@ -3479,9 +3479,10 @@ function createDashboard(options = {}) {
             res.status(e.status || 500).json({ error: e.message });
         }
     };
-    app.post('/api/preview/:ticketId/start', previewAction(202, (id, req) => preview().start(id, { db: req.body?.db, libRef: req.body?.libRef })));
+    app.post('/api/preview/:ticketId/start', previewAction(202, (id, req) => preview().start(id, { db: req.body?.db, libRef: req.body?.libRef, source: req.body?.source, commit: req.body?.commit })));
     // Branches de mo-entity/app-core com a versão do back: alimenta "Reconstruir libs" no erro de build.
     app.get('/api/preview/:ticketId/lib-refs', previewAction(200, id => preview().listLibRefs(id)));
+    app.get('/api/preview/:ticketId/commits', previewAction(200, id => preview().listCommits(id)));
     app.post('/api/preview/:ticketId/stop', previewAction(200, id => preview().stop(id)));
     app.post('/api/preview/:ticketId/clean', previewAction(200, id => preview().clean(id)));
     app.get('/api/preview/:ticketId/status', previewAction(200, id => preview().status(id)));
