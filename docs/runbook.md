@@ -774,15 +774,17 @@ Passos:
    curl -s -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8080/q/health
    curl -s http://localhost:8080/q/health | jq
    ```
-3. Subir a aplicação do ticket pelo preview do dashboard (back + front do worktree):
+3. Subir a aplicação do ticket pelo preview do dashboard (back :8081 + front :9100, ao lado do
+   ambiente local; do worktree ou, com `{"source":"commit"}`, da branch do ticket):
    ```bash
    curl -s -X POST localhost:3333/api/preview/<ticket>/start | jq
+   curl -s localhost:3333/api/preview/<ticket>/commits | jq        # commits da branch (modo commit)
    curl -s localhost:3333/api/preview/<ticket>/status | jq
    curl -sN localhost:3333/api/preview/<ticket>/log-stream      # log do build/boot
    ```
    Portas configuráveis por `PREVIEW_BACK_PORT`/`PREVIEW_FRONT_PORT` no `.env`. Se a porta estiver
    ocupada, o preview recusa com `porta em uso (...)`.
-4. Teste manual: abra `http://localhost:9000` no navegador e percorra o fluxo descrito em
+4. Teste manual: abra `http://localhost:9100` (front do preview) no navegador e percorra o fluxo descrito em
    "Como chegar no ponto do Desenvolvimento?" nos Apontamentos do ticket.
 5. Ao terminar: `curl -s -X POST localhost:3333/api/preview/<ticket>/stop`.
 

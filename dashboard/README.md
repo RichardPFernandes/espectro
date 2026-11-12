@@ -330,6 +330,38 @@ todo dia, agende no cron, por exemplo `0 3 * * * cd <repo> && node scripts/clean
   `GET /api/archive`, `POST /api/archive/:taskId/restore` (409 se já existe pasta no lugar
   original).
 
+## Preview de Ambiente: por worktree ou por commit
+
+O fold **Preview de Ambiente** do run builda e sobe o app-back (:8081) e o app-front
+(:9100) do ticket. **Fonte**:
+
+- **Worktree** (padrão quando existe): `.claude/worktrees/<ticket>` e os worktrees irmãos.
+- **Commit**: um commit da branch do ticket no app-back (`origin/<ticket>`, senão a branch
+  local), escolhido numa lista dos últimos 30 (o mais recente vem marcado); o app-front
+  sobe na ponta da mesma branch (sem ela, sobe só o back). Serve depois que o watcher
+  apagou o worktree e pra voltar a um commit anterior. O código sai com `git archive` numa
+  pasta temporária (`$TMPDIR/preview-src-<ticket>`), apagada no **Parar**.
+
+O preview não mexe no seu ambiente local:
+
+- portas próprias (`PREVIEW_BACK_PORT`/`PREVIEW_FRONT_PORT`, padrão 8081/9100), então o
+  ambiente de sempre (:8080/:9000) roda junto;
+- todo `mvn` do preview grava num repositório Maven só dele (`PREVIEW_M2_REPO`, padrão
+  `~/.cache/prisma-preview/m2`) e lê o `~/.m2` só para consulta (`maven.repo.local.tail`,
+  Maven 3.9+): o `install` de mo-entity/app-core nunca troca o SNAPSHOT que o seu checkout
+  usa;
+- nos repos locais, só `git fetch` (refs `origin/*`): sem checkout, worktree, índice ou
+  HEAD, mesmo com alteração não commitada.
+
+Continuam compartilhados: o banco do profile escolhido e, no front, os `node_modules`/
+`bower_components` do checkout principal (linkados quando o manifest é igual).
+
+- API: `GET /api/preview/:ticketId/commits` → `{ ref, sha, commits: [{ sha, date, subject }], front }`
+  (faz o fetch da branch do ticket no back e no front; 404 sem branch);
+  `POST /api/preview/:ticketId/start` aceita `{ source: "worktree" | "commit", commit: "<sha>" }`
+  (400 se a fonte for outra, o SHA for malformado ou não estiver na branch do ticket; sem
+  `commit`, a ponta). `status` traz `branches`, `source`, `commit` e `refs` (o que está no ar).
+
 ## Preview: erro de build com lib do ~/.m2
 
 Quando `mo-entity`/`app-core` não têm worktree do ticket e nenhuma branch (`origin/<ticket>`,
@@ -337,8 +369,8 @@ Quando `mo-entity`/`app-core` não têm worktree do ticket e nenhuma branch (`or
 avisa no log. Se o build do back falha nessa situação (ex.: `no suitable method found` numa
 chamada de lib), o fold **Preview de Ambiente** mostra o aviso e **Escolher branch das
 libs…**: lista as branches remotas das libs cuja versão (`pom.xml`) bate com a do back; com
-uma escolhida, **🔧 Reconstruir libs e tentar de novo** reinstala as libs dela no `~/.m2`
-(ignora o marcador de cache) e reinicia o preview. A escolha vale só para esse start.
+uma escolhida, **🔧 Reconstruir libs e tentar de novo** reinstala as libs dela no repositório
+Maven do preview (ignora o marcador de cache; o `~/.m2` não é tocado) e reinicia o preview. A escolha vale só para esse start.
 
 - API: `GET /api/preview/:ticketId/lib-refs` → `{ need, libs: [{ key, refs }] }`;
   `POST /api/preview/:ticketId/start` aceita `{ libRef: "origin/<branch>" }` (400 se a ref
