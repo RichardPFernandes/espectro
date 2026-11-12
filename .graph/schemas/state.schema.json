@@ -3176,15 +3176,29 @@
         },
         "requested": {
           "type": "object",
+          "description": "PRI-334: sem roteamento, UNAVAILABLE. Despacho roteado (PRI-233 T7): modelo fixado pela decisão e esforço do CLI quando foi de fato para o argv (senão UNAVAILABLE).",
           "properties": {
             "model": {
-              "enum": [
-                "UNAVAILABLE"
+              "anyOf": [
+                {
+                  "enum": [
+                    "UNAVAILABLE"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "minLength": 1
+                }
               ]
             },
             "effort": {
               "enum": [
-                "UNAVAILABLE"
+                "UNAVAILABLE",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
               ]
             }
           }
@@ -3223,13 +3237,60 @@
           }
         },
         "selection_source": {
-          "enum": [
-            "DEFAULT_INHERITED"
+          "description": "PRI-334: DEFAULT_INHERITED sem roteamento; com despacho roteado, a origem da escolha gravada na decisão.",
+          "anyOf": [
+            {
+              "enum": [
+                "DEFAULT_INHERITED"
+              ]
+            },
+            {
+              "$ref": "#/definitions/routingSelectionSource"
+            }
           ]
         },
         "routing_decision": {
-          "enum": [
-            "UNAVAILABLE"
+          "description": "PRI-334: UNAVAILABLE sem roteamento; com despacho roteado, a RoutingDecision do DOM-06 aplicada, amarrada ao snapshot fixado na admissão. Só o mínimo que identifica a escolha é exigido; o resto é registro.",
+          "anyOf": [
+            {
+              "enum": [
+                "UNAVAILABLE"
+              ]
+            },
+            {
+              "type": "object",
+              "required": [
+                "node",
+                "snapshot_sha256",
+                "chosen",
+                "selection_source"
+              ],
+              "properties": {
+                "node": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "snapshot_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "chosen": {
+                  "type": "object",
+                  "required": [
+                    "model_id"
+                  ],
+                  "properties": {
+                    "model_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "selection_source": {
+                  "$ref": "#/definitions/routingSelectionSource"
+                }
+              }
+            }
           ]
         },
         "subtask": {
@@ -3416,7 +3477,94 @@
         "result": {
           "type": "string"
         }
-      }
+      },
+      "allOf": [
+        {
+          "description": "PRI-334: despacho roteado. Decisão objeto ⇒ origem do vocabulário do roteamento e modelo pedido real.",
+          "if": {
+            "required": [
+              "routing_decision"
+            ],
+            "properties": {
+              "routing_decision": {
+                "type": "object"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "selection_source",
+              "requested"
+            ],
+            "properties": {
+              "selection_source": {
+                "$ref": "#/definitions/routingSelectionSource"
+              },
+              "requested": {
+                "properties": {
+                  "model": {
+                    "not": {
+                      "enum": [
+                        "UNAVAILABLE"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "PRI-334: sem roteamento (forma AS-IS). Decisão UNAVAILABLE ⇒ origem DEFAULT_INHERITED e nada pedido.",
+          "if": {
+            "required": [
+              "routing_decision"
+            ],
+            "properties": {
+              "routing_decision": {
+                "enum": [
+                  "UNAVAILABLE"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selection_source": {
+                "enum": [
+                  "DEFAULT_INHERITED"
+                ]
+              },
+              "requested": {
+                "properties": {
+                  "model": {
+                    "enum": [
+                      "UNAVAILABLE"
+                    ]
+                  },
+                  "effort": {
+                    "enum": [
+                      "UNAVAILABLE"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "routingSelectionSource": {
+      "description": "PRI-334: origens da escolha de modelo num despacho roteado. Fonte no código: scripts/lib/model-routing.js (SELECTION_SOURCES), conferida por teste.",
+      "enum": [
+        "FIXED_NODE",
+        "RULES",
+        "CONSERVATIVE_DEFAULT",
+        "PLAN_RAISED",
+        "LINEAGE_FLOOR",
+        "RISK_RECLASSIFIED",
+        "HUMAN_OVERRIDE"
+      ]
     },
     "validity": {
       "type": "object",
