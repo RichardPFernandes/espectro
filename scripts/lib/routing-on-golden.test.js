@@ -26,6 +26,7 @@ const dom06 = require('./dom06-attempt');
 const mr = require('./model-routing');
 const policyLoader = require('./model-routing-policy');
 const routingRun = require('./routing-run');
+const { validateState } = require('../validate-state');
 
 const PRISMA_ROOT = path.resolve(__dirname, '..', '..');
 const WATCHER = path.join(PRISMA_ROOT, 'scripts', 'readmine-watcher.js');
@@ -245,14 +246,34 @@ async function captureVariant(variant) {
         assert.strictEqual(r.result?.action, 'dispatched', `${variant} ${s.key}: não despachou (${r.result?.reason})\n${r.output}`);
         out[s.key] = normalize({ action: r.result.action, argv: argvsOf(scenario), ...runView(repo, s.id) }, variant);
         assert.ok(out[s.key].argv.length > 0, `${variant} ${s.key}: o stub do claude não foi invocado`);
+        const routed = assertStateMatchesSchema(repo, s.id, `${variant} ${s.key}`);
+        assert.ok(routed > 0, `${variant} ${s.key}: state.json sem tentativa roteada no cost_tracking; o cenário não exercitou a forma roteada`);
     }
     return out;
+}
+
+// PRI-334 AC-02: o state.json que o watcher grava depois de um despacho roteado tem de
+// passar no mesmo validador que o tick seguinte usa (validate-state + state.schema.json).
+// Sem isto, a tentativa roteada no cost_tracking virava state_corrupted só em produção.
+// Devolve quantas tentativas roteadas o state tem, para o teste provar que exercitou a forma.
+function assertStateMatchesSchema(repo, id, label) {
+    const file = path.join(taskDirOf(repo, id), 'state.json');
+    assert.ok(fs.existsSync(file), `${label}: state.json não foi gravado`);
+    const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const check = validateState(state);
+    assert.strictEqual(check.valid, true, `${label}: state.json fora do schema:\n${(check.errors || []).join('\n')}`);
+    const nodes = state.cost_tracking?.nodes || {};
+    return Object.values(nodes).flatMap(n => n.attempts || []).filter(a => a.routing_decision && typeof a.routing_decision === 'object').length;
 }
 
 test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
 test('AC-01 (S5.1): Run ON sem a chave e com decomposition "off" é igual ao golden pré-decomposição', { timeout: 10 * 60 * 1000 }, async t => {
+    // PRI-334 AC-02: sem ajv o validateState cai na checagem mínima e a validação passaria à toa.
+    let hasAjv = true;
+    try { require.resolve('ajv'); } catch { hasAjv = false; }
+    assert.ok(hasAjv, 'ajv ausente: rode npm ci em scripts/ (sem ele a validação contra o schema não é real)');
     const on = await captureVariant('on');
     const onOff = await captureVariant('on_decomposition_off');
     if (UPDATE) {

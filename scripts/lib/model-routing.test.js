@@ -440,3 +440,38 @@ test('S3b T11: registro inválido → off com CLASSIFIER_SELECTION_INVALID, mesm
     const ref = resolve({ snapshot: snap, signals: signalsOf(C2_GROUP) }).decision.classifier_ref;
     assert.deepStrictEqual([ref.declared, ref.provider, ref.reason, ref.selection_version], ['off', 'off', 'CLASSIFIER_SELECTION_INVALID', null]);
 });
+
+// ── PRI-334: decisão real → tentativa no cost_tracking → state.schema ──────────────
+// O golden ON só exercita FIXED_NODE e RULES. Aqui cada ramo de resolveRoute que chega ao
+// cost_tracking (decisão ok) passa por mergeRun e pelo mesmo validateState do watcher, com
+// esforço aplicado e só por modelo. LINEAGE_FLOOR e RISK_RECLASSIFIED dependem da Run
+// decomposta (flag reservada) e ficam cobertos pela forma sintética em cost-tracking.test.js.
+test('PRI-334: tentativa gravada a partir de RoutingDecision real valida no state.schema', () => {
+    const ct = require('./cost-tracking');
+    const { validateState } = require('../validate-state');
+    const MODEL_ONLY = Object.freeze({ effortMechanism: { status: 'UNAVAILABLE' }, pluginProof: VERIFIED.pluginProof });
+    const cases = [
+        ['FIXED_NODE', { node: 'plan' }],
+        ['RULES', {}],
+        ['CONSERVATIVE_DEFAULT', { signals: null }],
+        ['PLAN_RAISED', { signals: signalsOf({ ...C1_GROUP, plan_class: 'C4' }) }],
+        ['HUMAN_OVERRIDE', { overrides: [ov('node', { model_id: 'm-t2b', effort: 'alto' }, { node: 'implement' })] }],
+    ];
+    const seen = new Set();
+    for (const [source, extra] of cases) {
+        for (const capabilities of [VERIFIED, MODEL_ONLY]) {
+            const r = resolve({ ...extra, capabilities });
+            assert.strictEqual(r.ok, true, `${source}: resolução não ficou ok (${r.detail})`);
+            assert.strictEqual(r.decision.selection_source, source);
+            seen.add(source);
+            const node = r.decision.node;
+            const state = {
+                task_id: 'schema-routed-real', node, history: ['fetch_ticket'], status: 'in_progress',
+                cost_tracking: ct.mergeRun(null, { node, agent: 'claude', run: { routing_decision: r.decision }, metrics: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } }),
+            };
+            const check = validateState(state);
+            assert.strictEqual(check.valid, true, `${source} (${capabilities.effortMechanism.status}):\n${(check.errors || []).join('\n')}`);
+        }
+    }
+    assert.deepStrictEqual([...seen].sort(), cases.map(c => c[0]).sort());
+});

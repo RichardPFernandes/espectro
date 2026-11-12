@@ -691,6 +691,20 @@ valor fora do enum — ex: `status: "cancelled"`, que **não existe** no schema)
   `previous_status`, `backup`) + evento `node_error`, e **nunca mais redespacha** até um humano
   trocar o status.
 
+**Antes de editar: o schema pode estar atrás do writer.** Se o erro aponta para um campo que o
+próprio Prisma grava (ex.: `/cost_tracking/nodes/<nó>/attempts/<i>/...` em várias tasks ao
+mesmo tempo, sempre no mesmo ponto do ciclo), o `state.json` provavelmente está certo e o
+contrato ficou para trás. Caso real: PRI-334, a tentativa roteada no `cost_tracking` era
+recusada com o roteamento `ON`. **Não corrija o dado nem apague o registro**: isso reescreve
+histórico. A ordem é:
+1. Contenha: desligue a flag que gera a forma nova, com AUTORIZO.
+2. Corrija o schema na plataforma (PR revisado; merge do Richard).
+3. Com AUTORIZO, faça o bump do checkout do consumidor e confira por readback. É o bump que
+   leva o schema novo ao watcher.
+4. Com AUTORIZO, faça a retomada abaixo **pulando o passo 3** (o dado está certo): só os passos
+   4 e 5, com o watcher parado.
+5. Religar a flag é um AUTORIZO à parte.
+
 **Inspecionar:**
 
 ```bash

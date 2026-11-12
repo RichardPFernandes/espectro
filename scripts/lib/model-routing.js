@@ -37,6 +37,11 @@ const PRODUCTION_EFFORT_MECHANISM = Object.freeze({ status: 'UNAVAILABLE', reaso
 const TIER_ORDER = ['T1', 'T2', 'T3'];
 const CLASS_RANK = wouldRoute.CLASS_RANK;
 const ROUTED_NODE = 'implement';
+// PRI-334: vocabulário de selection_source de uma RoutingDecision (este módulo, would-route.js
+// e decomposition-visit.js). O state.schema.json (definitions.routingSelectionSource) tem de
+// listar exatamente estes valores — conferido em cost-tracking.test.js. Origem nova entra aqui
+// e no schema na mesma mudança, senão a tentativa roteada vira state_corrupted.
+const SELECTION_SOURCES = Object.freeze(['FIXED_NODE', 'RULES', 'CONSERVATIVE_DEFAULT', 'PLAN_RAISED', 'LINEAGE_FLOOR', 'RISK_RECLASSIFIED', 'HUMAN_OVERRIDE']);
 const PROVIDER = 'anthropic';
 
 function canonical(value) {
@@ -463,6 +468,7 @@ function observeSubagentRoles(declared = [], attribution = []) {
 }
 
 module.exports = {
+    SELECTION_SOURCES,
     buildRoutingSnapshot,
     snapshotIntegrity,
     resolveRoute,
