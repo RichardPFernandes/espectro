@@ -741,6 +741,9 @@ test('AC-10: cadeia de retry — aceita elos qa_retry completos; /plan, SPEC_CHA
     assert.equal(P.compareBinding({ ...BINDINGS.full, spec_version: null }, st({ list: [link(HEX_A, HEX_B)] })), 'STALE', 'versão nula no vínculo');
     const sealed = { type: 'spec_version_sealed', node: 'qa_retry', ts: '2026-11-13T11:30:00.000Z' };
     assert.equal(P.compareBinding(BINDINGS.full, st({ list: [link(HEX_A, HEX_B), sealed] })), 'OK', 'elo com sealed adjacente');
+    const imported = { type: 'spec_imported', node: 'implement', ts: 'w', at: 'w', detail: 'retry de Recusa QA: artefatos copiados' };
+    assert.equal(P.compareBinding(BINDINGS.full, st({ list: [link(HEX_A, HEX_B), imported] })), 'OK', 'spec_imported do retry não quebra a cadeia');
+    assert.equal(P.compareBinding(BINDINGS.full, st({ list: [link(HEX_A, HEX_C), imported], target: HEX_B })), 'STALE', 'a cadeia ainda precisa fechar em state.spec_hash');
     // retry real de hoje (sem origin) → stale
     const real = { type: 'spec_baseline', node: 'implement', ts: 'z', at: 'z', detail: 'retry de Recusa QA' };
     assert.equal(P.compareBinding(BINDINGS.full, st({ list: [real] })), 'STALE');

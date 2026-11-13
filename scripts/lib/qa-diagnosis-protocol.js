@@ -29,7 +29,8 @@ const AUTO_FAILED = ['SOURCE_UNAVAILABLE', 'TIMEOUT', 'FENCED', 'INTERNAL'];
 // 9.1: falhas transitórias da promoção que abrem a carência (promotion_deferred).
 const PROMOTION_TRANSIENT = ['SEAL_FAILED', 'UNKNOWN_IO', 'ANOMALY', 'LOCK_TIMEOUT', 'WRITE_FAILED'];
 // Eventos de spec que não mudam spec_hash; qualquer outro spec* depois do primeiro elo quebra a cadeia.
-const SPEC_EVENTS_NEUTRAL = ['spec_version_error', 'spec_version_unchanged', 'spec_drift', 'spec_change_proposed', 'spec_change_rejected'];
+// spec_imported: o retry copia artefatos ausentes sem sobrescrever e não toca spec_hash (readmine-watcher.js).
+const SPEC_EVENTS_NEUTRAL = ['spec_version_error', 'spec_version_unchanged', 'spec_drift', 'spec_change_proposed', 'spec_change_rejected', 'spec_imported'];
 
 // Pontos de parada para os testes de crash (AC-07): chamados com o contexto, nunca em produção.
 const _testHooks = {
