@@ -1,0 +1,103 @@
+handoff_version: "1.2"
+nivel_processo: "medio"
+nivel_processo_inicial: null
+nivel_processo_motivo: "Código atrás de flag desligada, sem estado autoritativo (D4 aceita em 13/11/2026). Ligar a flag e o piloto seriam Alto."
+task:
+  id: "PRI-315"
+  objective: "Despachar o plan com permissions.deny [Agent, Task] via --settings, atrás de flag desligada, e medir cache read/write do 1º request antes e depois."
+  specification_ref: "tasks/pri-315/SPEC.md (v0.3)"
+  acceptance_criteria:
+    - "AC1: ATENDIDO como indisponível (tool-list: has_task=false com a flag); prove-deny INCONCLUSIVE 3x, sem tentativa"
+    - "AC2: read > 0 com a flag (B mediana 32.387, n=5), mas igual ao AS-IS (A mediana 32.223, n=5); sem ganho atribuível"
+    - "AC3: ATENDIDO (unidade + golden do watcher + routing-on/off-golden)"
+    - "AC4: harness verde; runs pareadas não executadas (piloto não autorizado e sem objeto)"
+routing:
+  from: "claude"
+  to: "human"
+  runtime: "human"
+  fallback_reason: null
+risk:
+  level: "MEDIUM"
+  signals: ["G2: argv do despacho do nó plan atrás de flag desligada"]
+  classified_by: "claude"
+execution:
+  agent: "claude-opus-5-5"
+  status: "NEEDS_HUMAN"
+  summary: "Flag WATCHER_PLAN_DENY_SETTINGS implementada (desligada), com testes e probe offline. Na 2.1.323 a premissa cai: permissions.deny tira a ferramenta da lista igual a --disallowedTools, sem ganho de prefixo. Critério de reversão atingido; flag fica OFF. Richard decide se o código entra ou se fica só a evidência."
+  branch: "fernandesrichard312/pri-315-plan-com-permissionsdeny-em-vez"
+  commit: null
+artifacts:
+  - path: "scripts/lib/subagent-block.js"
+    action: "CREATED"
+    description: "Função pura do bloqueio de subagente e leitura da flag"
+  - path: "scripts/lib/subagent-block.test.js"
+    action: "CREATED"
+    description: "AC3: equivalência com a expressão AS-IS e golden do argv do plan no watcher"
+  - path: "scripts/readmine-watcher.js"
+    action: "MODIFIED"
+    description: "Despacho usa subagentBlockArgs; flag lida a cada despacho"
+  - path: "scripts/lib/routing-on-golden.test.js"
+    action: "MODIFIED"
+    description: "D1: flag ligada não muda o despacho roteado com plan"
+  - path: "scripts/probes/plan-cache-probe.js"
+    action: "CREATED"
+    description: "Probe offline: measure, prove-deny, prove-control, tool-list"
+  - path: "scripts/probes/plan-cache-probe.test.js"
+    action: "CREATED"
+    description: "Partes puras do probe (fora do manifest do harness, como o u10)"
+  - path: "tasks/pri-315/evidence/"
+    action: "CREATED"
+    description: "JSON agregados e README com a conclusão"
+  - path: "tasks/pri-315/SPEC.md"
+    action: "CREATED"
+    description: "SDD v0.3 com resultado"
+decisions:
+  approved:
+    - "D1–D4 da SPEC (Richard, 13/11/2026, 'Aceito e AUTORIZO')"
+  proposed:
+    - "Manter a flag OFF (critério de reversão atingido na 2.1.323)"
+    - "Decidir se o código da flag entra (inerte) ou se a PR fica só com probe e evidência"
+validation:
+  executed:
+    - command: "npm --prefix scripts test (receita do runbook, checkout descartável, Node 22.23.2)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "1934 testes: 1928 pass, 0 fail, 6 skipped; TAP sha256 f3ad066cc5f6f75d2ccb06c790f1872de708580b6a0bcaddd6b5a4fc15540285"
+    - command: "npm --prefix dashboard test (mesma receita)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "547/547; TAP sha256 b14a6cab3c03a73d61d1839776bdbe50526704dde616ec970afeeac1a588d198"
+    - command: "node --test scripts/probes/plan-cache-probe.test.js"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "4/4"
+    - command: "node scripts/probes/plan-cache-probe.js tool-list"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "tasks/pri-315/evidence/tool-list-*.json: plan_B_equals_plan_A=true, plan_B_equals_review=false"
+  not_executed:
+    - "Dry-run (SIMULATE) dedicado do plan: coberto em parte pelos testes de watcher com claude falso"
+    - "Runs pareadas no watcher (AC4): piloto não autorizado; sem objeto após o resultado"
+    - "prove-control: não rodado; o tool-list já mostra a ferramenta ausente"
+open_issues:
+  - "measure não discrimina os braços (listas iguais e cache de 1 h); a conclusão se apoia só no tool-list, n=1 por argv, uma versão do CLI"
+  - "measure e prove-deny foram gerados por versões anteriores do probe (sem code_sha256), sobre árvore suja em 5560d29"
+  - "Read de 27.165 da PRI-206 P0b (2.1.319): UNKNOWN se era viés ou mudança de semântica"
+  - "Hipótese fora do escopo: deny com especificador (ex.: Task(*)) poderia manter a ferramenta listada e recusar a chamada"
+  - "1ª rodada da suíte no checkout de dev falhou por .claude/worktrees/** e Node 20: ambiente, não código"
+next:
+  recommended_agent: "human"
+  action: "Richard decide merge ou descarte da PR draft e se abre issue para a hipótese do especificador"
+  prerequisites: []
+context_refs:
+  - "https://linear.app/prisma-app/issue/PRI-315"
+  - "https://linear.app/prisma-app/issue/PRI-206"
+  - "tasks/pri-315/evidence/README.md"
+facts:
+  - "Claude Code 2.1.323; a ferramenta de subagente aparece como Task"
+  - "permissions.deny ['Agent','Task'] tira Task da lista de ferramentas nesta versão"
+assumptions: []
+usage:
+  duration: "UNKNOWN"
+  retries: 0
+  tokens: "UNKNOWN"
