@@ -9,6 +9,15 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-graph-state.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/processo-level.mjs\""
+          }
+        ]
       }
     ]
   }

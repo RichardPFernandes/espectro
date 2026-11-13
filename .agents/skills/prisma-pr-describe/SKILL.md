@@ -11,23 +11,23 @@ description: Redige body de PR autoexplicativo no Prisma (o quê / por quê / o 
 
 Redige descrição de PR legível **sem** abrir o diff inteiro. Acionar sob demanda (§1.1 esteira de produção); não é nó do ciclo despachado.
 
-## Estrutura fixa (português)
+## Estrutura fixa: `.github/pull_request_template.md` (Acordo v2)
 
-1. **O que faz** — uma frase (ou tabela curta se forem vários artefatos).
-2. **Por quê** — por que importa (issue/autorização/handoff; sem inventar).
-3. **O que mudou** — paths/comportamento alinhados ao **diff real**.
-4. **O que NÃO muda** — gates, Freeze, RRC, Active, H4, runtime, consumidores, etc., quando pertinente.
-5. **Como verificar** — passos concretos (comandos, arquivos a olhar).
-6. **O que o humano decide** — merge, ajuste, follow-up; **não** pedir aprovação automática.
+1. **Nível** e **Issue** (`Refs PRI-NNN`, nunca "Fixes").
+2. **O que muda** — 2–3 linhas, do ponto de vista de quem usa, alinhadas ao **diff real**.
+3. **Como testar** — comandos ou passos e o resultado esperado.
+4. **Evidência** — tabela AC / Resultado / Prova. É a única evidência: não há `evidence-*.md`. O check `processo-check` falha se a seção estiver vazia.
+5. **Riscos** — ou "nenhum relevante".
+6. **Fica ligado?** — sim, onde; ou não, atrás de qual flag e quando ela liga.
 
-Título: só alterar se o existente for ilegível.
+Rótulo do PR: exatamente um entre `processo:leve`, `processo:medio`, `processo:alto`. Título sem `[HIGH-RISK]`; o nível vai no rótulo. Título: só alterar se o existente for ilegível.
 
 ## Regras
 
-- Basear-se em `git diff` / arquivos da PR + issue/handoff citados — **sem inventar** AC, Decision ou escopo além do diff.
+- Basear-se em `git diff` / arquivos da PR + issue citada — **sem inventar** AC, Decision ou escopo além do diff.
 - Não declarar gate PASS, Done Linear ou merge implícito pelo body.
 - Preferência do Project: PR autoexplicativo em português claro.
-- Draft OK quando a fatia pedir; skill não faz merge.
+- PR sempre em draft; skill não faz merge.
 
 ## Fora do escopo
 

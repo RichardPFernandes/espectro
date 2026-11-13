@@ -1,5 +1,15 @@
 # Maestri — Agent Handoff Contract v1.2
 
+> **Acordo de desenvolvimento v2 (13/11/2026).** No desenvolvimento do Prisma,
+> o handoff YAML **deixou de ser obrigatório**: nenhuma fatia nova precisa de
+> `handoff-*.yaml` nem de `evidence-*.md`. A evidência mora na seção Evidência
+> do PR (`.github/pull_request_template.md`) e o status, no bloco de Estado no
+> topo da issue. Este contrato continua disponível como formato **opcional**
+> para transferência entre agentes coordenados pelo Maestri, quando o
+> coordenador pedir. Continuam valendo em todo nível: Done só com evidência
+> (no PR) e aceite do Richard, e pai não fecha com filha aberta. Handoffs já
+> gravados em `tasks/**` ficam como estão e não são reinterpretados.
+
 ## Objetivo
 
 Padronizar a transferência de trabalho entre agentes, reduzindo consumo de contexto, retrabalho e perda de informações.
@@ -18,7 +28,7 @@ Validador: `node scripts/validate-handoff.js <handoff.yaml|handoff.md> [--check-
 
 ### Regras obrigatórias
 
-1. Todo agente deve produzir um handoff ao concluir, bloquear ou interromper uma tarefa.
+1. Quando o coordenador pedir uma transferência, o agente produz o handoff ao concluir, bloquear ou interromper a tarefa. Fora disso, vale o Acordo v2: Estado no topo da issue e evidência no PR.
 2. O handoff deve conter fatos verificáveis, não apenas afirmações de sucesso.
 3. Referenciar artefatos existentes em vez de reproduzir documentos completos.
 4. Separar decisões aprovadas de recomendações e hipóteses.
@@ -162,6 +172,13 @@ Linear. `Done` registra o encerramento da issue no escopo aprovado, não prova
 implementação, validação ou promoção fora desse escopo. O coordenador confere
 evidências e registra as transições, sem substituir a decisão humana.
 
+**Acordo v2.** Sem handoff pedido pelo coordenador, o Done de qualquer tipo é:
+Evidência no PR (seção Evidência), aceite dos ACs pelo Richard e pai sem filha
+aberta. As exigências abaixo de handoff, Handoff FINAL, `--pre-done` e
+diretório `~/Workspace/prisma-evidence/` valem só quando houver handoff Maestri
+na tarefa. Os critérios por perfil G0–G3 e os artefatos de planejamento
+(Approved Document, Planning Ledger) não mudam.
+
 | Tipo de tarefa | Evidências mínimas para Done | Quem confirma |
 | -- | -- | -- |
 | Planejamento/documental — planejamento Prisma | Approved Document + Evidence + Handoff FINAL + Planning Ledger atualizado; após a confirmação, issue em Done. Preservar os gates aplicáveis à baseline da tarefa. | Richard confirma a aprovação humana; o coordenador confere a persistência das evidências e registra a transição. |
@@ -288,10 +305,11 @@ estão presentes e persistidas na forma exigida.
 
 As mensagens citam o nível de processo (`nivel_processo`, lido só em handoff 1.2;
 ausente, inválido ou em versão anterior, vale alto).
-Em leve e médio, a checagem não exige spec separada nem revisão G3; em alto, o
-processo completo é conferido manualmente. Em todo nível continuam as regras
-fixas: evidência persistida, aceite dos ACs pelo Richard e pai sem filha
-aberta. A checagem não consulta o Linear para conferi-las. A confirmação do Richard
+Pelo Acordo v2: leve exige uma revisão, sem SPEC; médio, uma revisão G3 e SPEC
+de até 1 página só se precisar; alto, SPEC de 1 a 2 páginas, AUTORIZO próprio,
+uma rodada G3 com dois revisores e readback, conferido manualmente. Em todo
+nível continuam as regras fixas: evidência na seção Evidência do PR, aceite dos
+ACs pelo Richard e pai sem filha aberta. A checagem não consulta o Linear para conferi-las. A confirmação do Richard
 continua obrigatória. Exit 1 recusa essa linha. Exit 3 deixa o Done com o
 Richard porque o tipo não tem critério automático.
 
