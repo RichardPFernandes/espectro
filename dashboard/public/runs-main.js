@@ -102,7 +102,7 @@
     'pre-build-failed': 'build quebrado', 'churn-escalation': 'churn de implementação', interrupted: 'interrompido',
   };
   function rowWhere(r) {
-    if (r.archived) return `${r.demand?.status || 'Aberto'} no Redmine`;
+    if (r.archived) return r.demand?.unknown ? 'Redmine sem resposta · status desconhecido' : `${r.demand?.status || 'Aberto'} no Redmine`;
     if (r.status === 'committed') return `${NODE_LABEL.commit || 'Commit'} · concluído`;
     if (r.node === 'escalated') return 'Escalado para você';
     if (!r.node) return r.status === 'pending' ? 'na fila · aguardando slot' : '';

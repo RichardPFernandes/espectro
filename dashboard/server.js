@@ -608,7 +608,38 @@ function createDashboard(options = {}) {
     const CLOSED_STATUS_RE = /conclu|encerr|fechad|closed|rejeit|cancel|finaliz/i;
     const ISSUE_TTL_OPEN_MS = 5 * 60 * 1000;
     const ISSUE_TTL_CLOSED_MS = 60 * 60 * 1000;
-    const issueCache = new Map(); // ticketId -> { at, status, closed }
+    // Status do Redmine sem resposta e sem nada conhecido: o arquivado entra marcado
+    // "Redmine sem resposta" (demand.unknown) — nem aberto, nem fechado (UNKNOWN não vira
+    // prova de nada). Antes ele sumia, e um restart com o Redmine instável escondia
+    // demandas abertas (13/11/2026: #43986, #43875, #44042).
+    const ISSUE_UNKNOWN = Object.freeze({ unknown: true });
+    // Cache persistido ao lado do registro (memory/ não versionado): restart não apaga o
+    // que já se sabia. Mesma regra de validade; em falha, vale o último status conhecido.
+    const ISSUE_CACHE_FILE = path.join(memoryDir, '_archive', 'dashboard-issue-status.json');
+    const issueCache = new Map(); // ticketId -> { at, status, closed, assigned_to }
+    {
+        const saved = readJson(ISSUE_CACHE_FILE);
+        if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+            for (const [id, e] of Object.entries(saved)) {
+                if (/^\d+$/.test(id) && e && typeof e.at === 'number' && typeof e.closed === 'boolean' && typeof e.status === 'string') {
+                    issueCache.set(Number(id), { at: e.at, status: e.status, closed: e.closed, assigned_to: e.assigned_to || null });
+                }
+            }
+        }
+    }
+    let issueCacheDirty = false;
+    function persistIssueCache() {
+        if (!issueCacheDirty) return;
+        try {
+            fs.mkdirSync(path.dirname(ISSUE_CACHE_FILE), { recursive: true });
+            const tmp = `${ISSUE_CACHE_FILE}.${process.pid}.tmp`;
+            fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(issueCache), null, 2));
+            fs.renameSync(tmp, ISSUE_CACHE_FILE);
+            issueCacheDirty = false;
+        } catch (e) {
+            console.error('[dashboard] falha gravando cache de status do Redmine:', e.message);
+        }
+    }
     let archivedOpen = new Map(); // taskId -> { taskId, dir, root, ticketId, demand }
     let archivedScan = null;
     let archivedScanAt = 0;
@@ -629,22 +660,25 @@ function createDashboard(options = {}) {
     }
 
     async function issueStatus(ticketId) {
-        const hit = issueCache.get(ticketId);
-        if (hit && Date.now() - hit.at < (hit.closed ? ISSUE_TTL_CLOSED_MS : ISSUE_TTL_OPEN_MS)) return hit;
+        // Sem Redmine configurado não dá pra saber — nem o cache persistido vale.
         const redmineUrl = (consumerEnv.REDMINE_URL || '').replace(/\/+$/, '');
         const apiKey = consumerEnv.REDMINE_API_KEY;
         if (!redmineUrl || !apiKey) return null;
+        const hit = issueCache.get(ticketId);
+        if (hit && Date.now() - hit.at < (hit.closed ? ISSUE_TTL_CLOSED_MS : ISSUE_TTL_OPEN_MS)) return hit;
         try {
             const { issue } = await fetchJson(`${redmineUrl}/issues/${ticketId}.json`, { 'X-Redmine-API-Key': apiKey, Accept: 'application/json' });
             const name = issue?.status?.name || '';
             const closed = typeof issue?.status?.is_closed === 'boolean' ? issue.status.is_closed : CLOSED_STATUS_RE.test(name);
             const entry = { at: Date.now(), status: name, closed, assigned_to: issue?.assigned_to?.name || null };
             issueCache.set(ticketId, entry);
+            issueCacheDirty = true;
             return entry;
         } catch (e) {
-            // Ticket removido do Redmine conta como fechado; erro de rede mantém o último valor.
-            if (e.status === 404) { const entry = { at: Date.now(), status: 'não encontrado', closed: true }; issueCache.set(ticketId, entry); return entry; }
-            return hit || null;
+            // Ticket removido do Redmine conta como fechado; erro de rede mantém o último valor
+            // e, sem valor conhecido, devolve UNKNOWN (nunca null, que é "sem Redmine configurado").
+            if (e.status === 404) { const entry = { at: Date.now(), status: 'não encontrado', closed: true }; issueCache.set(ticketId, entry); issueCacheDirty = true; return entry; }
+            return hit || ISSUE_UNKNOWN;
         }
     }
 
@@ -677,11 +711,16 @@ function createDashboard(options = {}) {
                     const it = items[i++];
                     const st = await issueStatus(it.ticketId);
                     if (!st || st.closed) continue;
-                    next.set(it.taskId, { taskId: it.taskId, dir: it.dir, root: it.root, ticketId: it.ticketId, demand: { status: st.status, assigned_to: st.assigned_to || null, checked_at: new Date(st.at).toISOString() } });
+                    const demand = st.unknown
+                        ? { status: null, unknown: true, assigned_to: null, checked_at: null }
+                        : { status: st.status, assigned_to: st.assigned_to || null, checked_at: new Date(st.at).toISOString() };
+                    next.set(it.taskId, { taskId: it.taskId, dir: it.dir, root: it.root, ticketId: it.ticketId, demand });
                 }
             }));
+            persistIssueCache();
             const changed = next.size !== archivedOpen.size || [...next.keys()].some(k => !archivedOpen.has(k))
-                || [...next.values()].some(v => archivedOpen.get(v.taskId)?.demand.status !== v.demand.status);
+                || [...next.values()].some(v => archivedOpen.get(v.taskId)?.demand.status !== v.demand.status
+                    || !!archivedOpen.get(v.taskId)?.demand.unknown !== !!v.demand.unknown);
             archivedOpen = next;
             archivedScanAt = Date.now();
             if (changed) broadcast({ type: 'runs_changed' });
@@ -1920,8 +1959,8 @@ function createDashboard(options = {}) {
             fs.appendFileSync(path.join(run.dir, 'context.md'), qaJournal.contextBlock(found?.note, at), 'utf8');
             fs.writeFileSync(signalPath, JSON.stringify({ node: 'implement', task_id: run.taskId, requested_at: at }, null, 2));
 
-            const summary = summarizeAny({ ...run, demand: run.demand && { ...run.demand, status: next.ticket_status } });
-            if (run.archived && archivedOpen.has(run.taskId)) archivedOpen.get(run.taskId).demand.status = next.ticket_status;
+            const summary = summarizeAny({ ...run, demand: run.demand && { ...run.demand, status: next.ticket_status, unknown: false } });
+            if (run.archived && archivedOpen.has(run.taskId)) Object.assign(archivedOpen.get(run.taskId).demand, { status: next.ticket_status, unknown: false });
             broadcast({ type: 'state_update', taskId: run.taskId, state: summary.state, run: summary });
             broadcast({ type: 'runs_changed' });
             res.json({ ok: true, taskId: run.taskId, note: found?.note ?? null, qa_retry_count: next.qa_retry_count, ticket_status: next.ticket_status });
