@@ -1,8 +1,8 @@
 # Evidência: prova do U10-a na CLI 2.1.323 (PRI-311, 2026-11-13)
 
 Adendo à tarefa 0 (`SPEC-s5.2.md`, seção "Tarefa 0"; S5.2a `u10-probe-evidence.json`, CLI 2.1.319).
-Resultado: **prova obtida** na 2.1.323. Isto **não** é "gate cumprido": cumprir ou dispensar o
-gate do RC-1 segue sendo ato do Richard (SPEC.md, Portas, item 1).
+Resultado: **prova obtida** na 2.1.323. A prova sozinha não cumpre o gate; o gate do RC-1 foi
+cumprido por **decisão do Richard**, registrada abaixo (SPEC.md, Portas, item 1).
 
 ## Por que
 
@@ -47,3 +47,17 @@ própria, então em Run real o mecanismo ficaria `UNVERIFIED` → `UNENFORCED`
 
 Só o modelo foi verificado; esforço do subagente (U1) e subagentes embutidos da CLI seguem não
 verificados. Flag `decomposition = on` reservada. RC-1 a RC-6 e RRC-F31-001/002 NOT APPLIED.
+
+## Decisão do Richard: gate do RC-1 CUMPRIDO (2026-11-13)
+
+- **Texto da decisão:** «Cumprir o gate», na sessão da PRI-311, depois de ver esta prova e os
+  limites abaixo.
+- **Base:** prova do U10-a na 2.1.319 (`u10-probe-evidence.json`) e na 2.1.323 (este adendo).
+- **Alcance do que foi provado:** o modelo do subagente por papel, via `--agents`, para agentes do
+  projeto redefiníveis, nas versões da CLI com prova própria. Fora disso, o código continua
+  `UNENFORCED` (versão sem prova, agente não reproduzível, subagentes embutidos) e
+  `effort_enforcement = UNKNOWN` (U1). A decisão não muda esse comportamento.
+- **O que esta decisão não faz:** não liga a flag `decomposition = on` e não abre o PR de liberação.
+  Esse PR continua exigindo as demais Portas (2, 3 e 5; a 4 já está decidida) e deve citar esta
+  seção como referência da Porta 1. RC-1 a RC-6 e RRC-F31-001/002 continuam NOT APPLIED até a
+  reconciliação (PRI-293).
