@@ -53,6 +53,7 @@ const cycleReplayer = require('./lib/cycle-replayer');
 const qaJournal = require('./lib/redmine-journal-fetcher');
 const qaCycles = require('./lib/qa-cycles');
 const qaIngest = require('./lib/qa-rejection-ingest');
+const qaProtocol = require('./lib/qa-diagnosis-protocol');
 const { GracefulShutdown } = require('./lib/graceful-shutdown');
 const watcherLock = require('./lib/watcher-lock');
 const dispatchReservation = require('./lib/dispatch-reservation');
@@ -593,6 +594,48 @@ async function syncQaRejection(ticket) {
 // ausente nos dois checkouts, ou spec_path fora de memory/spec/, mantém o sinal.
 // Problema com um sinal (ticket sumiu, sem base, destino ocupado) mantém o arquivo —
 // tenta de novo no próximo tick.
+// PRI-181 c2b-2 (SPEC-c2b-2-protocol r5.1, premissa 2): raízes de DESCOBERTA do protocolo —
+// as da varredura de retry mais a rotação. A localização autoritativa de um K usa só
+// ticketRunRoots(ticket de K) + rotatedArchiveDirs() (qaDiagnosisLocationRoots).
+function qaDiagnosisDiscoveryRoots() {
+    const roots = [RUNS_DIR, ARCHIVE_DIR];
+    const worktreesDir = `${REPO_PATH}/.claude/worktrees`;
+    try {
+        for (const d of fs.readdirSync(worktreesDir, { withFileTypes: true })) {
+            if (d.isDirectory()) roots.push(`${worktreesDir}/${d.name}/memory/runs`, `${worktreesDir}/${d.name}/memory/runs/_archive`);
+        }
+    } catch { /* sem worktrees */ }
+    return [...roots, ...rotatedArchiveDirs()];
+}
+
+function qaDiagnosisLocationRoots(ticketId) {
+    return [...ticketRunRoots(ticketId), ...rotatedArchiveDirs()];
+}
+
+// PRI-181 c2b-2 (premissa 1, Q1 = A): um passo de tick, só com WATCHER_QA_DIAGNOSTICO, antes de
+// consumeQaRetrySignals. No-op em DRY_RUN/SIMULATE (o DRY_RUN não toma a trava de instância e um
+// segundo reconciliador concorrente não é admitido). Erros não saem do passo; o tick segue.
+function qaDiagnosisTickSafe(opts = {}) {
+    if (!QA_DIAGNOSTICO) return null;
+    if (DRY_RUN || SIMULATE) {
+        console.log('[qa-diagnostico] protocolo c2b-2: no-op em DRY_RUN/SIMULATE');
+        return null;
+    }
+    try {
+        return qaProtocol.tick({
+            stateWriter, cas,
+            discoveryRoots: qaDiagnosisDiscoveryRoots,
+            locationRoots: qaDiagnosisLocationRoots,
+            onlyTicket: ONLY_TICKET,
+            log: msg => console.log(msg),
+            ...opts,
+        });
+    } catch (e) {
+        console.error('[qa-diagnostico] passo do protocolo falhou (tick segue):', e.message);
+        return null;
+    }
+}
+
 async function consumeQaRetrySignals() {
     if (SIMULATE) return []; // sinais do dashboard são de runs reais — DRY-RUN não consome
     const roots = [RUNS_DIR, ARCHIVE_DIR];
@@ -5316,6 +5359,9 @@ async function tick() {
 
     // Retry de Recusa QA pedido no dashboard: traz o run de volta pro worktree antes da
     // reidratação abaixo, que então o enxerga como task ativa (node=implement).
+    // PRI-181 c2b-2: protocolo do Diagnosis Record antes do retry (só com a flag).
+    qaDiagnosisTickSafe();
+
     let qaRetryIds = [];
     try {
         qaRetryIds = await consumeQaRetrySignals();
@@ -6050,6 +6096,7 @@ module.exports = {
     findActiveTask, mostRecentArchivedCommit, dispatchTicket, appendEvent,
     latestRunForTicket, syncQaRejection, consumeQaRetrySignals, qaRetryNote,
     QA_DIAGNOSTICO, // PRI-181 c0b: valor efetivo da flag (testes)
+    qaDiagnosisTickSafe, qaDiagnosisDiscoveryRoots, qaDiagnosisLocationRoots, // PRI-181 c2b-2
     NEVER_AUTO_DISPATCH, looksUnavailable, looksLikeSessionLimit, findLocallyActiveTicketIds,
     notifyBlocked, alreadyNotified, markNotified,
     pretaskQuestionPath, pretaskAnswerPending, notifyPretaskBlocked,

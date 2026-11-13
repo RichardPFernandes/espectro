@@ -205,6 +205,38 @@ function isValidStatus(s) {
 const BLOCK_KEYS = ['rev', 'status', 'current_version', 'current_sha256', 'versions', 'job', 'review',
     'review_history', 'outcome', 'applied_ops', 'cost', 'fenced_tokens', 'blocked'];
 
+// PRI-181 c2b-2 (SPEC-c2b-2-protocol r5.1, premissa 4): quem introduz o job o valida.
+const JOB_KINDS = ['deterministic', 'agent', 'human'];
+const JOB_KEYS = ['token', 'kind', 'target_version', 'parent_version', 'snapshot', 'runner_binding', 'lease_until'];
+// Leitura 14.12 (ciência do Richard no AUTORIZO D-C2b-2): snapshot = cópia do binding, quatro chaves.
+const SNAPSHOT_KEYS = ['execution_id', 'spec_hash', 'spec_version', 'reason'];
+const BINDING_REASONS = ['contemporaneous', 'retry_seen', 'legacy_backfill', 'unknown', 'not_contemporaneous'];
+
+/** job do bloco (§4.2 v3): null ou exatamente as chaves da premissa 4. */
+function validateJob(job) {
+    if (job === null) return { ok: true };
+    const errors = [];
+    if (!isObj(job)) return { ok: false, errors: ['job não é objeto'] };
+    closedKeys(job, JOB_KEYS, 'job', errors);
+    if (errors.length) return { ok: false, errors };
+    if (!isValidToken(job.token)) errors.push('job.token');
+    if (!JOB_KINDS.includes(job.kind)) errors.push('job.kind');
+    if (!isInt(job.target_version, 1)) errors.push('job.target_version');
+    if (!(Number.isSafeInteger(job.parent_version) && job.parent_version === job.target_version - 1)) errors.push('job.parent_version');
+    const s = job.snapshot;
+    if (!isObj(s)) errors.push('job.snapshot');
+    else {
+        closedKeys(s, SNAPSHOT_KEYS, 'job.snapshot', errors);
+        if (!isStrOrNull(s.execution_id)) errors.push('job.snapshot.execution_id');
+        if (!(s.spec_hash === null || (typeof s.spec_hash === 'string' && HEX64_RE.test(s.spec_hash)))) errors.push('job.snapshot.spec_hash');
+        if (!(s.spec_version === null || isInt(s.spec_version, 0) || (typeof s.spec_version === 'string' && s.spec_version.length > 0))) errors.push('job.snapshot.spec_version');
+        if (!BINDING_REASONS.includes(s.reason)) errors.push('job.snapshot.reason');
+    }
+    if (job.runner_binding !== null) errors.push('job.runner_binding');
+    if (!isCalendarIso(job.lease_until)) errors.push('job.lease_until');
+    return errors.length ? { ok: false, errors } : { ok: true };
+}
+
 /**
  * Validação estrita do bloco; falha fechada só para a operação de diagnóstico (premissa 6).
  * Chaves além das do §4.2 são toleradas: a SDD prevê campos de outras fatias no mesmo bloco
@@ -230,7 +262,8 @@ function validateBlock(blk) {
         const expected = last && typeof last.sha256 === 'string' ? last.sha256 : null;
         if (blk.current_sha256 !== expected) errors.push('current_sha256');
     }
-    if (!(blk.job === null || isObj(blk.job))) errors.push('job');
+    const job = validateJob(blk.job);
+    if (!job.ok) errors.push(...job.errors);
     if (!(blk.review === null || isObj(blk.review))) errors.push('review');
     if (!Array.isArray(blk.review_history)) errors.push('review_history');
     const o = blk.outcome;
@@ -253,4 +286,5 @@ module.exports = {
     isCalendarIso, isValidKey, isValidToken, sha256,
     buildVersion, buildVersionHeader: buildVersion, serialize, validateVersion,
     initialDiagnosisBlock, validateBlock, isValidStatus,
+    JOB_KINDS, JOB_KEYS, SNAPSHOT_KEYS, BINDING_REASONS, validateJob,
 };
