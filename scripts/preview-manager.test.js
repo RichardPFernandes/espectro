@@ -289,9 +289,53 @@ test('preview-gruntfile: porta do connect e proxy :8080 → porta do preview, se
     assert.strictEqual(config.connect.options.port, 9100);
     assert.strictEqual(config.connect.livereload.options.open, false);
     assert.strictEqual(config.connect.livereload.options.keepalive, true);
-    assert.deepStrictEqual(config.connect.livereload.options.middleware()[0].rules, [
+    assert.deepStrictEqual(config.connect.livereload.options.middleware().find(m => m.rules).rules, [
         '^/portal/api http://localhost:8181/portal/ [P L]', '^/api http://localhost:8181/ [P L]', '^/mongo http://localhost:5000 [P L]',
     ]);
+});
+
+test('preview-gruntfile: o app trata "porta 9000" como dev — no preview, location.port === \'9000\' é servido com a porta do preview (arquivo em disco intocado)', () => {
+    const front = path.join(tmp, 'front-porta');
+    fs.mkdirSync(path.join(front, 'node_modules', 'connect-modrewrite'), { recursive: true });
+    fs.writeFileSync(path.join(front, 'node_modules', 'connect-modrewrite', 'index.js'), 'module.exports = rules => ({ rules });');
+    fs.writeFileSync(path.join(front, 'Gruntfile.js'), `module.exports = g => g.initConfig({ connect: { options: { port: 9000 }, livereload: { options: {
+        middleware: () => [require('connect-modrewrite')([]), 'serveStatic'] } } } });`);
+    const APP = "if (window.location.port === '9000') { window.location.replace(window.location.origin + '/#/login'); }";
+    const PARENT = 'var parentOrigin = (window.location.port == "9000") ? "http://localhost:4200" : window.location.origin;';
+    fs.mkdirSync(path.join(front, 'app', 'scripts', 'components'), { recursive: true });
+    fs.writeFileSync(path.join(front, 'app', 'scripts', 'app.js'), APP);
+    fs.writeFileSync(path.join(front, 'app', 'scripts', 'components', 'parent.js'), PARENT);
+    fs.writeFileSync(path.join(front, 'app', 'scripts', 'outro.js'), 'var porta = 9000;');
+    fs.writeFileSync(path.join(tmp, 'fora-do-front.js'), "location.port === '9000'");
+    const config = {};
+    const get = k => k.split('.').reduce((o, p) => o?.[p], config);
+    const grunt = {
+        initConfig: c => Object.assign(config, c),
+        config: { get, set: (k, v) => { const ps = k.split('.'); const last = ps.pop(); ps.reduce((o, p) => (o[p] ||= {}), config)[last] = v; } },
+        log: { writeln: () => {}, error: () => {} },
+    };
+    Object.assign(process.env, { PREVIEW_FRONT_DIR: front, PREVIEW_BACK_PORT: '8081', PREVIEW_FRONT_PORT: '9100' });
+    try { require('./preview-gruntfile')(grunt); } finally { for (const k of ['PREVIEW_FRONT_DIR', 'PREVIEW_BACK_PORT', 'PREVIEW_FRONT_PORT']) delete process.env[k]; }
+    const chain = config.connect.livereload.options.middleware();
+    assert.ok(chain.includes('serveStatic'), 'middlewares originais continuam na cadeia');
+    const patch = chain.find(m => typeof m === 'function');
+    assert.ok(patch, 'middleware da porta na cadeia');
+    const serve = (url, method = 'GET') => {
+        const res = { headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(b) { this.body = String(b); } };
+        let passed = false;
+        patch({ method, url }, res, () => { passed = true; });
+        return { passed, res };
+    };
+    const app = serve('/scripts/app.js?v=1');
+    assert.strictEqual(app.passed, false);
+    assert.strictEqual(app.res.body, APP.replace("'9000'", "'9100'"));
+    assert.match(app.res.headers['content-type'], /javascript/);
+    assert.strictEqual(serve('/app/scripts/components/parent.js').res.body, PARENT.replace('"9000"', '"9100"'));
+    assert.strictEqual(serve('/scripts/outro.js').passed, true, 'sem a checagem de porta: segue pro serveStatic');
+    assert.strictEqual(serve('/scripts/app.js', 'POST').passed, true);
+    assert.strictEqual(serve('/../fora-do-front.js').passed, true, 'fora da pasta do front: não serve');
+    assert.strictEqual(serve('/%2e%2e/fora-do-front.js').passed, true);
+    assert.strictEqual(fs.readFileSync(path.join(front, 'app', 'scripts', 'app.js'), 'utf8'), APP, 'arquivo do front intocado');
 });
 
 test('clean: apaga target/ dos worktrees, .tmp do front e o install do preview no repositório do preview (o ~/.m2 fica); recusa com preview ativo', async () => {

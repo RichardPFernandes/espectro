@@ -345,7 +345,9 @@ O fold **Preview de Ambiente** do run builda e sobe o app-back (:8081) e o app-f
 O preview não mexe no seu ambiente local:
 
 - portas próprias (`PREVIEW_BACK_PORT`/`PREVIEW_FRONT_PORT`, padrão 8081/9100), então o
-  ambiente de sempre (:8080/:9000) roda junto;
+  ambiente de sempre (:8080/:9000) roda junto; o app-front decide "dev" por `location.port === '9000'`, então o
+  `scripts/preview-gruntfile.js` serve essa checagem com a porta do preview (sem isso, o 401
+  recarregava `/` em loop em vez de ir para `/#/login`) — só a resposta HTTP muda, não o repo;
 - todo `mvn` do preview grava num repositório Maven só dele (`PREVIEW_M2_REPO`, padrão
   `~/.cache/prisma-preview/m2`) e lê o `~/.m2` só para consulta (`maven.repo.local.tail`,
   Maven 3.9+): o `install` de mo-entity/app-core nunca troca o SNAPSHOT que o seu checkout
