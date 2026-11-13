@@ -1,4 +1,5 @@
 # Maestri — Agent Handoff Contract v1.2. Regras: docs/handoff-contract.md
+# Opcional pelo Acordo v2: só quando o coordenador Maestri pedir. Fatias novas não exigem handoff; a evidência vai no PR.
 # Validar antes de entregar: node scripts/validate-handoff.js <arquivo>
 # status: COMPLETED | BLOCKED | NEEDS_HUMAN | FAILED | PARTIAL
 # result de validation.executed só é PASSED com execução comprovada em evidence.

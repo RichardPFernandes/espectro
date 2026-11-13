@@ -1,0 +1,27 @@
+{
+  "levels": {
+    "processo:leve": "leve",
+    "processo:medio": "medio",
+    "processo:alto": "alto"
+  },
+  "evidenceHeading": "Evidência",
+  "leve": {
+    "maxChangedLines": 400,
+    "forbiddenNewFiles": [
+      "tasks/**/SPEC*",
+      "**/handoff*.yaml",
+      "**/handoff*.yml",
+      "**/evidence*.md"
+    ]
+  },
+  "ignoredForLineCount": [
+    "**/package-lock.json",
+    "**/npm-shrinkwrap.json",
+    "**/yarn.lock",
+    "**/pnpm-lock.yaml",
+    "**/*.snap",
+    "**/__snapshots__/**",
+    "**/fixtures/**/*golden*.json",
+    "scripts/harness/**/artifacts/**"
+  ]
+}

@@ -1,6 +1,6 @@
 ---
 name: prisma-linear-comment-evidence
-description: Comenta em issue PRI do Linear só com links e evidência atribuível (paths, HEAD, comandos, PR/doc/TAP); sem fechar status nem inferir Done/Approval. Use no fim de fatia, bloqueio ou para apontar prova.
+description: Comenta em issue PRI do Linear só para registrar decisão ou bloqueio, em 3 linhas (Acordo v2); status vai no topo da issue e evidência no PR. Use quando houver decisão ou bloqueio a registrar.
 ---
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
@@ -9,13 +9,15 @@ description: Comenta em issue PRI do Linear só com links e evidência atribuív
 
 # prisma-linear-comment-evidence
 
-Comentário Linear **curto**; detalhe fica no artefato linkado. Acionar sob demanda — não canal paralelo de Done/Approval Gate.
+Pelo Acordo v2, comentário **só** para decisão ou bloqueio, em 3 linhas:
 
-## O que pode ir no comentário
+```
+Decisão|Bloqueio: <o quê>
+Por quê / quem decide: <motivo ou pessoa>
+Efeito: <o que muda no trabalho>
+```
 
-- Links: PR, doc Linear, handoff, TAP, path de store/repo, commit/HEAD.
-- Comandos realmente executados + resultado observado (ou UNKNOWN).
-- Bloqueio/interrupção com próximo passo humano explícito.
+Status (Estado / Próximo passo / Decisão pendente) é editado no topo da descrição, não comentado. Evidência vai na seção Evidência do PR; o comentário pode linkar o PR.
 
 ## Proibido
 
@@ -23,13 +25,13 @@ Comentário Linear **curto**; detalhe fica no artefato linkado. Acionar sob dema
 - Inferir Focus / Stretch / Uncommitted / Cycle.
 - Declarar teste PASS sem evidência; UNKNOWN / ausência de prova ≠ zero ≠ PASS.
 - Colar regra de negócio do consumidor ou segredos.
-- Substituir handoff Maestri (`prisma-handoff`) ou evidência oficial do ciclo.
+- Comentário de status, de progresso ou de fim de fatia.
+- Repetir invariantes ("RC-x NOT APPLIED", "polling não tocado"); ficam nas Agent notes.
 
 ## Preferência
 
-1. Preferir apontar handoff/doc/PR **já existentes**.
-2. Se faltar pacote de prova, usar `prisma-evidence-pack` antes de comentar.
-3. Um comentário = um propósito (entrega, bloqueio, ou ponteiro de evidência).
+1. Um comentário = uma decisão ou um bloqueio.
+2. Prova mora no PR (`prisma-evidence-pack` → seção Evidência).
 
 ## MCP
 

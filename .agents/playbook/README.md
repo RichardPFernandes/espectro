@@ -13,10 +13,10 @@ Skills obrigatórias por ação da **esteira de desenvolvimento**. Path: `.agent
 | 5 | Mapear AC → RN | `prisma-ac-rn-map` | médio / pesado se denso |
 | 6 | Editar código | — | médio / pesado estrutural |
 | 7 | Receita oficial de testes | `prisma-tests` | **leve** |
-| 8 | Pacote de prova | `prisma-evidence-pack` | **leve** |
+| 8 | Pacote de prova → seção Evidência do PR | `prisma-evidence-pack` | **leve** |
 | 9 | Body de PR | `prisma-pr-describe` | **leve** |
-| 10 | Comentário Linear com prova | `prisma-linear-comment-evidence` | **leve** |
-| 11 | Concluir / bloquear / interromper | `prisma-handoff` | leve / médio se BLOCKED |
+| 10 | Comentário de decisão ou bloqueio (3 linhas) | `prisma-linear-comment-evidence` | **leve** |
+| 11 | Transferência pedida pelo coordenador Maestri (opcional no Acordo v2) | `prisma-handoff` | leve / médio se BLOCKED |
 | 12 | Docs negócio + técnica | `prisma-docs-humano` | **leve** |
 
 **Regra:** ao iniciar a ação, **carregar** a skill. Não é “se lembrar”.

@@ -1,6 +1,6 @@
 ---
 name: prisma-handoff
-description: Produz ou valida handoff YAML do contrato Maestri no Prisma a partir do template e docs/handoff-contract.md, e roda scripts/validate-handoff.js. Use ao concluir, bloquear ou interromper tarefa delegada (AGENTS.md §9).
+description: Produz ou valida handoff YAML opcional do contrato Maestri no Prisma a partir do template e docs/handoff-contract.md, e roda scripts/validate-handoff.js. Use só quando o coordenador Maestri pedir uma transferência entre agentes; pelo Acordo v2 nenhuma fatia exige handoff.
 ---
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
@@ -13,7 +13,7 @@ Atalho para o contrato já autoritativo. **Autoridade =** `docs/handoff-contract
 
 ## Objetivo
 
-Ao concluir, bloquear ou interromper tarefa delegada, entregar handoff YAML válido (AGENTS.md §9).
+Entregar handoff YAML válido **quando o coordenador Maestri pedir** uma transferência entre agentes. Pelo Acordo v2 o handoff é opcional: o status fica no topo da issue e a evidência na seção Evidência do PR (AGENTS.md §9). Não gravar `handoff-*.yaml` em `tasks/**` por padrão.
 
 ## Template
 
@@ -71,6 +71,6 @@ node scripts/validate-handoff.js <handoff.yaml|handoff.md> [--check-paths] [--pr
 | Este contrato (`docs/handoff-contract.md`) | Transferência entre agentes Maestri / coordenação |
 | `memory/runs/<task>/handoff.md` | Estado operacional do nó do grafo |
 
-Bloqueio e interrupção também geram handoff — não só conclusão feliz.
+Sem pedido do coordenador, bloqueio vira comentário de 3 linhas na issue (Bloqueio / Por quê ou quem decide / Efeito), não handoff.
 
 Anatomia: [`.agents/reference/skill-anatomy.md`](../../reference/skill-anatomy.md).

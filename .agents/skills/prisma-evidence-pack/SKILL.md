@@ -1,6 +1,6 @@
 ---
 name: prisma-evidence-pack
-description: Monta pacote curto de prova atribuível (HEAD, comandos, suítes, TAP/paths) sem declarar gate PASS nem escrever state.json. Use antes de handoff, PR ou comentário Linear quando faltar evidência.
+description: Monta pacote curto de prova atribuível (HEAD, comandos, suítes, TAP/paths) para a seção Evidência do PR, sem declarar gate PASS nem escrever state.json. Use antes de abrir ou atualizar PR quando faltar evidência.
 ---
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
@@ -9,7 +9,7 @@ description: Monta pacote curto de prova atribuível (HEAD, comandos, suítes, T
 
 # prisma-evidence-pack
 
-Empacota prova para alimentar handoff / PR / comentário Linear — **não** os substitui. Resultado interativo **não** é evidência oficial do ciclo despachado.
+Empacota prova para a seção **Evidência do PR** (`.github/pull_request_template.md`: tabela AC / Resultado / Prova). Pelo Acordo v2 não existe `evidence-*.md` separado nem comentário de evidência no Linear. Resultado interativo **não** é evidência oficial do ciclo despachado.
 
 ## Conteúdo mínimo
 
@@ -55,6 +55,6 @@ Empacota prova para alimentar handoff / PR / comentário Linear — **não** os 
 
 ## Saída típica
 
-Bloco markdown curto reutilizável em handoff (`validation.executed` + `evidence`), body de PR (`prisma-pr-describe`) ou comentário Linear (`prisma-linear-comment-evidence`).
+Linhas da tabela da seção Evidência do PR (`prisma-pr-describe`). Não gravar arquivo `evidence-*.md`.
 
 Anatomia: [`.agents/reference/skill-anatomy.md`](../../reference/skill-anatomy.md).
