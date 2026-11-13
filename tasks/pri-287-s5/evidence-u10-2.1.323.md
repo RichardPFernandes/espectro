@@ -51,7 +51,7 @@ verificados. Flag `decomposition = on` reservada. RC-1 a RC-6 e RRC-F31-001/002 
 ## Decisão do Richard: gate do RC-1 CUMPRIDO (2026-11-13)
 
 - **Texto da decisão:** «Cumprir o gate», na sessão da PRI-311, depois de ver esta prova e os
-  limites abaixo.
+  limites acima.
 - **Base:** prova do U10-a na 2.1.319 (`u10-probe-evidence.json`) e na 2.1.323 (este adendo).
 - **Alcance do que foi provado:** o modelo do subagente por papel, via `--agents`, para agentes do
   projeto redefiníveis, nas versões da CLI com prova própria. Fora disso, o código continua
