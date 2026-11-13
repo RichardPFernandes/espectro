@@ -230,3 +230,37 @@ test('r2.1: chaves extras em bindings/analyzer não somem no build', () => {
     assert.equal(v.analyzer.tool, 'x');
     assert.equal(model.validateVersion(v).ok, false);
 });
+
+// ── PRI-181 c2b-2 (SPEC-c2b-2-protocol r5.1, premissa 4; AC-01): validateBlock valida job ──
+test('c2b-2 AC-01: validateBlock recusa job malformado (cada regra da premissa 4)', () => {
+    const goodJob = () => ({
+        token: 'det-1', kind: 'deterministic', target_version: 1, parent_version: 0,
+        snapshot: { execution_id: null, spec_hash: null, spec_version: null, reason: 'unknown' },
+        runner_binding: null, lease_until: '2026-11-13T12:15:00.000Z',
+    });
+    const blk = job => ({ ...model.initialDiagnosisBlock(), status: 'collecting', job });
+    assert.equal(model.validateBlock(blk(goodJob())).ok, true);
+    assert.equal(model.validateBlock(blk(null)).ok, true);
+    const bad = {
+        'chave extra': j => { j.extra = 1; },
+        'falta lease_until': j => { delete j.lease_until; },
+        'token fora da gramática': j => { j.token = 'DET 1'; },
+        'kind inválido': j => { j.kind = 'robot'; },
+        'target_version 0': j => { j.target_version = 0; j.parent_version = -1; },
+        'parent != target-1': j => { j.parent_version = 1; },
+        'snapshot com três chaves': j => { delete j.snapshot.reason; },
+        'spec_hash não hex64': j => { j.snapshot.spec_hash = 'abc'; },
+        'spec_version vazia': j => { j.snapshot.spec_version = ''; },
+        'reason fora do enum': j => { j.snapshot.reason = 'late_ingestion'; },
+        'execution_id vazio': j => { j.snapshot.execution_id = ''; },
+        'runner_binding não nulo': j => { j.runner_binding = {}; },
+        'lease_until fora do calendário': j => { j.lease_until = '2026-02-30T00:00:00Z'; },
+    };
+    for (const [name, mutate] of Object.entries(bad)) {
+        const j = goodJob();
+        mutate(j);
+        assert.equal(model.validateBlock(blk(j)).ok, false, name);
+    }
+    // bypassed (c2b-3, RC-7): tolerado como chave extra, sem validar tipo (R6).
+    assert.equal(model.validateBlock({ ...blk(goodJob()), bypassed: 'qualquer' }).ok, true);
+});
