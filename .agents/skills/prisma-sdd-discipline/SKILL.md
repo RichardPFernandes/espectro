@@ -30,7 +30,6 @@ Guia **somente leitura**. Navega e lembra disciplina; **não** muta spec, Active
 - Guiar mapeamento mental AC (change) → RN (capability) com rótulos **UNKNOWN** explícitos onde faltar fonte.
 - Apontar `docs/spec-guide.md`, `docs/spec-versioning.md`, templates `templates/spec*.md`, e ensaios/docs Linear (ex. PRI-132, PRI-174) **sem** copiar regra de negócio do consumidor para o Linear.
 - Entregar checklist + UNKNOWNs + **próxima pergunta humana**.
-- Citar que RRC-F31-001/002 continuam NOT APPLIED até decisão governada.
 
 ## O que é proibido
 
