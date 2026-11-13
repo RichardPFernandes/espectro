@@ -546,7 +546,7 @@ test('o template 1.2 cobra nivel_processo vazio', () => {
     assert.ok(errors(results).includes('NIVEL_PROCESSO'), errors(results).join());
 });
 
-test('guard: leve e médio não exigem spec separada nem G3; regras fixas citadas; códigos iguais', () => {
+test('guard: leve e médio citam o Acordo v2 (leve sem SPEC; médio com uma G3); regras fixas citadas; códigos iguais', () => {
     for (const nivel of ['leve', 'medio']) {
         const d = v12(nivel);
         d.closure = { task_type: TASK_TYPES.IMPLEMENTATION };
@@ -556,7 +556,7 @@ test('guard: leve e médio não exigem spec separada nem G3; regras fixas citada
         assert.deepStrictEqual(r.nivelProcesso, { nivel, declared: true, label: nivel });
         const msg = r.results[0].msg;
         assert.match(msg, new RegExp(`nível ${nivel === 'medio' ? 'médio' : 'leve'}`));
-        assert.match(msg, /não exige spec separada nem revisão G3/);
+        assert.match(msg, nivel === 'medio' ? /SPEC de até 1 página só se precisar; uma revisão G3/ : /sem SPEC; uma revisão/);
         for (const rule of FIXED_RULES) assert.ok(msg.includes(rule), rule);
         assert.deepStrictEqual(r.fixedRules, FIXED_RULES);
     }
@@ -566,8 +566,8 @@ test('guard: alto cita o processo completo; sem nível declarado vale alto', () 
     const alto = v12('alto');
     alto.closure = { task_type: TASK_TYPES.BUG };
     const r = checkPreDone(alto, { homeDir: makeHome() });
-    assert.match(r.results[0].msg, /nível alto: processo completo/);
-    assert.match(r.results[0].msg, /revisão G3 independente/);
+    assert.match(r.results[0].msg, /nível alto: SPEC de 1 a 2 páginas, AUTORIZO próprio, uma rodada G3 com dois revisores e readback/);
+    assert.match(r.results[0].msg, /conferido manualmente/);
     const legacy = checkPreDone(v11(), { homeDir: makeHome() });
     assert.deepStrictEqual(preCodes(legacy), ['PRE_DONE_TYPE_ABSENT']);
     assert.deepStrictEqual(legacy.nivelProcesso, { nivel: 'alto', declared: false, label: 'não declarado (handoff anterior à 1.2; vale alto)' });
@@ -609,5 +609,5 @@ test('CLI --pre-done imprime o nível e as regras fixas', () => {
     assert.strictEqual(ran.status, 3, ran.stdout + ran.stderr);
     assert.match(ran.stdout, /VÁLIDO; pré-Done aguarda critério humano/);
     assert.match(ran.stdout, /nível de processo: medio/);
-    assert.match(ran.stdout, /regras fixas \(todo nível\): evidência persistida; aceite dos ACs pelo Richard; pai não fecha com filha aberta/);
+    assert.match(ran.stdout, /regras fixas \(todo nível\): evidência na seção Evidência do PR; aceite dos ACs pelo Richard; pai não fecha com filha aberta/);
 });

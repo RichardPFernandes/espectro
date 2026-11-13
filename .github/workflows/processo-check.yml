@@ -1,0 +1,57 @@
+name: processo-check
+
+# Barreira do Acordo de desenvolvimento v2 (seção 8): um rótulo de nível,
+# seção Evidência preenchida e, no leve, sem SPEC/handoff/evidence separado e
+# até 400 linhas. Limites em .github/processo.json.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, edited, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: processo-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  processo-check:
+    name: processo-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # O script, os limites e o template vêm da base do PR: um PR não afrouxa
+      # a própria barreira. Os arquivos e o corpo do PR vêm da API.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+          sparse-checkout: .github
+      # Código do PR: só para os testes do check e do hook.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          path: head
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            .claude/hooks
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Testes do check e do hook (código do PR)
+        working-directory: head
+        run: node --test .github/scripts/processo-check.test.mjs .claude/hooks/processo-level.test.mjs
+      - name: Conferir o PR (regras da base)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if [ -f base/.github/scripts/processo-check.mjs ]; then
+            node base/.github/scripts/processo-check.mjs
+          else
+            # Só no PR que introduz o check: a base ainda não o tem.
+            echo "::notice title=processo-check::a base ainda não tem o check; usando o do PR (bootstrap)"
+            node head/.github/scripts/processo-check.mjs
+          fi

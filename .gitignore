@@ -27,3 +27,6 @@ memory/knowledge-graph.json
 dashboard/.env
 dashboard/local-checkout.json
 dashboard/dashboard-prefs.json
+
+# Nível de processo da sessão (Acordo v2), lido pelo hook .claude/hooks/processo-level.mjs
+.prisma/

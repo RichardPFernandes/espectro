@@ -35,18 +35,18 @@ const LIMITS = [
     'execution.status não autoriza Done. A checagem lê as citações de closure.',
 ];
 
-// Acordo de desenvolvimento (AGENTS.md, «Níveis de processo»). As regras fixas
+// Acordo de desenvolvimento v2 (AGENTS.md, «Níveis de processo»). As regras fixas
 // valem em todo nível; a checagem não consulta o Linear para conferi-las.
 const FIXED_RULES = [
-    'evidência persistida',
+    'evidência na seção Evidência do PR',
     'aceite dos ACs pelo Richard',
     'pai não fecha com filha aberta',
 ];
 
 const LEVEL_TEXT = {
-    leve: 'nível leve: o guard não exige spec separada nem revisão G3',
-    medio: 'nível médio: o guard não exige spec separada nem revisão G3',
-    alto: 'nível alto: processo completo (spec fina, revisão G3 independente, AUTORIZO específico, bump e readback), conferido manualmente',
+    leve: 'nível leve: sem SPEC; uma revisão',
+    medio: 'nível médio: SPEC de até 1 página só se precisar; uma revisão G3',
+    alto: 'nível alto: SPEC de 1 a 2 páginas, AUTORIZO próprio, uma rodada G3 com dois revisores e readback, conferido manualmente',
 };
 
 // O campo só existe a partir da 1.2 (mesma fronteira do validador). Sem nível

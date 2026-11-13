@@ -1,62 +1,101 @@
 ---
 name: prisma-issue
-description: Abre ou continua trabalho a partir de uma issue PRI-NNN do Linear no repositório Prisma — lê issue, handoff e baselines, delimita escopo e arquivos e propõe um plano antes de editar. Use quando o usuário citar uma issue PRI ou pedir para começar uma tarefa no Prisma.
+description: Abre, cria ou continua trabalho a partir de uma issue PRI-NNN do Linear no repositório Prisma, no formato do Acordo v2 — lê o bloco de Estado, o nível e as Agent notes, delimita escopo e arquivos e propõe um plano antes de editar. Use quando o usuário citar uma issue PRI, pedir para começar uma tarefa no Prisma ou para abrir issue nova.
 disable-model-invocation: true
 ---
 
-> Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
+> Skill de produção do Prisma; não é runtime do produto; não substitui gates/scripts.
 
 **Faixa de modelo:** médio — preferir Sonnet (planejar com qualidade). Opus só se arquitetura/Freeze. Ver `.agents/reference/skill-model-map.md`.
 
 # prisma-issue
 
-Ponto de partida de uma sessão **interativa** no Prisma. Só lê e planeja; não edita código nem estado operacional até aprovação explícita do plano.
+Ponto de partida de uma sessão **interativa** no Prisma. Só lê e planeja; não edita código nem estado operacional até aprovação do plano. Regras curtas: topo do `CLAUDE.md` (Acordo v2).
 
 ## Passos
 
-1. Leia `AGENTS.md`. Se existir no checkout, leia também `.cursor/rules/interactive-boundary.mdc` (fronteira interativa; ausente no `main` cloud até promoção separada).
-2. Pelo MCP Linear do workspace Prisma (`prisma-app` / time PRI), recupere a issue informada (ex.: `PRI-168`), comentários, relações e handoff anexado, se houver.
-3. **Nível de processo** (acordo de desenvolvimento, seção «Níveis de processo» do `AGENTS.md`):
-   - leia o rótulo do grupo `Processo` da issue (Leve, Médio ou Alto; o grupo é de seleção única no time Prisma-app);
-   - sem rótulo, atribua o nível pela tabela do `AGENTS.md` e proponha o rótulo no resumo; na dúvida entre dois níveis, use o maior e registre o motivo;
-   - o revisor pode subir o nível; descer, só com o Richard. Se o nível subir durante a sessão, registre o motivo na issue e no handoff (`nivel_processo_inicial`, `nivel_processo_motivo`);
-   - o nível define o que a sessão exige: leve — sem spec separada, uma revisão simples; médio — spec e implementação na mesma fatia, uma revisão independente; alto — spec fina, revisão G3 independente, AUTORIZO específico, bump e readback.
+1. Leia `CLAUDE.md` e `AGENTS.md`. Se existir no checkout, leia também `.cursor/rules/interactive-boundary.mdc`.
+2. Pelo MCP Linear do workspace Prisma (`prisma-app` / time PRI), recupere a issue (ex.: `PRI-168`): bloco de Estado no topo, Agent notes, relações e comentários de decisão ou bloqueio.
+3. **Nível** (grupo de rótulos `Processo`: Leve, Médio ou Alto; seleção única):
+   - sem rótulo, **pare e pergunte**, com recomendação de nível e o motivo numa linha;
+   - nível pelo efeito: atrás de flag desligada é Médio; mudar o que já roda no consumidor (ligar flag, bump, polling, operação protegida, credencial) é Alto; docs, avaliações, ferramentas offline e testes são Leve;
+   - se o trabalho passar do nível, peça reclassificação ao Richard. Não crie adendo.
 4. Antes de **criar** issue nova: busque equivalente já existente; não gere uma tarefa por ação técnica.
 5. Classificação Linear (política do time, não inventar):
    - um único Work Type: Planning, Architecture, Audit, Implementation, Validation ou Governance;
-   - templates nativos via `list_templates` / `get_template`; se a lista vier vazia, use o documento canônico «Template de Issue — Prisma» e **não** invente template id nem passe id de documento em `template`;
    - **não** atribuir Focus, Stretch, Uncommitted ou Cycle por inferência;
    - labels complementares (Bug, Feature, Improvement, Approval Gate) só quando a política já as usar.
 6. Identifique baselines e decisões citadas e abra as que existirem no repo (`provenance/`, `docs/`, `.graph/`).
-7. Entregue um resumo curto:
-   - objetivo e critérios de aceite da issue;
-   - nível de processo (lido do rótulo ou atribuído, com o motivo) e o tamanho da fatia (entrega verificável de 3 a 5 dias);
-   - escopo: arquivos e pacotes (`scripts/`, `dashboard/`, `harness/`, `templates/`, `docs/`) que devem mudar e os que não podem;
-   - riscos de contrato (schemas em `.graph/schemas/`, `state-writer.js`, proveniência);
-   - plano em passos pequenos, cada um com o teste que o comprova.
-8. Sugira a branch no padrão do projeto (ex.: `fernandesrichard312/pri-NNN-<slug>` ou `cursor/<slug>-…`) a partir de `main`, conforme o fluxo da sessão.
+7. Entregue um resumo curto: objetivo e ACs; nível (com o motivo); escopo (arquivos que mudam e os que não podem); riscos de contrato (`.graph/schemas/`, `state-writer.js`, proveniência); plano em passos pequenos, cada um com o teste que o comprova.
+8. Sugira a branch no padrão do projeto (ex.: `fernandesrichard312/pri-NNN-<slug>`) a partir de `main`.
 9. Pare e espere aprovação do plano antes de editar.
+
+## Formato da issue (templates "Processo Leve/Médio/Alto")
+
+Ao criar issue, use o template do nível (`list_templates` no time Prisma-app: "Processo Leve", "Processo Médio" ou "Processo Alto"), que já aplica o rótulo. Se a lista vier vazia, escreva o mesmo formato à mão:
+
+```markdown
+**Estado:** <uma frase>
+
+**Próximo passo:** <quem faz o quê>
+
+**Decisão pendente:** <pergunta + recomendação + prazo (próxima segunda/quinta)> | nenhuma
+
+**Ligado ao fechar:** <sim — onde | não — por quê> (preencher no Done)
+
+**Nível:** Leve|Médio|Alto — <motivo em uma linha>
+
+## Objetivo
+<o que muda e para quem>
+
+## Escopo
+* <item>
+
+## Fora de escopo
+* <item>
+
+## ACs
+- [ ] AC-1 <verificável>
+
+## Pronto quando
+<o que fica ligado ou demonstrável; se ficar atrás de flag, quando ela liga>
+
++++ Agent notes
+
+Arquivos prováveis, plano curto, referências. Invariantes que se aplicam, listadas uma vez aqui.
+SPEC: Médio só se precisar (até 1 página); Alto, 1 a 2 páginas, em `tasks/<id>/SPEC.md`.
+
++++
+```
+
+No Alto, acrescente "Riscos e rollback" e "Dependências", e a Decisão pendente exige AUTORIZO explícito.
+
+## Status, comentários e evidência
+
+- **Status mora no topo.** Atualize Estado / Próximo passo / Decisão pendente no lugar (`save_issue` com `patch`). Não poste status em comentário.
+- **Comentário só para decisão ou bloqueio**, em 3 linhas: `Decisão|Bloqueio` / `Por quê ou quem decide` / `Efeito`.
+- **Evidência no PR**, na seção Evidência do `.github/pull_request_template.md`. Não há `evidence-*.md`, `handoff-*.yaml` nem adendo de SPEC.
+- Não repita invariantes ("RC-x NOT APPLIED", "polling não tocado") fora das Agent notes.
 
 ## AUTORIZO e perguntas
 
-- **AUTORIZO por lote.** Antes de pedir AUTORIZO, procure um comentário do Richard associado ao milestone da issue que autorize o milestone em lote (modelo do acordo: «AUTORIZO o milestone *nome*: implementação com flag desligada e PR em draft. Não inclui bump, merge, ligar flag nem fatias de nível alto.»). Ele libera só as fatias leves e médias do milestone, dentro dos limites escritos no próprio comentário; o que o comentário não cita não está autorizado. Fatia de nível alto continua precisando de AUTORIZO próprio; bump e ligar flag são nível alto e o merge é sempre do Richard, então nenhum deles entra por lote. Cite o comentário (link) no resumo e no handoff; sem comentário aplicável, peça o AUTORIZO específico.
-- **Perguntas em lote.** Pergunta não urgente vai para o lote de decisões de segunda e quinta: acumule-a no resumo e, depois do plano aprovado, em um comentário «Para o lote de decisões» na issue (antes da aprovação, esta skill não escreve no Linear), e siga com o que não depende dela. Só é urgente o que bloqueia o trabalho do dia ou traz risco para o consumidor; essa pergunta vai direto ao Richard.
+- **AUTORIZO por lote.** Procure o comentário do Richard que autoriza o milestone em lote. Ele libera fatias leves e médias do milestone, nos limites escritos nele. Fatia alta precisa de AUTORIZO próprio; bump e ligar flag são Alto e o merge é sempre do Richard.
+- **Perguntas.** Pare só quando mudar o escopo, faltar acesso/credencial ou a ação não tiver volta, sempre com recomendação. As demais vão para "Decisão pendente" (janela de segunda ou quinta). Leve/Médio: sem objeção até a janela, vale a recomendação. Alto: resposta explícita.
 
 ## Execução após aprovação
 
-Para uma implementação aprovada, conclua o ciclo aplicável — Implement → Review independente → Test → Verify → Commit. A aprovação do plano autoriza os commits e o push necessários para abrir ou atualizar um PR da tarefa; faça isso quando o repositório e o fluxo da tarefa suportarem PR. Se não houver mudança ou PR aplicável, registre o motivo no resultado.
+Implement → Review → Test → Verify → Commit. Revisão: Leve = 1; Médio = 1 G3; Alto = 1 rodada G3 com 2 revisores (segunda rodada só com decisão do Richard). A aprovação do plano autoriza os commits e o push para abrir ou atualizar o PR **draft** da tarefa, com rótulo `processo:leve|medio|alto` e "Refs PRI-NNN" (nunca "Fixes").
 
-Não faça merge, deploy nem avance o status da issue no Linear sem pedido explícito. Se o trabalho sair do escopo aprovado, pare e apresente o novo escopo antes de continuar.
+Não faça merge, deploy nem mova a issue para Done. Done só com a Evidência do PR e o aceite do Richard; pai não fecha com filha aberta.
 
 ## Links canônicos (Linear)
 
+- Acordo de desenvolvimento (v2): https://linear.app/prisma-app/document/prisma-acordo-de-desenvolvimento-62a84790f75a
 - Política Work Type / Cycle: https://linear.app/prisma-app/document/prisma-politica-de-classificacao-e-modelos-de-issue-work-type-cycle-e033efdc5090
-- Template de Issue — Prisma: https://linear.app/prisma-app/document/template-de-issue-prisma-5585827bdb94
 
 ## Fora do escopo
 
-- Avançar nó do grafo, gravar `state.json`, `spec_hash`, aprovação, invalidação, lock ou handoff oficial do ciclo.
+- Avançar nó do grafo, gravar `state.json`, `spec_hash`, aprovação, invalidação ou lock do ciclo.
 - Rodar `scripts/state-writer.js` ou `scripts/invalidate.js` contra um consumidor.
-- Merge, deploy ou mudança de status da issue no Linear sem pedido explícito.
-- Duplicar esta skill em `.cursor/rules/linear-workflow.mdc` (já rejeitado).
+- Merge, deploy ou Done no Linear.
 - Substituir gates, Freeze, RRC, Active ou H4.
