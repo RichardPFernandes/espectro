@@ -37,6 +37,11 @@ const PRODUCTION_EFFORT_MECHANISM = Object.freeze({ status: 'UNAVAILABLE', reaso
 const TIER_ORDER = ['T1', 'T2', 'T3'];
 const CLASS_RANK = wouldRoute.CLASS_RANK;
 const ROUTED_NODE = 'implement';
+// PRI-334: vocabulário de selection_source de uma RoutingDecision (este módulo, would-route.js
+// e decomposition-visit.js). O state.schema.json (definitions.routingSelectionSource) tem de
+// listar exatamente estes valores — conferido em cost-tracking.test.js. Origem nova entra aqui
+// e no schema na mesma mudança, senão a tentativa roteada vira state_corrupted.
+const SELECTION_SOURCES = Object.freeze(['FIXED_NODE', 'RULES', 'CONSERVATIVE_DEFAULT', 'PLAN_RAISED', 'LINEAGE_FLOOR', 'RISK_RECLASSIFIED', 'HUMAN_OVERRIDE']);
 const PROVIDER = 'anthropic';
 
 function canonical(value) {
@@ -370,11 +375,17 @@ function routedArgs(baseArgs, resolution, { agentsJson = null } = {}) {
 
 const ROLE_NAME = /^[a-z0-9][a-z0-9-]*$/;
 
-// Prova da tarefa 0 (U10-a, tasks/pri-287-s5/u10-probe-evidence.json): `--agents` fixou o modelo
-// de agentes de projeto, por papel, com precedência sobre o frontmatter, na CLI 2.1.319. Só o
-// modelo; esforço do subagente (U1) e subagentes embutidos não foram verificados.
+// Prova do U10-a (tarefa 0 da PRI-311): `--agents` fixou o modelo de agentes de projeto, por
+// papel, com precedência sobre o frontmatter. Cada versão da CLI só entra aqui com a própria
+// prova (controle negativo + duas execuções), citada em `proof_refs`. Só o modelo; esforço do
+// subagente (U1) e subagentes embutidos não foram verificados.
 const SUBAGENT_MECHANISM_PROOF = Object.freeze({
-    mechanism: 'agents_flag', cli_versions: Object.freeze(['2.1.319']), proof_ref: 'tasks/pri-287-s5/u10-probe-evidence.json',
+    mechanism: 'agents_flag',
+    proof_refs: Object.freeze({
+        '2.1.319': 'tasks/pri-287-s5/u10-probe-evidence.json',
+        '2.1.323': 'tasks/pri-287-s5/u10-probe-evidence-2.1.323.json',
+    }),
+    get cli_versions() { return Object.freeze(Object.keys(this.proof_refs)); },
 });
 // Teto do JSON de `--agents` no argv (MAX_ARG_STRLEN do Linux é 128 KiB por argumento).
 const AGENTS_JSON_MAX_BYTES = 64 * 1024;
@@ -382,10 +393,10 @@ const AGENTS_JSON_MAX_BYTES = 64 * 1024;
 /** Capacidade do mecanismo de subagente para a versão da CLI do despacho (como effortMechanism). */
 function subagentMechanism(cliVersion) {
     const v = typeof cliVersion === 'string' ? cliVersion.trim() : '';
-    if (v && SUBAGENT_MECHANISM_PROOF.cli_versions.includes(v)) {
-        return { status: 'VERIFIED', mechanism: SUBAGENT_MECHANISM_PROOF.mechanism, cli_version: v, proof_ref: SUBAGENT_MECHANISM_PROOF.proof_ref };
+    if (v && Object.hasOwn(SUBAGENT_MECHANISM_PROOF.proof_refs, v)) {
+        return { status: 'VERIFIED', mechanism: SUBAGENT_MECHANISM_PROOF.mechanism, cli_version: v, proof_ref: SUBAGENT_MECHANISM_PROOF.proof_refs[v] };
     }
-    return { status: 'UNVERIFIED', mechanism: SUBAGENT_MECHANISM_PROOF.mechanism, cli_version: v || 'UNKNOWN', proof_ref: SUBAGENT_MECHANISM_PROOF.proof_ref, reason: v ? 'CLI_VERSION_NOT_PROVEN' : 'CLI_VERSION_UNKNOWN' };
+    return { status: 'UNVERIFIED', mechanism: SUBAGENT_MECHANISM_PROOF.mechanism, cli_version: v || 'UNKNOWN', proof_ref: null, reason: v ? 'CLI_VERSION_NOT_PROVEN' : 'CLI_VERSION_UNKNOWN' };
 }
 
 /**
@@ -463,6 +474,7 @@ function observeSubagentRoles(declared = [], attribution = []) {
 }
 
 module.exports = {
+    SELECTION_SOURCES,
     buildRoutingSnapshot,
     snapshotIntegrity,
     resolveRoute,

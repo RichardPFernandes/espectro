@@ -1,0 +1,120 @@
+# Maestri — Agent Handoff Contract v1.2. Regras: docs/handoff-contract.md
+handoff_version: "1.2"
+
+nivel_processo: "alto"
+nivel_processo_inicial: null
+nivel_processo_motivo: null
+
+task:
+  id: "PRI-334"
+  objective: "Fazer o costAttempt do state.schema aceitar a tentativa roteada que o attemptRecord grava (PRI-233 T7), para que runs com roteamento ON não virem state_corrupted logo depois do plan."
+  specification_ref: "tasks/pri-334/SPEC.md (v1.1, com os achados da G3 r1 e r2 aplicados; aguarda o aceite do Richard)"
+  acceptance_criteria:
+    - "AC-01 a AC-07 de tasks/pri-334/SPEC.md"
+
+routing:
+  from: "Claude Opus 5.5 (sessão de diagnóstico do dashboard)"
+  to: "Richard (revisão do PR draft, merge exclusivo dele; AUTORIZOs de bump, retomada e religar o roteamento)"
+  runtime: "claude"
+  fallback_reason: null
+
+risk:
+  level: "HIGH"
+  signals:
+    - "G3: muda o contrato de estado autoritativo (state.schema.json > costAttempt) lido pelo watcher a cada tick"
+    - "Afeta o consumidor só depois de bump com AUTORIZO; a flag de roteamento está OFF no consumidor desde 11/11/2026 (contenção com AUTORIZO)"
+  classified_by: "Claude Opus 5.5"
+
+execution:
+  agent: "Claude Opus 5.5"
+  status: "COMPLETED"
+  summary: "Schema ampliado e apertado para as duas formas que o attemptRecord grava (sem roteamento e roteada), com vocabulário único e coerência entre campos. Golden ON passa a validar cada state.json contra o schema, por cenário. Teste com resolveRoute real nas 5 origens alcançáveis e teste que amarra os literais do código ao vocabulário. G3 r1 e r2 (Opus + Arquiteto): APPROVED_WITH_CHANGES sem BLOCKER, todos os achados aplicados ou em follow-up registrado (PRI-335, PRI-336). Nada no consumidor muda nesta entrega."
+  branch: "fernandesrichard312/pri-334-roteamento-on-tentativa-roteada"
+  commit: "4c2ba2f"
+
+artifacts:
+  - path: ".graph/schemas/state.schema.json"
+    action: "MODIFIED"
+    description: "costAttempt: requested (modelo real ou UNAVAILABLE; esforço do CLI), selection_source (DEFAULT_INHERITED ou definitions.routingSelectionSource), routing_decision (UNAVAILABLE ou objeto com node, snapshot_sha256, chosen.model_id, selection_source), allOf if/then de coerência; definitions.routingSelectionSource."
+  - path: "scripts/lib/model-routing.js"
+    action: "MODIFIED"
+    description: "Constante exportada SELECTION_SOURCES (sem mudança de comportamento)."
+  - path: "scripts/lib/routing-on-golden.test.js"
+    action: "MODIFIED"
+    description: "Valida cada state.json pós-despacho com validateState e exige tentativa roteada por cenário; exige ajv."
+  - path: "scripts/lib/cost-tracking.test.js"
+    action: "MODIFIED"
+    description: "Aceitação das formas roteadas, 12 rejeições, igualdade schema × SELECTION_SOURCES × literais do código."
+  - path: "scripts/lib/model-routing.test.js"
+    action: "MODIFIED"
+    description: "resolveRoute real (FIXED_NODE, RULES, CONSERVATIVE_DEFAULT, PLAN_RAISED, HUMAN_OVERRIDE), com e sem esforço, gravado por mergeRun e validado no schema."
+  - path: "docs/runbook.md"
+    action: "MODIFIED"
+    description: "Cenário 7: quando o schema está atrás do writer, a ordem conter → corrigir → bump com readback → retomada pulando o passo 3 → religar a flag, cada ato com AUTORIZO."
+  - path: "tasks/pri-334/SPEC.md"
+    action: "CREATED"
+    description: "SDD fina, ACs e disposição da G3 r1 e r2."
+  - path: "tasks/pri-334/handoff.yaml"
+    action: "CREATED"
+    description: "Este handoff."
+
+decisions:
+  approved:
+    - "Contenção: roteamento OFF no consumidor (AUTORIZO do Richard em 11/11/2026, registrado na PRI-334)."
+    - "Corrigir o contrato (schema) e não o writer: a forma gravada é a da PRI-233 T7, já lida pelo dashboard; as runs paradas não podem ser reescritas."
+  proposed:
+    - "Bump do checkout do consumidor para o merge desta entrega, com readback (AUTORIZO pendente)."
+    - "Retomada registrada das 2 runs paradas: status = state_error.previous_status, sem state_error, cost_tracking intocado (AUTORIZO pendente)."
+    - "Religar o roteamento no consumidor depois do bump (AUTORIZO separado)."
+
+validation:
+  executed:
+    - command: "harness/run-tests.js scripts (receita oficial, HOME/TMPDIR sintéticos, loopback-only), Node v20.20.2 / npm 10.8.2, worktree com a diff final"
+      result: "FAILED"
+      expected: "PASSED"
+      evidence: "1925 testes, 1910 pass, 9 fail; TAP sha256 ba612855ab15e96f… As 9 falhas (PRI-104 architecture boundaries; dashboard factories/replay consumer B; dashboard provider wrappers consumer B; fundação TS) são as mesmas da main 5f180dd limpa na mesma receita (1907 pass, 9 fail): pré-existentes, fora dos arquivos desta entrega."
+    - command: "node --test scripts/lib/routing-on-golden.test.js com o schema de 5f180dd"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "Teste de injeção de regressão: falha com exatamente os 3 erros de produção (requested/model, selection_source, routing_decision). Com o schema novo: 1/1, golden scripts/fixtures/routing-on-golden.json sem regenerar."
+    - command: "node --test scripts/lib/cost-tracking.test.js scripts/lib/model-routing.test.js"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "82 pass, 0 fail. Mutação RULES → RULES_V2 em would-route.js derruba o teste de vocabulário (revertida)."
+    - command: "validateState (schema final) sobre os state.json das 2 runs paradas do consumidor, leitura local, com status = previous_status e sem state_error"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "AC-05: 2 runs, cada uma com 1 tentativa (1 roteada) e 0 erros. Nenhum dado do consumidor copiado para o repositório."
+  not_executed:
+    - "Suíte do pacote dashboard: não tocado por esta entrega."
+    - "Suíte oficial em Node 22/24: só Node 20.20.2 disponível nesta sessão."
+    - "Comportamento de ponta a ponta de LINEAGE_FLOOR e RISK_RECLASSIFIED (caminho decomposto, flag reservada): follow-up PRI-335."
+
+open_issues:
+  - "Suíte oficial scripts com 9 falhas pré-existentes, idênticas na main 5f180dd limpa (PRI-104 architecture boundaries; 2 testes de consumidor B no dashboard; fundação TS). Não vêm desta entrega e não foram tratadas aqui."
+  - "PRI-335: validar o state.json da Run decomposta contra o schema antes de ligar a decomposição."
+  - "PRI-336: override humano e cli_effort fora de CLI_EFFORTS quando o esforço for aplicado."
+  - "PRI-233 está na lixeira do Linear; a relação PRI-334 → PRI-233 não pôde ser criada."
+
+next:
+  recommended_agent: "Richard"
+  action: "Revisar o PR draft e decidir o merge. Depois, AUTORIZO para o bump do checkout do consumidor com readback e para a retomada registrada das 2 runs paradas; religar o roteamento é AUTORIZO separado."
+  prerequisites:
+    - "Merge do PR (exclusivo do Richard)"
+
+context_refs:
+  - "https://linear.app/prisma-app/issue/PRI-334"
+  - "tasks/pri-334/SPEC.md"
+  - "docs/runbook.md, cenário 7"
+
+facts:
+  - "Revisores G3: Claude Opus 5.5 (claude-opus-5-5) como revisor independente e como Arquiteto, cada um em contexto limpo — independência por contexto, mesmo fornecedor."
+  - "G3 r1 (diff 99a2918721593172…): Opus e Arquiteto APPROVED_WITH_CHANGES, sem BLOCKER. G3 r2 (diff 705234ca50d611fd…): os dois APPROVED_WITH_CHANGES, sem BLOCKER; o Arquiteto aprovou código e schema sem ressalva."
+  - "Na r1, um git stash pop encadeado do revisor restaurou 92 arquivos não rastreados de um stash antigo na worktree; removidos um a um contra a lista do stash, stash@{0} intacto, diff da fatia inalterada."
+  - "O watcher valida contra PRISMA_ROOT/.graph/schemas/state.schema.json (scripts/validate-state.js); a cópia em app-back/.graph/schemas não é usada."
+assumptions: []
+
+usage:
+  duration: "UNKNOWN"
+  retries: 0
+  tokens: "UNKNOWN"

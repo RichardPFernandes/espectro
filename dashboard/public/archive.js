@@ -105,6 +105,13 @@
     if (r.archived) {
       if (document.querySelector('#detail .arch-note')) return;
       const d = r.demand || {};
+      if (d.unknown) {
+        top.insertAdjacentHTML('afterend', `<div class="arch-note" role="note"><b>Arquivado pelo /commit, Redmine sem resposta.</b>
+          O ciclo do agente terminou, mas o Redmine não respondeu o status deste ticket e não há status conhecido.
+          Ele aparece aqui até o Redmine responder: se o ticket estiver fechado, sai sozinho. Só leitura: o watcher não lê mensagens de runs arquivados.</div>`);
+        top.querySelector('.arch-btn')?.remove();
+        return;
+      }
       top.insertAdjacentHTML('afterend', `<div class="arch-note" role="note"><b>Arquivado pelo /commit, demanda ainda aberta.</b>
         O ciclo do agente terminou, mas o ticket está “${esc(d.status || 'aberto')}” no Redmine${d.assigned_to ? `, com ${esc(d.assigned_to)}` : ''}.
         Ele sai daqui sozinho quando o ticket fechar. Só leitura: o watcher não lê mensagens de runs arquivados.</div>`);

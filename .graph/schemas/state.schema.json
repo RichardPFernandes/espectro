@@ -1551,7 +1551,7 @@
     },
     "events": {
       "type": "array",
-      "description": "Log estruturado de eventos por nó, gravado pelo watcher (append-only — nunca remover/reescrever; ausente = []). Emissão central em scripts/lib/node-events.js: node_start ao despachar (dispatchTicket), e na saída do agente (release do lease, nos dois modos) node_end (exit 0) + node_retry (retries[node] incrementado pelo comando) / escalation (status ou node \"escalated\"; max_retries de .graph/graph.yaml) / checkpoint (status blocked/needs_human_review/spec-invalid, ou pausa de NEVER_AUTO_DISPATCH), ou node_error (exit code != 0 / sem exit code). Outros tipos gravados por outros módulos: node_error (nó órfão redespachado; state.json inválido → state_corrupted), escalation (commit órfão; PR inconsistência cross-repo — um repo MERGED e outro DECLINED, gravado uma vez por combinação pelo polling de PRs), fully_merged, worktrees_removed/worktree_cleanup_failed (limpeza dos worktrees logo após o PR aberto — cleanupWorktreesAfterPrOpen, agent \"watcher\"), replay, plan_replan, plan_escalation, churn_escalation, churn_accepted (aceite do churn pelo botão do dashboard — dashboard/server.js), spec_drift/spec_change_accepted/spec_drift_resolved/spec_drift_replan/spec_baseline/spec_restored (portão de drift da spec — scripts/lib/spec-authority.js e runSpecDriftGate), spec_imported (retry de Recusa QA copia artefatos de spec ausentes a partir do checkout principal — readmine-watcher.js), qa_retry_blocked (PRI-184: consumeQaRetrySignal manteve o sinal; detail = reason estável, uma vez por motivo — campo atual em qa_retry_blocked), spec_change_proposed/spec_change_approved/spec_change_rejected/stale_artifacts_replan (governança de SPEC_CHANGE — scripts/lib/spec-change.js), ac_provenance_failed (aprovação de SPEC_CHANGE aplicada, mas a provenance dos ACs não pôde ser gravada em memory/spec/<ticket>-ac-provenance.json — scripts/lib/ac-provenance.js), pre_build_failed, interrupted, human_input_interpreted (mensagem do dashboard interpretada com a task blocked — readmine-watcher.js interpretBlockedHumanInput, agent \"watcher\"). Eventos novos têm `ts` (ISO 8601) e `at` com o mesmo valor; eventos antigos só `at`.",
+      "description": "Log estruturado de eventos por nó, gravado pelo watcher (append-only — nunca remover/reescrever; ausente = []). Emissão central em scripts/lib/node-events.js: node_start ao despachar (dispatchTicket), e na saída do agente (release do lease, nos dois modos) node_end (exit 0) + node_retry (retries[node] incrementado pelo comando) / escalation (status ou node \"escalated\"; max_retries de .graph/graph.yaml) / checkpoint (status blocked/needs_human_review/spec-invalid, ou pausa de NEVER_AUTO_DISPATCH), ou node_error (exit code != 0 / sem exit code). Outros tipos gravados por outros módulos: node_error (nó órfão redespachado; state.json inválido → state_corrupted), escalation (commit órfão; PR inconsistência cross-repo — um repo MERGED e outro DECLINED, gravado uma vez por combinação pelo polling de PRs), fully_merged, worktrees_removed/worktree_cleanup_failed (limpeza dos worktrees logo após o PR aberto — cleanupWorktreesAfterPrOpen, agent \"watcher\"), replay, plan_replan, plan_escalation, churn_escalation, churn_accepted (aceite do churn pelo botão do dashboard — dashboard/server.js), spec_drift/spec_change_accepted/spec_drift_resolved/spec_drift_replan/spec_baseline/spec_restored (portão de drift da spec — scripts/lib/spec-authority.js e runSpecDriftGate), spec_imported (retry de Recusa QA copia artefatos de spec ausentes a partir do checkout principal — readmine-watcher.js), qa_retry_blocked (PRI-184: consumeQaRetrySignal manteve o sinal; detail = reason estável, uma vez por motivo — campo atual em qa_retry_blocked), spec_change_proposed/spec_change_approved/spec_change_rejected/stale_artifacts_replan (governança de SPEC_CHANGE — scripts/lib/spec-change.js), ac_provenance_failed (aprovação de SPEC_CHANGE aplicada, mas a provenance dos ACs não pôde ser gravada em memory/spec/<ticket>-ac-provenance.json — scripts/lib/ac-provenance.js), pre_build_failed, interrupted, human_input_interpreted (mensagem do dashboard interpretada com a task blocked — readmine-watcher.js interpretBlockedHumanInput, agent \"watcher\"), qa_diagnosis_reserved/qa_diagnosis_proposed/qa_diagnosis_failed/qa_diagnosis_stale/qa_diagnosis_stale_check/qa_diagnosis_superseded/qa_diagnosis_quarantined/qa_diagnosis_promotion_deferred (PRI-181 c2b-2: protocolo do Diagnosis Record — scripts/lib/qa-diagnosis-protocol.js, só com WATCHER_QA_DIAGNOSTICO; detail só de metadados: chave, vNNN, motivo e 12 hex do sha). Eventos novos têm `ts` (ISO 8601) e `at` com o mesmo valor; eventos antigos só `at`.",
       "items": {
         "type": "object",
         "required": [
@@ -2250,7 +2250,7 @@
             "description": "Tokens (entrada + saída) acumulados no início do retry."
           },
           "diagnosis": {
-            "description": "PRI-181 c2b-1 (SDD B v2 §4.2): bloco do Diagnosis Record desta recusa (rev, status, current_version, current_sha256, versions[], job, review, review_history, outcome, applied_ops, cost, fenced_tokens, blocked); versões imutáveis em memory/runs/<task-id>/qa-diagnosis/<slug>/vNNN.json. Gravado só pelo state-writer. Sem type de propósito: um bloco malformado não invalida o state.json nem muda o despacho (QRD-AC-10, DB-05); a validação estrita é do módulo scripts/lib/qa-diagnosis-model.js (validateBlock) e falha fechada só para a operação de diagnóstico. Preserve ao regravar o state.json."
+            "description": "PRI-181 c2b-1/c2b-2 (SDD B v3 §4.2): bloco do Diagnosis Record desta recusa (rev, status, current_version, current_sha256, versions[], job, review, review_history, outcome, applied_ops, cost, fenced_tokens, blocked); job = null ou {token, kind, target_version, parent_version, snapshot (cópia do binding da entrada: execution_id, spec_hash, spec_version, reason), runner_binding, lease_until}, gravado pelo protocolo da c2b-2; versões imutáveis em memory/runs/<task-id>/qa-diagnosis/<slug>/vNNN.json. Gravado só pelo state-writer. Sem type de propósito: um bloco malformado não invalida o state.json nem muda o despacho (QRD-AC-10, DB-05); a validação estrita é do módulo scripts/lib/qa-diagnosis-model.js (validateBlock) e falha fechada só para a operação de diagnóstico. Preserve ao regravar o state.json."
           }
         }
       }
@@ -3176,15 +3176,29 @@
         },
         "requested": {
           "type": "object",
+          "description": "PRI-334: sem roteamento, UNAVAILABLE. Despacho roteado (PRI-233 T7): modelo fixado pela decisão e esforço do CLI quando foi de fato para o argv (senão UNAVAILABLE).",
           "properties": {
             "model": {
-              "enum": [
-                "UNAVAILABLE"
+              "anyOf": [
+                {
+                  "enum": [
+                    "UNAVAILABLE"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "minLength": 1
+                }
               ]
             },
             "effort": {
               "enum": [
-                "UNAVAILABLE"
+                "UNAVAILABLE",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
               ]
             }
           }
@@ -3223,13 +3237,60 @@
           }
         },
         "selection_source": {
-          "enum": [
-            "DEFAULT_INHERITED"
+          "description": "PRI-334: DEFAULT_INHERITED sem roteamento; com despacho roteado, a origem da escolha gravada na decisão.",
+          "anyOf": [
+            {
+              "enum": [
+                "DEFAULT_INHERITED"
+              ]
+            },
+            {
+              "$ref": "#/definitions/routingSelectionSource"
+            }
           ]
         },
         "routing_decision": {
-          "enum": [
-            "UNAVAILABLE"
+          "description": "PRI-334: UNAVAILABLE sem roteamento; com despacho roteado, a RoutingDecision do DOM-06 aplicada, amarrada ao snapshot fixado na admissão. Só o mínimo que identifica a escolha é exigido; o resto é registro.",
+          "anyOf": [
+            {
+              "enum": [
+                "UNAVAILABLE"
+              ]
+            },
+            {
+              "type": "object",
+              "required": [
+                "node",
+                "snapshot_sha256",
+                "chosen",
+                "selection_source"
+              ],
+              "properties": {
+                "node": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "snapshot_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "chosen": {
+                  "type": "object",
+                  "required": [
+                    "model_id"
+                  ],
+                  "properties": {
+                    "model_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "selection_source": {
+                  "$ref": "#/definitions/routingSelectionSource"
+                }
+              }
+            }
           ]
         },
         "subtask": {
@@ -3416,7 +3477,94 @@
         "result": {
           "type": "string"
         }
-      }
+      },
+      "allOf": [
+        {
+          "description": "PRI-334: despacho roteado. Decisão objeto ⇒ origem do vocabulário do roteamento e modelo pedido real.",
+          "if": {
+            "required": [
+              "routing_decision"
+            ],
+            "properties": {
+              "routing_decision": {
+                "type": "object"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "selection_source",
+              "requested"
+            ],
+            "properties": {
+              "selection_source": {
+                "$ref": "#/definitions/routingSelectionSource"
+              },
+              "requested": {
+                "properties": {
+                  "model": {
+                    "not": {
+                      "enum": [
+                        "UNAVAILABLE"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "PRI-334: sem roteamento (forma AS-IS). Decisão UNAVAILABLE ⇒ origem DEFAULT_INHERITED e nada pedido.",
+          "if": {
+            "required": [
+              "routing_decision"
+            ],
+            "properties": {
+              "routing_decision": {
+                "enum": [
+                  "UNAVAILABLE"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selection_source": {
+                "enum": [
+                  "DEFAULT_INHERITED"
+                ]
+              },
+              "requested": {
+                "properties": {
+                  "model": {
+                    "enum": [
+                      "UNAVAILABLE"
+                    ]
+                  },
+                  "effort": {
+                    "enum": [
+                      "UNAVAILABLE"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "routingSelectionSource": {
+      "description": "PRI-334: origens da escolha de modelo num despacho roteado. Fonte no código: scripts/lib/model-routing.js (SELECTION_SOURCES), conferida por teste.",
+      "enum": [
+        "FIXED_NODE",
+        "RULES",
+        "CONSERVATIVE_DEFAULT",
+        "PLAN_RAISED",
+        "LINEAGE_FLOOR",
+        "RISK_RECLASSIFIED",
+        "HUMAN_OVERRIDE"
+      ]
     },
     "validity": {
       "type": "object",

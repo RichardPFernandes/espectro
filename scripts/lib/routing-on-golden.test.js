@@ -26,6 +26,7 @@ const dom06 = require('./dom06-attempt');
 const mr = require('./model-routing');
 const policyLoader = require('./model-routing-policy');
 const routingRun = require('./routing-run');
+const { validateState } = require('../validate-state');
 
 const PRISMA_ROOT = path.resolve(__dirname, '..', '..');
 const WATCHER = path.join(PRISMA_ROOT, 'scripts', 'readmine-watcher.js');
@@ -165,7 +166,7 @@ function seedOnRun(repo, id, { node, retries = {} }) {
     fs.writeFileSync(path.join(dir, 'plan.md'), PLAN_TWO_GROUPS);
 }
 
-function dispatch(repo, id, scenario) {
+function dispatch(repo, id, scenario, extraEnv = {}) {
     const resultFile = path.join(results, `${scenario}.json`);
     const env = {
         PATH: `${binDir}:${process.env.PATH}`,
@@ -181,6 +182,7 @@ function dispatch(repo, id, scenario) {
         REDMINE_RETRY_MAX_ATTEMPTS: '1',
         REDMINE_MIN_INTERVAL_MS: '0',
         GOLDEN_SCENARIO: scenario,
+        ...extraEnv,
     };
     return new Promise(resolve => {
         execFile(process.execPath, [driver, WATCHER, String(id), resultFile, '--follow'], { cwd: repo, env, timeout: 120000 }, (err, stdout, stderr) => {
@@ -235,24 +237,44 @@ const SCENARIOS = [
     { key: 'review/dispatch', id: 287021, seed: { node: 'review' } },
 ];
 
-async function captureVariant(variant) {
+async function captureVariant(variant, { scenarios = SCENARIOS, env = {} } = {}) {
     const repo = consumer(variant);
     const out = {};
-    for (const s of SCENARIOS) {
+    for (const s of scenarios) {
         if (s.seed) seedOnRun(repo, s.id, s.seed);
         const scenario = `${variant}--${s.key.replace('/', '--')}`;
-        const r = await dispatch(repo, s.id, scenario);
+        const r = await dispatch(repo, s.id, scenario, env);
         assert.strictEqual(r.result?.action, 'dispatched', `${variant} ${s.key}: não despachou (${r.result?.reason})\n${r.output}`);
         out[s.key] = normalize({ action: r.result.action, argv: argvsOf(scenario), ...runView(repo, s.id) }, variant);
         assert.ok(out[s.key].argv.length > 0, `${variant} ${s.key}: o stub do claude não foi invocado`);
+        const routed = assertStateMatchesSchema(repo, s.id, `${variant} ${s.key}`);
+        assert.ok(routed > 0, `${variant} ${s.key}: state.json sem tentativa roteada no cost_tracking; o cenário não exercitou a forma roteada`);
     }
     return out;
+}
+
+// PRI-334 AC-02: o state.json que o watcher grava depois de um despacho roteado tem de
+// passar no mesmo validador que o tick seguinte usa (validate-state + state.schema.json).
+// Sem isto, a tentativa roteada no cost_tracking virava state_corrupted só em produção.
+// Devolve quantas tentativas roteadas o state tem, para o teste provar que exercitou a forma.
+function assertStateMatchesSchema(repo, id, label) {
+    const file = path.join(taskDirOf(repo, id), 'state.json');
+    assert.ok(fs.existsSync(file), `${label}: state.json não foi gravado`);
+    const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const check = validateState(state);
+    assert.strictEqual(check.valid, true, `${label}: state.json fora do schema:\n${(check.errors || []).join('\n')}`);
+    const nodes = state.cost_tracking?.nodes || {};
+    return Object.values(nodes).flatMap(n => n.attempts || []).filter(a => a.routing_decision && typeof a.routing_decision === 'object').length;
 }
 
 test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
 test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
 test('AC-01 (S5.1): Run ON sem a chave e com decomposition "off" é igual ao golden pré-decomposição', { timeout: 10 * 60 * 1000 }, async t => {
+    // PRI-334 AC-02: sem ajv o validateState cai na checagem mínima e a validação passaria à toa.
+    let hasAjv = true;
+    try { require.resolve('ajv'); } catch { hasAjv = false; }
+    assert.ok(hasAjv, 'ajv ausente: rode npm ci em scripts/ (sem ele a validação contra o schema não é real)');
     const on = await captureVariant('on');
     const onOff = await captureVariant('on_decomposition_off');
     if (UPDATE) {
@@ -266,4 +288,17 @@ test('AC-01 (S5.1): Run ON sem a chave e com decomposition "off" é igual ao gol
         assert.deepStrictEqual(on[s.key], golden.scenarios[s.key], `Run ON sem a chave diverge do golden em ${s.key}`);
         assert.deepStrictEqual(onOff[s.key], golden.scenarios[s.key], `Run ON com decomposition "off" diverge do golden em ${s.key}`);
     }
+});
+
+// PRI-315 (D1): com WATCHER_PLAN_DENY_SETTINGS ligada, a run roteada continua no AS-IS — o
+// despacho com plan leva só o --settings da prova SP-2 e o --disallowedTools de sempre.
+test('PRI-315 D1: flag do deny ligada não muda o despacho roteado com plan', { timeout: 5 * 60 * 1000 }, async () => {
+    const scenarios = SCENARIOS.filter(s => s.key === 'new_ticket/dispatch');
+    const flagged = await captureVariant('on_plan_deny_flag', { scenarios, env: { WATCHER_PLAN_DENY_SETTINGS: '1' } });
+    const golden = JSON.parse(fs.readFileSync(GOLDEN, 'utf8'));
+    const got = JSON.parse(JSON.stringify(flagged['new_ticket/dispatch']).split('on_plan_deny_flag').join('on'));
+    assert.deepStrictEqual(got, golden.scenarios['new_ticket/dispatch']);
+    const planArgv = got.argv.find(a => a.includes('--disallowedTools'));
+    assert.ok(planArgv, 'o despacho com plan deveria manter --disallowedTools');
+    assert.strictEqual(planArgv.filter(a => a === '--settings').length, 1, 'só o --settings da SP-2');
 });

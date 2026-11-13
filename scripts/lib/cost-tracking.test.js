@@ -663,6 +663,65 @@ test('PRI-210: schema aceita estado legado e novo e rejeita hash, contador e ró
     }
 });
 
+test('PRI-334: schema aceita a tentativa roteada como o attemptRecord grava e rejeita forma inválida', () => {
+    const { validateState } = require('../validate-state');
+    const base = { task_id: 'schema-routed', node: 'implement', history: ['fetch_ticket', 'plan'], status: 'in_progress' };
+    const decision = {
+        node: 'plan', snapshot_sha256: 'c'.repeat(64), selection_source: 'FIXED_NODE', subagent: 'UNENFORCED', effort_router_plugin: 'NOT_LOADED',
+        chosen: { model_id: 'm-t3', effort: 'alto', cli_effort: 'high', tier: 'T3' }, effort_applied: false,
+    };
+    const stateWith = run => ({ ...base, cost_tracking: ct.mergeRun(null, { node: 'plan', agent: 'claude', alsoCovers: ['fetch_ticket'], run, metrics: { ...tokens(1, 1), duration_ms: 1 } }) });
+    const ok = s => { const r = validateState(s); assert.strictEqual(r.valid, true, (r.errors || []).join('\n')); };
+
+    ok(stateWith({}));                                                     // sem roteamento: forma AS-IS
+    ok(stateWith({ routing_decision: decision }));                         // roteado só por modelo
+    ok(stateWith({ routing_decision: { ...decision, effort_applied: true } })); // modelo + esforço no argv
+    for (const source of ['RULES', 'CONSERVATIVE_DEFAULT', 'PLAN_RAISED', 'LINEAGE_FLOOR', 'RISK_RECLASSIFIED', 'HUMAN_OVERRIDE']) {
+        ok(stateWith({ routing_decision: { ...decision, selection_source: source } }));
+    }
+
+    const routed = stateWith({ routing_decision: decision });
+    for (const [label, mutate] of [
+        ['selection_source fora do vocabulário', a => { a.selection_source = 'GUESS'; }],
+        ['modelo pedido vazio', a => { a.requested.model = ''; }],
+        ['esforço fora do CLI', a => { a.requested.effort = 'alto'; }],
+        ['decisão sem chosen', a => { delete a.routing_decision.chosen; }],
+        ['decisão com DEFAULT_INHERITED', a => { a.routing_decision.selection_source = 'DEFAULT_INHERITED'; }],
+        ['decisão como string qualquer', a => { a.routing_decision = 'ROUTED'; }],
+        ['decisão sem snapshot_sha256', a => { delete a.routing_decision.snapshot_sha256; }],
+        ['decisão com snapshot_sha256 malformado', a => { a.routing_decision.snapshot_sha256 = 'abc'; }],
+        // Coerência entre campos (revisão G3, A-03): só as duas formas que o attemptRecord grava.
+        ['decisão objeto com origem DEFAULT_INHERITED', a => { a.selection_source = 'DEFAULT_INHERITED'; }],
+        ['decisão objeto sem modelo pedido', a => { a.requested.model = 'UNAVAILABLE'; }],
+        ['sem decisão mas com origem roteada', a => { a.routing_decision = 'UNAVAILABLE'; }],
+        ['sem decisão mas com modelo pedido', a => { a.routing_decision = 'UNAVAILABLE'; a.selection_source = 'DEFAULT_INHERITED'; }],
+    ]) {
+        const bad = JSON.parse(JSON.stringify(routed));
+        mutate(bad.cost_tracking.nodes.plan.attempts[0]);
+        assert.strictEqual(validateState(bad).valid, false, `schema deve rejeitar: ${label}`);
+    }
+});
+
+test('PRI-334: vocabulário de selection_source do schema é exatamente o do model-routing', () => {
+    const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '.graph', 'schemas', 'state.schema.json')));
+    const { SELECTION_SOURCES } = require('./model-routing');
+    assert.deepStrictEqual([...schema.definitions.routingSelectionSource.enum].sort(), [...SELECTION_SOURCES].sort(),
+        'origem nova de selection_source entra no model-routing e no state.schema na mesma mudança');
+    // G3 r2 (R2-1): os writers usam literais próprios, não a constante. Extrai os literais de
+    // selection_source dos três módulos e exige igualdade nos dois sentidos: um literal novo
+    // fora do vocabulário quebra aqui, e uma extração que deixe de achar um valor também.
+    const found = new Set();
+    for (const file of ['model-routing.js', 'would-route.js', 'decomposition-visit.js']) {
+        for (const line of fs.readFileSync(path.join(__dirname, file), 'utf8').split('\n')) {
+            if (/^\s*(\/\/|\*)/.test(line)) continue;
+            if (!/selection_source|raise\(|^const RISK\b|^\s*\?\s*'[A-Z]/.test(line)) continue;
+            for (const m of line.matchAll(/'([A-Z][A-Z_]{2,})'/g)) found.add(m[1]);
+        }
+    }
+    assert.deepStrictEqual([...found].sort(), [...SELECTION_SOURCES].sort(),
+        'literal de selection_source no código diverge do vocabulário (model-routing.js SELECTION_SOURCES e state.schema)');
+});
+
 test('PRI-210 v9: pin de preços preserva limites do despacho após mudança de tabela', () => {
     const snapshot = ct.pricingSnapshot();
     const table = JSON.parse(snapshot.json);

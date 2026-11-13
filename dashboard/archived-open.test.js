@@ -46,9 +46,11 @@ const ISSUES = {
     94005: { status: { name: 'Concluído - Encerrado' } },
 };
 const calls = [];
+const FAIL = new Set(); // tickets em que o Redmine falha (500), como no Redmine instável
 const redmine = http.createServer((req, res) => {
     const id = (req.url.match(/\/issues\/(\d+)\.json/) || [])[1];
     calls.push(id);
+    if (FAIL.has(id)) { res.writeHead(500); return res.end('{}'); }
     if (!ISSUES[id]) { res.writeHead(404); return res.end('{}'); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ issue: { id: Number(id), subject: `T${id}`, ...ISSUES[id] } }));
@@ -66,6 +68,23 @@ test.before(async () => {
     await dash.ready;
 });
 test.after(async () => { await dash.close(); await new Promise(r => redmine.close(r)); });
+
+const CACHE_FILE = path.join(mainRuns, '_archive', 'dashboard-issue-status.json');
+function ageIssueCache() {
+    const c = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    for (const e of Object.values(c)) e.at -= 2 * 60 * 60 * 1000;
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(c));
+}
+async function withDashboard(fn) {
+    const { createDashboard } = require('./server');
+    const d = createDashboard({ memoryDir: mainRuns });
+    await new Promise(r => d.server.listen(0, '127.0.0.1', r));
+    const b = `http://localhost:${d.server.address().port}`;
+    try {
+        await fetch(`${b}/api/archived-open/refresh`, { method: 'POST' });
+        return await fn(b);
+    } finally { await d.close(); }
+}
 
 const get = async p => { const r = await fetch(base + p); return { status: r.status, body: await r.json() }; };
 const post = async (p, b = {}) => { const r = await fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); return { status: r.status, body: await r.json() }; };
@@ -116,7 +135,8 @@ test('cache: nova varredura não reconsulta ticket aberto dentro de 5 min', asyn
 
 test('ticket que fecha no Redmine sai na próxima consulta', async () => {
     ISSUES[94001] = { status: { name: 'Concluído - Encerrado', is_closed: true } };
-    // Simula o TTL vencido: servidor novo, cache vazio.
+    // Simula o TTL vencido: servidor novo lendo o cache persistido já envelhecido.
+    ageIssueCache();
     const { createDashboard } = require('./server');
     const d2 = createDashboard({ memoryDir: mainRuns });
     await new Promise(r => d2.server.listen(0, '127.0.0.1', r));
@@ -139,4 +159,45 @@ test('sem Redmine configurado nenhum arquivado entra', async () => {
     assert.deepStrictEqual(runs.map(r => r.taskId), ['94003-ciclo-2']);
     await d3.close();
     process.env.REDMINE_API_KEY = saved;
+});
+
+// 13/11/2026: Redmine instável + restart = demandas abertas sumindo do dashboard.
+test('Redmine sem resposta e sem status conhecido: entra marcado como desconhecido, nunca como aberto', async () => {
+    seed(path.join(wt('94006'), '_archive'), '94006-sem-resposta', done('2026-09-20T00:00:00Z'));
+    FAIL.add('94006');
+    try {
+        const runs = await withDashboard(async b => (await fetch(`${b}/api/runs`)).json());
+        const r = runs.find(x => x.taskId === '94006-sem-resposta');
+        assert.ok(r, 'arquivado com status desconhecido não pode sumir');
+        assert.strictEqual(r.archived, true);
+        assert.deepStrictEqual([r.demand.unknown, r.demand.status, r.demand.checked_at], [true, null, null]);
+        // Fechado conhecido continua fora; desconhecido não vira "fechado" nem "aberto".
+        assert.ok(!runs.some(x => x.taskId === '94002-fechado'));
+    } finally { FAIL.delete('94006'); }
+});
+
+test('cache persistido: restart com Redmine falhando usa o último status conhecido', async () => {
+    ISSUES[94006] = { status: { name: 'Ag Teste', is_closed: false } };
+    // Redmine respondendo: grava o status em disco.
+    await withDashboard(async () => {});
+    const saved = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    assert.deepStrictEqual([saved['94006'].status, saved['94006'].closed], ['Ag Teste', false]);
+    // Restart com TTL vencido e Redmine falhando em tudo: vale o que já se sabia.
+    ageIssueCache();
+    ['94001', '94002', '94005', '94006'].forEach(id => FAIL.add(id));
+    try {
+        const runs = await withDashboard(async b => (await fetch(`${b}/api/runs`)).json());
+        const r = runs.find(x => x.taskId === '94006-sem-resposta');
+        assert.ok(r);
+        assert.deepStrictEqual([r.demand.status, !!r.demand.unknown], ['Ag Teste', false]);
+        assert.ok(!runs.some(x => x.taskId === '94002-fechado'), 'fechado conhecido não volta como desconhecido');
+        assert.ok(!runs.some(x => x.taskId === '94001-ciclo-novo'));
+    } finally { FAIL.clear(); }
+});
+
+test('cache persistido ilegível é ignorado sem derrubar o dashboard', async () => {
+    fs.writeFileSync(CACHE_FILE, '{ não é json');
+    const runs = await withDashboard(async b => (await fetch(`${b}/api/runs`)).json());
+    assert.ok(runs.some(x => x.taskId === '94006-sem-resposta'));
+    assert.doesNotThrow(() => JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')), 'varredura regrava o cache válido');
 });

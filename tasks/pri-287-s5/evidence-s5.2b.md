@@ -122,3 +122,10 @@ CI Linux não rodou nesta sessão.
   `model-routing-policy.js` não mudaram.
 - **Passo 4 (risco do PR): high.** Liga o ramo decomposto no despacho do watcher, muda o argv
   roteado (atrás da flag) e cria um writer novo de transição de nó na Run decomposta. PR em draft.
+
+## Atualização posterior (2026-11-13)
+
+As menções a "VERIFIED só na 2.1.319" acima valem para o commit desta fatia (`08b60e0`). Depois
+dela, a prova do U10-a foi refeita na CLI 2.1.323 e o mecanismo passou a aceitar as duas versões,
+cada uma com a própria evidência: ver `evidence-u10-2.1.323.md`. O gate do RC-1 continua NÃO
+CUMPRIDO.
