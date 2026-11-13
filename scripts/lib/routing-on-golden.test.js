@@ -166,7 +166,7 @@ function seedOnRun(repo, id, { node, retries = {} }) {
     fs.writeFileSync(path.join(dir, 'plan.md'), PLAN_TWO_GROUPS);
 }
 
-function dispatch(repo, id, scenario) {
+function dispatch(repo, id, scenario, extraEnv = {}) {
     const resultFile = path.join(results, `${scenario}.json`);
     const env = {
         PATH: `${binDir}:${process.env.PATH}`,
@@ -182,6 +182,7 @@ function dispatch(repo, id, scenario) {
         REDMINE_RETRY_MAX_ATTEMPTS: '1',
         REDMINE_MIN_INTERVAL_MS: '0',
         GOLDEN_SCENARIO: scenario,
+        ...extraEnv,
     };
     return new Promise(resolve => {
         execFile(process.execPath, [driver, WATCHER, String(id), resultFile, '--follow'], { cwd: repo, env, timeout: 120000 }, (err, stdout, stderr) => {
@@ -236,13 +237,13 @@ const SCENARIOS = [
     { key: 'review/dispatch', id: 287021, seed: { node: 'review' } },
 ];
 
-async function captureVariant(variant) {
+async function captureVariant(variant, { scenarios = SCENARIOS, env = {} } = {}) {
     const repo = consumer(variant);
     const out = {};
-    for (const s of SCENARIOS) {
+    for (const s of scenarios) {
         if (s.seed) seedOnRun(repo, s.id, s.seed);
         const scenario = `${variant}--${s.key.replace('/', '--')}`;
-        const r = await dispatch(repo, s.id, scenario);
+        const r = await dispatch(repo, s.id, scenario, env);
         assert.strictEqual(r.result?.action, 'dispatched', `${variant} ${s.key}: não despachou (${r.result?.reason})\n${r.output}`);
         out[s.key] = normalize({ action: r.result.action, argv: argvsOf(scenario), ...runView(repo, s.id) }, variant);
         assert.ok(out[s.key].argv.length > 0, `${variant} ${s.key}: o stub do claude não foi invocado`);
@@ -287,4 +288,17 @@ test('AC-01 (S5.1): Run ON sem a chave e com decomposition "off" é igual ao gol
         assert.deepStrictEqual(on[s.key], golden.scenarios[s.key], `Run ON sem a chave diverge do golden em ${s.key}`);
         assert.deepStrictEqual(onOff[s.key], golden.scenarios[s.key], `Run ON com decomposition "off" diverge do golden em ${s.key}`);
     }
+});
+
+// PRI-315 (D1): com WATCHER_PLAN_DENY_SETTINGS ligada, a run roteada continua no AS-IS — o
+// despacho com plan leva só o --settings da prova SP-2 e o --disallowedTools de sempre.
+test('PRI-315 D1: flag do deny ligada não muda o despacho roteado com plan', { timeout: 5 * 60 * 1000 }, async () => {
+    const scenarios = SCENARIOS.filter(s => s.key === 'new_ticket/dispatch');
+    const flagged = await captureVariant('on_plan_deny_flag', { scenarios, env: { WATCHER_PLAN_DENY_SETTINGS: '1' } });
+    const golden = JSON.parse(fs.readFileSync(GOLDEN, 'utf8'));
+    const got = JSON.parse(JSON.stringify(flagged['new_ticket/dispatch']).split('on_plan_deny_flag').join('on'));
+    assert.deepStrictEqual(got, golden.scenarios['new_ticket/dispatch']);
+    const planArgv = got.argv.find(a => a.includes('--disallowedTools'));
+    assert.ok(planArgv, 'o despacho com plan deveria manter --disallowedTools');
+    assert.strictEqual(planArgv.filter(a => a === '--settings').length, 1, 'só o --settings da SP-2');
 });

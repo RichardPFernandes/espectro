@@ -65,6 +65,7 @@ const humanInputIntent = require('./lib/human-input-intent');
 const dom06 = require('./lib/dom06-attempt');
 const decompositionRuntime = require('./lib/decomposition-runtime');
 const decompositionVisit = require('./lib/decomposition-visit');
+const subagentBlock = require('./lib/subagent-block');
 
 // Consumer env loads before watcher initialization. Explicit REPO_PATH wins;
 // otherwise the caller must run in the consumer root. Candidate code has no .env.
@@ -4264,10 +4265,10 @@ function nodeContextBlock(node, { ticket, dir = null, worktreePath }) {
     return '';
 }
 
-// Nós que nunca abrem subagente: no plan, um Explore em Opus custou 2,5× a sessão
-// inteira (#43590) lendo arquivos Java completos. O review ainda pode chamar o
-// subagente de domínio (security-reviewer/schema-guardian) — ver review.md.
-const NO_SUBAGENT_NODES = new Set(['plan']);
+// Nós sem subagente (NO_SUBAGENT_NODES) e a forma do bloqueio: lib/subagent-block.js.
+// PRI-315: WATCHER_PLAN_DENY_SETTINGS (desligada por padrão) troca `--disallowedTools` por
+// `permissions.deny` via `--settings`, preservando o prefixo do cache; sem ela, argv do AS-IS.
+// Lida a cada despacho (como o env do agente), não na carga do módulo.
 
 // Segmento Claude: encadeia comandos de barra dentro de UMA sessão `claude -p`.
 // Só existem dois pontos de entrada usados hoje: fetch_ticket(+plan) para task nova,
@@ -4310,7 +4311,7 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
         '--session-id', sessionId,
         '--permission-mode', 'acceptEdits',
         '--allowedTools', 'mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob',
-        ...(nodes.some(n => NO_SUBAGENT_NODES.has(n)) ? ['--disallowedTools', 'Agent,Task'] : []),
+        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled() }),
         // Sem isto, Claude ficava confinado ao cwd (worktree do consumidor) e não
         // enxergava os worktrees irmãos mesmo com branch/worktree já criados pelo
         // watcher, apesar da instrução em plan.md/commit.md dizer pra tratá-los
