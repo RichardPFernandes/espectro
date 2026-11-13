@@ -79,11 +79,40 @@ test('AC-27: sem subagent_roles na policy → linha default UNENFORCED, sem --ag
     assert.ok(!mr.routedArgs([], r, { agentsJson: roles.agentsJson }).includes('--agents'));
 });
 
-test('AC-27: mecanismo só na versão provada da CLI (U10-a, 2.1.319)', () => {
+test('AC-27: mecanismo só nas versões provadas da CLI (U10-a: 2.1.319 e 2.1.323), cada uma com a própria prova', () => {
     assert.deepStrictEqual(mr.subagentMechanism('2.1.319'), { status: 'VERIFIED', mechanism: 'agents_flag', cli_version: '2.1.319', proof_ref: 'tasks/pri-287-s5/u10-probe-evidence.json' });
-    assert.strictEqual(mr.subagentMechanism('2.2.0').status, 'UNVERIFIED');
-    assert.strictEqual(mr.subagentMechanism('2.2.0').reason, 'CLI_VERSION_NOT_PROVEN');
+    assert.deepStrictEqual(mr.subagentMechanism('2.1.323'), { status: 'VERIFIED', mechanism: 'agents_flag', cli_version: '2.1.323', proof_ref: 'tasks/pri-287-s5/u10-probe-evidence-2.1.323.json' });
+    for (const v of ['2.1.320', '2.1.322', '2.1.324', '2.2.0', 'toString', '__proto__']) {
+        assert.deepStrictEqual([v, mr.subagentMechanism(v).status, mr.subagentMechanism(v).reason, mr.subagentMechanism(v).proof_ref], [v, 'UNVERIFIED', 'CLI_VERSION_NOT_PROVEN', null]);
+    }
     assert.strictEqual(mr.subagentMechanism(null).reason, 'CLI_VERSION_UNKNOWN');
+    assert.deepStrictEqual(mr.SUBAGENT_MECHANISM_PROOF.cli_versions, ['2.1.319', '2.1.323']);
+});
+
+test('AC-27: cada proof_ref aponta para evidência no repositório com controle que vê o frontmatter e duas provas do --agents na própria versão', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const root = path.resolve(__dirname, '..', '..');
+    for (const [version, ref] of Object.entries(mr.SUBAGENT_MECHANISM_PROOF.proof_refs)) {
+        const records = JSON.parse(fs.readFileSync(path.join(root, ref), 'utf8')).records.filter(r => r.cli_version.startsWith(`${version} `));
+        const observedIs = (r, model) => r.plugin_proof.status === 'NOT_LOADED' && r.roles.length === 2
+            && r.roles.every(x => x.match && x.observed.length === 1 && x.observed[0] === model);
+        // Controle: o último controle da versão vê o frontmatter (uma execução incerta anterior só
+        // conta se foi repetida com «sim» registrado, caso da 2.1.319).
+        const controls = records.filter(r => r.candidate === 'control');
+        const lastControl = controls[controls.length - 1];
+        assert.ok(lastControl && lastControl.result === 'CONTROL_DETECTS_FRONTMATTER' && !lastControl.argv.includes('--agents')
+            && observedIs(lastControl, lastControl.models.frontmatter), `${version}: controle negativo`);
+        assert.ok(controls.slice(0, -1).every(r => r.result === 'UNCERTAIN') && controls.slice(1).every(r => r.repeat_authorized), `${version}: repetição do controle só com «sim»`);
+        // --agents: exatamente as execuções 1 e 2, seguidas, as duas PROOF_OBTAINED, sem falha
+        // intercalada nem repetição; observado = declarado nos dois papéis.
+        const agents = records.filter(r => r.candidate === 'agents');
+        assert.deepStrictEqual([version, agents.map(r => [r.run, r.result])], [version, [[1, 'PROOF_OBTAINED'], [2, 'PROOF_OBTAINED']]]);
+        assert.ok(lastControl.at < agents[0].at && agents[0].at < agents[1].at, `${version}: controle antes de agents/1, agents/1 antes de agents/2`);
+        for (const r of agents) {
+            assert.ok(r.argv.includes('--agents') && observedIs(r, r.models.declared) && r.roles.every(x => x.declared === r.models.declared), `${version}: agents run ${r.run}`);
+        }
+    }
 });
 
 test('AC-27: com subagent_roles e mecanismo verificado → só agentes reproduzíveis redefinidos (ENFORCED de modelo); resto UNENFORCED com causa', () => {
