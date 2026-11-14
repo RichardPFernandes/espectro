@@ -70,10 +70,11 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 
 ## T5. Benchmark visual do piloto
 
-- [ ] Teste com fixtures sintéticas rotuladas; sem runs a página sai só com UNKNOWN.
-- [ ] `scripts/probes/effort-benchmark.js`: JSON + HTML com tempo, uso de limite, falhas e `effort_miss` por fase.
-- [ ] Reaproveitar `scripts/compare-runs.js` e `dashboard/cost-projection.js`; sem lógica paralela de custo.
-- [ ] Gerar a página vazia e anexar ao PR.
+- [x] Teste com fixtures sintéticas rotuladas (`synthetic-*`); sem runs a página sai só com UNKNOWN (e N/A em fase fora de esforço médio).
+- [x] `scripts/probes/effort-benchmark.js`: JSON + HTML com tempo, tokens (proxy de uso de limite), falhas e `effort_miss` por fase. Par com rótulo contradito por `phase_effort` é excluído e listado; sem Attempt registrado, o par entra sinalizado.
+- [x] Reaproveita `run-comparator` (leitura, tokens por nó, status), `dashboard/cost-projection` (duração por nó) e `effort-miss` (projeção); sem lógica paralela de custo.
+- [x] Página vazia gerada (14/11/2026): `~/Workspace/prisma-evidence/2026-11-14-pri-353-effort-benchmark-vazio/` (anexar ao PR).
+- Verificação (14/11/2026, Node 20.20.2, base 9de609f): `scripts` 2079 testes, 2068 passam; as 5 falhas são as mesmas pré-existentes do C2 (3 de `architecture-boundaries`, 2 de «C0 árvore adversarial»). `effort-benchmark.test.js` 16/16.
 
 **AC:** AC8. **Arquivos:** `scripts/probes/effort-benchmark.js`, `scripts/probes/effort-benchmark.test.js`.
 **Depende de:** T2 (campo `effort_applied`), T3 (dados de `effort_miss`).
