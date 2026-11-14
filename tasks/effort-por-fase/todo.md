@@ -42,10 +42,10 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 
 ## T3. Registro `effort_miss`, da gravação à leitura
 
-- [ ] Confirmar se `state.schema.json` aceita campo novo; run antiga sem o campo segue válida.
-- [ ] Teste: schema aceita o registro; `state-writer` grava com CAS; `would_high_catch` nasce `unknown`.
-- [ ] `scripts/lib/effort-miss.js` + campo `effort_misses` no schema + escrita pelo `state-writer`.
-- [ ] Endpoint read-only no dashboard; sem registro devolve UNKNOWN, nunca zero.
+- [x] Confirmar se `state.schema.json` aceita campo novo; run antiga sem o campo segue válida.
+- [x] Teste: schema aceita o registro; `state-writer` grava com CAS; `would_high_catch` nasce `unknown`.
+- [x] `scripts/lib/effort-miss.js` + campo `effort_misses` no schema + escrita pelo `state-writer`.
+- [x] Endpoint read-only no dashboard; sem registro devolve UNKNOWN, nunca zero.
 
 **AC:** AC6. **Arquivos:** `.graph/schemas/state.schema.json`, `scripts/state-writer.js`,
 `scripts/lib/effort-miss.js`, `scripts/lib/effort-miss.test.js`, `dashboard/server.js`,

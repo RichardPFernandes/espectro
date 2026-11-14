@@ -50,6 +50,7 @@ const runComparator = require('../scripts/lib/run-comparator');
 const { projectCostTracking } = require('./cost-projection');
 const { buildWouldRouteMetrics } = require('./would-route-metrics');
 const routingProjection = require('./routing-projection');
+const effortMiss = require('../scripts/lib/effort-miss');
 // Leitor de roteamento por processo (G3: o dashboard não importa scripts/lib).
 const ROUTING_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'routing-read.js');
 // Tira PR de Draft ("Marcar como pronto" no painel de preview).
@@ -1389,6 +1390,20 @@ function createDashboard(options = {}) {
             totalConsolidations: counterState.total_consolidations ?? 0,
             completedRunsAtLastRun: counterState.completed_runs_at_last_run ?? null,
         });
+    });
+
+    // PRI-353 (AC6): registro effort_miss das runs, só leitura. Ausência de registro é UNKNOWN,
+    // nunca zero (scripts/lib/effort-miss.js). Texto livre passa por redact() como o resto.
+    app.get('/api/effort-misses', (req, res) => {
+        syncWatchedRoots();
+        const reg = readRegistry();
+        const entries = [];
+        for (const [taskId, candidates] of collectCandidates()) {
+            if (archivedAway(taskId, candidates, reg)) continue;
+            const chosen = pickCandidate(taskId, candidates);
+            if (chosen) entries.push({ taskId, state: readRunState({ ...chosen, copies: candidates.length }) });
+        }
+        res.json(JSON.parse(redact(JSON.stringify(effortMiss.projectEffortMisses(entries)))));
     });
 
     // Força a varredura dos arquivados (botão Atualizar). Respeita o cache por ticket.

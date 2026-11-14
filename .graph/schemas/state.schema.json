@@ -1636,6 +1636,75 @@
         }
       }
     },
+    "effort_misses": {
+      "type": "array",
+      "description": "PRI-353: registro effort_miss da run, só acréscimo, gravado por scripts/lib/effort-miss.js pelo state-writer. Campo ausente ou lista vazia = UNKNOWN, nunca zero erros. Não é campo crítico (não muda state_version).",
+      "items": {
+        "type": "object",
+        "description": "PRI-353: erro de fase em esforço médio que esforço alto provavelmente pegaria. Só fase em esforço médio na tabela (.claude/phase-effort.json). would_high_catch é julgamento registrado por quem detectou (review, verify ou humano), nunca inferido; começa unknown.",
+        "required": [
+          "id",
+          "phase",
+          "effort",
+          "what_missed",
+          "would_high_catch",
+          "class",
+          "evidence_ref",
+          "recorded_by",
+          "recorded_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^em-[0-9]+$"
+          },
+          "phase": {
+            "enum": [
+              "plan",
+              "implement",
+              "review",
+              "test",
+              "verify",
+              "commit"
+            ]
+          },
+          "effort": {
+            "const": "medium"
+          },
+          "what_missed": {
+            "type": "string",
+            "minLength": 1
+          },
+          "would_high_catch": {
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ]
+          },
+          "class": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "evidence_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recorded_by": {
+            "enum": [
+              "review",
+              "verify",
+              "human"
+            ]
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
     "cost_tracking": {
       "type": "object",
       "description": "Custo por nó (scripts/lib/cost-tracking.js), gravado pelo watcher ao fechar cada despacho. Cópia autoritativa em memory/runs/<ticket>-cost.json.",
