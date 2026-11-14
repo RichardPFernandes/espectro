@@ -25,7 +25,7 @@
   - Depende de: T1, Q4. Arquivos: taxonomy, predicates e os 2 testes.
 
 ### Checkpoint: após T2
-- [ ] Suíte verde; só `predicates` e `taxonomy` restam dos módulos antigos; revisar com o Richard.
+- [x] Fechado em 14/11 com aprovação do Richard. Só `predicates` e `taxonomy` restam dos módulos antigos; `LIGADO (C1–C3)` virou `LIGADO` (texto e oráculo no mesmo commit). Suíte **não** está verde: 11 falhas anteriores à PRI-274, tratadas na PRI-359 (Leve) e citadas no PR; não sei se já existiam no commit da T2.
 
 ## Fase 1: validador de conteúdo, seção a seção
 
