@@ -4,20 +4,18 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const predicates = require('./qa-diagnosis-predicates');
 const taxonomy = require('./qa-diagnosis-taxonomy');
-const collect = require('./qa-diagnosis-collect');
 
 test('C3 predicates: FACT só em checagens de sistema; causa indeterminada UNKNOWN', () => {
-    const pack = collect.collectEvidencePack({
-        identity: {
+    const pack = {
+        signals: {
+            has_rejection_key: true,
             rejection_key: 'qa-rej:v1:t880200:j402',
             identity_quality: 'OK',
             transition_journal_id: 402,
-            note: 'x',
-            note_journal_id: 402,
+            note_present: true,
+            retry_requested: false,
         },
-        state: { status: 'archived', qa_rejection: { rejection_key: 'qa-rej:v1:t880200:j402' } },
-        ticketId: 880200,
-    });
+    };
     const out = predicates.evaluatePredicates(pack);
     assert.equal(out.taxonomy_version, '0.1');
     assert.equal(out.causal_auto, false);

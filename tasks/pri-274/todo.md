@@ -6,7 +6,8 @@
 
 ## Fase 0: tirar o código morto
 
-- [ ] **T1: retirar C2/C3 não usado pelo protocolo novo** (M, deleção mecânica)
+- [x] **T1: retirar C2/C3 não usado pelo protocolo novo** (M, deleção mecânica)
+  - Feito em 14/11. Adiado: a linha `LIGADO (C1–C3)` fica, porque `qa-diagnostico-flag.test.js:286` (oráculo C0) assere o texto exato; mudar exige decisão do Richard sobre o oráculo.
   - Confirmar por grep que o watcher não chama `analyzeRejection`/`publishDiagnosisRecord`.
   - Remover `-layout`, `-record`, `-collect`, `-analyze`, `-publish` e seus testes; ajustar `spied` em
     `qa-diagnosis-c2b1-flag-on/off.test.js` e o `require` em `qa-diagnostico-flag.test.js:54`; trocar o texto
