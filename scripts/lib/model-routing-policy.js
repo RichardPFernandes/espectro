@@ -208,6 +208,14 @@ function validateDecompositionSections(raw) {
                 return fail(`subagent_role_effort_invalid:${role}`);
             }
         }
+        // PRI-341 (T1, AC-4): o subagente `default` é igual ao default_route (v9 §5.1, D6), para os
+        // braços não derivarem. Esforço UNKNOWN (já exige effort_ref acima) não é comparável: só o
+        // modelo é conferido. Papel nomeado pode diferir. O default_route já foi validado pelo chamador.
+        const sd = raw.subagent_roles.default;
+        if (sd && raw.default_route) {
+            if (sd.model_id !== raw.default_route.model_id) return fail('subagent_default_model_differs_from_default_route');
+            if (sd.effort !== 'UNKNOWN' && sd.effort !== raw.default_route.effort) return fail('subagent_default_effort_differs_from_default_route');
+        }
     }
     if (raw.manifest_limits !== undefined) {
         const l = raw.manifest_limits;

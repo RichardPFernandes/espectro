@@ -44,6 +44,13 @@ modules:
   - path: scripts/lib/routing-run.js
     capability: model-routing-run-snapshot
     owner: UNKNOWN
+  # PRI-341 T3: comparador de custo decomposta × monomodelo. Só lê o state.json; não grava.
+  - path: scripts/lib/routing-cost-compare.js
+    capability: model-routing-cost-comparison
+    owner: UNKNOWN
+  - path: scripts/routing-cost-compare.js
+    capability: model-routing-cost-comparison
+    owner: UNKNOWN
   # PRI-310 (PRI-287 S5.1): manifesto do workspace, só leitura do worktree; a chave por Run
   # e os manifestos locais ficam fora do worktree. O resumo vai no Attempt (DOM06).
   - path: scripts/lib/workspace-manifest.js
