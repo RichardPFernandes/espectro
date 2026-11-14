@@ -29,7 +29,8 @@
 
 ## Fase 1: validador de conteúdo, seção a seção
 
-- [ ] **T3: `validateContent` + §6.1 `context` e `missing[]`** (M) — AC-01 (QRD-AC-07)
+- [x] **T3: `validateContent` + §6.1 `context` e `missing[]`** (M) — AC-01 (QRD-AC-07)
+  - Feito em 14/11. Seção ausente segue válida (o protocolo da c2b-2 produz versão só com cabeçalho); se `context` for obrigatório na publicação, isso é decisão da T7/G3. Extra além da spec: `redmine_note` e `attachment` nunca são `TRUSTED_SYSTEM` (INV-5/6).
   - Novo `qa-diagnosis-content.js`, chamado por `validateVersion`; `kind`/`trust` fechados; `missing[]` válido.
   - Aceite: versão sem spec/nota/journal valida com `missing[]` e sem categoria por default; `sources[]`
     malformado é recusado. Rodar antes `qa-diagnosis-protocol/store*.test.js` e consertar só fixtures de conteúdo.
