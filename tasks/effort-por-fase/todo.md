@@ -13,7 +13,7 @@
 ## T1. Provar o mecanismo de esforço (U1) · gate
 
 - [ ] «Sim» do Richard para o probe (chamadas reais, config pessoal, scratch, n=3 por nível).
-- [ ] Teste com fake: controle negativo (`--effort` inválido recusado) e agregação.
+- [x] Teste com fake: controle negativo (`--effort` inválido recusado) e agregação.
 - [ ] Rodar o probe em low, medium, high e registrar o que for observável.
 
 **AC:** AC1. **Arquivos:** `scripts/probes/effort-flag-probe.js`, `scripts/probes/effort-flag-probe.test.js`.
