@@ -53,8 +53,9 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 **Verifica:** `validate-state.js` em run arquivada; teste da API.
 
 ### Checkpoint C2
-- [ ] Suítes `scripts/` e `dashboard/` verdes por `harness/run-tests.js`.
-- [ ] Com a flag desligada, nada muda no consumidor (golden + diff do argv).
+- [x] Suítes `scripts/` e `dashboard/` por `harness/run-tests.js` (14/11/2026, Node 20.20.2, HEAD 2ad0a15): `dashboard` 554/554; `scripts` 2035/2046, com 5 falhas idênticas às da base a2e956b (3 subtestes de `architecture-boundaries` e 2 «C0 árvore adversarial»; causa UNKNOWN, não investigada). Uma falha flaky de `plan-scorer.test.js` na 1ª rodada não voltou.
+- [x] Com a flag desligada, nada muda no consumidor (golden verde; `architecture-boundaries` com os 3 subtestes pré-existentes vermelhos).
+- [x] Richard aceitou o C2 em 14/11/2026 («aceito»), com a ressalva das 5 falhas pré-existentes na Evidência do PR e issue à parte para elas.
 
 ## T4. Handoff das fases em esforço alto
 
