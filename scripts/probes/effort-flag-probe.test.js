@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { probeArgv, median, verdict, parseArgs, runProbe, LEVELS } = require('./effort-flag-probe');
+const { probeArgv, median, verdict, parseArgs, runProbe, countThinkingBlocks, DEFAULT_LEVELS, VALID_LEVELS } = require('./effort-flag-probe');
 
 test('argv leva só --effort e o trecho fixo; sem --model nem bloqueio de subagente', () => {
     const argv = probeArgv({ prompt: 'p', level: 'high', sessionId: 's' });
@@ -13,64 +13,89 @@ test('argv leva só --effort e o trecho fixo; sem --model nem bloqueio de subage
     assert.ok(!argv.includes('--settings'));
 });
 
-test('níveis do probe são low, medium e high', () => {
-    assert.deepStrictEqual(LEVELS, ['low', 'medium', 'high']);
+test('padrão compara low contra max; níveis válidos são os da CLI', () => {
+    assert.deepStrictEqual(DEFAULT_LEVELS, ['low', 'max']);
+    assert.deepStrictEqual(VALID_LEVELS, ['low', 'medium', 'high', 'xhigh', 'max']);
 });
 
 test('median de lista par e ímpar; vazia = null (UNKNOWN, nunca zero)', () => {
     assert.strictEqual(median([3, 1, 2]), 2);
     assert.strictEqual(median([4, 1, 3, 2]), 2.5);
     assert.strictEqual(median([]), null);
+    assert.strictEqual(median([null, undefined]), null);
 });
 
-const runs = (low, medium, high, exit = 0) => ({
-    low: low.map(o => ({ exit_code: exit, output_tokens: o })),
-    medium: medium.map(o => ({ exit_code: exit, output_tokens: o })),
-    high: high.map(o => ({ exit_code: exit, output_tokens: o })),
+test('countThinkingBlocks conta só blocos thinking de mensagens do assistente; sem transcript = null', () => {
+    const line = o => JSON.stringify(o);
+    const content = [
+        line({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: 'a' }] } }),
+        line({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'x' }] } }),
+        line({ type: 'user', message: { content: [{ type: 'thinking' }] } }),
+        'não é json',
+    ].join('\n');
+    assert.strictEqual(countThinkingBlocks(content), 2);
+    assert.strictEqual(countThinkingBlocks(''), 0);
+    assert.strictEqual(countThinkingBlocks(null), null);
 });
+
+const run = (out, thinking = null, exit = 0) => ({ exit_code: exit, output_tokens: out, thinking_blocks: thinking });
+const by = (low, max) => ({ low: low.map(o => run(...[].concat(o))), max: max.map(o => run(...[].concat(o))) });
+const levels = ['low', 'max'];
 
 test('nível válido recusado = UNAVAILABLE', () => {
-    const r = runs([10], [10], [10]);
-    r.high[0].exit_code = 1;
-    assert.strictEqual(verdict({ control: { exit_code: 1 }, byLevel: r }).status, 'UNAVAILABLE');
+    const b = by([10], [10]);
+    b.max[0].exit_code = 1;
+    assert.strictEqual(verdict({ control: { exit_code: 1 }, byLevel: b, levels }).status, 'UNAVAILABLE');
 });
 
-test('controle inválido aceito (exit 0) = ACCEPTED_EFFECT_UNKNOWN: a flag pode estar sendo ignorada', () => {
-    const v = verdict({ control: { exit_code: 0 }, byLevel: runs([10, 10, 10], [20, 20, 20], [30, 30, 30]) });
-    assert.strictEqual(v.status, 'ACCEPTED_EFFECT_UNKNOWN');
-});
-
-test('controle recusado e mediana de saída crescente = EFFECT_OBSERVED (indício, não prova)', () => {
-    const v = verdict({ control: { exit_code: 1 }, byLevel: runs([10, 12, 11], [20, 22, 21], [90, 80, 85]) });
+test('saída de max >= 1,5x a de low = EFFECT_OBSERVED (indício, não prova)', () => {
+    const v = verdict({ control: { exit_code: 1 }, byLevel: by([100, 110, 105], [400, 380, 420]), levels });
     assert.strictEqual(v.status, 'EFFECT_OBSERVED');
-    assert.deepStrictEqual(v.medians, { low: 11, medium: 21, high: 85 });
+    assert.deepStrictEqual(v.medians.output_tokens, { low: 105, max: 400 });
 });
 
-test('controle recusado e sem diferença entre low e high = ACCEPTED_EFFECT_UNKNOWN', () => {
-    const v = verdict({ control: { exit_code: 1 }, byLevel: runs([50, 52, 51], [49, 50, 51], [51, 50, 49]) });
+test('mais blocos thinking em max que em low = EFFECT_OBSERVED mesmo com saída parecida', () => {
+    const v = verdict({ control: { exit_code: 1 }, byLevel: by([[100, 0], [100, 0], [100, 0]], [[110, 2], [105, 3], [100, 2]]), levels });
+    assert.strictEqual(v.status, 'EFFECT_OBSERVED');
+});
+
+test('controle inválido aceito não anula o efeito, mas vira nota no veredito', () => {
+    const v = verdict({ control: { exit_code: 0 }, byLevel: by([100, 100, 100], [500, 500, 500]), levels });
+    assert.strictEqual(v.status, 'EFFECT_OBSERVED');
+    assert.match(v.notes.join(' '), /não valida/);
+});
+
+test('sem diferença mensurável = ACCEPTED_EFFECT_UNKNOWN', () => {
+    const v = verdict({ control: { exit_code: 1 }, byLevel: by([[260, 0], [265, 0], [302, 0]], [[290, 0], [300, 0], [383, 0]]), levels });
     assert.strictEqual(v.status, 'ACCEPTED_EFFECT_UNKNOWN');
 });
 
-test('sem medição de tokens (null) nunca vira EFFECT_OBSERVED', () => {
-    const r = runs([1], [1], [1]);
-    for (const l of LEVELS) r[l][0].output_tokens = null;
-    assert.strictEqual(verdict({ control: { exit_code: 1 }, byLevel: r }).status, 'ACCEPTED_EFFECT_UNKNOWN');
+test('sem medição (null) nunca vira EFFECT_OBSERVED', () => {
+    const v = verdict({ control: { exit_code: 1 }, byLevel: by([[null, null]], [[null, null]]), levels });
+    assert.strictEqual(v.status, 'ACCEPTED_EFFECT_UNKNOWN');
+    assert.strictEqual(v.medians.output_tokens.low, null);
 });
 
-test('parseArgs: --n padrão 3, --out obrigatório, argumento desconhecido falha', () => {
-    assert.strictEqual(parseArgs(['--out', 'd']).n, 3);
+test('parseArgs: --n padrão 3, --levels padrão low,max, --out obrigatório, inválidos falham', () => {
+    const o = parseArgs(['--out', 'd']);
+    assert.strictEqual(o.n, 3);
+    assert.deepStrictEqual(o.levels, ['low', 'max']);
+    assert.deepStrictEqual(parseArgs(['--out', 'd', '--levels', 'low,high,max']).levels, ['low', 'high', 'max']);
     assert.throws(() => parseArgs([]), /--out/);
     assert.throws(() => parseArgs(['--out', 'd', '--x', '1']), /desconhecido/);
     assert.throws(() => parseArgs(['--out', 'd', '--n', '0']), /--n/);
+    assert.throws(() => parseArgs(['--out', 'd', '--levels', 'low,turbo']), /nível/);
+    assert.throws(() => parseArgs(['--out', 'd', '--levels', 'low']), /ao menos dois/);
 });
 
 test('runProbe com runner fake: 1 controle + n por nível, e respeita o teto de chamadas', () => {
     const seen = [];
-    const run = ({ level }) => { seen.push(level); return { exit_code: level === 'bogus' ? 1 : 0, output_tokens: level === 'high' ? 90 : 10 }; };
-    const report = runProbe({ n: 2, run, claudeVersion: '2.1.325' });
+    const fake = ({ level }) => { seen.push(level); return run(level === 'max' ? 400 : 100, level === 'max' ? 2 : 0, level === 'bogus' ? 1 : 0); };
+    const report = runProbe({ n: 2, levels, run: fake, claudeVersion: '2.1.325' });
     assert.strictEqual(seen.filter(l => l === 'bogus').length, 1);
-    for (const l of LEVELS) assert.strictEqual(seen.filter(x => x === l).length, 2);
+    for (const l of levels) assert.strictEqual(seen.filter(x => x === l).length, 2);
+    assert.strictEqual(report.calls, 5);
     assert.strictEqual(report.claude_version, '2.1.325');
     assert.strictEqual(report.verdict.status, 'EFFECT_OBSERVED');
-    assert.throws(() => runProbe({ n: 50, run, claudeVersion: 'x' }), /teto/);
+    assert.throws(() => runProbe({ n: 50, levels, run: fake, claudeVersion: 'x' }), /teto/);
 });

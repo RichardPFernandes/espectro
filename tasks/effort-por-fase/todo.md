@@ -14,7 +14,9 @@
 
 - [ ] «Sim» do Richard para o probe (chamadas reais, config pessoal, scratch, n=3 por nível).
 - [x] Teste com fake: controle negativo (`--effort` inválido recusado) e agregação.
-- [ ] Rodar o probe em low, medium, high e registrar o que for observável.
+- [x] Rodada 1 (14/11/2026, n=3, low/medium/high, prompt curto): ACCEPTED_EFFECT_UNKNOWN. Controle `--effort bogus` saiu com exit 0; saída ~260 tokens em todos os níveis. Evidência: `~/Workspace/prisma-evidence/2026-11-14-pri-353-effort-probe/`.
+- [x] Probe v2 (teste primeiro): prompt de raciocínio longo, contagem de blocos `thinking`, `--levels` (padrão low,max), controle inválido vira nota e não anula o efeito.
+- [ ] «Sim» do Richard para a rodada 2 (7 chamadas: 1 controle + 3 low + 3 max) e rodar: `node scripts/probes/effort-flag-probe.js --out <dir> --n 3`.
 
 **AC:** AC1. **Arquivos:** `scripts/probes/effort-flag-probe.js`, `scripts/probes/effort-flag-probe.test.js`.
 **Verifica:** saída agregada com versão da CLI (2.1.325), sem transcript copiado.
