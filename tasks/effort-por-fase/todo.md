@@ -23,8 +23,8 @@
 Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em diante que dependa de efeito.
 
 ### Checkpoint C1
-- [ ] AC1 fechado como VERIFIED, UNAVAILABLE ou "aceita, efeito UNKNOWN", com evidência no PR.
-- [ ] Richard decide se T2 a T6 seguem. Sem resposta até a janela de segunda ou quinta, T2 a T5 seguem.
+- [x] AC1 fechado como EFFECT_OBSERVED, com evidência no PR (rodadas 1 e 2).
+- [x] Richard aceitou o C1 em 14/11/2026 («aceito»). T2 a T6 liberadas. Antes disso a T2 rodou sem decisão explícita (reversível, flag desligada).
 
 ## T2. Esforço por fase, do JSON ao argv, atrás de flag
 
