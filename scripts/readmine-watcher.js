@@ -6001,7 +6001,7 @@ function writeWatcherModeFile() {
 async function main() {
     // PRI-181 c0b: valor efetivo da flag a cada tick (sem dado de ticket). Fica em main(),
     // depois do ramo --health-check, para não sujar testes, node-dispatcher nem o JSON do health.
-    console.log(QA_DIAGNOSTICO ? '[qa-diagnostico] LIGADO (C1–C3)' : '[qa-diagnostico] desligado (C0)');
+    console.log(QA_DIAGNOSTICO ? '[qa-diagnostico] LIGADO' : '[qa-diagnostico] desligado (C0)');
     // Um writer por REPO_PATH, antes de qualquer escrita do tick (custo, sync, recovery).
     // --dry-run só lê: não trava e não cria arquivo. Recusa = exit 75, sem seguir o tick.
     if (!DRY_RUN && !watcherLock.acquireForProcess({ repoPath: REPO_PATH, role: SIMULATE ? 'simulate' : 'watcher' })) {

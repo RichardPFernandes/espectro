@@ -283,5 +283,5 @@ async function firstTickLine(flag) {
 
 test('AC-06: primeira linha do tick mostra o valor efetivo da flag', async () => {
     assert.equal(await firstTickLine(undefined), '[qa-diagnostico] desligado (C0)');
-    assert.equal(await firstTickLine('1'), '[qa-diagnostico] LIGADO (C1–C3)');
+    assert.equal(await firstTickLine('1'), '[qa-diagnostico] LIGADO');
 });
