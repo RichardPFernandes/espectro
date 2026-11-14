@@ -59,9 +59,11 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 
 ## T4. Handoff das fases em esforço alto
 
-- [ ] Teste: lint avisa `plan.md` sem plano, decisões, riscos ou arquivos afetados; flag desligada não altera o `extraNote`.
-- [ ] `scripts/lib/handoff-lint.js` (só aviso, D7).
-- [ ] Com a flag ligada, o despacho acrescenta ao `extraNote` a instrução de gravar `## Decisões`.
+- [x] Teste: lint avisa `plan.md` sem plano, decisões, riscos ou arquivos afetados; flag desligada não altera o `extraNote`.
+- [x] `scripts/lib/handoff-lint.js` (só aviso, D7; CLI sempre sai 0).
+- [x] Com a flag ligada, o despacho acrescenta ao prompt do plan a instrução de gravar `## Decisões` no `plan.md` e rodar o lint. Só nó em esforço alto na tabela que escreve o `plan.md` (plan, implement); review usa `review_results`.
+- Demonstração: `scripts/lib/phase-effort-watcher.test.js` despacha o plan com o `claude` falso: flag desligada, prompt sem a instrução; ligada, com ela; tabela inválida, sem ela e sem derrubar o despacho.
+- Verificação (14/11/2026, Node 20.20.2): `scripts` 2054/2063; as 3 falhas são os subtestes de `architecture-boundaries` (dependency-cruiser exige Node ^22||^24||>=26), as mesmas da base. `handoff-lint.test.js` 14/14.
 
 **AC:** AC4. **Arquivos:** `scripts/lib/handoff-lint.js`, `scripts/lib/handoff-lint.test.js`, `scripts/readmine-watcher.js`.
 **Depende de:** T2 (mesmo trecho do argv; commit separado).

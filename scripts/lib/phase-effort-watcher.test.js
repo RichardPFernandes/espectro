@@ -123,3 +123,48 @@ test('AC3 (watcher): flag ligada → plan leva --effort high no fim; o resto do 
         delete process.env.WATCHER_PHASE_EFFORT;
     }
 });
+
+// PRI-353 T4 (AC4): instrução de handoff no extraNote, só com a flag ligada.
+test('AC4 (watcher): flag desligada → prompt do plan sem a instrução de handoff', async () => {
+    delete process.env.WATCHER_PHASE_EFFORT;
+    const taskId = seedPlannedTask(93163);
+    await watcher.dispatchTicket(ticket(93163));
+    const argv = await planArgv(taskId);
+    assert.ok(!argv[1].includes('Handoff desta fase'));
+    assert.ok(!argv[1].includes('handoff-lint.js'));
+});
+
+test('AC4 (watcher): flag ligada → prompt do plan manda gravar ## Decisões e rodar o lint', async () => {
+    process.env.WATCHER_PHASE_EFFORT = '1';
+    try {
+        const taskId = seedPlannedTask(93164);
+        await watcher.dispatchTicket(ticket(93164));
+        const argv = await planArgv(taskId);
+        assert.match(argv[1], /Handoff desta fase/);
+        assert.match(argv[1], /## Decisões/);
+        assert.ok(argv[1].includes(`node ${PRISMA_ROOT}/scripts/lib/handoff-lint.js`));
+        // o resto do argv segue como no AC3
+        assert.deepStrictEqual(argv.slice(-2), ['--effort', 'high']);
+        assert.deepStrictEqual(fixedSlice(argv), AS_IS_FIXED);
+    } finally {
+        delete process.env.WATCHER_PHASE_EFFORT;
+    }
+});
+
+test('AC4 (watcher): tabela inválida com a flag ligada → sem instrução e sem derrubar o despacho', async () => {
+    process.env.WATCHER_PHASE_EFFORT = '1';
+    const phaseEffort = require('./phase-effort');
+    const orig = phaseEffort.loadPhaseEffortTable;
+    phaseEffort.loadPhaseEffortTable = () => ({ ok: false, error: 'PHASE_EFFORT_TABLE_MISSING' });
+    try {
+        const taskId = seedPlannedTask(93165);
+        const result = await watcher.dispatchTicket(ticket(93165));
+        assert.strictEqual(result.node, 'plan');
+        const argv = await planArgv(taskId);
+        assert.ok(!argv[1].includes('Handoff desta fase'));
+        assert.ok(!argv.includes('--effort'));
+    } finally {
+        phaseEffort.loadPhaseEffortTable = orig;
+        delete process.env.WATCHER_PHASE_EFFORT;
+    }
+});

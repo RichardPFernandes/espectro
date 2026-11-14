@@ -68,6 +68,7 @@ const decompositionRuntime = require('./lib/decomposition-runtime');
 const decompositionVisit = require('./lib/decomposition-visit');
 const subagentBlock = require('./lib/subagent-block');
 const phaseEffort = require('./lib/phase-effort');
+const handoffLint = require('./lib/handoff-lint');
 
 // Consumer env loads before watcher initialization. Explicit REPO_PATH wins;
 // otherwise the caller must run in the consumer root. Candidate code has no .env.
@@ -4333,6 +4334,16 @@ function resolvePhaseEffort(nodes, routing) {
     return phaseEffort.phaseEffortArgs({ nodes, enabled: true, table: loaded.table, routedEffortApplied: routing?.decision?.effort_applied === true });
 }
 
+// PRI-353 (T4, AC4): instrução de handoff (`## Decisões` no plan.md) para fase em esforço alto, só com
+// WATCHER_PHASE_EFFORT ligada. Desligada = '' e o prompt fica idêntico. Tabela inválida: sem instrução
+// (o erro já foi registrado por resolvePhaseEffort); nunca derruba o despacho.
+function resolveHandoffNote(nodes) {
+    if (!phaseEffort.phaseEffortEnabled()) return '';
+    const loaded = phaseEffort.loadPhaseEffortTable();
+    if (!loaded.ok) return '';
+    return handoffLint.handoffNote({ nodes, enabled: true, table: loaded.table, prismaRoot: PRISMA_ROOT });
+}
+
 async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null, routing = null }) {
     const qaSection = isRecusaQA
         ? `\n\nEste ticket voltou como Recusa QA — é retrabalho, não trabalho novo. ` +
@@ -4340,10 +4351,12 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
           `Trate isso como o critério de aceite principal do /plan.`
         : '';
 
+    const handoffNote = resolveHandoffNote(nodes);
     const prompt =
         `Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ` +
         `ticket #${ticket.id} (tipo: ${ticket.tracker?.name || '?'}). Rode, nesta ordem: ` +
         `${commands.join(', ')}. ${extraNote} ` +
+        (handoffNote ? `${handoffNote} ` : '') +
         `Leia cada template correspondente em ${PRISMA_ROOT}/.claude/commands/ e siga-o ` +
         `como instrução do nó; use ${PRISMA_ROOT}/scripts para os executáveis da plataforma. ` +
         `PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. ` +
