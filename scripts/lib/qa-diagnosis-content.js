@@ -3,8 +3,7 @@
 //
 // JavaScript puro, sem ajv e sem I/O (como a c2b-1): a condição (e) do §4.3.1 não pode
 // passar por falta de validador. Cada seção é validada por uma função própria; as seções
-// ainda não cobertas pela fatia (assertions, cause, recommendation, platform_signals) não
-// são tocadas aqui. Seção ausente é válida: o protocolo da c2b-2 produz versão só com cabeçalho.
+// ainda não cobertas pela fatia (cause, recommendation, platform_signals) não são tocadas aqui. Seção ausente é válida: o protocolo da c2b-2 produz versão só com cabeçalho.
 //
 // `isCalendarIso` vem injetado pelo model, que importa este módulo (evita ciclo).
 
@@ -20,6 +19,13 @@ const SOURCE_KEYS = ['id', 'kind', 'locator', 'sha256', 'version_binding', 'trus
 const MISSING_KEYS = ['what', 'why_needed', 'blocks'];
 // INV-5/6: texto de origem externa nunca é fonte de sistema, então nunca sustenta FACT.
 const NEVER_TRUSTED_KINDS = Object.freeze(['redmine_note', 'attachment']);
+
+// §6.2: type×basis em correspondência um para um; FACT ⇔ SYSTEM_PREDICATE (QRD-AC-11, DB-04).
+const ASSERTION_TYPES = Object.freeze(['FACT', 'REPORT', 'HYPOTHESIS', 'ADJUDICATION']);
+const BASIS_TYPE = Object.freeze({
+    SYSTEM_PREDICATE: 'FACT', REPORTED: 'REPORT', AGENT_INFERENCE: 'HYPOTHESIS', HUMAN_ADJUDICATED: 'ADJUDICATION' });
+const ASSERTION_KEYS = ['id', 'type', 'basis', 'predicate_ref', 'evidence_ids', 'contradicted_by', 'statement_ref'];
+const PRED_REF_RE = /^pred:[a-z][a-z0-9_]*@[0-9][0-9A-Za-z.\-]*$/;
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isStr = v => typeof v === 'string' && v.length > 0;
@@ -77,6 +83,55 @@ function validateContext(ctx, h, errors) {
     else ctx.missing.forEach((m, i) => validateMissingItem(m, i, errors));
 }
 
+function isStrArray(v) { return Array.isArray(v) && v.every(isStr); }
+
+function validateAssertion(a, i, sourceById, assertionIds, errors) {
+    const where = `assertions[${i}]`;
+    if (!isObj(a)) { errors.push(`${where}: não é objeto`); return; }
+    const before = errors.length;
+    closedKeys(a, ASSERTION_KEYS, where, errors);
+    if (errors.length > before) return;
+    if (!isStr(a.id)) errors.push(`${where}.id`);
+    if (!ASSERTION_TYPES.includes(a.type)) errors.push(`${where}.type`);
+    const basisKnown = Object.prototype.hasOwnProperty.call(BASIS_TYPE, a.basis);
+    if (!basisKnown) errors.push(`${where}.basis`);
+    // Só a basis decide o type: nenhum texto, nota ou agente declara FACT por conta própria.
+    else if (ASSERTION_TYPES.includes(a.type) && BASIS_TYPE[a.basis] !== a.type) {
+        errors.push(`${where}: ${a.type} não corresponde à basis ${a.basis}`);
+    }
+    if (a.basis === 'SYSTEM_PREDICATE') {
+        if (!(typeof a.predicate_ref === 'string' && PRED_REF_RE.test(a.predicate_ref))) errors.push(`${where}.predicate_ref: esperado pred:<id>@<ver>`);
+    } else if (a.predicate_ref !== null) errors.push(`${where}.predicate_ref: só SYSTEM_PREDICATE carrega predicado`);
+    if (!isStr(a.statement_ref)) errors.push(`${where}.statement_ref`);
+    if (!isStrArray(a.contradicted_by)) errors.push(`${where}.contradicted_by`);
+    else for (const c of a.contradicted_by) {
+        if (c === a.id) errors.push(`${where}.contradicted_by: contradiz a si mesma`);
+        else if (!assertionIds.has(c)) errors.push(`${where}.contradicted_by: ${c} não existe em assertions[]`);
+    }
+    if (!isStrArray(a.evidence_ids)) { errors.push(`${where}.evidence_ids`); return; }
+    for (const e of a.evidence_ids) if (!sourceById.has(e)) errors.push(`${where}.evidence_ids: ${e} não existe em context.sources[]`);
+    if (a.type === 'FACT' && a.basis === 'SYSTEM_PREDICATE') {
+        if (a.evidence_ids.length === 0) errors.push(`${where}: FACT exige evidência`);
+        for (const e of a.evidence_ids) {
+            const src = sourceById.get(e);
+            if (src && !(src.trust === 'TRUSTED_SYSTEM' && src.admitted === true)) {
+                errors.push(`${where}: FACT só sobre fonte TRUSTED_SYSTEM admitida (${e})`);
+            }
+        }
+    }
+}
+
+/** §6.2: assertions[]. A evidência é resolvida contra context.sources[] da mesma versão. */
+function validateAssertions(list, ctx, errors) {
+    if (!Array.isArray(list)) { errors.push('assertions: não é array'); return; }
+    const sourceById = new Map();
+    if (isObj(ctx) && Array.isArray(ctx.sources)) for (const s of ctx.sources) if (isObj(s) && isStr(s.id)) sourceById.set(s.id, s);
+    const ids = list.filter(isObj).map(a => a.id).filter(isStr);
+    if (new Set(ids).size !== ids.length) errors.push('assertions: id duplicado');
+    const assertionIds = new Set(ids);
+    list.forEach((a, i) => validateAssertion(a, i, sourceById, assertionIds, errors));
+}
+
 /**
  * Valida as seções de conteúdo presentes em `version`.
  * @param {object} version
@@ -86,7 +141,9 @@ function validateContext(ctx, h, errors) {
 function validateContent(version, h) {
     const errors = [];
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'context')) validateContext(version.context, h, errors);
+    if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'assertions')) validateAssertions(version.assertions, version.context, errors);
     return { ok: errors.length === 0, errors };
 }
 
-module.exports = { TRUST_CLASSES, SOURCE_KINDS, SOURCE_KEYS, MISSING_KEYS, validateContent };
+module.exports = { TRUST_CLASSES, SOURCE_KINDS, SOURCE_KEYS, MISSING_KEYS,
+    ASSERTION_TYPES, BASIS_TYPE, ASSERTION_KEYS, validateContent };

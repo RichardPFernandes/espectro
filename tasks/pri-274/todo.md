@@ -37,7 +37,8 @@
   - Verificar: `node --test scripts/lib/qa-diagnosis-content.test.js scripts/lib/qa-diagnosis-model.test.js scripts/lib/qa-diagnosis-protocol.test.js scripts/lib/qa-diagnosis-store.test.js`.
   - Arquivos: content, model, content.test, + fixtures dos testes do protocolo/store.
 
-- [ ] **T4: §6.2 `assertions` e regra de FACT** (M) — AC-04 (QRD-AC-11)
+- [x] **T4: §6.2 `assertions` e regra de FACT** (M) — AC-04 (QRD-AC-11)
+  - Feito em 14/11. Extras além da spec, a confirmar na G3: `predicate_ref` só em `SYSTEM_PREDICATE` (null nas demais); `statement_ref` string obrigatória (o helper `factAssertion` ainda aceita `null` por default); `contradicted_by` só aponta assertion existente e distinta; FACT exige ≥1 evidência; `assertions` sem `context` só vale se nenhuma `evidence_ids` for citada. Mutação: 7 mutações na regra, cada uma derruba ≥1 teste.
   - `type`×`basis` fechados; FACT ⇔ `SYSTEM_PREDICATE` com `pred:<id>@<ver>` sobre fonte `TRUSTED_SYSTEM` e
     `admitted:true`; `evidence_ids` precisam existir em `sources[]`.
   - Aceite: citação íntegra de afirmação falsa e nota que manda declarar FACT não viram FACT; adjudicação
