@@ -67,6 +67,7 @@ const dom06 = require('./lib/dom06-attempt');
 const decompositionRuntime = require('./lib/decomposition-runtime');
 const decompositionVisit = require('./lib/decomposition-visit');
 const subagentBlock = require('./lib/subagent-block');
+const phaseEffort = require('./lib/phase-effort');
 
 // Consumer env loads before watcher initialization. Explicit REPO_PATH wins;
 // otherwise the caller must run in the consumer root. Candidate code has no .env.
@@ -3813,7 +3814,7 @@ function writeCostLedger(ticketId, ledger) {
     fs.writeFileSync(costLedgerPath(ticketId), JSON.stringify(ledger, null, 2));
 }
 
-function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null, signalContext = null, routing = null }) {
+function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null, signalContext = null, routing = null, phaseEffortLevel = null }) {
     if (DRY_RUN) return null;
     try {
         const selected = agent === 'claude' ? resolveClaudeAccount() : null;
@@ -3824,7 +3825,8 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
             pricing_snapshot: costTracking.pricingSnapshot(),
             ...(selected?.dir ? { claude_config_dir: selected.dir } : {}),
             ...prospectiveSignalsForRun(agent, nodes, signalContext),
-            ...(routing?.ok ? { routing_decision: routing.decision } : {}) };
+            ...(routing?.ok ? { routing_decision: routing.decision } : {}),
+            ...(phaseEffortLevel ? { phase_effort: { level: phaseEffortLevel, effort_applied: true } } : {}) };
         const ledger = readCostLedger(ticketId);
         ledger.pending.push(run);
         writeCostLedger(ticketId, ledger);
@@ -4318,6 +4320,19 @@ function nodeContextBlock(node, { ticket, dir = null, worktreePath }) {
 // e um único comando (`/plan`, `/review` ou `/verify`) pra resumir uma task ativa —
 // nunca encadeia através de um nó com veredito (review/test/verify), porque o
 // resultado desses só se sabe depois de rodar.
+// PRI-353: tabela inválida com a flag ligada não derruba o watcher nem despacha em silêncio:
+// registra o erro e despacha sem --effort (o Attempt não grava phase_effort).
+function resolvePhaseEffort(nodes, routing) {
+    const none = { args: [], level: null };
+    if (!phaseEffort.phaseEffortEnabled()) return none;
+    const loaded = phaseEffort.loadPhaseEffortTable();
+    if (!loaded.ok) {
+        console.error(`[esforço] ${loaded.error}: despacho segue sem --effort.`);
+        return none;
+    }
+    return phaseEffort.phaseEffortArgs({ nodes, enabled: true, table: loaded.table, routedEffortApplied: routing?.decision?.effort_applied === true });
+}
+
 async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null, routing = null }) {
     const qaSection = isRecusaQA
         ? `\n\nEste ticket voltou como Recusa QA — é retrabalho, não trabalho novo. ` +
@@ -4366,10 +4381,13 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     // PRI-233 T7: só com resolução ok (Run ON); sem routing o argv é o do AS-IS.
     // PRI-311 (S5.2b, B8): `--agents` só em Attempt com papel e com subagent_roles na policy.
     if (routing) args.push(...modelRouting.routedArgs([], routing, { agentsJson: routing.agentsJson || null }));
+    // PRI-353: esforço fixo por fase, só com WATCHER_PHASE_EFFORT ligada (desligada = argv inalterado).
+    const phaseEffortResolved = resolvePhaseEffort(nodes, routing);
+    args.push(...phaseEffortResolved.args);
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
     const costRun = startCostRun(ticket.id, {
-        agent: 'claude', nodes, sessionId, admissionDecision, routing,
+        agent: 'claude', nodes, sessionId, admissionDecision, routing, phaseEffortLevel: phaseEffortResolved.level,
         signalContext: { ticket, worktreePath, isRecusaQA, base: signalBaseBranch(ticket) },
     });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);

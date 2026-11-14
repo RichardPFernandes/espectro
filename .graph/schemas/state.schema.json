@@ -3174,6 +3174,29 @@
             }
           }
         },
+        "phase_effort": {
+          "type": "object",
+          "description": "PRI-353: esforço fixo por fase que foi de fato para o argv do despacho (WATCHER_PHASE_EFFORT). Ausente com a flag desligada ou sem entrada do nó na tabela. Não substitui requested.effort, que continua UNAVAILABLE sem roteamento (coerência do PRI-334).",
+          "required": [
+            "level",
+            "effort_applied"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "level": {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            },
+            "effort_applied": {
+              "const": true
+            }
+          }
+        },
         "requested": {
           "type": "object",
           "description": "PRI-334: sem roteamento, UNAVAILABLE. Despacho roteado (PRI-233 T7): modelo fixado pela decisão e esforço do CLI quando foi de fato para o argv (senão UNAVAILABLE).",

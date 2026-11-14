@@ -28,12 +28,13 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 
 ## T2. Esforço por fase, do JSON ao argv, atrás de flag
 
-- [ ] Teste: tabela válida; nível fora de `CLI_EFFORTS` recusado; nó sem entrada; run roteada com
+- [x] Teste: tabela válida; nível fora de `CLI_EFFORTS` recusado; nó sem entrada; run roteada com
       esforço aplicado não duplica `--effort`.
-- [ ] `scripts/lib/phase-effort.js` + `.claude/phase-effort.json` (tabela D1 e `reopen_criteria`).
-- [ ] Teste golden: flag desligada deixa o argv idêntico ao atual em todos os nós.
-- [ ] Ligar em `dispatchClaudeSegment` com `WATCHER_PHASE_EFFORT`; decisão grava `effort_applied: true` e o valor.
-- [ ] Demonstração: despacho simulado (`SIMULATE`) mostra o `--effort` de cada nó com a flag ligada.
+- [x] `scripts/lib/phase-effort.js` + `.claude/phase-effort.json` (tabela D1 e `reopen_criteria`).
+- [x] Teste golden: flag desligada deixa o argv idêntico ao atual em todos os nós.
+- [x] Ligar em `dispatchClaudeSegment` com `WATCHER_PHASE_EFFORT`; decisão grava `effort_applied: true` e o valor.
+- [x] Demonstração: o teste do watcher despacha o plan com o `claude` falso e mostra `--effort high` no fim do argv com a flag ligada, e nenhum `--effort` com ela desligada.
+- Registro: o Attempt ganha `phase_effort {level, effort_applied: true}` (campo opcional novo no schema). `requested.effort` continua UNAVAILABLE sem roteamento, porque a coerência do PRI-334 exige.
 
 **AC:** AC2, AC3, AC7. **Arquivos:** `scripts/lib/phase-effort.js`, `scripts/lib/phase-effort.test.js`,
 `.claude/phase-effort.json`, `scripts/readmine-watcher.js`.
