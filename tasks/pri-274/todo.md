@@ -47,7 +47,7 @@
     `basis` deve fazer um teste falhar).
 
 ### Checkpoint: após T4
-- [ ] FACT só por predicado de sistema, provado por mutação; suíte verde.
+- [x] Fechado em 14/11. FACT só por predicado de sistema, provado por mutação (7 mutações, cada uma derruba ≥1 teste); 124/124 nos módulos qa-diagnosis. Suíte **não** está verde: 9 falhas (depcruise/baseline, dashboard consumidor B, fundação TS), nenhuma em qa-diagnosis, **idênticas** às do commit da T2 (`5284fa2`), portanto anteriores à PRI-274 e tratadas na PRI-359. Uma 10ª falha (plan-scorer, flag `--disallowedTools`) apareceu numa rodada e não se repetiu no HEAD nem isolada: instável.
 
 - [ ] **T5: §6.3 `cause`, `support` e `rules/0.1`** (M) — AC-02 parcial, AC-03 parcial
   - `cause.status`, hipóteses por categoria exata, `support ∈ {MODERATE,WEAK,UNKNOWN}`; MODERATE só com ≥1
