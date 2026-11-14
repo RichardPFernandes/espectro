@@ -16,7 +16,8 @@
   - Verificar: `node --test scripts/lib/qa-diagnosis-c2b*-flag-*.test.js scripts/lib/qa-diagnostico-flag.test.js`, depois `npm test`.
   - Depende de: Q3 (default A). Arquivos: ~14 removidos, 4 editados.
 
-- [ ] **T2: taxonomia exata e `predicates` como assertions** (M)
+- [x] **T2: taxonomia exata e `predicates` como assertions** (M)
+  - Feito em 14/11. `predicates` não emite mais causa nem categoria (`sys.cause_indeterminate` saiu; a causa UNKNOWN é da T5). Sem `trust: TRUSTED_SYSTEM` no pack, não emite FACT.
   - `qa-diagnosis-taxonomy.js` com as 11 categorias da SDD, `qa-cause-taxonomy/0.1`, sem alias.
   - `-predicates` emite `{ predicate_ref: 'pred:<id>@<ver>', ... }` só sobre fonte `TRUSTED_SYSTEM`.
   - Aceite: 11 categorias exatas; nenhum nome antigo (`identity`, `database_migration`...); AC-05 parte da taxonomia.
