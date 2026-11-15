@@ -20,8 +20,9 @@ const SOURCE_KINDS = Object.freeze(['redmine_transition', 'redmine_note', 'spec'
 const SOURCE_KEYS = ['id', 'kind', 'locator', 'sha256', 'version_binding', 'trust', 'admitted',
     'admission_rule', 'captured_at'];
 const MISSING_KEYS = ['what', 'why_needed', 'blocks'];
-// INV-5/6: texto de origem externa nunca é fonte de sistema, então nunca sustenta FACT.
-const NEVER_TRUSTED_KINDS = Object.freeze(['redmine_note', 'attachment']);
+// INV-5/6 e SDD §6.1: texto de origem externa (nota, anexo, texto de spec/AC derivado do ticket) é
+// UNTRUSTED_EXTERNAL_TEXT; nunca é fonte de sistema, então nunca sustenta FACT.
+const NEVER_TRUSTED_KINDS = Object.freeze(['redmine_note', 'attachment', 'spec', 'acs']);
 
 // §6.2: type×basis em correspondência um para um; FACT ⇔ SYSTEM_PREDICATE (QRD-AC-11, DB-04).
 const ASSERTION_TYPES = Object.freeze(['FACT', 'REPORT', 'HYPOTHESIS', 'ADJUDICATION']);

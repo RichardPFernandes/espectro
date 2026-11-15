@@ -47,12 +47,13 @@ test('context completo: source TRUSTED_SYSTEM admitida e UNTRUSTED_EXTERNAL_TEXT
 
 test('todos os kinds e classes de trust da §6.1 são aceitos', () => {
     for (const kind of content.SOURCE_KINDS) {
-        const trust = ['redmine_note', 'attachment'].includes(kind) ? 'UNTRUSTED_EXTERNAL_TEXT' : 'TRUSTED_SYSTEM';
+        const trust = ['redmine_note', 'attachment', 'spec', 'acs'].includes(kind) ? 'UNTRUSTED_EXTERNAL_TEXT' : 'TRUSTED_SYSTEM';
         assert.equal(ok(version({ context: { sources: [source({ kind, trust })], missing: [] } })), true, kind);
     }
-    for (const trust of content.TRUST_CLASSES) {
+    for (const trust of content.TRUST_CLASSES.filter(t => t !== 'TRUSTED_SYSTEM')) {
         assert.equal(ok(version({ context: { sources: [source({ kind: 'spec', trust })], missing: [] } })), true, trust);
     }
+    assert.equal(ok(version({ context: { sources: [source({ kind: 'spec_changelog', trust: 'TRUSTED_SYSTEM' })], missing: [] } })), true, 'spec_changelog é de sistema');
     assert.deepEqual([...content.TRUST_CLASSES].sort(),
         ['AGENT_DERIVED', 'HUMAN', 'TRUSTED_SYSTEM', 'UNTRUSTED_EXTERNAL_TEXT']);
 });
@@ -93,9 +94,17 @@ test('ids de source duplicados são recusados', () => {
     assert.equal(ok(version({ context: { sources: [source(), source()], missing: [] } })), false);
 });
 
-test('INV-5/6: nota e anexo nunca são TRUSTED_SYSTEM', () => {
-    for (const kind of ['redmine_note', 'attachment']) {
+test('INV-5/6: nota, anexo, spec e AC nunca são TRUSTED_SYSTEM (G3 B1)', () => {
+    for (const kind of ['redmine_note', 'attachment', 'spec', 'acs']) {
         assert.equal(ok(version({ context: { sources: [source({ kind, trust: 'TRUSTED_SYSTEM' })], missing: [] } })), false, kind);
+        assert.equal(ok(version({ context: { sources: [source({ kind, trust: 'UNTRUSTED_EXTERNAL_TEXT', admitted: false, admission_rule: null })], missing: [] } })), true, `${kind} não confiável`);
+    }
+});
+
+test('G3 B1: FACT sobre fonte spec/acs declarada TRUSTED_SYSTEM não valida', () => {
+    for (const kind of ['spec', 'acs']) {
+        const src = source({ id: 's-x', kind, trust: 'TRUSTED_SYSTEM' });
+        assert.equal(ok(withAssertions([fact({ evidence_ids: ['s-x'] })], [src])), false, kind);
     }
 });
 
