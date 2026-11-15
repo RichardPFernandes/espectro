@@ -107,3 +107,4 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 
 ### Checkpoint C4
 - [x] `processo-check` verde no PR #144 (draft). Falta só o merge, que é do Richard.
+- [x] Richard aceitou os ACs em 15/11/2026 («aceito»): AC1–AC4, AC6, AC7; AC5 só no argv, resto na PRI-354.
