@@ -150,6 +150,24 @@ test('AC-27: com subagent_roles e mecanismo verificado → só agentes reproduz�
     assert.deepStrictEqual([big.agentsJson, big.roles[0].enforcement, big.roles[0].cause], [null, 'UNENFORCED', 'AGENTS_ARG_TOO_LARGE']);
 });
 
+test('PRI-366: CLI 2.1.325 (a do watcher, sem prova U10-a) → UNVERIFIED, papéis UNENFORCED e sem --agents', () => {
+    const mechanism = mr.subagentMechanism('2.1.325');
+    assert.deepStrictEqual(mechanism, { status: 'UNVERIFIED', mechanism: 'agents_flag', cli_version: '2.1.325', proof_ref: null, reason: 'CLI_VERSION_NOT_PROVEN' });
+    const p = policy({ subagent_roles: { default: { model_id: 'm-t3', effort: 'alto' }, revisor: { model_id: 'm-t2', effort: 'médio' } } });
+    const agents = [{ name: 'revisor', redefinable: true, definition: { description: 'Revisa', prompt: 'Você revisa.' } }];
+    const roles = mr.subagentRoles({ snapshot: snapshotOf(p), agents, mechanism });
+    assert.deepStrictEqual(roles.roles.map(r => [r.role, r.enforcement, r.effort_enforcement, r.cause]), [
+        ['revisor', 'UNENFORCED', 'UNKNOWN', 'CLI_VERSION_NOT_PROVEN'],
+        ['default', 'UNENFORCED', 'UNKNOWN', 'BUILTIN_NOT_VERIFIED'],
+    ]);
+    assert.deepStrictEqual([roles.agentsJson, roles.agents_sha256], [null, null]);
+    const r = resolve({ policy: p, signals: SIGNALS, subagentRoles: roles.roles, subagentMechanism: mechanism });
+    assert.deepStrictEqual([r.decision.subagent, r.decision.subagent_mechanism.status], ['UNENFORCED', 'UNVERIFIED']);
+    assert.ok(!mr.routedArgs([], r, { agentsJson: roles.agentsJson }).includes('--agents'));
+    // Lista de provadas intacta: 2.1.325 só entra com PROOF_OBTAINED próprio (R8).
+    assert.deepStrictEqual(mr.SUBAGENT_MECHANISM_PROOF.cli_versions, ['2.1.319', '2.1.323']);
+});
+
 test('AC-27: observação pós-saída — observed_model por papel; divergência = SUBAGENT_MODEL_MISMATCH; CONFLICTED não conta', () => {
     const declared = [
         { role: 'revisor', declared_model: 'm-t2', enforcement: 'ENFORCED', observed_model: null },

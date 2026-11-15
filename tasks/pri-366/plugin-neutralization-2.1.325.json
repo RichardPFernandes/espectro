@@ -1,0 +1,304 @@
+{
+  "probe": "U-08 plugin-neutralization PRI-366",
+  "at": "2026-11-15T18:41:29.716Z",
+  "cli_version": "2.1.325 (Claude Code)",
+  "cli_binary": {
+    "path": "~/.local/share/claude/versions/2.1.325",
+    "sha256": "84590fefe6338be9087f5814b61f9a54c5f21524163a4c127cb5a808e31009f2"
+  },
+  "offline": {
+    "base_url": "http://127.0.0.1:9",
+    "credentials": "none",
+    "provider_calls": 0
+  },
+  "scenarios": [
+    {
+      "scenario": "project_skill",
+      "setup": [],
+      "logged_in": false,
+      "settings": {
+        "enabledPlugins": {
+          "jev-model-router@skills-dir": false
+        },
+        "skillOverrides": {
+          "jev-model-router": "off"
+        }
+      },
+      "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2",
+      "control": {
+        "argv": [
+          "-p",
+          "<PROMPT>",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "1",
+          "--strict-mcp-config",
+          "--mcp-config",
+          "{\"mcpServers\":{}}"
+        ],
+        "exit_code": 1,
+        "init": {
+          "counts": {
+            "skills": 17,
+            "plugins": 3,
+            "slash_commands": 45
+          },
+          "router": {
+            "skills": [
+              "jev-model-router"
+            ],
+            "plugins": [],
+            "slash_commands": [
+              "jev-model-router"
+            ]
+          },
+          "api_key_source": "none",
+          "claude_code_version": "2.1.325"
+        },
+        "router_mentioned_anywhere": true,
+        "total_cost_usd": 0,
+        "duration_api_ms": 0
+      },
+      "test": {
+        "argv": [
+          "-p",
+          "<PROMPT>",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "1",
+          "--strict-mcp-config",
+          "--mcp-config",
+          "{\"mcpServers\":{}}",
+          "--settings",
+          "<WORK>/project_skill/run/routing-settings.json"
+        ],
+        "exit_code": 1,
+        "init": {
+          "counts": {
+            "skills": 16,
+            "plugins": 3,
+            "slash_commands": 44
+          },
+          "router": {
+            "skills": [],
+            "plugins": [],
+            "slash_commands": []
+          },
+          "api_key_source": "none",
+          "claude_code_version": "2.1.325"
+        },
+        "router_mentioned_anywhere": false,
+        "total_cost_usd": 0,
+        "duration_api_ms": 0
+      },
+      "result": "PROOF_OBTAINED",
+      "reason": null
+    },
+    {
+      "scenario": "account_skills_dir_plugin",
+      "setup": [],
+      "logged_in": false,
+      "settings": {
+        "enabledPlugins": {
+          "jev-model-router@skills-dir": false
+        },
+        "skillOverrides": {
+          "jev-model-router": "off"
+        }
+      },
+      "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2",
+      "control": {
+        "argv": [
+          "-p",
+          "<PROMPT>",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "1",
+          "--strict-mcp-config",
+          "--mcp-config",
+          "{\"mcpServers\":{}}"
+        ],
+        "exit_code": 1,
+        "init": {
+          "counts": {
+            "skills": 17,
+            "plugins": 4,
+            "slash_commands": 45
+          },
+          "router": {
+            "skills": [
+              "jev-model-router:route"
+            ],
+            "plugins": [
+              {
+                "name": "jev-model-router",
+                "source": "jev-model-router@skills-dir"
+              }
+            ],
+            "slash_commands": [
+              "jev-model-router:route"
+            ]
+          },
+          "api_key_source": "none",
+          "claude_code_version": "2.1.325"
+        },
+        "router_mentioned_anywhere": true,
+        "total_cost_usd": 0,
+        "duration_api_ms": 0
+      },
+      "test": {
+        "argv": [
+          "-p",
+          "<PROMPT>",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "1",
+          "--strict-mcp-config",
+          "--mcp-config",
+          "{\"mcpServers\":{}}",
+          "--settings",
+          "<WORK>/account_skills_dir_plugin/run/routing-settings.json"
+        ],
+        "exit_code": 1,
+        "init": {
+          "counts": {
+            "skills": 16,
+            "plugins": 3,
+            "slash_commands": 44
+          },
+          "router": {
+            "skills": [],
+            "plugins": [],
+            "slash_commands": []
+          },
+          "api_key_source": "none",
+          "claude_code_version": "2.1.325"
+        },
+        "router_mentioned_anywhere": false,
+        "total_cost_usd": 0,
+        "duration_api_ms": 0
+      },
+      "result": "PROOF_OBTAINED",
+      "reason": null
+    },
+    {
+      "scenario": "marketplace_plugin",
+      "setup": [
+        {
+          "argv": [
+            "plugin",
+            "marketplace",
+            "add",
+            "<WORK>/marketplace_plugin/marketplace"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "plugin",
+            "install",
+            "jev-model-router@synth-mkt"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "logged_in": false,
+      "settings": {
+        "enabledPlugins": {
+          "jev-model-router@skills-dir": false,
+          "jev-model-router@synth-mkt": false
+        },
+        "skillOverrides": {
+          "jev-model-router": "off"
+        }
+      },
+      "settings_sha256": "4805c416016f77077b397661563a0c7a4f649001698bff4d7ea5b122318e880c",
+      "control": {
+        "argv": [
+          "-p",
+          "<PROMPT>",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "1",
+          "--strict-mcp-config",
+          "--mcp-config",
+          "{\"mcpServers\":{}}"
+        ],
+        "exit_code": 1,
+        "init": {
+          "counts": {
+            "skills": 17,
+            "plugins": 4,
+            "slash_commands": 45
+          },
+          "router": {
+            "skills": [
+              "jev-model-router:route"
+            ],
+            "plugins": [
+              {
+                "name": "jev-model-router",
+                "source": "jev-model-router@synth-mkt"
+              }
+            ],
+            "slash_commands": [
+              "jev-model-router:route"
+            ]
+          },
+          "api_key_source": "none",
+          "claude_code_version": "2.1.325"
+        },
+        "router_mentioned_anywhere": true,
+        "total_cost_usd": 0,
+        "duration_api_ms": 0
+      },
+      "test": {
+        "argv": [
+          "-p",
+          "<PROMPT>",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "1",
+          "--strict-mcp-config",
+          "--mcp-config",
+          "{\"mcpServers\":{}}",
+          "--settings",
+          "<WORK>/marketplace_plugin/run/routing-settings.json"
+        ],
+        "exit_code": 1,
+        "init": {
+          "counts": {
+            "skills": 16,
+            "plugins": 3,
+            "slash_commands": 44
+          },
+          "router": {
+            "skills": [],
+            "plugins": [],
+            "slash_commands": []
+          },
+          "api_key_source": "none",
+          "claude_code_version": "2.1.325"
+        },
+        "router_mentioned_anywhere": false,
+        "total_cost_usd": 0,
+        "duration_api_ms": 0
+      },
+      "result": "PROOF_OBTAINED",
+      "reason": null
+    }
+  ],
+  "result": "PROOF_OBTAINED"
+}
