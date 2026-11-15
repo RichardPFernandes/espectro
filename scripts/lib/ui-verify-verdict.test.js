@@ -148,12 +148,33 @@ test('formatReport lista os problemas com AC', () => {
 });
 
 const repo = path.join(__dirname, '../..');
-test('.mcp.json: Playwright fixado, sem @latest, perfil em memória, porta validada fora do texto do script, headless por padrão', () => {
+test('tools/playwright-mcp: @playwright/mcp na versão exata, lockfile versionado e coerente com o package.json', () => {
+    const dir = path.join(repo, 'tools/playwright-mcp');
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(dir, 'package-lock.json'), 'utf8'));
+    const v = pkg.dependencies['@playwright/mcp'];
+    assert.match(v, /^\d+\.\d+\.\d+$/, 'versão exata: sem ^, ~, latest ou faixa');
+    assert.deepStrictEqual(Object.keys(pkg.dependencies), ['@playwright/mcp']);
+    assert.strictEqual(lock.lockfileVersion >= 2, true);
+    assert.strictEqual(lock.packages['node_modules/@playwright/mcp'].version, v, 'o lockfile resolve a mesma versão');
+    assert.deepStrictEqual(Object.keys(lock.packages).sort(), ['', 'node_modules/@playwright/mcp', 'node_modules/playwright', 'node_modules/playwright-core'],
+        'dependência nova no lockfile exige revisão deliberada deste teste');
+    for (const [name, e] of Object.entries(lock.packages)) if (name) assert.match(e.resolved, /^https:\/\/registry\.npmjs\.org\//, `${name}: origem`);
+    for (const [name, e] of Object.entries(lock.packages)) {
+        if (!name) continue;
+        assert.match(e.integrity || '', /^sha512-/, `${name}: integridade no lockfile`);
+        assert.ok(!e.hasInstallScript, `${name}: dependência com script de instalação (o --ignore-scripts não pode quebrá-la em silêncio)`);
+    }
+});
+test('.mcp.json: binário local do lockfile (sem npx), versão exata, perfil em memória, porta validada fora do texto do script, headless por padrão', () => {
     const pw = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers.playwright;
     assert.strictEqual(pw.command, 'sh');
     const script = pw.args[pw.args.indexOf('-c') + 1];
-    assert.match(script, /@playwright\/mcp@\d+\.\d+\.\d+/, 'versão exata');
-    assert.ok(!/@latest/.test(script));
+    assert.ok(!/\bnpx\b/.test(script) && !/\bnpm\s+exec\b/.test(script), 'sem npx/npm exec: nada é baixado ao subir o MCP');
+    assert.ok(!/@playwright\/mcp/.test(script) && !/@latest/.test(script), 'a versão mora no package.json/lockfile, não no comando');
+    assert.match(script, /exec "\$B" /, 'executa o binário instalado por lockfile');
+    assert.ok(script.includes('B=tools/playwright-mcp/node_modules/.bin/playwright-mcp'));
+    assert.match(script, /\[ -x "\$B" \] \|\| \{ .*exit 2; \}/, 'binário ausente falha fechado (exit 2), sem cair em npx');
     for (const flag of ['--isolated', '--browser chrome', '--output-dir .prisma/ui-verify']) assert.ok(script.includes(flag), flag);
     assert.match(script, /^case "\$UIPORT" in ''\|\*\[!0-9\]\*\) .*exit 2/, 'valida a porta antes do exec');
     assert.match(script, /--allowed-origins "http:\/\/localhost:\$UIPORT;http:\/\/127\.0\.0\.1:\$UIPORT"/);
@@ -161,10 +182,20 @@ test('.mcp.json: Playwright fixado, sem @latest, perfil em memória, porta valid
     assert.strictEqual(pw.env.UIPORT, '${PRISMA_UI_PORT:-3399}');
     assert.match(pw.env.PLAYWRIGHT_MCP_HEADLESS, /:-true\}$/);
 });
+test('.mcp.json: sem o binário instalado o script falha fechado (exit 2), sem npx nem rede (execução real)', () => {
+    const { spawnSync } = require('node:child_process');
+    const pw = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers.playwright;
+    const empty = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'pw-sem-binario-'));
+    try {
+        const r = spawnSync('sh', ['-c', pw.args[pw.args.indexOf('-c') + 1]], { cwd: empty, env: { PATH: process.env.PATH, UIPORT: '3399' }, encoding: 'utf8' });
+        assert.strictEqual(r.status, 2);
+        assert.match(r.stderr, /npm ci --ignore-scripts/);
+    } finally { fs.rmSync(empty, { recursive: true, force: true }); }
+});
 test('.mcp.json: a validação da porta rejeita valor malicioso (execução real do script)', () => {
     const { spawnSync } = require('node:child_process');
     const pw = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers.playwright;
-    const script = pw.args[pw.args.indexOf('-c') + 1].replace(/exec npx[\s\S]*$/, 'echo OK');
+    const script = pw.args[pw.args.indexOf('-c') + 1].replace(/B=tools[\s\S]*$/, 'echo OK');
     for (const bad of ['1;http://evil.example', '*', '', '33 99', '$(id)']) {
         assert.strictEqual(spawnSync('sh', ['-c', script], { env: { PATH: process.env.PATH, UIPORT: bad } }).status, 2, JSON.stringify(bad));
     }

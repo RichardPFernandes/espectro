@@ -23,7 +23,7 @@ isola o navegador em vez de confiar no agente.
 ## Decisões de desenho
 
 1. **Sem nó novo no grafo.** Passo 2b do `/verify`; a falha usa `verify → implement --retry`.
-2. **Playwright MCP `0.0.85` fixado** (Chrome instalado, `--isolated`, headless). `chrome-devtools-mcp` fora:
+2. **Playwright MCP `0.0.85` fixado e vendorizado** em `tools/playwright-mcp/` com lockfile, `npm ci --ignore-scripts` (PRI-360) (Chrome instalado, `--isolated`, headless). `chrome-devtools-mcp` fora:
    console e rede já vêm no Playwright; trace de performance ninguém pediu.
 3. **Servidor próprio, fixture, somente leitura.** `server ensure` sobe o dashboard com `REPO_PATH` = diretório
    temporário com só os assets de contrato (sem `.env`, credencial ou run do consumidor), HOME/TMPDIR
@@ -106,13 +106,13 @@ docs/ui-verify.md                          como rodar à mão e modelo de segura
 | --- | --- |
 | Falso PASSOU no gate | Veredito fail-closed + testes de cada formato inválido |
 | Texto injetado dirige o navegador | Somente leitura no servidor, ferramentas mínimas, hook de filename, regra na skill |
-| Supply chain do MCP (`npx -y`, alpha do Playwright de 09/11) | Versão exata; **residual aceito** até haver lockfile/vendor (ver abaixo) |
+| Supply chain do MCP (`npx -y`, alpha do Playwright de 09/11) | Versão exata + lockfile + `--ignore-scripts` (PRI-360); sem `npx` |
 | Veredito forjado por agente injetado | Limite documentado (atestação do agente); humano revisa; hook e deny reduzem o que o agente alcança |
 | Código do branch roda como o usuário em `npm start` | Inerente ao `/verify`; sem sandbox de arquivos (documentado) |
 | Processo ou diretório órfão | PID/grupo/início conferidos, lock, limpeza só do que criou |
 
 **Rollback:** `PRISMA_UI_VERIFY=off` (menos de 1 min); `git revert` remove tudo (nada fora do repo é alterado).
-**Dependências:** `@playwright/mcp@0.0.85` por `npx`; Chrome instalado. Nenhuma dependência nova no repositório.
+**Dependências:** `@playwright/mcp@0.0.85` vendorizado em `tools/playwright-mcp/` (lockfile; instalar uma vez por checkout); Chrome instalado.
 
 ## Decisões tomadas (14/11/2026)
 

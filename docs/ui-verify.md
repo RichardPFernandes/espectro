@@ -1,7 +1,7 @@
 # Verificação de UI em navegador real
 
 Etapa opcional do `/verify` (passo 2b) que abre a aplicação num navegador headless e confere as
-telas afetadas pelos ACs. **Desligada por padrão** (`PRISMA_UI_VERIFY=off`). Issue: PRI-355 (nível Alto).
+telas afetadas pelos ACs. **Desligada por padrão** (`PRISMA_UI_VERIFY=off`). Issues: PRI-355 (nível Alto) e PRI-360 (MCP vendorizado, nível Médio).
 
 ## Como encaixa no fluxo
 
@@ -19,7 +19,8 @@ sem AC de UI. Falta de dado, erro de `touches` (exit 2) ou MCP ausente é UNKNOW
 
 | Peça | Papel |
 | --- | --- |
-| `.mcp.json` | Playwright MCP `@playwright/mcp@0.0.85`, Chrome instalado, perfil em memória, origem só `localhost`/`127.0.0.1` na `PRISMA_UI_PORT` (validada: só dígitos) |
+| `.mcp.json` | Chama o binário local `tools/playwright-mcp/node_modules/.bin/playwright-mcp` (sem `npx`; ausente = exit 2), Chrome instalado, perfil em memória, origem só `localhost`/`127.0.0.1` na `PRISMA_UI_PORT` (validada: só dígitos) |
+| `tools/playwright-mcp/` | `package.json` com `@playwright/mcp` em versão exata (`0.0.85`) e `package-lock.json` versionado; instalado com `npm ci --ignore-scripts` |
 | `.claude/settings.local.json` (local, **fora do git**; modelo em `.claude/settings.local.json.example`) | Aprova o servidor `playwright` e lista as ferramentas liberadas |
 | `.claude/settings.json` (versionado) | `permissions.deny` de `evaluate`, `run_code_unsafe`, `file_upload`, `drop`, rotas, cookies e storage, e o hook abaixo |
 | `.claude/hooks/playwright-fs-guard.mjs` | Fail-closed: `filename` só em `.prisma/ui-verify/<task-id>/` (symlink resolvido), `url` só da porta da verificação, sem `paths` |
@@ -43,9 +44,19 @@ O MCP **não** vem pré-aprovado no repositório: o `settings.local.json` vale p
 cp .claude/settings.local.json.example .claude/settings.local.json   # arquivo ignorado pelo git
 ```
 
-Depois abra a sessão do Claude Code neste checkout. `PRISMA_UI_VERIFY=on` liga a etapa. Sem `npm i`
-global: o MCP roda por `npx` e o dashboard usa `cd dashboard && npm ci`. Chrome em `/Applications`
-(não baixa Chromium).
+Instale o MCP **uma vez por checkout** (e de novo ao trocar a versão no lockfile):
+
+```bash
+(cd tools/playwright-mcp && npm ci --ignore-scripts)   # só o que o lockfile fixa; nenhum script de instalação roda
+(cd dashboard && npm ci)                                # dependências do dashboard de fixture
+```
+
+Depois abra a sessão do Claude Code neste checkout. `PRISMA_UI_VERIFY=on` liga a etapa. Sem a instalação, o
+`.mcp.json` recusa subir (exit 2 com a instrução acima) e a etapa fica UNKNOWN; ele **nunca** cai em `npx`.
+`--ignore-scripts` basta porque o Playwright MCP não baixa navegador: usa o Chrome em `/Applications`
+(não baixa Chromium). O teste do lockfile falha se alguma dependência passar a exigir script de instalação.
+**Atualizar a versão** é mudança de nível Alto (muda o que roda no consumidor): `npm install --save-exact
+--ignore-scripts @playwright/mcp@<versão>` em `tools/playwright-mcp/`, com o lockfile no mesmo PR.
 
 ## Rodar à mão
 
@@ -96,6 +107,14 @@ Login não é suportado nesta fatia (`browser_type`/`browser_fill_form` não est
   consumidor), HOME/TMPDIR sintéticos, env mínimo, loopback e somente leitura por allowlist de método (só
   GET/HEAD/OPTIONS; o resto → 403). Os GETs com efeito colateral (`/api/claude/usage`, `/api/fx`, `refresh` de
   `/api/version`) viram respostas neutras. Porta ocupada por servidor de terceiros é recusada, nunca reaproveitada.
+- Supply chain: a versão e as 3 dependências (`playwright`, `playwright-core`, `playwright-mcp`) vêm do lockfile
+  com integridade `sha512`; nada é resolvido ou baixado ao subir o MCP.
+- `--ignore-roots` com cwd em `.prisma/ui-verify` (PRI-360, AC-4) **foi validado e descartado**. Funciona como
+  confinamento nativo (testado com o binário do lockfile: `../../x.png` e `/private/tmp/x.png` são negados com
+  "outside allowed roots"), mas passa a resolver o `filename` contra `.prisma/ui-verify`: a convenção atual
+  `.prisma/ui-verify/<task-id>/x.png` viraria `.prisma/ui-verify/.prisma/ui-verify/<task-id>/x.png` e quebraria o
+  hook, o SKILL e os caminhos do `findings.json`. Adotar exige mudar essa convenção nas três peças; fica como
+  melhoria separada. Hoje o confinamento é o hook `playwright-fs-guard` (raiz do workspace = checkout).
 - `--allowed-origins` do Playwright MCP **não é fronteira de segurança** (não cobre redirects);
   é higiene. As fronteiras reais são o servidor somente leitura e o hook de `filename`.
 - `server stop` confere PID, grupo de processos, horário de início e um token de posse gravado nos diretórios
