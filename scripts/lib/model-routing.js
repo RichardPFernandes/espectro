@@ -96,8 +96,7 @@ function buildRoutingSnapshot(loaded, { classifierEffective = null, classifierSe
     }
     if (classifierEffective) body.classifier_effective = structuredClone(classifierEffective);
     // PRI-310 (S5.1, B1): o campo só entra com "on" (ausente e "off" deixam os bytes iguais
-    // aos da S4). Em produção "on" é recusado antes (DECOMPOSITION_RESERVED); só o harness
-    // monta um `loaded` com decomposition "on".
+    // aos da S4). `loaded.decomposition` vem de readRoutingConfig ("on" no config do consumidor, PRI-341).
     if (loaded.decomposition === 'on') body.decomposition = 'on';
     return { ...body, sha256: sha256(body) };
 }

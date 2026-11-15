@@ -445,7 +445,7 @@ test('S3b T11: registro inválido → off com CLASSIFIER_SELECTION_INVALID, mesm
 // O golden ON só exercita FIXED_NODE e RULES. Aqui cada ramo de resolveRoute que chega ao
 // cost_tracking (decisão ok) passa por mergeRun e pelo mesmo validateState do watcher, com
 // esforço aplicado e só por modelo. LINEAGE_FLOOR e RISK_RECLASSIFIED dependem da Run
-// decomposta (flag reservada) e ficam cobertos pela forma sintética em cost-tracking.test.js.
+// decomposta (flag "on") e ficam cobertos pela forma sintética em cost-tracking.test.js.
 test('PRI-334: tentativa gravada a partir de RoutingDecision real valida no state.schema', () => {
     const ct = require('./cost-tracking');
     const { validateState } = require('../validate-state');
