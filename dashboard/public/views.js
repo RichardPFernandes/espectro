@@ -527,6 +527,7 @@
     // ver window.WeeklyReportView/GraphView/PatternsView/PrsView/RedmineView.
     grafo: () => (window.GraphView ? window.GraphView.render() : '<div class="vempty">Carregando…</div>'),
     padroes: () => (window.PatternsView ? window.PatternsView.render() : '<div class="vempty">Carregando…</div>'),
+    'verificacoes-ui': () => (window.UiVerifyView ? window.UiVerifyView.render() : '<div class="vempty">Carregando…</div>'),
     prs: () => (window.PrsView ? window.PrsView.render() : '<div class="vempty">Carregando…</div>'),
     redmine: () => (window.RedmineView ? window.RedmineView.render() : '<div class="vempty">Carregando…</div>'),
   };
@@ -564,6 +565,17 @@
   // weekly-report.js: estado da consulta em lote (Redmine/Bitbucket), falhas e segmentos do agent_log.
   window.Views = {
     refresh, openRun, setView, loadAll, current: () => view, segmentsOf,
+    // Aba que só existe quando o servidor a liga (flag): ui-verify.js (PRI-361) chama depois de a API
+    // responder 200. Entra no grupo existente do menu. Link direto `#verificacoes-ui` na carga não abre a
+    // aba: o hash já foi reescrito antes de ela existir; vale a navegação pelo menu.
+    addView(key, label, group, d) {
+      if (VIEWS.some(([k]) => k === key)) return;
+      const g = NAV.find(([name]) => name === group);
+      if (!g) return;
+      VIEWS.push([key, label]);
+      g[1].push([key, label, d]);
+      renderTabs();
+    },
     bulkState: () => ({ ...bulk }),
     // 503 = integração não configurada (não é falha de consulta; o dado só fica sem medição).
     bulkErrors: () => ({
