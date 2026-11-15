@@ -3,7 +3,7 @@
 //
 // JavaScript puro, sem ajv e sem I/O (como a c2b-1): a condição (e) do §4.3.1 não pode
 // passar por falta de validador. Cada seção é validada por uma função própria; as seções
-// ainda não cobertas pela fatia (recommendation, platform_signals) não são tocadas aqui. Seção ausente é válida: o protocolo da c2b-2 produz versão só com cabeçalho.
+// Seção ausente é válida: o protocolo da c2b-2 produz versão só com cabeçalho.
 //
 // `isCalendarIso` vem injetado pelo model, que importa este módulo (evita ciclo).
 
@@ -34,6 +34,17 @@ const PRED_REF_RE = /^pred:[a-z][a-z0-9_]*@[0-9][0-9A-Za-z.\-]*$/;
 const CAUSE_STATUSES = Object.freeze(['HYPOTHESES', 'UNKNOWN', 'HUMAN_CONFIRMED']);
 const CAUSE_KEYS = ['status', 'hypotheses'];
 const HYPOTHESIS_KEYS = ['id', 'category', 'support', 'assertion_ids'];
+
+// §6.4: vocabulários fechados. Mapeamento a mecanismos (PRI-180 etc.) só em D: aqui `route_hint` é só dica.
+const RECOMMENDATION_ACTIONS = Object.freeze(['fix_code', 'clarify_requirement', 'investigate', 'request_effect',
+    'validate_and_handback', 'dispute_rejection', 'none']);
+const ROUTE_HINTS = Object.freeze(['retry', 'PRI-180:db_migration', 'PRI-180:handback_qa', 'human_interaction', 'none']);
+// Sem campo de autorização, token, confiança numérica ou despacho: chaves fechadas (INV-1).
+const RECOMMENDATION_KEYS = ['action', 'rationale_ref', 'depends_on_missing', 'human_gate_required', 'route_hint'];
+
+// platform_signals[]: forma da SPEC Q1 (delta a registrar na SDD). Separados de `cause` (QRD-AC-08).
+const PLATFORM_SIGNAL_KINDS = Object.freeze(['preparation_blocked', 'spec_missing']);
+const PLATFORM_SIGNAL_KEYS = ['id', 'kind', 'evidence_ids', 'admitted'];
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isStr = v => typeof v === 'string' && v.length > 0;
@@ -132,8 +143,7 @@ function validateAssertion(a, i, sourceById, assertionIds, errors) {
 /** §6.2: assertions[]. A evidência é resolvida contra context.sources[] da mesma versão. */
 function validateAssertions(list, ctx, errors) {
     if (!Array.isArray(list)) { errors.push('assertions: não é array'); return; }
-    const sourceById = new Map();
-    if (isObj(ctx) && Array.isArray(ctx.sources)) for (const s of ctx.sources) if (isObj(s) && isStr(s.id)) sourceById.set(s.id, s);
+    const sourceById = sourceMap(ctx);
     const ids = list.filter(isObj).map(a => a.id).filter(isStr);
     if (new Set(ids).size !== ids.length) errors.push('assertions: id duplicado');
     const assertionIds = new Set(ids);
@@ -205,6 +215,59 @@ function validateCause(cause, version, errors) {
     if (new Set(cats).size !== cats.length) errors.push('cause.hypotheses: categoria duplicada');
 }
 
+function sourceMap(ctx) {
+    const m = new Map();
+    if (isObj(ctx) && Array.isArray(ctx.sources)) for (const s of ctx.sources) if (isObj(s) && isStr(s.id)) m.set(s.id, s);
+    return m;
+}
+
+/** §6.4: recommendation. `human_gate_required` é o literal true; nada aqui concede autorização. */
+function validateRecommendation(r, ctx, errors) {
+    if (!isObj(r)) { errors.push('recommendation: não é objeto'); return; }
+    const before = errors.length;
+    closedKeys(r, RECOMMENDATION_KEYS, 'recommendation', errors);
+    if (errors.length > before) return;
+    if (!RECOMMENDATION_ACTIONS.includes(r.action)) errors.push('recommendation.action: fora do vocabulário da §6.4');
+    if (!isStr(r.rationale_ref)) errors.push('recommendation.rationale_ref');
+    if (r.human_gate_required !== true) errors.push('recommendation.human_gate_required: deve ser o literal true');
+    if (!ROUTE_HINTS.includes(r.route_hint)) errors.push('recommendation.route_hint: fora do vocabulário da §6.4');
+    if (!isStrArray(r.depends_on_missing)) { errors.push('recommendation.depends_on_missing'); return; }
+    if (new Set(r.depends_on_missing).size !== r.depends_on_missing.length) errors.push('recommendation.depends_on_missing: repetida');
+    // O que a recomendação diz depender precisa estar declarado como faltante na mesma versão.
+    const declared = new Set();
+    if (isObj(ctx) && Array.isArray(ctx.missing)) for (const m of ctx.missing) if (isObj(m) && isStr(m.what)) declared.add(m.what);
+    for (const w of r.depends_on_missing) if (!declared.has(w)) errors.push(`recommendation.depends_on_missing: ${w} não existe em context.missing[]`);
+}
+
+function validatePlatformSignal(s, i, sourceById, errors) {
+    const where = `platform_signals[${i}]`;
+    if (!isObj(s)) { errors.push(`${where}: não é objeto`); return; }
+    const before = errors.length;
+    closedKeys(s, PLATFORM_SIGNAL_KEYS, where, errors);
+    if (errors.length > before) return;
+    if (!isStr(s.id)) errors.push(`${where}.id`);
+    if (!PLATFORM_SIGNAL_KINDS.includes(s.kind)) errors.push(`${where}.kind: esperado ${PLATFORM_SIGNAL_KINDS.join(' ou ')}`);
+    if (typeof s.admitted !== 'boolean') errors.push(`${where}.admitted`);
+    if (!isStrArray(s.evidence_ids)) { errors.push(`${where}.evidence_ids`); return; }
+    for (const e of s.evidence_ids) {
+        const src = sourceById.get(e);
+        if (!src) errors.push(`${where}.evidence_ids: ${e} não existe em context.sources[]`);
+        // INV-5/6: sinal admitido não se apoia em texto externo nem em fonte não admitida.
+        else if (s.admitted === true && !(src.trust === 'TRUSTED_SYSTEM' && src.admitted === true)) {
+            errors.push(`${where}: sinal admitido só sobre fonte TRUSTED_SYSTEM admitida (${e})`);
+        }
+    }
+}
+
+/** platform_signals[]: preparação bloqueada e spec ausente, fora de `cause`. Lista vazia é válida. */
+function validatePlatformSignals(list, ctx, errors) {
+    if (!Array.isArray(list)) { errors.push('platform_signals: não é array'); return; }
+    const sourceById = sourceMap(ctx);
+    const ids = list.filter(isObj).map(s => s.id).filter(isStr);
+    if (new Set(ids).size !== ids.length) errors.push('platform_signals: id duplicado');
+    list.forEach((s, i) => validatePlatformSignal(s, i, sourceById, errors));
+}
+
 /**
  * Valida as seções de conteúdo presentes em `version`.
  * @param {object} version
@@ -216,8 +279,11 @@ function validateContent(version, h) {
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'context')) validateContext(version.context, h, errors);
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'assertions')) validateAssertions(version.assertions, version.context, errors);
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'cause')) validateCause(version.cause, version, errors);
+    if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'recommendation')) validateRecommendation(version.recommendation, version.context, errors);
+    if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'platform_signals')) validatePlatformSignals(version.platform_signals, version.context, errors);
     return { ok: errors.length === 0, errors };
 }
 
 module.exports = { TRUST_CLASSES, SOURCE_KINDS, SOURCE_KEYS, MISSING_KEYS,
-    ASSERTION_TYPES, BASIS_TYPE, ASSERTION_KEYS, CAUSE_STATUSES, CAUSE_KEYS, HYPOTHESIS_KEYS, validateContent };
+    ASSERTION_TYPES, BASIS_TYPE, ASSERTION_KEYS, CAUSE_STATUSES, CAUSE_KEYS, HYPOTHESIS_KEYS,
+    RECOMMENDATION_ACTIONS, ROUTE_HINTS, RECOMMENDATION_KEYS, PLATFORM_SIGNAL_KINDS, PLATFORM_SIGNAL_KEYS, validateContent };

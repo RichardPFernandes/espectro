@@ -57,7 +57,8 @@
   - Verificar: `node --test scripts/lib/qa-diagnosis-content.test.js`.
   - Depende de: T4, Q2. Arquivos: content, rules (novo, pequeno), content.test.
 
-- [ ] **T6: §6.4 `recommendation` e `platform_signals`** (M) — AC-02, AC-03 (QRD-AC-08, 09)
+- [x] **T6: §6.4 `recommendation` e `platform_signals`** (M) — AC-02, AC-03 (QRD-AC-08, 09)
+  - Feito em 15/11. Q1 pela recomendação: `platform_signals[] = { id, kind ∈ {preparation_blocked, spec_missing}, evidence_ids[], admitted }`, chaves fechadas (delta a registrar na SDD). Extras além da spec, a confirmar na G3: `depends_on_missing` só aponta `what` existente em `context.missing[]` e sem repetição; `rationale_ref` string obrigatória; sinal `admitted:true` com evidência só sobre fonte `TRUSTED_SYSTEM` admitida (INV-5/6), mas pode não ter evidência (`spec_missing`: a ausência é o fato); `evidence_ids` resolvem contra `context.sources[]`. Não imposto (decisão do Richard/G3): "preparação bloqueada ⇒ causa UNKNOWN" como regra do validador; hoje a separação é estrutural (`cause` de chaves fechadas, hipótese não cita id de sinal). Sem campo de autorização: `pending_authorization` e afins são recusados por chave fechada. Mutação: 20 mutações nas regras novas, nenhuma sobrevive (1 sobrevivente inicial virou caso de teste). 206/206 nos módulos qa-diagnosis; suíte `scripts`: 9 falhas, as mesmas da T2/T4/T5 (PRI-359); `check:js` e lint limpos.
   - Vocabulários fechados de `action` e `route_hint`; `human_gate_required` literal `true`; `platform_signals`
     separados de `cause` (forma da Q1).
   - Aceite: #43782/#43608 → preparação bloqueada em `platform_signals`, causa de produto UNKNOWN; #42359 →

@@ -411,3 +411,163 @@ test('cause não lança com assertions malformadas: o erro vem acumulado', () =>
     assert.equal(r.ok, false);
     assert.doesNotThrow(() => model.validateVersion(withCause(causeOf([hyp()]), 'x')));
 });
+
+// ---------------------------------------------------------------------------------------------
+// T6 — §6.4 recommendation e platform_signals (QRD-AC-08/09)
+// ---------------------------------------------------------------------------------------------
+const rec = (over = {}) => ({ action: 'investigate', rationale_ref: 'cause:h-1', depends_on_missing: [],
+    human_gate_required: true, route_hint: 'none', ...over });
+const sig = (over = {}) => ({ id: 'p-1', kind: 'preparation_blocked', evidence_ids: ['s-journal'], admitted: true, ...over });
+const runEvents = (over = {}) => source({ id: 's-run', kind: 'run_events', locator: 'runs/900001/events', ...over });
+// Versão com as seções da T6; context.missing[] declarado para o cruzamento de depends_on_missing.
+const withRec = (sections, sources = [source(), noteSrc(), runEvents()], missingList = [missing()], header = {}) =>
+    model.buildVersion({
+        rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a',
+        produced_by: 'deterministic', created_at: AT,
+        bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' }, ...header,
+    }, { context: { sources, missing: missingList }, ...sections });
+
+test('§6.4: vocabulários fechados de action e route_hint são exatamente os da SDD', () => {
+    assert.deepEqual([...content.RECOMMENDATION_ACTIONS].sort(),
+        ['clarify_requirement', 'dispute_rejection', 'fix_code', 'investigate', 'none', 'request_effect', 'validate_and_handback']);
+    assert.deepEqual([...content.ROUTE_HINTS].sort(),
+        ['PRI-180:db_migration', 'PRI-180:handback_qa', 'human_interaction', 'none', 'retry']);
+    for (const action of content.RECOMMENDATION_ACTIONS) {
+        assert.deepEqual(model.validateVersion(withRec({ recommendation: rec({ action }) })), { ok: true }, action);
+    }
+    for (const route_hint of content.ROUTE_HINTS) {
+        assert.deepEqual(model.validateVersion(withRec({ recommendation: rec({ route_hint }) })), { ok: true }, route_hint);
+    }
+});
+
+test('AC-05: action e route_hint fora do vocabulário são recusados (inclusive nomes de mecanismo e caixa diferente)', () => {
+    for (const action of ['dispatch', 'authorize', 'approve_effect', 'FIX_CODE', 'fix code', '', null, 7, undefined]) {
+        assert.equal(ok(withRec({ recommendation: rec({ action }) })), false, `action ${String(action)}`);
+    }
+    for (const route_hint of ['PRI-180', 'pri-180:db_migration', 'PRI-180:run_sql', 'auto', '', null, undefined]) {
+        assert.equal(ok(withRec({ recommendation: rec({ route_hint }) })), false, `route_hint ${String(route_hint)}`);
+    }
+});
+
+test('AC-05: human_gate_required é o literal true; false, "true", 1 e ausente são recusados', () => {
+    assert.equal(ok(withRec({ recommendation: rec({ human_gate_required: true }) })), true);
+    for (const v of [false, 'true', 1, null, undefined]) {
+        assert.equal(ok(withRec({ recommendation: rec({ human_gate_required: v }) })), false, String(v));
+    }
+});
+
+test('AC-03 (QRD-AC-09): #42359 sintética → db_migration MODERATE, request_effect, gate humano, sem autorização nem despacho', () => {
+    const v = withRec({
+        assertions: [migFact({ evidence_ids: ['s-journal'] })],
+        cause: causeOf([hyp()]),
+        recommendation: rec({ action: 'request_effect', rationale_ref: 'cause:h-1', route_hint: 'PRI-180:db_migration', depends_on_missing: ['spec'] }),
+    }, undefined, undefined, { rules_version: rules.RULES_VERSION });
+    assert.deepEqual(model.validateVersion(v), { ok: true });
+    assert.equal(v.cause.hypotheses[0].support, 'MODERATE');
+    assert.equal(v.recommendation.human_gate_required, true);
+    // Nenhum campo concede ou pré-preenche autorização (INV-1): nem na recomendação, nem no topo da versão.
+    const json = JSON.stringify(v);
+    assert.ok(!/pending_authorization|authorization|dispatch/i.test(json), json);
+    assert.equal(ok({ ...v, pending_authorization: { id: 'x' } }), false, 'pending_authorization no topo');
+    assert.equal(ok(withRec({ recommendation: rec({ pending_authorization: { id: 'x' } }) })), false, 'chave extra na recomendação');
+    assert.equal(ok(withRec({ recommendation: rec({ authorized: true }) })), false, 'authorized');
+});
+
+test('a validação é pura: não altera a versão nem a recomendação', () => {
+    const v = withRec({ recommendation: rec(), platform_signals: [sig()] });
+    const before = JSON.stringify(v);
+    assert.equal(ok(v), true);
+    assert.equal(JSON.stringify(v), before);
+});
+
+test('recommendation: chaves fechadas, rationale_ref não vazio, depends_on_missing lista de strings', () => {
+    const bad = [
+        ['rationale_ref vazio', { rationale_ref: '' }], ['rationale_ref nulo', { rationale_ref: null }],
+        ['depends_on_missing string', { depends_on_missing: 'spec' }], ['depends_on_missing nulo', { depends_on_missing: null }],
+        ['depends_on_missing com vazio', { depends_on_missing: [''] }], ['chave extra', { confidence: 0.9 }],
+    ];
+    for (const [name, over] of bad) assert.equal(ok(withRec({ recommendation: rec(over) })), false, name);
+    for (const k of ['action', 'rationale_ref', 'depends_on_missing', 'human_gate_required', 'route_hint']) {
+        const r = rec(); delete r[k];
+        assert.equal(ok(withRec({ recommendation: r })), false, `sem ${k}`);
+    }
+    for (const r of ['x', null, [], 1]) assert.equal(ok(withRec({ recommendation: r })), false, JSON.stringify(r));
+});
+
+test('depends_on_missing só aponta o que está em context.missing[]; sem repetição', () => {
+    assert.equal(ok(withRec({ recommendation: rec({ depends_on_missing: ['spec'] }) })), true);
+    assert.equal(ok(withRec({ recommendation: rec({ depends_on_missing: ['spec'] }) }, undefined, [])), false, 'missing[] vazio');
+    assert.equal(ok(withRec({ recommendation: rec({ depends_on_missing: ['inventado'] }) })), false, 'não declarado');
+    assert.equal(ok(withRec({ recommendation: rec({ depends_on_missing: ['spec', 'spec'] }) })), false, 'repetido');
+    // Sem context não há o que declarar como faltante.
+    const noCtx = model.buildVersion({
+        rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a', produced_by: 'deterministic',
+        created_at: AT, bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' },
+    }, { recommendation: rec({ depends_on_missing: ['spec'] }) });
+    assert.equal(ok(noCtx), false, 'sem context');
+    assert.equal(ok({ ...noCtx, recommendation: rec() }), true, 'sem context e sem dependência');
+});
+
+test('AC-02 (QRD-AC-08): #43782/#43608 → preparação bloqueada em platform_signals; causa de produto UNKNOWN sem rótulo humano', () => {
+    const v = withRec({
+        platform_signals: [sig({ id: 'p-prep', kind: 'preparation_blocked', evidence_ids: ['s-run'] }),
+            sig({ id: 'p-spec', kind: 'spec_missing', evidence_ids: [] })],
+        cause: causeOf([], 'UNKNOWN'),
+        recommendation: rec({ action: 'investigate', depends_on_missing: ['spec'] }),
+    });
+    assert.deepEqual(model.validateVersion(v), { ok: true });
+    assert.equal(v.cause.status, 'UNKNOWN');
+    assert.deepEqual(v.cause.hypotheses, []);
+    // Separação: sinal de plataforma não é causa nem entra nela.
+    assert.equal(ok({ ...v, cause: { ...v.cause, platform_signals: v.platform_signals } }), false, 'sinal dentro de cause');
+    assert.equal(ok({ ...v, cause: { status: 'HUMAN_CONFIRMED', hypotheses: [] } }), false, 'sem rótulo humano');
+    const hypSig = withRec({
+        platform_signals: [sig({ id: 'p-prep', evidence_ids: ['s-run'] })],
+        assertions: [reportA()],
+        cause: causeOf([hyp({ category: 'environment', support: 'WEAK', assertion_ids: ['p-prep'] })]),
+    });
+    assert.equal(ok(hypSig), false, 'hipótese não cita sinal de plataforma como assertion');
+});
+
+test('platform_signals: kinds fechados, chaves fechadas, ids únicos, lista vazia válida', () => {
+    assert.deepEqual([...content.PLATFORM_SIGNAL_KINDS].sort(), ['preparation_blocked', 'spec_missing']);
+    assert.equal(ok(withRec({ platform_signals: [] })), true, 'vazio');
+    for (const kind of content.PLATFORM_SIGNAL_KINDS) assert.equal(ok(withRec({ platform_signals: [sig({ kind })] })), true, kind);
+    const bad = [
+        ['kind fora', { kind: 'cause_found' }], ['kind vazio', { kind: '' }], ['id vazio', { id: '' }],
+        ['evidence_ids string', { evidence_ids: 's-run' }], ['evidence_ids nulo', { evidence_ids: null }], ['evidence_ids número', { evidence_ids: 5 }], ['evidence_ids inexistente', { evidence_ids: ['s-x'] }],
+        ['admitted string', { admitted: 'true' }], ['admitted ausente', { admitted: undefined }], ['chave extra', { cause: 'x' }],
+    ];
+    for (const [name, over] of bad) {
+        const s = { ...sig(), ...over };
+        for (const k of Object.keys(s)) if (s[k] === undefined) delete s[k];
+        assert.equal(ok(withRec({ platform_signals: [s] })), false, name);
+    }
+    assert.equal(ok(withRec({ platform_signals: [sig(), sig()] })), false, 'id duplicado');
+    for (const list of ['x', null, {}, [null], ['p-1']]) assert.equal(ok(withRec({ platform_signals: list })), false, JSON.stringify(list));
+});
+
+test('platform_signals admitido não se apoia em texto externo (INV-5/6); não admitido pode', () => {
+    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: ['s-note'], admitted: true })] })), false, 'nota sustenta sinal admitido');
+    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: ['s-note'], admitted: false })] })), true, 'sinal não admitido');
+    const unadmitted = runEvents({ admitted: false, admission_rule: null });
+    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: ['s-run'], admitted: true })] }, [source(), unadmitted])), false, 'fonte não admitida');
+    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: [], admitted: true })] })), true, 'spec_missing sem fonte (a ausência é o fato)');
+});
+
+test('platform_signals sem context só vale sem evidência citada', () => {
+    const base = { rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a', produced_by: 'deterministic',
+        created_at: AT, bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' } };
+    assert.equal(ok(model.buildVersion(base, { platform_signals: [sig({ kind: 'spec_missing', evidence_ids: [] })] })), true);
+    assert.equal(ok(model.buildVersion(base, { platform_signals: [sig()] })), false);
+});
+
+test('recommendation e platform_signals: erros prefixados, sem lançar com seções vizinhas malformadas', () => {
+    const r = content.validateContent(withRec({ recommendation: rec({ action: 'x' }), platform_signals: [sig({ kind: 'y' })] }),
+        { isCalendarIso: model.isCalendarIso });
+    assert.equal(r.ok, false);
+    assert.ok(r.errors.some(e => e.startsWith('recommendation')) && r.errors.some(e => e.startsWith('platform_signals')), r.errors.join('|'));
+    assert.ok(r.errors.every(e => /^(recommendation|platform_signals)/.test(e)), r.errors.join('|'));
+    assert.doesNotThrow(() => model.validateVersion({ ...withRec({}), context: 'x', recommendation: rec(), platform_signals: [sig()] }));
+    assert.equal(ok(withRec({})), true, 'seções ausentes seguem válidas');
+});
