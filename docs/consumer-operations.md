@@ -21,8 +21,8 @@ a DB-13.
 | --- | --- | --- |
 | Laço e processos | — | **Desligado.** Nenhum dashboard nem watcher; `127.0.0.1:3333` sem listener; sem `app-back/.git/prisma-watcher.lock`; sem launchd/cron. Último evento em `watcher-history.json`: stop manual em 2026-11-13 16:34 (-0300). `auto_start: false` |
 | Launcher | `app-back/scripts/prisma-start-dev.sh` (ignorado pelo git do app-back) | Dois caminhos de desenvolvimento: `prisma-start-dev.sh` e `node server.js` direto de uma árvore do Prisma (`PRISMA_RESTART_COMMAND` em `app-back/dashboard/.env` aponta para `~/Workspace/prisma/dashboard`) |
-| PRISMA_ROOT | `~/Workspace/prisma`, na branch em que o checkout estiver | Na última sessão (2026-11-13, ~15:03–16:35): o worktree `~/Workspace/prisma/.claude/worktrees/dashboard-redmine-sem-resposta`, HEAD `55dc4ac` (fora da main; mesmo patch do #135). **Não** o checkout. Prova: transcrições dos agentes do watcher (186 referências ao worktree, 0 ao checkout) e reflog do worktree |
-| Checkout `~/Workspace/prisma` | — | Branch `fernandesrichard312/pri-315-plan-com-permissionsdeny-em-vez`, HEAD `6709af4` (fora da main; mesmo patch do #132), sem movimento desde 2026-11-13 10:37. 13 commits atrás da main `7da4e97`. Drift rastreado: só `dashboard/public/index.html` (1 linha, logo) |
+| PRISMA_ROOT | `~/Workspace/prisma`, na branch em que o checkout estiver | Na última sessão (2026-11-13, 14:56–16:34): o worktree `~/Workspace/prisma/.claude/worktrees/dashboard-redmine-sem-resposta`, HEAD `55dc4ac` (fora da main; mesmo patch do #135). **Não** o checkout. Prova: transcrições dos agentes do watcher (186 referências ao worktree, 0 ao checkout) e reflog do worktree |
+| Checkout `~/Workspace/prisma` | — | Branch `fernandesrichard312/pri-315-plan-com-permissionsdeny-em-vez`, HEAD `6709af4` (fora da main; mesmo patch do #132), sem movimento desde 2026-11-13 10:37. 13 commits atrás da main `7da4e97` em 15/11. Drift rastreado: só `dashboard/public/index.html` (1 linha, logo) |
 | CLI do watcher | — | `claude` pelo `PATH` herdado do dashboard (`spawnAgent`, sem caminho absoluto). Última sessão: **2.1.323** (campo `version` das transcrições). Hoje o `PATH` resolve `~/.local/bin/claude` → `~/.local/share/claude/versions/2.1.325` |
 | Roteamento no app-back | — | `app-back/.claude/model-routing.json`: `mode: "OFF"`, policy `routing-pri205@p1-2026-11-06`, sem `decomposition` |
 | REPO_PATH / MEMORY_DIR | `app-back` / `app-back/memory/runs` | Igual |
@@ -40,7 +40,7 @@ Ficou `UNKNOWN` em 2026-11-15:
   evidência cita essas SHAs.
 
 O retrato completo, com comandos, saídas e hashes, está em
-`~/Workspace/prisma-evidence/PRI-363/F1-retrato-app-back.md`.
+`~/Workspace/prisma-evidence/PRI-363/F1-retrato-app-back.md` (sha256 `8fc117e36a30…`).
 
 Consequências, enquanto este modo valer:
 
