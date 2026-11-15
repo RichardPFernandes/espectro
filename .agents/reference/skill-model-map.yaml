@@ -97,6 +97,11 @@ entries:
     faixa_default: leve
     opus: false
     modelo_sugerido: composer
+  - id: 13
+    skill: prisma-ui-verify
+    faixa_default: medio
+    opus: false
+    modelo_sugerido: sonnet
 
 opus_allowed_ids: [3, 5, 6]  # + escalação pontual 1/2
-never_opus_ids: [7, 8, 9, 10, 12]  # 11: não Opus; médio só BLOCKED denso
+never_opus_ids: [7, 8, 9, 10, 12, 13]  # 11: não Opus; médio só BLOCKED denso
