@@ -87,8 +87,8 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 
 ## T6. Plan + implement na mesma sessão
 
-- [ ] Teste: argv do segmento `[plan, implement]` sem `--disallowedTools` nem `--settings` de deny; nós avulsos inalterados (golden da PRI-315 verde).
-- [ ] Segmento encadeado atrás de `WATCHER_PLAN_IMPLEMENT_CHAIN`.
+- [x] Teste: argv do segmento `[plan, implement]` sem `--disallowedTools` nem `--settings` de deny; nós avulsos inalterados (golden da PRI-315 verde).
+- [x] (parcial) `subagentBlockArgs` e a flag `WATCHER_PLAN_IMPLEMENT_CHAIN` prontos e ligados ao argv; **falta o despachante montar o segmento `[plan, implement]`** (ver decisão pendente abaixo). Suíte `scripts` 15/11/2026: 2091 testes, 2086 passam, as mesmas 5 falhas da base.
 - [ ] Lease, admissão DOM06 e eventos registram os dois nós.
 - [ ] Decisão do Richard sobre o enforcement do plan (hoje só texto).
 

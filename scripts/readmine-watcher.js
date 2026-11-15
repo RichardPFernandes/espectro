@@ -4382,7 +4382,7 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
         '--session-id', sessionId,
         '--permission-mode', 'acceptEdits',
         '--allowedTools', 'mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob',
-        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled() }),
+        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled(), chain: subagentBlock.planImplementChainEnabled() }),
         // Sem isto, Claude ficava confinado ao cwd (worktree do consumidor) e não
         // enxergava os worktrees irmãos mesmo com branch/worktree já criados pelo
         // watcher, apesar da instrução em plan.md/commit.md dizer pra tratá-los
