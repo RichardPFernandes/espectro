@@ -1,0 +1,10 @@
+{
+  "mode": "ON",
+  "decomposition": "off",
+  "policy_ref": {
+    "id": "routing-pri205",
+    "version": "p2-pilot-2026-11-16",
+    "sha256": "37fcbf0b2b017de3f6ee60f611d93ea60f7e278d472bd02c4402262d16f8bce4",
+    "path": ".claude/model-routing-policy.json"
+  }
+}
