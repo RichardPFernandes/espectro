@@ -50,6 +50,7 @@ const runComparator = require('../scripts/lib/run-comparator');
 const { projectCostTracking } = require('./cost-projection');
 const { buildWouldRouteMetrics } = require('./would-route-metrics');
 const routingProjection = require('./routing-projection');
+const uiVerifyProjection = require('./ui-verify-projection');
 // Leitor de roteamento por processo (G3: o dashboard não importa scripts/lib).
 const ROUTING_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'routing-read.js');
 // Tira PR de Draft ("Marcar como pronto" no painel de preview).
@@ -1381,6 +1382,38 @@ function createDashboard(options = {}) {
             version: graph.version, updatedAt: graph.updatedAt, filter: { taskId: taskId || null, file: file || null },
             exists: fs.existsSync(graphPath), nodes: sub.nodes, edges: sub.edges, tickets,
         }));
+    });
+
+    // Aba "Verificações de UI" (PRI-361): lê .prisma/ui-verify/ do checkout da plataforma (veredito,
+    // achados e PNGs do /verify-ui, PRI-355). Só GET, nunca escreve. Atrás de PRISMA_UI_VERIFY_TAB=on
+    // (padrão desligada). Desligada, a listagem responde 200 `{enabled:false}` (a página pergunta a cada
+    // carga; um 404 aqui seria erro de console e requisição >= 400 em toda tela, e o /verify-ui da
+    // PRI-355 reprovaria o próprio dashboard) e a rota de imagem responde 404 como se não existisse.
+    const uiVerifyDir = path.resolve(options.uiVerifyDir || path.join(prismaRoot, '.prisma', 'ui-verify'));
+    const uiVerifyTabOn = () => env.PRISMA_UI_VERIFY_TAB === 'on';
+    const UI_VERIFY_LIMIT_MAX = 200;
+    app.get('/api/ui-verify', (req, res) => {
+        if (!uiVerifyTabOn()) return res.json({ enabled: false, tasks: [] });
+        let limit;
+        if (req.query.limit != null) {
+            const n = Number(req.query.limit);
+            if (!/^\d+$/.test(String(req.query.limit)) || n < 1 || n > UI_VERIFY_LIMIT_MAX) {
+                return res.status(400).json({ error: `limit deve ser inteiro entre 1 e ${UI_VERIFY_LIMIT_MAX}` });
+            }
+            limit = n;
+        }
+        try {
+            res.json(redactDeep({ enabled: true, tasks: uiVerifyProjection.listVerifications(uiVerifyDir, { limit }) }));
+        } catch {
+            res.status(500).json({ error: 'não foi possível ler as verificações de UI' });
+        }
+    });
+    app.get('/api/ui-verify/:task/:file', (req, res) => {
+        if (!uiVerifyTabOn()) return res.status(404).json({ error: 'not found' });
+        const png = uiVerifyProjection.readImage(uiVerifyDir, req.params.task, req.params.file);
+        if (!png) return res.status(404).json({ error: 'not found' });
+        res.set({ 'Content-Type': 'image/png', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
+        res.end(png);
     });
 
     // memory/patterns.md (scripts/memory-consolidator.js) pra aba "Padrões" — arquivo
