@@ -5,8 +5,8 @@
 // Uso:
 //   node scripts/cli-proof-inventory.js [--cli-version X.Y.Z | --claude-bin <path>] [--json]
 // Sem argumento, pergunta a versão ao `claude` do PATH, o mesmo que o watcher chama.
-// Saída: 0 = todo mecanismo obrigatório tem prova na versão; 1 = falta prova (ou versão
-// desconhecida); 2 = uso inválido.
+// Saída: 0 = todo mecanismo obrigatório tem prova na versão; 1 = falta prova (ou o binário não
+// informou a versão); 2 = uso inválido (argumento desconhecido ou --cli-version fora de X.Y.Z).
 
 'use strict';
 
@@ -23,6 +23,7 @@ function parseArgs(argv) {
         else throw new Error(`argumento inválido: ${k}`);
     }
     if (opts.cliVersion && opts.claudeBin) throw new Error('use --cli-version ou --claude-bin, não os dois');
+    if (opts.cliVersion !== null && !/^\d+\.\d+\.\d+$/.test(opts.cliVersion)) throw new Error(`--cli-version precisa ser X.Y.Z: ${opts.cliVersion}`);
     return opts;
 }
 

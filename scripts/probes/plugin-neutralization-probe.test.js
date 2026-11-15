@@ -1,6 +1,6 @@
 // node --test scripts/probes/plugin-neutralization-probe.test.js
-// PRI-366 (U-08): avaliação pura do probe de neutralização do plugin (sem rodar a CLI). Fora do
-// harness por ficar em scripts/probes/ junto do probe (que roda o binário real da CLI).
+// PRI-366 (U-08): avaliação pura do probe de neutralização do plugin. Não roda a CLI nem abre
+// rede, por isso entra no harness (scripts/package.json); o probe em si roda à mão.
 const test = require('node:test');
 const assert = require('node:assert');
 const { summarizeRun, evaluateScenario, overall, SCENARIOS } = require('./plugin-neutralization-probe');
@@ -24,6 +24,13 @@ test('teste ainda carrega o router → PROOF_NOT_OBTAINED; controle cego → CON
     // Menção fora das listas do init (ex.: evento de log do plugin) também reprova.
     const leaky = run([init(), { type: 'system', subtype: 'ui_log', text: 'jev-model-router ready' }, result()]);
     assert.strictEqual(evaluateScenario({ control: seen(), test: leaky }).result, 'PROOF_NOT_OBTAINED');
+});
+
+test('o --settings só pode tirar o router: teste com entrada a menos ou a mais → INCONCLUSIVE', () => {
+    const lostOther = run([init({ skills: [], slash: ['debug'] }), result()]);
+    assert.deepStrictEqual(evaluateScenario({ control: seen(), test: lostOther }), { result: 'INCONCLUSIVE', reason: 'CONTAGEM_DIVERGENTE' });
+    const gained = run([init({ skills: ['debug', 'extra'] }), result()]);
+    assert.deepStrictEqual(evaluateScenario({ control: seen(), test: gained }), { result: 'INCONCLUSIVE', reason: 'CONTAGEM_DIVERGENTE' });
 });
 
 test('sem init, com custo, com chamada à API ou com chave → INCONCLUSIVE (nunca prova)', () => {

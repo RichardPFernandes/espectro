@@ -1,6 +1,6 @@
 {
   "probe": "U-08 plugin-neutralization PRI-366",
-  "at": "2026-11-15T18:41:29.716Z",
+  "at": "2026-11-15T23:03:41.207Z",
   "cli_version": "2.1.325 (Claude Code)",
   "cli_binary": {
     "path": "~/.local/share/claude/versions/2.1.325",
@@ -75,6 +75,92 @@
           "{\"mcpServers\":{}}",
           "--settings",
           "<WORK>/project_skill/run/routing-settings.json"
+        ],
+        "exit_code": 1,
+        "init": {
+          "counts": {
+            "skills": 16,
+            "plugins": 3,
+            "slash_commands": 44
+          },
+          "router": {
+            "skills": [],
+            "plugins": [],
+            "slash_commands": []
+          },
+          "api_key_source": "none",
+          "claude_code_version": "2.1.325"
+        },
+        "router_mentioned_anywhere": false,
+        "total_cost_usd": 0,
+        "duration_api_ms": 0
+      },
+      "result": "PROOF_OBTAINED",
+      "reason": null
+    },
+    {
+      "scenario": "account_skill",
+      "setup": [],
+      "logged_in": false,
+      "settings": {
+        "enabledPlugins": {
+          "jev-model-router@skills-dir": false
+        },
+        "skillOverrides": {
+          "jev-model-router": "off"
+        }
+      },
+      "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2",
+      "control": {
+        "argv": [
+          "-p",
+          "<PROMPT>",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "1",
+          "--strict-mcp-config",
+          "--mcp-config",
+          "{\"mcpServers\":{}}"
+        ],
+        "exit_code": 1,
+        "init": {
+          "counts": {
+            "skills": 17,
+            "plugins": 3,
+            "slash_commands": 45
+          },
+          "router": {
+            "skills": [
+              "jev-model-router"
+            ],
+            "plugins": [],
+            "slash_commands": [
+              "jev-model-router"
+            ]
+          },
+          "api_key_source": "none",
+          "claude_code_version": "2.1.325"
+        },
+        "router_mentioned_anywhere": true,
+        "total_cost_usd": 0,
+        "duration_api_ms": 0
+      },
+      "test": {
+        "argv": [
+          "-p",
+          "<PROMPT>",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "1",
+          "--strict-mcp-config",
+          "--mcp-config",
+          "{\"mcpServers\":{}}",
+          "--settings",
+          "<WORK>/account_skill/run/routing-settings.json"
         ],
         "exit_code": 1,
         "init": {

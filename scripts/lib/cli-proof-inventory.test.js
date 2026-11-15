@@ -47,13 +47,16 @@ test('cada prova do plugin no repositório é PROOF_OBTAINED, offline e da próp
         const e = JSON.parse(fs.readFileSync(path.join(ROOT, ref), 'utf8'));
         assert.ok(e.cli_version.startsWith(`${version} `), `${version}: cli_version ${e.cli_version}`);
         assert.deepStrictEqual([version, e.result, e.offline.provider_calls, e.offline.credentials], [version, 'PROOF_OBTAINED', 0, 'none']);
-        assert.deepStrictEqual(e.scenarios.map(s => [s.scenario, s.result]),
-            [['project_skill', 'PROOF_OBTAINED'], ['account_skills_dir_plugin', 'PROOF_OBTAINED'], ['marketplace_plugin', 'PROOF_OBTAINED']]);
+        assert.deepStrictEqual(e.scenarios.map(s => [s.scenario, s.result]), [['project_skill', 'PROOF_OBTAINED'], ['account_skill', 'PROOF_OBTAINED'],
+            ['account_skills_dir_plugin', 'PROOF_OBTAINED'], ['marketplace_plugin', 'PROOF_OBTAINED']]);
         for (const s of e.scenarios) {
             const seen = Object.values(s.control.init.router).some(list => list.length > 0);
             assert.ok(seen && !s.test.router_mentioned_anywhere, `${version}/${s.scenario}: controle vê, teste não`);
             assert.deepStrictEqual([s.control.total_cost_usd, s.test.total_cost_usd, s.control.duration_api_ms, s.test.duration_api_ms], [0, 0, 0, 0]);
             assert.ok(s.test.argv.includes('--settings') && !s.control.argv.includes('--settings'));
+            for (const k of Object.keys(s.control.init.counts)) {
+                assert.strictEqual(s.test.init.counts[k], s.control.init.counts[k] - s.control.init.router[k].length, `${version}/${s.scenario}/${k}: só o router sai`);
+            }
         }
     }
 });
@@ -68,6 +71,8 @@ test('comando: exit 1 sem prova, 0 com prova, 2 em uso inválido; versão pelo b
     assert.strictEqual(yes.status, 0);
     assert.deepStrictEqual([JSON.parse(yes.stdout).ok, JSON.parse(yes.stdout).version_source], [true, '--cli-version']);
     assert.strictEqual(run('--x').status, 2);
+    assert.strictEqual(run('--cli-version', 'lixo').status, 2, 'versão fora de X.Y.Z é uso inválido');
+    assert.match(inv.formatInventory(inv.inventory({ cliVersion: null })), /FALHA, versão da CLI desconhecida; nenhuma prova se aplica \(subagent_model, plugin_neutralization\)/);
     assert.strictEqual(run('--cli-version', '2.1.319', '--claude-bin', '/x').status, 2);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pri366-'));
     try {

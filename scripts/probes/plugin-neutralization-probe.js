@@ -15,17 +15,20 @@
 //
 // Cenários (cada um com controle sem --settings e teste com o --settings gerado):
 // - project_skill: skill solta em <projeto>/.claude/skills/jev-model-router;
+// - account_skill: skill solta em <perfil>/skills/jev-model-router (sem manifesto de plugin);
 // - account_skills_dir_plugin: plugin em <perfil>/skills/jev-model-router (chave @skills-dir);
 // - marketplace_plugin: plugin jev-model-router de um marketplace local, instalado e ligado em
 //   enabledPlugins do perfil (`claude plugin marketplace add` + `install`, tudo local).
-// Veredito por cenário: PROOF_OBTAINED (controle vê o router e o teste não o menciona),
-// PROOF_NOT_OBTAINED, CONTROL_FAILED, INCONCLUSIVE (sem init ou offline não confirmado).
-// Geral: PROOF_OBTAINED só com os três cenários PROOF_OBTAINED.
+// Veredito por cenário: PROOF_OBTAINED (controle vê o router; o teste não o menciona e só perde
+// as entradas do router: contagem do teste = controle − router, lista a lista), PROOF_NOT_OBTAINED,
+// CONTROL_FAILED, INCONCLUSIVE (sem init, offline não confirmado ou contagem divergente).
+// Geral: PROOF_OBTAINED só com todos os cenários PROOF_OBTAINED; senão o probe sai com 1.
 //
 // Evidência só agregada (nomes/fontes do router, contagens, sha256); caminhos viram <WORK>.
 //
 // Uso:
 //   node scripts/probes/plugin-neutralization-probe.js --work-dir <dir novo> --out <arquivo.json> [--claude-bin <path>]
+// Saída: 0 = PROOF_OBTAINED; 1 = qualquer outro veredito (evidência gravada); 2 = erro/recusa.
 
 'use strict';
 
@@ -36,7 +39,7 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 const ROUTER = 'jev-model-router';
-const SCENARIOS = ['project_skill', 'account_skills_dir_plugin', 'marketplace_plugin'];
+const SCENARIOS = ['project_skill', 'account_skill', 'account_skills_dir_plugin', 'marketplace_plugin'];
 const MARKETPLACE = 'synth-mkt';
 const OFFLINE_BASE_URL = 'http://127.0.0.1:9';
 const PROMPT = 'Reply with the single word ok. Do not use any tool.';
@@ -66,6 +69,9 @@ function summarizeRun({ exitCode, lines }) {
 
 const offline = r => r.total_cost_usd === 0 && r.duration_api_ms === 0 && r.init && r.init.api_key_source === 'none';
 const routerSeen = r => Boolean(r.init) && Object.values(r.init.router).some(list => list.length > 0);
+// O --settings gerado só pode tirar o router: em cada lista do init, teste = controle − router.
+const onlyRouterRemoved = (control, test) => Object.keys(control.init.counts)
+    .every(k => test.init.counts[k] === control.init.counts[k] - control.init.router[k].length);
 
 /** Veredito puro de um cenário (controle × teste). */
 function evaluateScenario({ control, test }) {
@@ -73,6 +79,7 @@ function evaluateScenario({ control, test }) {
     if (!offline(control) || !offline(test)) return { result: 'INCONCLUSIVE', reason: 'OFFLINE_NAO_CONFIRMADO' };
     if (!routerSeen(control)) return { result: 'CONTROL_FAILED', reason: 'CONTROLE_NAO_VE_O_ROUTER' };
     if (test.router_mentioned_anywhere) return { result: 'PROOF_NOT_OBTAINED', reason: 'ROUTER_CARREGADO_COM_SETTINGS' };
+    if (!onlyRouterRemoved(control, test)) return { result: 'INCONCLUSIVE', reason: 'CONTAGEM_DIVERGENTE' };
     return { result: 'PROOF_OBTAINED', reason: null };
 }
 
@@ -94,7 +101,9 @@ function assertOutside(dir, label) {
     const abs = path.resolve(dir);
     const repo = path.resolve(__dirname, '..', '..');
     const forbidden = [path.join(os.homedir(), '.claude'), path.join(os.homedir(), '.claude-personal')];
+    const live = path.join(os.homedir(), 'Workspace', 'prisma'); // checkout vivo e seus worktrees
     if (abs === repo || abs.startsWith(repo + path.sep)) throw new Error(`${label} não pode ficar dentro do repositório`);
+    if (abs === live || abs.startsWith(live + path.sep)) throw new Error(`${label} não pode ficar no checkout vivo (~/Workspace/prisma)`);
     if (forbidden.some(f => abs === f || abs.startsWith(f + path.sep))) throw new Error(`${label} não pode ser um perfil do usuário`);
     return abs;
 }
@@ -136,6 +145,7 @@ function main(argv) {
         write(path.join(project, 'README.md'), 'Projeto sintético da prova PRI-366.\n');
         const setup = [];
         if (scenario === 'project_skill') write(path.join(project, '.claude', 'skills', ROUTER, 'SKILL.md'), skillMd(ROUTER, 'Skill solta'));
+        if (scenario === 'account_skill') write(path.join(configDir, 'skills', ROUTER, 'SKILL.md'), skillMd(ROUTER, 'Skill solta'));
         if (scenario === 'account_skills_dir_plugin') {
             write(path.join(configDir, 'skills', ROUTER, '.claude-plugin', 'plugin.json'), pluginJson());
             write(path.join(configDir, 'skills', ROUTER, 'skills', 'route', 'SKILL.md'), skillMd('route', 'Skill'));
@@ -182,13 +192,14 @@ function main(argv) {
     };
     write(out, `${JSON.stringify(record, null, 2)}\n`);
     process.stdout.write(`${JSON.stringify({ cli_version: cliVersion, result: record.result, scenarios: scenarios.map(s => [s.scenario, s.result]) }, null, 2)}\n`);
+    return record.result === 'PROOF_OBTAINED' ? 0 : 1;
 }
 
 module.exports = { summarizeRun, evaluateScenario, overall, SCENARIOS, ROUTER };
 
 if (require.main === module) {
     try {
-        main(process.argv.slice(2));
+        process.exitCode = main(process.argv.slice(2));
     } catch (e) {
         process.stderr.write(`ERRO: ${e.message}\n`);
         process.exit(2);

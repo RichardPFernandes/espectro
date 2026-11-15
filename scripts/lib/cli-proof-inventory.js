@@ -87,7 +87,9 @@ function formatInventory(inv, { versionSource = null } = {}) {
         ...body.map(line),
         inv.ok
             ? `Resultado: OK, todo mecanismo obrigatório tem prova na ${inv.cli_version}.`
-            : `Resultado: FALHA, sem prova na ${inv.cli_version}: ${inv.missing.join(', ')}.`,
+            : inv.cli_version === 'UNKNOWN'
+                ? `Resultado: FALHA, versão da CLI desconhecida; nenhuma prova se aplica (${inv.missing.join(', ')}).`
+                : `Resultado: FALHA, sem prova na ${inv.cli_version}: ${inv.missing.join(', ')}.`,
     ];
     return `${out.join('\n')}\n`;
 }
