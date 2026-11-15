@@ -1,52 +1,45 @@
 'use strict';
-// PRI-181 C3 — taxonomia 0.1 (DB-04).
+// PRI-274 c2b-4 — taxonomia qa-cause-taxonomy/0.1 (SDD B v3 §6.3, DB-04).
 //
-// FACT só por predicado de sistema. Hipóteses usam MODERATE / WEAK / UNKNOWN.
-// Sem nível causal automático. Sem nova enum além desta taxonomia revisável.
+// Só vocabulário: as 11 categorias exatas da SDD e a escala ordinal de support.
+// Sem alias para a taxonomia antiga (C3) e sem nível causal acima de MODERATE:
+// compatibilidade não é causalidade. FACT não é nível de support; é o `type` de uma
+// assertion de predicado de sistema (§6.2) e é validado fora daqui.
 
+const TAXONOMY_ID = 'qa-cause-taxonomy/0.1';
 const TAXONOMY_VERSION = '0.1';
 
-/** Categorias revisáveis (MVP C — Redmine). */
 const CATEGORIES = Object.freeze({
-    IDENTITY: 'identity',
-    INGESTION: 'ingestion',
     CODE: 'code',
     REQUIREMENT_SPEC: 'requirement_spec',
     TEST: 'test',
     ENVIRONMENT: 'environment',
     DATA: 'data',
     CONFIGURATION: 'configuration',
-    DATABASE_MIGRATION: 'database_migration',
+    DB_MIGRATION: 'db_migration',
     INTEGRATION: 'integration',
     ALREADY_RESOLVED: 'already_resolved',
+    INVALID_REJECTION: 'invalid_rejection',
     INDETERMINATE: 'indeterminate',
-    INFORMATION_ABSENT: 'information_absent',
 });
 
-/** Níveis de apoio (DB-04). FACT = só predicado de sistema. */
-const CONFIDENCE = Object.freeze({
-    FACT: 'FACT',
+/** support ordinal (§6.3): mesmo critério no modo determinístico e no por agente. */
+const SUPPORT = Object.freeze({
     MODERATE: 'MODERATE',
     WEAK: 'WEAK',
     UNKNOWN: 'UNKNOWN',
 });
 
-function isFact(confidence) {
-    return confidence === CONFIDENCE.FACT;
-}
+const CATEGORY_VALUES = new Set(Object.values(CATEGORIES));
 
-function assertFactOnlyFromSystem(confidence, { systemPredicate = false } = {}) {
-    if (confidence === CONFIDENCE.FACT && !systemPredicate) {
-        const err = new Error('DB-04: FACT só por predicado de sistema');
-        err.code = 'FACT_REQUIRES_SYSTEM_PREDICATE';
-        throw err;
-    }
+function isCategory(value) {
+    return typeof value === 'string' && CATEGORY_VALUES.has(value);
 }
 
 module.exports = {
+    TAXONOMY_ID,
     TAXONOMY_VERSION,
     CATEGORIES,
-    CONFIDENCE,
-    isFact,
-    assertFactOnlyFromSystem,
+    SUPPORT,
+    isCategory,
 };
