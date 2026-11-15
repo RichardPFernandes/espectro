@@ -1,6 +1,6 @@
 # SPEC: PRI-341, decomposição ligada só no piloto (Espectro)
 
-> **Status:** v1, aguarda aceite do Richard. Nível **Médio** (PR-A) e **Alto** (PR-B, separado). Issue: [PRI-341](https://linear.app/prisma-app/issue/PRI-341). Código lido em `main` `a2e956b`. RC-1 a RC-6 e RRC-F31-001/002 seguem NOT APPLIED.
+> **Status:** v1, **aceita pelo Richard em 15/11/2026** (inclui a recusa de `"on"` sem `subagent_roles` na policy, acrescentada no PR-B). Nível **Médio** (PR-A) e **Alto** (PR-B, separado). Issue: [PRI-341](https://linear.app/prisma-app/issue/PRI-341). Código lido em `main` `a2e956b`. RC-1 a RC-6 e RRC-F31-001/002 seguem NOT APPLIED.
 
 ## Contexto
 
