@@ -125,7 +125,7 @@ test('effort_miss: só fase média, do braço fixo; sem registro = UNKNOWN; fase
           fixed: mkRun('synthetic-f2', { fixed: true, nodes: { test: { ms: 1 } }, misses: [miss('test', 'no')] }) },
     ];
     const b = bench.buildBenchmark({ pairs, table: TABLE });
-    assert.deepStrictEqual(phaseRow(b, 'test').effort_miss, { status: 'RECORDED', yes: 1, no: 1, unknown: 1 });
+    assert.deepStrictEqual(phaseRow(b, 'test').effort_miss, { status: 'RECORDED', yes: 1, no: 1, unknown: 1, runs_recorded: 2, runs_total: 2 });
     assert.deepStrictEqual(phaseRow(b, 'verify').effort_miss, { status: 'UNKNOWN' });
     assert.deepStrictEqual(phaseRow(b, 'plan').effort_miss, { status: 'NOT_APPLICABLE' });
 });
@@ -237,4 +237,14 @@ test('main: manifest malformado ou sem pairs = exit 1', () => {
     assert.strictEqual(bench.main(['--out', path.join(root, 'o'), '--manifest', manifest], io), 1);
     assert.match(io.stderr.text, /pairs/);
     fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('effort_miss leva denominador: runs fixas sem registro seguem UNKNOWN, nunca viram "sim 0"', () => {
+    const mk = (i, misses) => ({ id: `p${i}`, as_is: mkRun(`synthetic-a${i}`, { nodes: { test: { ms: 1 } } }),
+        fixed: mkRun(`synthetic-f${i}`, { fixed: true, nodes: { test: { ms: 1 } }, ...(misses ? { misses } : {}) }) });
+    const b = bench.buildBenchmark({ pairs: [mk(1, [miss('test', 'no')]), mk(2), mk(3)], table: TABLE });
+    assert.deepStrictEqual(phaseRow(b, 'test').effort_miss, { status: 'RECORDED', yes: 0, no: 1, unknown: 0, runs_recorded: 1, runs_total: 3 });
+    const html = bench.renderHtml(b);
+    assert.match(html, /registrado em 1 de 3 runs fixas/);
+    assert.match(html, /demais UNKNOWN/);
 });

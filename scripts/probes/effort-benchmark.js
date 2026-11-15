@@ -82,7 +82,9 @@ function effortMissByPhase(fixedRuns, table) {
     return Object.fromEntries(PHASES.map(phase => {
         if (table?.[phase] !== 'medium') return [phase, { status: 'NOT_APPLICABLE' }];
         const bucket = projected.by_phase[phase];
-        return [phase, bucket ? { status: 'RECORDED', ...bucket } : { status: 'UNKNOWN' }];
+        // Denominador: sem ele "sim 0" leria como zero acertos nas N runs, e a maioria é UNKNOWN.
+        const runsRecorded = projected.runs.filter(r => r.records.some(rec => rec.phase === phase)).length;
+        return [phase, bucket ? { status: 'RECORDED', ...bucket, runs_recorded: runsRecorded, runs_total: fixedRuns.length } : { status: 'UNKNOWN' }];
     }));
 }
 
@@ -163,7 +165,7 @@ const signed = (v, fmt) => (v === null ? UNKNOWN : v === 0 ? fmt(0) : `${v > 0 ?
 function missCell(m) {
     if (m.status === 'NOT_APPLICABLE') return 'N/A (fase fora de esforço médio)';
     if (m.status !== 'RECORDED') return UNKNOWN;
-    return `sim ${m.yes} · não ${m.no} · incerto ${m.unknown}`;
+    return `registrado em ${m.runs_recorded} de ${m.runs_total} runs fixas: sim ${m.yes} · não ${m.no} · incerto ${m.unknown}; demais UNKNOWN`;
 }
 
 function renderHtml(b) {

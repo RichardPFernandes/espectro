@@ -74,14 +74,14 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 - [x] `scripts/probes/effort-benchmark.js`: JSON + HTML com tempo, tokens (proxy de uso de limite), falhas e `effort_miss` por fase. Par com rótulo contradito por `phase_effort` é excluído e listado; sem Attempt registrado, o par entra sinalizado.
 - [x] Reaproveita `run-comparator` (leitura, tokens por nó, status), `dashboard/cost-projection` (duração por nó) e `effort-miss` (projeção); sem lógica paralela de custo.
 - [x] Página vazia gerada (14/11/2026): `~/Workspace/prisma-evidence/2026-11-14-pri-353-effort-benchmark-vazio/` (anexar ao PR).
-- Verificação (14/11/2026, Node 20.20.2, base 9de609f): `scripts` 2079 testes, 2068 passam; as 5 falhas são as mesmas pré-existentes do C2 (3 de `architecture-boundaries`, 2 de «C0 árvore adversarial»). `effort-benchmark.test.js` 16/16.
+- Verificação (14/11/2026, Node 20.20.2, base 9de609f): `scripts` 2079 testes, 2068 passam; as 5 falhas são as mesmas pré-existentes do C2 (3 de `architecture-boundaries`, 2 de «C0 árvore adversarial»). `effort-benchmark.test.js` 17/17.
 
 **AC:** AC8. **Arquivos:** `scripts/probes/effort-benchmark.js`, `scripts/probes/effort-benchmark.test.js`.
 **Depende de:** T2 (campo `effort_applied`), T3 (dados de `effort_miss`).
 
 ### Checkpoint C3
 - [ ] Página do benchmark revisada pelo Richard (vazia, só UNKNOWN).
-- [ ] Revisão independente (G3) do que existe até aqui, antes de T6.
+- [x] Revisão independente (G3, 1 revisor, 14/11/2026) do diff T1–T5: **FAIL**. MAJOR 2 (`effort_miss` sem denominador) corrigido na T5. **BLOCKER 1 aberto, decisão do Richard:** com Node 22, `arch:check` acusa 2 violações novas da T3 (`dashboard/server.js` → `scripts/lib/effort-miss.js`, regra `no-dashboard-scripts-internals`; `effort-miss.js` → `state-writer.js`, regra `no-lib-upward`), escondidas pelas falhas do Node 20. MINOR 3–6 (tabela latest, tokens/duração parciais, Δ não pareado, `--out` sem realpath) seguem para a PRI-354, salvo decisão em contrário. Segunda rodada só com decisão do Richard.
 
 ## T6. Plan + implement na mesma sessão
 
