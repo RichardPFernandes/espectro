@@ -71,7 +71,8 @@
 
 ## Fase 2: fechamento
 
-- [ ] **T7: flag desligada, suíte completa e PR** (S) — AC-05, AC-06
+- [x] **T7: flag desligada, suíte completa e PR** (S) — AC-05, AC-06
+  - Feito em 15/11. Flag ausente: os oráculos C0/c2b-1/c2b-2 (`qa-diagnostico-flag`, `c2b1-flag-off`, `c2b2-flag-off`) seguem verdes e só perderam spies de módulos removidos e o texto `LIGADO` (nenhuma expectativa de comportamento mudou). 206/206 nos módulos qa-diagnosis; suíte `scripts` (receita oficial, node 20.20.2/npm 10.8.2): 2046 testes, 2031 ok, 9 falhas, as mesmas da T2/T4/T5/T6 (PRI-359), nenhuma em qa-diagnosis. PR em draft com G3 (1 revisor) pedido; `processo-check` a conferir no CI.
   - Confirmar que nenhum `vNNN.json` é criado com a flag ausente; oráculos C0/c2b-1/c2b-2 verdes sem editar
     expectativa; `npm test` completo.
   - PR em draft com "Refs PRI-274", rótulo `processo:medio`, seção Evidência preenchida; pedir G3 (1 revisor).
