@@ -90,7 +90,8 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 - [x] Teste: argv do segmento `[plan, implement]` sem `--disallowedTools` nem `--settings` de deny; nós avulsos inalterados (golden da PRI-315 verde).
 - [x] (parcial) `subagentBlockArgs` e a flag `WATCHER_PLAN_IMPLEMENT_CHAIN` prontos e ligados ao argv; **falta o despachante montar o segmento `[plan, implement]`** (ver decisão pendente abaixo). Suíte `scripts` 15/11/2026: 2091 testes, 2086 passam, as mesmas 5 falhas da base.
 - [ ] Lease, admissão DOM06 e eventos registram os dois nós.
-- [ ] Decisão do Richard sobre o enforcement do plan (hoje só texto).
+- [x] Richard aprovou em 15/11/2026: enforcement do plan no segmento encadeado fica só como texto (argv sem bloqueio).
+- [x] Richard aprovou em 15/11/2026 a recomendação: T6 fecha parcial (flag + argv provados); o despachante que monta `[plan, implement]`, com plan-scorer entre os comandos, vai para a PRI-354 (Alto). Pendente: registrar isso na PRI-354.
 
 **AC:** AC5. **Arquivos:** `scripts/lib/subagent-block.js`, `scripts/lib/subagent-block.test.js`, `scripts/readmine-watcher.js`.
 **Depende de:** T1 (C1 aprovado) e T2.
