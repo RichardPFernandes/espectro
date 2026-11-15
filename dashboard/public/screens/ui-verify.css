@@ -1,0 +1,43 @@
+/* screens/ui-verify.css — aba "Verificações de UI" (ui-verify.js, PRI-361). Mesmo esqueleto de lista +
+   detalhe de screens/patterns.css. Carregado depois do <style> de index.html. */
+
+body[data-view="verificacoes-ui"] .view { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+
+.uiv { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; font-size: 14px; line-height: 20px; color: var(--text); }
+.uiv-panes { flex: 1 1 auto; min-height: 0; display: flex; }
+.uiv-side { flex: 0 0 380px; width: 380px; overflow-y: auto; border-right: 1px solid var(--border); }
+.uiv-detail { flex: 1 1 auto; min-width: 0; overflow-y: auto; }
+.uiv-muted { color: var(--muted); font-size: 12px; line-height: 16px; }
+
+.uiv-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; width: 100%; padding: 12px 16px;
+  border: 0; border-bottom: 1px solid var(--border); border-left: 2px solid transparent;
+  background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; box-sizing: border-box;
+}
+.uiv-row:hover { background: var(--surface-hover); }
+.uiv-row[aria-current="true"] { background: var(--raised); border-left-color: var(--link); }
+.uiv-row-id { font-weight: 500; overflow-wrap: anywhere; }
+.uiv-row-meta { grid-column: 1 / -1; font-size: 12px; color: var(--text-secondary); }
+
+.uiv-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; line-height: 18px; white-space: nowrap; }
+.uiv-badge.ok { background: var(--state-done-bg); color: var(--state-done-fg); }
+.uiv-badge.bad { background: var(--state-failed-bg); color: var(--state-failed-fg); }
+.uiv-badge.warn { background: var(--state-waiting-bg); color: var(--state-waiting-fg); }
+.uiv-badge.muted { background: var(--state-queued-bg); color: var(--state-queued-fg); }
+
+.uiv-article { max-width: 1280px; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 22px; box-sizing: border-box; }
+.uiv-title { display: flex; flex-direction: column; gap: 6px; }
+.uiv-title h1 { margin: 0; font-size: 22px; line-height: 30px; font-weight: 600; overflow-wrap: anywhere; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.uiv-article h2 { margin: 0 0 8px; font-size: 14px; line-height: 20px; font-weight: 600; }
+
+.uiv-problems { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.uiv-problems li { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow-wrap: anywhere; }
+
+.uiv-screen { margin: 0 0 16px; display: flex; flex-direction: column; gap: 8px; }
+.uiv-screen figcaption { display: flex; flex-direction: column; gap: 2px; }
+.uiv-shot { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; display: block; }
+.uiv-noshot { padding: 16px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 13px; }
+
+.uiv-empty { padding: 20px 16px; display: flex; flex-direction: column; gap: 4px; }
+.uiv-empty-t { margin: 0; font-weight: 600; }
+.uiv-status { flex: 0 0 28px; display: flex; align-items: center; padding: 0 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
