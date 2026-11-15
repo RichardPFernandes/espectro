@@ -1531,9 +1531,8 @@ async function notifyRoutingAdmissionBlocked(ticket, cfg) {
         `${cfg.cause} (${cfg.detail}${cfg.transient ? ', leitura transitória repetida' : ''}). ` +
         `Nenhuma Run nova é admitida enquanto isso durar (este ticket #${ticket.id} e os próximos); ` +
         `Runs já em andamento não mudam.\n\n` +
-        // PRI-310 (S5.1): "decomposition": "on" está reservado até o PR de liberação da S5.
-        (cfg.cause === 'DECOMPOSITION_RESERVED'
-            ? `A chave "decomposition": "on" ainda está reservada (decomposição do Implement em subtarefas, PRI-287) e não é aceita; remova-a ou use "off". `
+        (cfg.detail === 'decomposition_requires_subagent_roles'
+            ? `"decomposition": "on" exige que a policy declare subagent_roles: adicione a seção (nova versão da policy) ou remova a chave / use "off". `
             : '') +
         `Saídas: corrigir a policy ou o policy_ref (id, versão, sha256) em ${modelRoutingPolicy.ROUTING_CONFIG_REL}, ` +
         `ou desligar explicitamente com { "mode": "OFF" } nesse arquivo. ` +
@@ -1774,7 +1773,7 @@ async function applyDecompositionBlock({ ticket, taskId, node, state, dir, pendi
 // ---------------------------------------------------------------------------------
 // Run decomposta (PRI-311 / PRI-287 S5.2b; SPEC B2, B5, B6, B8 e adendo H7). Atrás da flag:
 // só uma Run cujo snapshot de admissão traz `decomposition: "on"` entra aqui, e a admissão
-// real recusa "on" (DECOMPOSITION_RESERVED). Sem engine novo: o mesmo despacho do nó, com o
+// real aceita "on" só com policy que declare subagent_roles (PRI-341). Sem engine novo: o mesmo despacho do nó, com o
 // Attempt criado por prepareRoleDispatch (baseline + cadeia + DOM-06) e o comando de passo.
 
 const DECOMPOSED_GATES = new Set(['review', 'test', 'verify']);

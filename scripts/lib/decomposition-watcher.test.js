@@ -9,7 +9,7 @@
 // de passo (escreve nos arquivos do escopo do bloco de contexto). O release do lease roda no
 // wrapper `sh` destacado (node-lease.js release), como em produção. A decomposição é ligada
 // injetando a admissão no harness (snapshot com decomposition "on"), nunca pela config do
-// consumidor, que continua recusando "on" (DECOMPOSITION_RESERVED). Nada sai da máquina.
+// consumidor sintético, sem depender da config. Nada sai da máquina.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
