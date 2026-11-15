@@ -98,8 +98,10 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 
 ## T7. Evidência e PR em draft
 
-- [ ] Seção Evidência: versão da CLI, golden, suítes, página do benchmark vazia.
-- [ ] Rótulo `processo:medio`; PR em draft; `Refs PRI-353`; atualizar o bloco de Estado da issue.
+- [x] Seção Evidência no PR: versão da CLI, golden, suítes, página do benchmark vazia. AC5 entra como PARCIAL, sem arredondar.
+- [x] `origin/main` (3 commits novos) integrado por merge `57ee94e`, para a evidência valer para a versão que entra. Suítes (15/11/2026, Node 20.20.2): `dashboard` 557/557; `scripts` 2195 testes, 2188 passam, 5 falham, 2 pulados. As 5 são as mesmas da base. Node 22.23.2: `arch:check` sem violação nova e `architecture-boundaries.test.js` 5/5.
+- [x] Rótulo `processo:medio`; PR em draft; `Refs PRI-353`.
+- [ ] Bloco de Estado da PRI-353 atualizado e decisão da T6 registrada na PRI-354.
 
 **AC:** AC1 a AC8.
 
