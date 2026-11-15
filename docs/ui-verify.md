@@ -1,0 +1,111 @@
+# Verificação de UI em navegador real
+
+Etapa opcional do `/verify` (passo 2b) que abre a aplicação num navegador headless e confere as
+telas afetadas pelos ACs. **Desligada por padrão** (`PRISMA_UI_VERIFY=off`). Issue: PRI-355 (nível Alto).
+
+## Como encaixa no fluxo
+
+```text
+… → implement → review → test → verify ──(2b, só se toca frontend)──▶ commit
+                  ▲                          │ FALHOU: sem commit
+                  └──────────────────────────┘ volta ao implement com a lista de problemas
+```
+
+Não há nó novo no grafo: a falha usa a aresta que já existe (`verify → implement --retry`, limite
+`retries.verify`). `SKIPPED` = flag `off` (comportamento de hoje). `N/A` = diff sem frontend ou spec
+sem AC de UI. Falta de dado, erro de `touches` (exit 2) ou MCP ausente é UNKNOWN, nunca PASSOU.
+
+## Peças
+
+| Peça | Papel |
+| --- | --- |
+| `.mcp.json` | Playwright MCP `@playwright/mcp@0.0.85`, Chrome instalado, perfil em memória, origem só `localhost`/`127.0.0.1` na `PRISMA_UI_PORT` (validada: só dígitos) |
+| `.claude/settings.local.json` (local, **fora do git**; modelo em `.claude/settings.local.json.example`) | Aprova o servidor `playwright` e lista as ferramentas liberadas |
+| `.claude/settings.json` (versionado) | `permissions.deny` de `evaluate`, `run_code_unsafe`, `file_upload`, `drop`, rotas, cookies e storage, e o hook abaixo |
+| `.claude/hooks/playwright-fs-guard.mjs` | Fail-closed: `filename` só em `.prisma/ui-verify/<task-id>/` (symlink resolvido), `url` só da porta da verificação, sem `paths` |
+| `.agents/skills/prisma-ui-verify/SKILL.md` | Procedimento e regras de segurança do agente |
+| `.claude/commands/verify-ui.md` | Comando fino; o `/verify` o chama |
+| `scripts/ui-verify.js` | Servidor (ensure/stop), `touches`, `verdict` |
+| `scripts/lib/ui-verify-verdict.js` | Regras do veredito (fail-closed, testadas) |
+| `dashboard/server.js` (`PRISMA_DASHBOARD_READONLY=1`) | Recusa toda escrita, mesmo same-origin |
+| `.prisma/ui-verify/<task-id>/` | Screenshots, `findings.json`, `verdict.json` (ignorado pelo git; **única** área que o navegador escreve) |
+| `.prisma/ui-state/` | Estado do CLI (`server.json`, `session.json`, `server.lock`, `server.log`); o hook nega escrita do navegador aqui |
+
+O `chrome-devtools-mcp` ficou de fora: o Playwright MCP já entrega console e rede. Reavaliar se
+surgir AC de performance (trace).
+
+## Habilitar na sua máquina (uma vez por checkout)
+
+O MCP **não** vem pré-aprovado no repositório: o `settings.local.json` vale para sessões abertas neste checkout
+(worktrees não o herdam). Para usar:
+
+```bash
+cp .claude/settings.local.json.example .claude/settings.local.json   # arquivo ignorado pelo git
+```
+
+Depois abra a sessão do Claude Code neste checkout. `PRISMA_UI_VERIFY=on` liga a etapa. Sem `npm i`
+global: o MCP roda por `npx` e o dashboard usa `cd dashboard && npm ci`. Chrome em `/Applications`
+(não baixa Chromium).
+
+## Rodar à mão
+
+```bash
+PRISMA_UI_VERIFY=on        # no ambiente da sessão
+/verify-ui <task-id>
+```
+
+**Janela visível (debug):** inicie a sessão com `PRISMA_UI_HEADLESS=false`.
+**Outra porta:** `PRISMA_UI_PORT=3410` antes de abrir a sessão (o MCP lê a porta ao iniciar).
+
+**Só o servidor / o veredito:**
+
+```bash
+S="node $PWD/scripts/ui-verify.js"
+$S server ensure          # sobe um dashboard próprio (fixture, somente leitura) e espera HTTP; marca a sessão
+$S server stop            # só encerra o que ele subiu (PID, grupo, início e token de posse conferidos)
+$S touches <base>         # 0 toca frontend · 1 não toca · 2 erro (UNKNOWN)
+PRISMA_UI_VERIFY=on $S verdict .prisma/ui-verify/<task-id>/findings.json --base <base> --acs AC-1,AC-2|none
+```
+
+`touches`/`verdict` rodam o git em `REPO_PATH` (padrão: cwd). `<base>` é resolvida para um commit; base que
+começa com `-` é recusada. O `ensure` reinicia o servidor se o código mudou, e o `verdict` rejeita findings e
+PNGs anteriores ao último `ensure`. Exit 2 é sempre UNKNOWN.
+
+Se a porta já tem um servidor que não é nosso, o `ensure` recusa (`PORT_IN_USE`): ele pode rodar
+código de outro checkout e aceitar escrita. Use outra `PRISMA_UI_PORT`.
+
+## Configuração (env; nenhum valor secreto no repositório)
+
+| Variável | Padrão |
+| --- | --- |
+| `PRISMA_UI_VERIFY` | `off` (só `on` ou `off`; outro valor é erro) |
+| `PRISMA_UI_HEADLESS` | `true` |
+| `PRISMA_UI_PORT` | `3399` |
+| `PRISMA_UI_CUSTOM_SERVER` + `PRISMA_UI_SERVER_CMD` / `PRISMA_UI_SERVER_CWD` | ausentes (`npm start` em `<plataforma>/dashboard`). Servidor customizado exige `PRISMA_UI_CUSTOM_SERVER=1`: contorna fixture e somente leitura, é nível Alto com AUTORIZO próprio. O comando aceita lista JSON (`["node","x js"]`) |
+| `PRISMA_UI_FRONTEND_GLOBS` | `dashboard/public/**` só na plataforma; **obrigatório** em `REPO_PATH` de outro repo (só `*`, `**`, `?`; sem `{ } [ ] !`; lista vazia é erro) |
+| `REPO_PATH` / `PRISMA_ROOT` | cwd / este checkout (o git roda em `REPO_PATH`; os scripts vêm de `PRISMA_ROOT`) |
+
+Login não é suportado nesta fatia (`browser_type`/`browser_fill_form` não estão liberados).
+
+## Modelo de segurança e limites
+
+- O agente lê conteúdo de página (inclusive texto de ticket e log renderizado). Esse conteúdo é dado,
+  nunca instrução. As ferramentas liberadas excluem `browser_evaluate`, `browser_run_code_unsafe`,
+  `browser_file_upload`, cookies e storage.
+- O servidor da etapa é **próprio**: fixture como `REPO_PATH` (sem `.env`, credenciais ou runs do
+  consumidor), HOME/TMPDIR sintéticos, env mínimo, loopback e somente leitura por allowlist de método (só
+  GET/HEAD/OPTIONS; o resto → 403). Os GETs com efeito colateral (`/api/claude/usage`, `/api/fx`, `refresh` de
+  `/api/version`) viram respostas neutras. Porta ocupada por servidor de terceiros é recusada, nunca reaproveitada.
+- `--allowed-origins` do Playwright MCP **não é fronteira de segurança** (não cobre redirects);
+  é higiene. As fronteiras reais são o servidor somente leitura e o hook de `filename`.
+- `server stop` confere PID, grupo de processos, horário de início e um token de posse gravado nos diretórios
+  temporários; só apaga o que ele criou e só mantém o registro até o processo morrer de fato. Registro adulterado,
+  `ps` indisponível ou PID reaproveitado não encerram nada (e o registro é mantido quando há dúvida).
+- Screenshots ficam locais. No PR vai só o veredito em texto.
+- O veredito é uma **atestação do agente**: ele escreve o `findings.json`. O script garante dado completo, novo e
+  bem formado, não impede mentira deliberada; o humano revisa o veredito. O código do branch sob verificação roda
+  como o usuário (sem sandbox de arquivos).
+- `.mcp.json`, hook e deny valem juntos e só neste checkout. Um consumidor que copie só o `allow` do exemplo fica
+  sem o confinamento de `filename`: copie as três peças.
+- A UI do consumidor (app-front) fica como configuração dele; esta etapa não a liga.
+- Ligar `PRISMA_UI_VERIFY` num consumidor é mudança de nível Alto (AUTORIZO próprio).

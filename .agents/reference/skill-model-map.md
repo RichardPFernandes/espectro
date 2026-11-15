@@ -55,6 +55,7 @@ Espelho estruturado: [`skill-model-map.yaml`](./skill-model-map.yaml).
 | 10 | `prisma-linear-comment-evidence` | **leve** | **Não** | Composer / Grok | Links/paths |
 | 11 | `prisma-handoff` | **leve**; **médio** se BLOCKED denso | **Não** | Composer; Sonnet se BLOCKED | Validador é autoridade |
 | 12 | `prisma-docs-humano` | **leve** | **Não** | Composer / Sonnet low | Alta frequência → Opus drena quota |
+| 13 | `prisma-ui-verify` | **médio** | **Não** | Sonnet | Navega e confere ACs; veredito é do script, não do modelo |
 
 **Resumo Opus:** só `#3` (fora da baseline), `#5` (mapa denso), `#6` (implement estrutural), e escalação pontual de `#1`/`#2`.
 

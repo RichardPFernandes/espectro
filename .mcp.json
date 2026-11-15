@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "case \"$UIPORT\" in ''|*[!0-9]*) echo 'PRISMA_UI_PORT inválida (só dígitos)' >&2; exit 2;; esac; exec npx -y @playwright/mcp@0.0.85 --browser chrome --isolated --allowed-origins \"http://localhost:$UIPORT;http://127.0.0.1:$UIPORT\" --output-dir .prisma/ui-verify"
+      ],
+      "env": {
+        "UIPORT": "${PRISMA_UI_PORT:-3399}",
+        "PLAYWRIGHT_MCP_HEADLESS": "${PRISMA_UI_HEADLESS:-true}"
+      }
+    }
+  }
+}

@@ -629,7 +629,7 @@ function ruleRoutingConfig(ctx) {
         const ref = r.policy_ref;
         return makeResult(ctx, rule, {
             passed: true,
-            message: `roteamento ON com policy ${ref.id}@${ref.version} (sha256 ${r.policy_hash.slice(0, 12)}…) conferida`,
+            message: `roteamento ON com policy ${ref.id}@${ref.version} (sha256 ${r.policy_hash.slice(0, 12)}…) conferida${r.decomposition === 'on' ? '; decomposition on' : ''}`,
         });
     }
     return makeResult(ctx, rule, {
