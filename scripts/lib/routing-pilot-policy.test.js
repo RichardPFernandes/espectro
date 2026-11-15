@@ -1,7 +1,7 @@
 // node --test scripts/lib/routing-pilot-policy.test.js
 // PRI-341 T2: policy de piloto routing-pri205@p2-pilot-2026-11-16 (arquivo real do repositório).
 // A raiz de consumidor é sintética e temporária; nada é lido de outro projeto. Este teste não
-// liga nada: a policy só vale num consumidor cujo .claude/model-routing.json aponte para ela (T6).
+// liga nada no consumidor: a policy só vale num consumidor cujo .claude/model-routing.json aponte para ela (T6).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -74,9 +74,52 @@ test('consumidor com mode ON e decomposition ausente ou off: admitido com a poli
     }
 });
 
-test('nesta fatia a reserva continua: decomposition "on" é recusada (PR-B é que a libera)', () => {
+test('PR-B: decomposition "on" é admitida com a policy do piloto e o resultado traz decomposition "on"', () => {
     const r = policyLoader.readRoutingConfig(consumerRoot({ mode: 'ON', policy_ref: ref, decomposition: 'on' }));
-    assert.deepStrictEqual([r.status, r.cause], ['INVALID', 'DECOMPOSITION_RESERVED']);
+    assert.deepStrictEqual([r.status, r.decomposition, r.policy_ref.version], ['ON', 'on', 'p2-pilot-2026-11-16']);
+});
+
+test('PR-B: "off" e ausente não trazem o campo decomposition no resultado (S4 intacta)', () => {
+    for (const extra of [{}, { decomposition: 'off' }]) {
+        const r = policyLoader.readRoutingConfig(consumerRoot({ mode: 'ON', policy_ref: ref, ...extra }));
+        assert.ok(!('decomposition' in r));
+    }
+});
+
+test('PR-B: "on" com policy sem subagent_roles (como a p1 do app-back) é recusada, fail-closed', () => {
+    const noRoles = JSON.parse(bytes.toString('utf8'));
+    delete noRoles.subagent_roles;
+    const b = Buffer.from(JSON.stringify(noRoles));
+    fs.mkdirSync(tmpBase, { recursive: true });
+    const root = fs.mkdtempSync(path.join(tmpBase, 'pilot-policy-noroles-'));
+    roots.push(root);
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(root, POLICY_REL), b);
+    const pref = { ...ref, sha256: crypto.createHash('sha256').update(b).digest('hex') };
+    fs.writeFileSync(path.join(root, '.claude', 'model-routing.json'), JSON.stringify({ mode: 'ON', policy_ref: pref, decomposition: 'on' }));
+    const on = policyLoader.readRoutingConfig(root);
+    assert.deepStrictEqual([on.status, on.cause, on.detail], ['INVALID', 'POLICY_INVALID', 'decomposition_requires_subagent_roles']);
+    // AC-6: a mesma policy, sem a chave decomposition (caso do app-back hoje), é admitida como antes.
+    fs.writeFileSync(path.join(root, '.claude', 'model-routing.json'), JSON.stringify({ mode: 'ON', policy_ref: pref }));
+    const off = policyLoader.readRoutingConfig(root);
+    assert.strictEqual(off.status, 'ON');
+    assert.ok(!('decomposition' in off));
+});
+
+test('PR-B: a recusa por falta de subagent_roles vem depois das checagens da policy (id errado → id_mismatch)', () => {
+    const bad = JSON.parse(bytes.toString('utf8'));
+    delete bad.subagent_roles;
+    bad.id = 'outra-policy';
+    const b = Buffer.from(JSON.stringify(bad));
+    fs.mkdirSync(tmpBase, { recursive: true });
+    const root = fs.mkdtempSync(path.join(tmpBase, 'pilot-policy-order-'));
+    roots.push(root);
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(root, POLICY_REL), b);
+    fs.writeFileSync(path.join(root, '.claude', 'model-routing.json'),
+        JSON.stringify({ mode: 'ON', policy_ref: { ...ref, sha256: crypto.createHash('sha256').update(b).digest('hex') }, decomposition: 'on' }));
+    const r = policyLoader.readRoutingConfig(root);
+    assert.deepStrictEqual([r.cause, r.detail], ['POLICY_INVALID', 'id_mismatch']);
 });
 
 test('sha256 errado no policy_ref → POLICY_HASH_MISMATCH', () => {
