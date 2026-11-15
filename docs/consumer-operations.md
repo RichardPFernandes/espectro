@@ -1,7 +1,8 @@
 # Consumo, diagnóstico, cutover e retorno
 
 Procedimento do recorte entregue na PRI-63, documentado pela PRI-64 em 2026-10-08.
-A seção «Modo vigente» foi acrescentada pela PRI-263 em 2026-11-06. O hash em
+A seção «Modo vigente» foi acrescentada pela PRI-263 em 2026-11-06 e atualizada
+pelo retrato só de leitura da PRI-364 em 2026-11-15. O hash em
 `provenance/pri-64-documentation.json` (`4b7ea98…`) corresponde à versão anterior
 e não foi atualizado, porque é registro histórico da PRI-64. O
 [handoff](extraction-handoff.md) identifica provas e limites; este texto não
@@ -16,19 +17,36 @@ Isso diverge da DB-13 da PRI-181 (pin explícito aprovado). A divergência fica
 registrada para reconciliação (AGENTS.md, regra 8), e este documento não revoga
 a DB-13.
 
-| Item | Valor observado em 2026-11-06 |
-| --- | --- |
-| Launcher | `app-back/scripts/prisma-start-dev.sh` (ignorado pelo git do app-back) |
-| PRISMA_ROOT | `~/Workspace/prisma`, na branch em que o checkout estiver |
-| REPO_PATH / MEMORY_DIR | `app-back` / `app-back/memory/runs` |
-| Painel Versão | `prisma-start-dev.sh bump <sha>`: confere a trava e faz `git merge --ff-only --autostash` no próprio checkout, só na main |
-| Salvaguardas ausentes | Diferente do launcher pinado, não carrega `prisma-consumer.env`, não exporta `DISABLE_AUTO_CLEANUP`, `WORKTREES_DIR` nem `RUNS_ARCHIVE_DIR`, não remove o override `BITBUCKET_API_TOKEN` e não confere `auto_start: false` |
-| Launcher pinado | `app-back/scripts/prisma-start.sh` (`prisma-wt/consumer@80181db`, também ignorado pelo git do app-back), inativo: faltam no app-back os dois arquivos admitidos listados em «Preparação e configuração» |
+| Item | Observado em 2026-11-06 | Observado em 2026-11-15, 15:14–15:27 (PRI-364) |
+| --- | --- | --- |
+| Laço e processos | — | **Desligado.** Nenhum dashboard nem watcher; `127.0.0.1:3333` sem listener; sem `app-back/.git/prisma-watcher.lock`; sem launchd/cron. Último evento em `watcher-history.json`: stop manual em 2026-11-13 16:34 (-0300). `auto_start: false` |
+| Launcher | `app-back/scripts/prisma-start-dev.sh` (ignorado pelo git do app-back) | Dois caminhos de desenvolvimento: `prisma-start-dev.sh` e `node server.js` direto de uma árvore do Prisma (`PRISMA_RESTART_COMMAND` em `app-back/dashboard/.env` aponta para `~/Workspace/prisma/dashboard`) |
+| PRISMA_ROOT | `~/Workspace/prisma`, na branch em que o checkout estiver | Na última sessão (2026-11-13, ~15:03–16:35): o worktree `~/Workspace/prisma/.claude/worktrees/dashboard-redmine-sem-resposta`, HEAD `55dc4ac` (fora da main; mesmo patch do #135). **Não** o checkout. Prova: transcrições dos agentes do watcher (186 referências ao worktree, 0 ao checkout) e reflog do worktree |
+| Checkout `~/Workspace/prisma` | — | Branch `fernandesrichard312/pri-315-plan-com-permissionsdeny-em-vez`, HEAD `6709af4` (fora da main; mesmo patch do #132), sem movimento desde 2026-11-13 10:37. 13 commits atrás da main `7da4e97`. Drift rastreado: só `dashboard/public/index.html` (1 linha, logo) |
+| CLI do watcher | — | `claude` pelo `PATH` herdado do dashboard (`spawnAgent`, sem caminho absoluto). Última sessão: **2.1.323** (campo `version` das transcrições). Hoje o `PATH` resolve `~/.local/bin/claude` → `~/.local/share/claude/versions/2.1.325` |
+| Roteamento no app-back | — | `app-back/.claude/model-routing.json`: `mode: "OFF"`, policy `routing-pri205@p1-2026-11-06`, sem `decomposition` |
+| REPO_PATH / MEMORY_DIR | `app-back` / `app-back/memory/runs` | Igual |
+| Painel Versão | `prisma-start-dev.sh bump <sha>`: confere a trava e faz `git merge --ff-only --autostash` no próprio checkout, só na main | Igual no launcher. Sem launcher, `PRISMA_BUMP_COMMAND` do `app-back/dashboard/.env` é `git -C ~/Workspace/prisma merge --ff-only` |
+| Salvaguardas ausentes | Diferente do launcher pinado, não carrega `prisma-consumer.env`, não exporta `DISABLE_AUTO_CLEANUP`, `WORKTREES_DIR` nem `RUNS_ARCHIVE_DIR`, não remove o override `BITBUCKET_API_TOKEN` e não confere `auto_start: false` | Igual. Nenhuma dessas chaves no `.env` do app-back |
+| Launcher pinado | `app-back/scripts/prisma-start.sh` (`prisma-wt/consumer@80181db`, também ignorado pelo git do app-back), inativo: faltam no app-back os dois arquivos admitidos listados em «Preparação e configuração» | `prisma-wt/consumer@2024597` (2026-11-09, na main, 36 commits atrás). Os dois arquivos admitidos **existem** desde 2026-11-09 com os hashes da tabela; candidato sem drift rastreado, com `node_modules`. Não executado |
+
+Ficou `UNKNOWN` em 2026-11-15:
+
+- SHA e `PATH` do último processo do dashboard: o processo não existe mais. A
+  árvore vem das transcrições e do reflog; a versão 2.1.323, das transcrições.
+- Em que árvore o próximo dashboard vai subir: depende de quem sobe e como.
+- Se o launcher pinado sobe: subir é ação no consumidor.
+- DOM06/admissão (U-02) nas revisões `55dc4ac`, `6709af4` e `2024597`: nenhuma
+  evidência cita essas SHAs.
+
+O retrato completo, com comandos, saídas e hashes, está em
+`~/Workspace/prisma-evidence/PRI-363/F1-retrato-app-back.md`.
 
 Consequências, enquanto este modo valer:
 
 1. **Todo commit, merge, checkout ou edição em `~/Workspace/prisma` chega ao
-   consumidor.** O dashboard carrega o código ao subir. Com o laço ligado, o
+   consumidor**, e também em qualquer worktree de onde o dashboard subir (foi o
+   caso em 2026-11-13). O dashboard carrega o código ao subir. Com o laço ligado, o
    watcher-manager sobe um processo novo a cada tick
    (`scripts/watcher-manager.js:197-230`). Trocar de branch nesse checkout é uma
    mudança de execução, não um gesto local. Trabalho de desenvolvimento vai
@@ -48,10 +66,26 @@ Consequências, enquanto este modo valer:
 4. O primeiro passo de qualquer diagnóstico é registrar a branch, o HEAD e o
    drift do checkout, porque não existe pin para comparar.
 
-Para voltar ao modo pinado, é preciso restaurar os dois arquivos admitidos (ou
+Para voltar ao modo pinado, era preciso restaurar os dois arquivos admitidos (ou
 re-baselinar os hashes por decisão governada) e seguir «Nova janela de cutover».
-O pin anterior a50ff9f, tree 97fe983, em `../prisma-wt/pri-63`, não existia no
-disco em 2026-11-06.
+Em 2026-11-15 os dois arquivos estão no app-back com os hashes da tabela. O pin
+anterior a50ff9f, tree 97fe983, em `../prisma-wt/pri-63`, não existia no disco em
+2026-11-06.
+
+### Decisão pendente: DB-13 × checkout (2026-11-15)
+
+O retrato da PRI-364 mostra que o modo checkout, na prática, é "a árvore de onde o
+dashboard subir": em 2026-11-13 o app-back rodou um worktree de correção, fora da
+main e fora do checkout. Os pré-requisitos estáticos do launcher pinado voltaram
+em 2026-11-09, e o laço está desligado desde 2026-11-13.
+
+**Recomendação (R5 da PRI-363, decisão do Richard):** voltar ao pin numa SHA da
+main, por `prisma-bump.sh`, numa issue **Alto** separada, com AUTORIZO e readback
+depois do bump. Não subir o launcher pinado em `2024597` sem bump: a revisão é
+anterior ao código que gravou os states de 2026-11-12 e 2026-11-13 (risco do
+U-22, não provado). Até a decisão, este documento não muda o modo e não revoga a
+DB-13. Alternativa: ratificar o checkout, com as salvaguardas do launcher pinado
+restauradas no `prisma-start-dev.sh` e subida só a partir da main do checkout.
 
 ## Núcleo 2 do roteamento (Jev em sombra)
 
@@ -153,7 +187,7 @@ histórica, conforme waiver delimitado, e permanece UNKNOWN para essa revisão.
 ### Retorno autorizado à fonte
 
 Este retorno vale ao sair de qualquer modo Prisma, pinado ou checkout de
-desenvolvimento. **Não executável em 2026-11-06:** `app-back/dashboard` não tem `package.json` nem
+desenvolvimento. **Não executável em 2026-11-06 nem em 2026-11-15:** `app-back/dashboard` não tem `package.json` nem
 `server.js`, então os passos com `npm` abaixo não rodam até a reconciliação.
 
 O snapshot selecionado de 236 arquivos (sha256
