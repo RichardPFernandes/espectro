@@ -3,9 +3,12 @@
 //
 // JavaScript puro, sem ajv e sem I/O (como a c2b-1): a condição (e) do §4.3.1 não pode
 // passar por falta de validador. Cada seção é validada por uma função própria; as seções
-// ainda não cobertas pela fatia (cause, recommendation, platform_signals) não são tocadas aqui. Seção ausente é válida: o protocolo da c2b-2 produz versão só com cabeçalho.
+// ainda não cobertas pela fatia (recommendation, platform_signals) não são tocadas aqui. Seção ausente é válida: o protocolo da c2b-2 produz versão só com cabeçalho.
 //
 // `isCalendarIso` vem injetado pelo model, que importa este módulo (evita ciclo).
+
+const taxonomy = require('./qa-diagnosis-taxonomy');
+const rules = require('./qa-diagnosis-rules');
 
 const HEX64_RE = /^[0-9a-f]{64}$/;
 
@@ -26,6 +29,11 @@ const BASIS_TYPE = Object.freeze({
     SYSTEM_PREDICATE: 'FACT', REPORTED: 'REPORT', AGENT_INFERENCE: 'HYPOTHESIS', HUMAN_ADJUDICATED: 'ADJUDICATION' });
 const ASSERTION_KEYS = ['id', 'type', 'basis', 'predicate_ref', 'evidence_ids', 'contradicted_by', 'statement_ref'];
 const PRED_REF_RE = /^pred:[a-z][a-z0-9_]*@[0-9][0-9A-Za-z.\-]*$/;
+
+// §6.3: status da causa e escala ordinal de support (nunca acima de MODERATE, sem número, sem soma a 100%).
+const CAUSE_STATUSES = Object.freeze(['HYPOTHESES', 'UNKNOWN', 'HUMAN_CONFIRMED']);
+const CAUSE_KEYS = ['status', 'hypotheses'];
+const HYPOTHESIS_KEYS = ['id', 'category', 'support', 'assertion_ids'];
 
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isStr = v => typeof v === 'string' && v.length > 0;
@@ -132,6 +140,71 @@ function validateAssertions(list, ctx, errors) {
     list.forEach((a, i) => validateAssertion(a, i, sourceById, assertionIds, errors));
 }
 
+/** FACT contrário à categoria: predicado contrário na versão, ou suporte contradito por outro FACT. */
+function contraryFact(category, supportIds, byId) {
+    for (const a of byId.values()) if (a.type === 'FACT' && rules.isContrary(category, a.predicate_ref)) return a.id;
+    for (const id of supportIds) {
+        const a = byId.get(id);
+        if (a && a.type === 'FACT' && Array.isArray(a.contradicted_by) && a.contradicted_by.some(c => byId.get(c)?.type === 'FACT')) return id;
+    }
+    return null;
+}
+
+function validateHypothesis(hp, i, byId, version, errors) {
+    const where = `cause.hypotheses[${i}]`;
+    if (!isObj(hp)) { errors.push(`${where}: não é objeto`); return; }
+    const before = errors.length;
+    closedKeys(hp, HYPOTHESIS_KEYS, where, errors);
+    if (errors.length > before) return;
+    if (!isStr(hp.id)) errors.push(`${where}.id`);
+    if (!taxonomy.isCategory(hp.category)) errors.push(`${where}.category: fora de ${taxonomy.TAXONOMY_ID}`);
+    const supportOk = Object.prototype.hasOwnProperty.call(taxonomy.SUPPORT, hp.support);
+    if (!supportOk) errors.push(`${where}.support: esperado MODERATE, WEAK ou UNKNOWN`);
+    if (!isStrArray(hp.assertion_ids)) { errors.push(`${where}.assertion_ids`); return; }
+    if (new Set(hp.assertion_ids).size !== hp.assertion_ids.length) errors.push(`${where}.assertion_ids: repetida`);
+    const refs = [];
+    for (const id of hp.assertion_ids) {
+        const a = byId.get(id);
+        if (a) refs.push(a); else errors.push(`${where}.assertion_ids: ${id} não existe em assertions[]`);
+    }
+    if (!taxonomy.isCategory(hp.category) || !supportOk || refs.length !== hp.assertion_ids.length) return;
+    if (hp.support === 'UNKNOWN') return;
+    const contra = contraryFact(hp.category, hp.assertion_ids, byId);
+    if (contra) errors.push(`${where}.support: ${hp.support} com FACT contrário (${contra}); só UNKNOWN`);
+    if (hp.support === 'WEAK') {
+        if (!refs.some(a => a.type === 'REPORT' || a.type === 'HYPOTHESIS')) errors.push(`${where}.support: WEAK exige relato ou hipótese`);
+        return;
+    }
+    // MODERATE: ≥1 FACT que rules/0.1 declara compatível com a categoria; versão precisa declarar a regra.
+    if (!refs.some(a => a.type === 'FACT' && rules.isCompatible(hp.category, a.predicate_ref))) {
+        errors.push(`${where}.support: MODERATE exige FACT compatível com ${hp.category} em ${rules.RULES_VERSION}`);
+    }
+    if (version.rules_version !== rules.RULES_VERSION) errors.push(`${where}.support: MODERATE exige rules_version ${rules.RULES_VERSION}`);
+}
+
+/** §6.3: cause = { status, hypotheses[] }. UNKNOWN não tem categoria; confirmação humana é da c5. */
+function validateCause(cause, version, errors) {
+    if (!isObj(cause)) { errors.push('cause: não é objeto'); return; }
+    const before = errors.length;
+    closedKeys(cause, CAUSE_KEYS, 'cause', errors);
+    if (errors.length > before) return;
+    if (!CAUSE_STATUSES.includes(cause.status)) errors.push('cause.status');
+    if (!Array.isArray(cause.hypotheses)) { errors.push('cause.hypotheses: não é array'); return; }
+    if (cause.status === 'UNKNOWN' && cause.hypotheses.length > 0) errors.push('cause: UNKNOWN não carrega hipótese nem categoria');
+    if (cause.status === 'HYPOTHESES' && cause.hypotheses.length === 0) errors.push('cause: HYPOTHESES exige ao menos uma hipótese');
+    if (cause.status === 'HUMAN_CONFIRMED') {
+        if (version.produced_by !== 'human') errors.push('cause: HUMAN_CONFIRMED só em versão produced_by human');
+        if (cause.hypotheses.length === 0) errors.push('cause: HUMAN_CONFIRMED exige a hipótese confirmada');
+    }
+    const byId = new Map();
+    if (Array.isArray(version.assertions)) for (const a of version.assertions) if (isObj(a) && isStr(a.id)) byId.set(a.id, a);
+    cause.hypotheses.forEach((hp, i) => validateHypothesis(hp, i, byId, version, errors));
+    const ids = cause.hypotheses.filter(isObj).map(h => h.id).filter(isStr);
+    if (new Set(ids).size !== ids.length) errors.push('cause.hypotheses: id duplicado');
+    const cats = cause.hypotheses.filter(isObj).map(h => h.category).filter(taxonomy.isCategory);
+    if (new Set(cats).size !== cats.length) errors.push('cause.hypotheses: categoria duplicada');
+}
+
 /**
  * Valida as seções de conteúdo presentes em `version`.
  * @param {object} version
@@ -142,8 +215,9 @@ function validateContent(version, h) {
     const errors = [];
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'context')) validateContext(version.context, h, errors);
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'assertions')) validateAssertions(version.assertions, version.context, errors);
+    if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'cause')) validateCause(version.cause, version, errors);
     return { ok: errors.length === 0, errors };
 }
 
 module.exports = { TRUST_CLASSES, SOURCE_KINDS, SOURCE_KEYS, MISSING_KEYS,
-    ASSERTION_TYPES, BASIS_TYPE, ASSERTION_KEYS, validateContent };
+    ASSERTION_TYPES, BASIS_TYPE, ASSERTION_KEYS, CAUSE_STATUSES, CAUSE_KEYS, HYPOTHESIS_KEYS, validateContent };

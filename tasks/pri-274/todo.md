@@ -49,7 +49,8 @@
 ### Checkpoint: após T4
 - [x] Fechado em 14/11. FACT só por predicado de sistema, provado por mutação (7 mutações, cada uma derruba ≥1 teste); 124/124 nos módulos qa-diagnosis. Suíte **não** está verde: 9 falhas (depcruise/baseline, dashboard consumidor B, fundação TS), nenhuma em qa-diagnosis, **idênticas** às do commit da T2 (`5284fa2`), portanto anteriores à PRI-274 e tratadas na PRI-359. Uma 10ª falha (plan-scorer, flag `--disallowedTools`) apareceu numa rodada e não se repetiu no HEAD nem isolada: instável.
 
-- [ ] **T5: §6.3 `cause`, `support` e `rules/0.1`** (M) — AC-02 parcial, AC-03 parcial
+- [x] **T5: §6.3 `cause`, `support` e `rules/0.1`** (M) — AC-02 parcial, AC-03 parcial
+  - Feito em 14/11. Forma de `cause` não está na SDD; delta a registrar (G3): `{ status, hypotheses[{ id, category, support, assertion_ids[] }] }`, chaves fechadas, categoria única por hipótese. `rules/0.1` (Q2, default) em `qa-diagnosis-rules.js`: compatível/contrário só para `requirement_spec`, `db_migration` e `already_resolved`; as outras 8 categorias nunca passam de WEAK. Regras além da spec, a confirmar na G3: MODERATE exige `rules_version: rules/0.1` no cabeçalho; FACT contrário = predicado contrário na versão ou suporte contradito por outro FACT (contradição por relato não derruba); com FACT contrário só `UNKNOWN`; WEAK exige ≥1 relato/hipótese; `UNKNOWN` não carrega hipótese; `HUMAN_CONFIRMED` só em versão `produced_by: human` (a confirmação em si é da c5). Mutação: 12 mutações, cada uma derruba ≥1 teste. 194/194 nos módulos qa-diagnosis; suíte `scripts`: 9 falhas, as mesmas da T2/T4 (PRI-359), nenhuma em qa-diagnosis.
   - `cause.status`, hipóteses por categoria exata, `support ∈ {MODERATE,WEAK,UNKNOWN}`; MODERATE só com ≥1
     FACT compatível por `rules/0.1` e nenhum FACT contrário; sem soma a 100%; `UNKNOWN` sem categoria.
   - Aceite: `db_migration` sobe no máximo a MODERATE; causa de produto fica UNKNOWN sem rótulo humano.

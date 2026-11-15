@@ -243,3 +243,171 @@ test('AC-04: erros de assertions vêm prefixados e as seções ausentes seguem v
     assert.equal(r.ok, false);
     assert.ok(r.errors.every(e => e.startsWith('assertions')), r.errors.join('|'));
 });
+
+// ---------------------------------------------------------------------------------------------
+// T5 — §6.3 cause, support e rules/0.1 (QRD-AC-07/08/09 parcial)
+// ---------------------------------------------------------------------------------------------
+const rules = require('./qa-diagnosis-rules');
+const taxonomy = require('./qa-diagnosis-taxonomy');
+
+const hyp = (over = {}) => ({ id: 'h-1', category: 'db_migration', support: 'MODERATE', assertion_ids: ['a-mig'], ...over });
+const causeOf = (hypotheses, status = 'HYPOTHESES') => ({ status, hypotheses });
+const migFact = (over = {}) => fact({ id: 'a-mig', predicate_ref: 'pred:db_migration_authorized_in_window@0.1', ...over });
+const reportA = (over = {}) => fact({ id: 'a-rep', type: 'REPORT', basis: 'REPORTED', predicate_ref: null,
+    evidence_ids: ['s-note'], ...over });
+const hypoA = (over = {}) => fact({ id: 'a-hyp', type: 'HYPOTHESIS', basis: 'AGENT_INFERENCE', predicate_ref: null,
+    evidence_ids: [], ...over });
+// Versão com cause; rules_version = rules/0.1 por padrão (necessário só para MODERATE).
+const withCause = (cause, assertions = [migFact(), reportA(), hypoA()], header = { rules_version: rules.RULES_VERSION }) =>
+    model.buildVersion({
+        rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a',
+        produced_by: 'deterministic', created_at: AT,
+        bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' }, ...header,
+    }, { context: { sources: [source(), noteSrc()], missing: [] }, assertions, cause });
+
+test('rules/0.1: versão, categorias da taxonomia e predicados bem formados', () => {
+    assert.equal(rules.RULES_VERSION, 'rules/0.1');
+    const cats = new Set(Object.values(taxonomy.CATEGORIES));
+    for (const table of [rules.COMPATIBLE, rules.CONTRARY]) {
+        for (const [cat, ids] of Object.entries(table)) {
+            assert.ok(cats.has(cat), `categoria ${cat}`);
+            assert.ok(ids.length > 0 && ids.every(i => /^[a-z][a-z0-9_]*$/.test(i)), cat);
+        }
+    }
+    // Compatibilidade não é causalidade: nenhuma regra torna `indeterminate` ou categorias sem predicado MODERATE.
+    assert.equal(rules.COMPATIBLE.indeterminate, undefined);
+    assert.deepEqual(Object.keys(rules.COMPATIBLE).sort(), ['already_resolved', 'db_migration', 'requirement_spec']);
+    for (const cat of Object.keys(rules.COMPATIBLE)) {
+        for (const id of rules.COMPATIBLE[cat]) assert.ok(!(rules.CONTRARY[cat] || []).includes(id), `${cat}/${id} compatível e contrário`);
+    }
+});
+
+test('AC-01: causa UNKNOWN sem hipóteses é válida, sem categoria por default', () => {
+    const v = withCause(causeOf([], 'UNKNOWN'), [], { rules_version: null });
+    assert.deepEqual(model.validateVersion(v), { ok: true });
+    assert.deepEqual(v.cause, { status: 'UNKNOWN', hypotheses: [] });
+});
+
+test('status coerente: UNKNOWN não carrega hipótese; HYPOTHESES exige ao menos uma', () => {
+    assert.equal(ok(withCause(causeOf([hyp({ support: 'UNKNOWN', assertion_ids: [] })], 'UNKNOWN'))), false, 'UNKNOWN com hipótese');
+    assert.equal(ok(withCause(causeOf([], 'HYPOTHESES'))), false, 'HYPOTHESES vazio');
+    for (const status of ['', 'CONFIRMED', 'hypotheses', null]) assert.equal(ok(withCause(causeOf([], status))), false, String(status));
+});
+
+test('hipóteses WEAK (relato/hipótese de agente) e UNKNOWN (sem evidência) são válidas', () => {
+    const list = [
+        hyp({ id: 'h-1', category: 'environment', support: 'WEAK', assertion_ids: ['a-rep'] }),
+        hyp({ id: 'h-2', category: 'code', support: 'WEAK', assertion_ids: ['a-hyp', 'a-rep'] }),
+        hyp({ id: 'h-3', category: 'data', support: 'UNKNOWN', assertion_ids: [] }),
+    ];
+    assert.deepEqual(model.validateVersion(withCause(causeOf(list), [migFact(), reportA(), hypoA()], { rules_version: null })), { ok: true });
+});
+
+test('AC-05: categorias = as 11 da SDD; nomes antigos e fora da lista são recusados', () => {
+    for (const category of Object.values(taxonomy.CATEGORIES)) {
+        const h = hyp({ category, support: 'WEAK', assertion_ids: ['a-rep'] });
+        assert.equal(ok(withCause(causeOf([h]), undefined, { rules_version: null })), true, category);
+    }
+    for (const category of ['identity', 'ingestion', 'database_migration', 'information_absent', 'Code', '', null, 'other']) {
+        const h = hyp({ category, support: 'WEAK', assertion_ids: ['a-rep'] });
+        assert.equal(ok(withCause(causeOf([h]), undefined, { rules_version: null })), false, String(category));
+    }
+});
+
+test('AC-05: support acima de MODERATE, numérico ou fora do vocabulário é recusado; sem soma a 100%', () => {
+    for (const support of ['HIGH', 'STRONG', 'CERTAIN', 'FACT', 'CONFIRMED', 'moderate', 0.9, 90, null, undefined]) {
+        assert.equal(ok(withCause(causeOf([hyp({ support })]))), false, String(support));
+    }
+    assert.equal(ok(withCause(causeOf([hyp({ confidence: 0.6 })]))), false, 'chave confidence');
+    assert.equal(ok(withCause(causeOf([hyp({ percent: 60 })]))), false, 'chave percent');
+    assert.equal(ok(withCause({ ...causeOf([hyp()]), total: 100 })), false, 'chave extra na causa');
+});
+
+test('AC-03: db_migration sobe no máximo a MODERATE, com FACT compatível e rules_version', () => {
+    assert.deepEqual(model.validateVersion(withCause(causeOf([hyp()]))), { ok: true });
+    assert.ok(errs(withCause(causeOf([hyp()]), undefined, { rules_version: null })).some(e => /rules_version/.test(e)), 'sem rules_version');
+    assert.ok(errs(withCause(causeOf([hyp()]), undefined, { rules_version: 'rules/9.9' })).some(e => /rules_version/.test(e)), 'rules_version outra');
+});
+
+test('MODERATE exige FACT compatível por regra: relato, hipótese e FACT de outra categoria não bastam', () => {
+    for (const ids of [['a-rep'], ['a-hyp'], ['a-rep', 'a-hyp'], []]) {
+        assert.equal(ok(withCause(causeOf([hyp({ assertion_ids: ids })]))), false, ids.join(','));
+    }
+    // FACT válido, mas o predicado não é compatível com db_migration por rules/0.1.
+    const other = fact({ id: 'a-mig', predicate_ref: 'pred:has_transition_journal@0.1' });
+    assert.equal(ok(withCause(causeOf([hyp()]), [other])), false, 'predicado sem regra');
+    const spec = fact({ id: 'a-mig', predicate_ref: 'pred:spec_change_approved_in_cycle@0.1' });
+    assert.equal(ok(withCause(causeOf([hyp({ category: 'db_migration' })]), [spec])), false, 'compatível com outra categoria');
+    assert.equal(ok(withCause(causeOf([hyp({ category: 'requirement_spec' })]), [spec])), true, 'a mesma FACT serve à sua categoria');
+    // Categorias sem regra de compatibilidade nunca chegam a MODERATE.
+    assert.equal(ok(withCause(causeOf([hyp({ category: 'indeterminate' })]))), false, 'indeterminate');
+    assert.equal(ok(withCause(causeOf([hyp({ category: 'code' })]))), false, 'code');
+});
+
+test('MODERATE cai com FACT contrário (na versão ou contradizendo o suporte); contradição por relato não derruba', () => {
+    const contrary = fact({ id: 'a-contra', predicate_ref: 'pred:db_migration_absent_in_window@0.1' });
+    assert.equal(ok(withCause(causeOf([hyp()]), [migFact(), contrary])), false, 'FACT contrário na versão');
+    // O mesmo FACT contrário não afeta outra categoria.
+    const spec = fact({ id: 'a-spec', predicate_ref: 'pred:spec_change_approved_in_cycle@0.1' });
+    assert.equal(ok(withCause(causeOf([hyp({ id: 'h-s', category: 'requirement_spec', assertion_ids: ['a-spec'] })]),
+        [spec, contrary])), true, 'contrário de outra categoria');
+    // Suporte contradito por outro FACT.
+    const other = fact({ id: 'a-other', predicate_ref: 'pred:has_transition_journal@0.1' });
+    assert.equal(ok(withCause(causeOf([hyp()]), [migFact({ contradicted_by: ['a-other'] }), other])), false, 'contradito por FACT');
+    // Contradito só por relato: RELATO não é FACT contrário.
+    assert.equal(ok(withCause(causeOf([hyp()]), [migFact({ contradicted_by: ['a-rep'] }), reportA()])), true, 'contradito por relato');
+});
+
+test('WEAK exige relato/hipótese e nenhum FACT contrário; WEAK não pode ser sustentado por nada', () => {
+    const weak = (ids, over = {}) => hyp({ category: 'db_migration', support: 'WEAK', assertion_ids: ids, ...over });
+    assert.equal(ok(withCause(causeOf([weak([])]))), false, 'WEAK sem assertion');
+    assert.equal(ok(withCause(causeOf([weak(['a-rep'])]))), true);
+    const contrary = fact({ id: 'a-contra', predicate_ref: 'pred:db_migration_absent_in_window@0.1' });
+    assert.equal(ok(withCause(causeOf([weak(['a-rep'])]), [reportA(), contrary])), false, 'WEAK com FACT contrário');
+    // Com FACT contrário a hipótese só pode ser UNKNOWN (evidência contraditória).
+    assert.equal(ok(withCause(causeOf([hyp({ support: 'UNKNOWN', assertion_ids: ['a-contra'] })]), [contrary])), true);
+});
+
+test('assertion_ids precisam existir em assertions[]; hipóteses malformadas são recusadas', () => {
+    assert.equal(ok(withCause(causeOf([hyp({ assertion_ids: ['a-fantasma'] })]))), false, 'inexistente');
+    assert.equal(ok(withCause(causeOf([hyp({ category: 'code', support: 'WEAK', assertion_ids: ['a-rep'] })]), undefined, { rules_version: null })), true);
+    const bad = [
+        ['id vazio', { id: '' }], ['assertion_ids string', { assertion_ids: 'a-mig' }], ['assertion_ids com vazio', { assertion_ids: [''] }],
+        ['categoria ausente', { category: undefined }],
+    ];
+    for (const [name, over] of bad) {
+        const h = { ...hyp(), ...over };
+        for (const k of Object.keys(h)) if (h[k] === undefined) delete h[k];
+        assert.equal(ok(withCause(causeOf([h]))), false, name);
+    }
+    assert.equal(ok(withCause(causeOf([null]))), false, 'hipótese nula');
+    assert.equal(ok(withCause(causeOf([hyp(), hyp()]))), false, 'id duplicado');
+    assert.equal(ok(withCause(causeOf([hyp(), hyp({ id: 'h-2' })]))), false, 'categoria duplicada');
+    assert.equal(ok(withCause(causeOf([hyp({ assertion_ids: ['a-mig', 'a-mig'] })]))), false, 'assertion repetida');
+});
+
+test('AC-02: sem rótulo humano a causa não é HUMAN_CONFIRMED (c5 é dona da confirmação)', () => {
+    const h = hyp({ support: 'WEAK', assertion_ids: ['a-rep'] });
+    assert.equal(ok(withCause(causeOf([h], 'HUMAN_CONFIRMED'))), false, 'deterministic');
+    assert.equal(ok(withCause(causeOf([h], 'HUMAN_CONFIRMED'), undefined, { produced_by: 'agent', analyzer: { kind: 'agent', runtime: 'x' } })), false, 'agent');
+    assert.equal(ok(withCause(causeOf([], 'HUMAN_CONFIRMED'), undefined, { produced_by: 'human', analyzer: { kind: 'human', runtime: 'dashboard' } })), false, 'sem hipótese');
+    assert.equal(ok(withCause(causeOf([h], 'HUMAN_CONFIRMED'), undefined, { produced_by: 'human', analyzer: { kind: 'human', runtime: 'dashboard' }, rules_version: null })), true, 'humano');
+});
+
+test('cause fora do schema é recusada; seção ausente continua válida', () => {
+    for (const cause of ['x', null, [], { status: 'UNKNOWN' }, { hypotheses: [] }, { status: 'UNKNOWN', hypotheses: {} }]) {
+        assert.equal(ok(withCause(cause, [])), false, JSON.stringify(cause));
+    }
+    assert.equal(ok(version({})), true);
+    const r = content.validateContent(withCause(causeOf([hyp({ support: 'HIGH' })])), { isCalendarIso: model.isCalendarIso });
+    assert.equal(r.ok, false);
+    assert.ok(r.errors.every(e => e.startsWith('cause')), r.errors.join('|'));
+});
+
+test('cause não lança com assertions malformadas: o erro vem acumulado', () => {
+    const broken = migFact({ contradicted_by: 'a-x' });
+    let r;
+    assert.doesNotThrow(() => { r = model.validateVersion(withCause(causeOf([hyp()]), [broken])); });
+    assert.equal(r.ok, false);
+    assert.doesNotThrow(() => model.validateVersion(withCause(causeOf([hyp()]), 'x')));
+});
