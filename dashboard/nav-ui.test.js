@@ -191,3 +191,23 @@ test('nav: "Tickets e PRs" saiu do menu e #tickets cai em Tickets (PRI-325/PRI-3
     ui.setView('tickets');
     assert.equal(ui.context.window.Views.current(), 'redmine');
 });
+
+// Views.addView (PRI-361): aba que só existe quando o servidor a liga.
+test('addView: entra no grupo Operação uma única vez e some do menu se nunca for chamada', () => {
+    const ui = boot();
+    ui.setView('runs');
+    assert.ok(!/data-view="verificacoes-ui"/.test(ui.tabs()));
+    ui.context.window.Views.addView('verificacoes-ui', 'Verificações de UI', 'Operação', 'M0 0');
+    ui.context.window.Views.addView('verificacoes-ui', 'Verificações de UI', 'Operação', 'M0 0');
+    assert.equal(ui.tabs().match(/data-view="verificacoes-ui"/g).length, 1);
+    assert.match(ui.group('Operação'), /data-view="verificacoes-ui"/);
+    assert.match(ui.group('Operação'), /Verificações de UI/);
+});
+
+test('addView: grupo inexistente é ignorado e não cria visão', () => {
+    const ui = boot();
+    ui.setView('runs');
+    ui.context.window.Views.addView('x-view', 'X', 'Grupo que não existe', 'M0 0');
+    assert.ok(!/data-view="x-view"/.test(ui.tabs()));
+    assert.equal(ui.context.window.Views.current(), 'runs');
+});
