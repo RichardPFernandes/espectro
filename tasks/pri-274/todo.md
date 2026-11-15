@@ -67,7 +67,7 @@
   - Depende de: T5, Q1. Arquivos: content, content.test.
 
 ### Checkpoint: após T6
-- [ ] AC-01 a AC-04 verdes; Richard revisa antes de fechar.
+- [x] Fechado em 15/11 com aprovação do Richard. AC-01 a AC-04 verdes (206/206 nos módulos qa-diagnosis); suíte `scripts` com as mesmas 9 falhas da T2/T4/T5 (PRI-359), nenhuma em qa-diagnosis. A regra "preparação bloqueada ⇒ causa UNKNOWN" segue não imposta no validador.
 
 ## Fase 2: fechamento
 
