@@ -103,6 +103,16 @@ vence**, salvo SPEC_CHANGE explicitamente aprovado (`spec_change_approved: true`
    seção de critério padrão; não o abra inteiro por isso: as regras invioláveis
    são lidas no passo 4, e um `grep -n -i 'criterio\|critério' memory/project.yaml` basta pra
    confirmar se alguma seção nova surgiu.
+2b. **Verificação de UI no navegador** (PRI-355; só se `PRISMA_UI_VERIFY=on` **e** o diff tocar
+   frontend — `node "$PRISMA_ROOT/scripts/ui-verify.js" touches <base>`, com `<base>` = a base do
+   `git diff <base>...HEAD` do passo 4; exit 0 = toca, exit 1 = não toca, **exit 2 = UNKNOWN**, nunca
+   N/A; `PRISMA_UI_VERIFY` com valor diferente de `on`/`off` é erro, não `off`): siga
+   `$PRISMA_ROOT/.claude/commands/verify-ui.md $ARGUMENTS`. `PASSOU` e `N/A` seguem; `SKIPPED` (flag
+   `off`) é o comportamento de hoje, sem efeito. `FALHOU` = `[FAIL] UI_VERIFY_FAILED` com a lista de
+   problemas: registre-a no `context.md`, **não** rode o `/commit` e transicione
+   `--to=implement --retry` (mesma aresta e mesmo limite `retries.verify` de qualquer `[FAIL]`).
+   Sem o MCP do navegador na sessão, `touches` com exit 2 ou `verdict` com exit 2 é **UNKNOWN**: não vale
+   como `PASSOU`; escale ao humano. Procedimento: `$PRISMA_ROOT/.agents/skills/prisma-ui-verify/SKILL.md`.
 3. Confirme que nada ficou fora do escopo original sem sinalização.
 4. **Classificação de risco do PR** (histórico em
    `memory/decisions/2026-09-22-pr-draft-high-risk.md`, que não existe nesta

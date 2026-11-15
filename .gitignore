@@ -30,3 +30,6 @@ dashboard/dashboard-prefs.json
 
 # Nível de processo da sessão (Acordo v2), lido pelo hook .claude/hooks/processo-level.mjs
 .prisma/
+
+# Aprovações locais do navegador de verificação de UI (modelo: .claude/settings.local.json.example)
+.claude/settings.local.json
