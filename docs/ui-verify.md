@@ -74,6 +74,30 @@ PNGs anteriores ao último `ensure`. Exit 2 é sempre UNKNOWN.
 Se a porta já tem um servidor que não é nosso, o `ensure` recusa (`PORT_IN_USE`): ele pode rodar
 código de outro checkout e aceitar escrita. Use outra `PRISMA_UI_PORT`.
 
+## Ver o resultado no dashboard (aba "Verificações de UI")
+
+O resultado de cada `/verify-ui` (veredito, problemas e screenshots por AC) aparece na aba **Verificações de UI**,
+grupo Operação do menu. É uma leitura de `<plataforma>/.prisma/ui-verify/<task-id>/`: não escreve nada e funciona
+também com `PRISMA_DASHBOARD_READONLY=1`.
+
+```bash
+PRISMA_UI_VERIFY_TAB=on node dashboard/server.js    # desligada por padrão
+```
+
+- Desligada: a aba não entra no menu, `GET /api/ui-verify` responde `200 {"enabled":false,"tasks":[]}` e a rota de
+  imagem responde 404. A listagem não pode dar 4xx: a página a consulta a cada carga, e um 404 viraria erro de
+  console e requisição `>= 400` em toda tela, reprovando o próprio `/verify-ui` do dashboard.
+- Veredito ausente, ilegível ou incoerente (por exemplo `PASSOU` com problemas listados) aparece como **Sem veredito**,
+  nunca como "Passou". O mesmo vale quando `findings.json` ou um PNG é mais novo que o `verdict.json`: o
+  `/verify-ui` só apaga o veredito ao rodar `verdict`, então uma rodada que caiu antes disso deixaria o veredito
+  anterior valendo para achados novos.
+- A rota de imagem só serve PNG real e regular da pasta da própria task (até 10 MB): nome por allowlist, pasta da
+  task precisa ser diretório real, e o arquivo é aberto com `O_NOFOLLOW` e validado no mesmo descritor, então
+  trocar por symlink depois da checagem não muda o que sai.
+- Screenshot dos achados só liga à imagem se aponta para a pasta da própria task.
+- Pasta de outro checkout: `uiVerifyDir` em `createDashboard` (usado nos testes).
+- Publicar o veredito no Redmine é outra issue (PRI-362, nível Alto).
+
 ## Configuração (env; nenhum valor secreto no repositório)
 
 | Variável | Padrão |
@@ -81,6 +105,7 @@ código de outro checkout e aceitar escrita. Use outra `PRISMA_UI_PORT`.
 | `PRISMA_UI_VERIFY` | `off` (só `on` ou `off`; outro valor é erro) |
 | `PRISMA_UI_HEADLESS` | `true` |
 | `PRISMA_UI_PORT` | `3399` |
+| `PRISMA_UI_VERIFY_TAB` | desligada (só `on` liga a aba "Verificações de UI" do dashboard, PRI-361) |
 | `PRISMA_UI_CUSTOM_SERVER` + `PRISMA_UI_SERVER_CMD` / `PRISMA_UI_SERVER_CWD` | ausentes (`npm start` em `<plataforma>/dashboard`). Servidor customizado exige `PRISMA_UI_CUSTOM_SERVER=1`: contorna fixture e somente leitura, é nível Alto com AUTORIZO próprio. O comando aceita lista JSON (`["node","x js"]`) |
 | `PRISMA_UI_FRONTEND_GLOBS` | `dashboard/public/**` só na plataforma; **obrigatório** em `REPO_PATH` de outro repo (só `*`, `**`, `?`; sem `{ } [ ] !`; lista vazia é erro) |
 | `REPO_PATH` / `PRISMA_ROOT` | cwd / este checkout (o git roda em `REPO_PATH`; os scripts vêm de `PRISMA_ROOT`) |
