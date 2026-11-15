@@ -4,7 +4,8 @@
 // - Gramática de chave (§3.1 EXACT, §3.4 DEGRADED) e de token, premissas 3 e 4.
 // - Cabeçalho §6.7 de vNNN.json e validador da parte de cabeçalho de qa-diagnosis/0.1
 //   (premissas 7.7 e 8). As seções de conteúdo §6.1–6.4 são opcionais; a validação delas
-//   fica em qa-diagnosis-content.js e chega seção a seção (c2b-4: context primeiro).
+//   fica em qa-diagnosis-content.js (c2b-4: context, assertions, cause, recommendation e
+//   platform_signals).
 // - Bloco qa_rejections[i].diagnosis (§4.2), premissas 7.1–7.8.
 //
 // JavaScript puro, sem ajv: a condição (e) do §4.3.1 não pode passar por falta de validador.

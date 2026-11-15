@@ -12,7 +12,7 @@ const AT = '2026-11-06T12:00:00.000Z';
 function version(sections) {
     return model.buildVersion({
         rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a',
-        produced_by: 'deterministic', created_at: AT,
+        produced_by: 'deterministic', predicates_version: 'pred/0.1', taxonomy_version: '0.1', created_at: AT,
         bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' },
     }, sections);
 }
@@ -147,7 +147,7 @@ test('AC-04: FACT só por SYSTEM_PREDICATE pred:<id>@<ver> sobre fonte TRUSTED_S
 });
 
 test('AC-04: o vocabulário type×basis é o da §6.2, um para um', () => {
-    assert.deepEqual([...content.ASSERTION_TYPES].sort(), ['ADJUDICATION', 'FACT', 'HYPOTHESIS', 'REPORT']);
+    assert.deepEqual([...content.ASSERTION_TYPES].sort(), ['ADJUDICATION', 'FACT', 'HYPOTHESIS', 'REPORT', 'UNKNOWN']);
     assert.deepEqual({ ...content.BASIS_TYPE }, {
         SYSTEM_PREDICATE: 'FACT', REPORTED: 'REPORT', AGENT_INFERENCE: 'HYPOTHESIS', HUMAN_ADJUDICATED: 'ADJUDICATION' });
 });
@@ -270,7 +270,7 @@ const hypoA = (over = {}) => fact({ id: 'a-hyp', type: 'HYPOTHESIS', basis: 'AGE
 const withCause = (cause, assertions = [migFact(), reportA(), hypoA()], header = { rules_version: rules.RULES_VERSION }) =>
     model.buildVersion({
         rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a',
-        produced_by: 'deterministic', created_at: AT,
+        produced_by: 'deterministic', predicates_version: 'pred/0.1', taxonomy_version: '0.1', created_at: AT,
         bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' }, ...header,
     }, { context: { sources: [source(), noteSrc()], missing: [] }, assertions, cause });
 
@@ -307,7 +307,7 @@ test('hipóteses WEAK (relato/hipótese de agente) e UNKNOWN (sem evidência) s�
     const list = [
         hyp({ id: 'h-1', category: 'environment', support: 'WEAK', assertion_ids: ['a-rep'] }),
         hyp({ id: 'h-2', category: 'code', support: 'WEAK', assertion_ids: ['a-hyp', 'a-rep'] }),
-        hyp({ id: 'h-3', category: 'data', support: 'UNKNOWN', assertion_ids: [] }),
+        hyp({ id: 'h-3', category: 'indeterminate', support: 'UNKNOWN', assertion_ids: [] }),
     ];
     assert.deepEqual(model.validateVersion(withCause(causeOf(list), [migFact(), reportA(), hypoA()], { rules_version: null })), { ok: true });
 });
@@ -395,12 +395,12 @@ test('assertion_ids precisam existir em assertions[]; hipóteses malformadas sã
     assert.equal(ok(withCause(causeOf([hyp({ assertion_ids: ['a-mig', 'a-mig'] })]))), false, 'assertion repetida');
 });
 
-test('AC-02: sem rótulo humano a causa não é HUMAN_CONFIRMED (c5 é dona da confirmação)', () => {
+test('AC-02 / G3 I3: HUMAN_CONFIRMED não vale em vNNN.json, nem com produced_by human (c5 é dona)', () => {
     const h = hyp({ support: 'WEAK', assertion_ids: ['a-rep'] });
     assert.equal(ok(withCause(causeOf([h], 'HUMAN_CONFIRMED'))), false, 'deterministic');
     assert.equal(ok(withCause(causeOf([h], 'HUMAN_CONFIRMED'), undefined, { produced_by: 'agent', analyzer: { kind: 'agent', runtime: 'x' } })), false, 'agent');
     assert.equal(ok(withCause(causeOf([], 'HUMAN_CONFIRMED'), undefined, { produced_by: 'human', analyzer: { kind: 'human', runtime: 'dashboard' } })), false, 'sem hipótese');
-    assert.equal(ok(withCause(causeOf([h], 'HUMAN_CONFIRMED'), undefined, { produced_by: 'human', analyzer: { kind: 'human', runtime: 'dashboard' }, rules_version: null })), true, 'humano');
+    assert.equal(ok(withCause(causeOf([h], 'HUMAN_CONFIRMED'), undefined, { produced_by: 'human', analyzer: { kind: 'human', runtime: 'dashboard' }, rules_version: null })), false, 'humano: só a c5 confirma (confirmed_cause com aprovador)');
 });
 
 test('cause fora do schema é recusada; seção ausente continua válida', () => {
@@ -432,7 +432,7 @@ const runEvents = (over = {}) => source({ id: 's-run', kind: 'run_events', locat
 const withRec = (sections, sources = [source(), noteSrc(), runEvents()], missingList = [missing()], header = {}) =>
     model.buildVersion({
         rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a',
-        produced_by: 'deterministic', created_at: AT,
+        produced_by: 'deterministic', predicates_version: 'pred/0.1', taxonomy_version: '0.1', created_at: AT,
         bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' }, ...header,
     }, { context: { sources, missing: missingList }, ...sections });
 
@@ -510,7 +510,7 @@ test('depends_on_missing só aponta o que está em context.missing[]; sem repeti
     assert.equal(ok(withRec({ recommendation: rec({ depends_on_missing: ['spec', 'spec'] }) })), false, 'repetido');
     // Sem context não há o que declarar como faltante.
     const noCtx = model.buildVersion({
-        rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a', produced_by: 'deterministic',
+        rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a', produced_by: 'deterministic', predicates_version: 'pred/0.1', taxonomy_version: '0.1',
         created_at: AT, bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' },
     }, { recommendation: rec({ depends_on_missing: ['spec'] }) });
     assert.equal(ok(noCtx), false, 'sem context');
@@ -558,14 +558,14 @@ test('platform_signals: kinds fechados, chaves fechadas, ids únicos, lista vazi
 
 test('platform_signals admitido não se apoia em texto externo (INV-5/6); não admitido pode', () => {
     assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: ['s-note'], admitted: true })] })), false, 'nota sustenta sinal admitido');
-    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: ['s-note'], admitted: false })] })), true, 'sinal não admitido');
+    assert.equal(ok(withRec({ platform_signals: [sig({ kind: 'spec_missing', evidence_ids: ['s-note'], admitted: false })] })), true, 'sinal não admitido');
     const unadmitted = runEvents({ admitted: false, admission_rule: null });
     assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: ['s-run'], admitted: true })] }, [source(), unadmitted])), false, 'fonte não admitida');
-    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: [], admitted: true })] })), true, 'spec_missing sem fonte (a ausência é o fato)');
+    assert.equal(ok(withRec({ platform_signals: [sig({ kind: 'spec_missing', evidence_ids: [], admitted: true })] })), true, 'spec_missing sem fonte (a ausência é o fato)');
 });
 
 test('platform_signals sem context só vale sem evidência citada', () => {
-    const base = { rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a', produced_by: 'deterministic',
+    const base = { rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a', produced_by: 'deterministic', predicates_version: 'pred/0.1', taxonomy_version: '0.1',
         created_at: AT, bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' } };
     assert.equal(ok(model.buildVersion(base, { platform_signals: [sig({ kind: 'spec_missing', evidence_ids: [] })] })), true);
     assert.equal(ok(model.buildVersion(base, { platform_signals: [sig()] })), false);
@@ -579,4 +579,67 @@ test('recommendation e platform_signals: erros prefixados, sem lançar com seç�
     assert.ok(r.errors.every(e => /^(recommendation|platform_signals)/.test(e)), r.errors.join('|'));
     assert.doesNotThrow(() => model.validateVersion({ ...withRec({}), context: 'x', recommendation: rec(), platform_signals: [sig()] }));
     assert.equal(ok(withRec({})), true, 'seções ausentes seguem válidas');
+});
+
+// ---------------------------------------------------------------------------------------------
+// G3 (I1, I2, I4, S1, S2): decisões do Richard aplicadas
+// ---------------------------------------------------------------------------------------------
+const predicates = require('./qa-diagnosis-predicates');
+
+test('G3 I1: predicate_ref precisa estar no registro pred/0.1 e a versão declarar pred/0.1', () => {
+    assert.equal(ok(withAssertions([fact({ predicate_ref: 'pred:invented@0.1' })])), false, 'id fora do registro');
+    assert.equal(ok(withAssertions([fact({ predicate_ref: 'pred:has_rejection_key@77' })])), false, 'versão fora do registro');
+    for (const id of predicates.PREDICATE_IDS) {
+        assert.equal(ok(withAssertions([fact({ predicate_ref: `pred:${id}@0.1` })])), true, id);
+    }
+    const base = { rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a', produced_by: 'deterministic',
+        created_at: AT, bindings: { task_id: '900001-synthetic' }, analyzer: { kind: 'deterministic', runtime: 'node' } };
+    const sections = { context: { sources: [source()], missing: [] }, assertions: [fact()] };
+    assert.equal(ok(model.buildVersion({ ...base, predicates_version: null }, sections)), false, 'predicates_version nulo com FACT');
+    assert.equal(ok(model.buildVersion({ ...base, predicates_version: 'pred/9' }, sections)), false, 'predicates_version errada');
+    assert.equal(ok(model.buildVersion({ ...base, predicates_version: 'pred/0.1' }, sections)), true);
+});
+
+test('G3 I1: cause exige taxonomy_version 0.1', () => {
+    const v = withCause(causeOf([hyp({ category: 'code', support: 'WEAK', assertion_ids: ['a-rep'] })]), undefined, { rules_version: null });
+    assert.equal(ok(v), true);
+    assert.equal(ok({ ...v, taxonomy_version: null }), false, 'nulo');
+    assert.equal(ok({ ...v, taxonomy_version: '9' }), false, 'outra');
+});
+
+test('G3 I2 (INV-6): FACT não vale em versão produced_by agent; REPORT e HYPOTHESIS valem', () => {
+    const agent = { produced_by: 'agent', analyzer: { kind: 'agent', runtime: 'x' } };
+    const mk = list => model.buildVersion({ rejection_key: KEY, version: 1, parent_version: 0, job_token: 'job-900001-a',
+        created_at: AT, bindings: { task_id: '900001-synthetic' }, predicates_version: 'pred/0.1', taxonomy_version: '0.1', ...agent },
+    { context: { sources: [source(), noteSrc()], missing: [] }, assertions: list });
+    assert.equal(ok(mk([fact()])), false, 'FACT por agente');
+    assert.equal(ok(mk([fact({ id: 'a-r', type: 'REPORT', basis: 'REPORTED', predicate_ref: null, evidence_ids: ['s-note'] })])), true);
+});
+
+test('G3 I4: type UNKNOWN (SDD §6.2) sem basis nem predicado; não vira FACT nem sustenta WEAK', () => {
+    const unk = (over = {}) => fact({ id: 'a-u', type: 'UNKNOWN', basis: null, predicate_ref: null, evidence_ids: [], ...over });
+    assert.equal(ok(withAssertions([unk()])), true);
+    assert.equal(ok(withAssertions([unk({ basis: 'REPORTED' })])), false, 'basis em UNKNOWN');
+    assert.equal(ok(withAssertions([unk({ predicate_ref: 'pred:has_rejection_key@0.1' })])), false, 'predicado em UNKNOWN');
+    const weak = hyp({ category: 'code', support: 'WEAK', assertion_ids: ['a-u'] });
+    assert.equal(ok(withCause(causeOf([weak]), [unk()], { rules_version: null })), false, 'UNKNOWN não sustenta WEAK');
+});
+
+test('G3 S1: categoria diferente de indeterminate exige ao menos uma assertion, mesmo em UNKNOWN', () => {
+    const h = category => hyp({ category, support: 'UNKNOWN', assertion_ids: [] });
+    assert.equal(ok(withCause(causeOf([h('code')]), undefined, { rules_version: null })), false);
+    assert.equal(ok(withCause(causeOf([h('indeterminate')]), undefined, { rules_version: null })), true);
+});
+
+test('G3 S2: preparation_blocked exige evidência de sistema admitida; spec_missing pode ficar sem', () => {
+    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: [], admitted: true })] })), false, 'sem evidência');
+    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: [], admitted: false })] })), false, 'sem evidência, não admitido');
+    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: ['s-note'], admitted: false })] })), false, 'nota, mesmo não admitido');
+    assert.equal(ok(withRec({ platform_signals: [sig({ evidence_ids: ['s-journal'] })] })), true, 'fonte de sistema');
+    assert.equal(ok(withRec({ platform_signals: [sig({ kind: 'spec_missing', evidence_ids: [] })] })), true);
+});
+
+test('G3 S4: factAssertion exige statement_ref', () => {
+    assert.throws(() => predicates.factAssertion({ id: 'x', predicate_id: 'note_present', trust: 'TRUSTED_SYSTEM' }),
+        err => err.code === 'FACT_REQUIRES_STATEMENT_REF');
 });

@@ -39,8 +39,7 @@ global.fetch = async url => {
 };
 
 // Spies: módulos c2b-1 (store/model) não podem ser chamados pelo watcher.
-const spied = {
-    store: require('./qa-diagnosis-store'), model: require('./qa-diagnosis-model') };
+const spied = { store: require('./qa-diagnosis-store'), model: require('./qa-diagnosis-model') };
 const touched = [];
 for (const [mod, exp] of Object.entries(spied)) {
     for (const [name, fn] of Object.entries(exp)) {

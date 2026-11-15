@@ -2,13 +2,14 @@
 // PRI-274 c2b-4 — validação das seções de conteúdo da versão (SDD B v3 §6.1–6.4).
 //
 // JavaScript puro, sem ajv e sem I/O (como a c2b-1): a condição (e) do §4.3.1 não pode
-// passar por falta de validador. Cada seção é validada por uma função própria; as seções
-// Seção ausente é válida: o protocolo da c2b-2 produz versão só com cabeçalho.
+// passar por falta de validador. Cada seção é validada por uma função própria. Seção
+// ausente é válida: o protocolo da c2b-2 produz versão só com cabeçalho.
 //
 // `isCalendarIso` vem injetado pelo model, que importa este módulo (evita ciclo).
 
 const taxonomy = require('./qa-diagnosis-taxonomy');
 const rules = require('./qa-diagnosis-rules');
+const predicates = require('./qa-diagnosis-predicates');
 
 const HEX64_RE = /^[0-9a-f]{64}$/;
 
@@ -25,7 +26,8 @@ const MISSING_KEYS = ['what', 'why_needed', 'blocks'];
 const NEVER_TRUSTED_KINDS = Object.freeze(['redmine_note', 'attachment', 'spec', 'acs']);
 
 // §6.2: type×basis em correspondência um para um; FACT ⇔ SYSTEM_PREDICATE (QRD-AC-11, DB-04).
-const ASSERTION_TYPES = Object.freeze(['FACT', 'REPORT', 'HYPOTHESIS', 'ADJUDICATION']);
+// UNKNOWN (SDD §6.2): lacuna declarada; sem basis nem predicado, nunca sustenta suporte.
+const ASSERTION_TYPES = Object.freeze(['FACT', 'REPORT', 'HYPOTHESIS', 'ADJUDICATION', 'UNKNOWN']);
 const BASIS_TYPE = Object.freeze({
     SYSTEM_PREDICATE: 'FACT', REPORTED: 'REPORT', AGENT_INFERENCE: 'HYPOTHESIS', HUMAN_ADJUDICATED: 'ADJUDICATION' });
 const ASSERTION_KEYS = ['id', 'type', 'basis', 'predicate_ref', 'evidence_ids', 'contradicted_by', 'statement_ref'];
@@ -105,7 +107,7 @@ function validateContext(ctx, h, errors) {
 
 function isStrArray(v) { return Array.isArray(v) && v.every(isStr); }
 
-function validateAssertion(a, i, sourceById, assertionIds, errors) {
+function validateAssertion(a, i, sourceById, assertionIds, version, errors) {
     const where = `assertions[${i}]`;
     if (!isObj(a)) { errors.push(`${where}: não é objeto`); return; }
     const before = errors.length;
@@ -114,14 +116,25 @@ function validateAssertion(a, i, sourceById, assertionIds, errors) {
     if (!isStr(a.id)) errors.push(`${where}.id`);
     if (!ASSERTION_TYPES.includes(a.type)) errors.push(`${where}.type`);
     const basisKnown = Object.prototype.hasOwnProperty.call(BASIS_TYPE, a.basis);
-    if (!basisKnown) errors.push(`${where}.basis`);
+    if (a.type === 'UNKNOWN') {
+        if (a.basis !== null) errors.push(`${where}.basis: UNKNOWN não tem basis`);
+    } else if (!basisKnown) errors.push(`${where}.basis`);
     // Só a basis decide o type: nenhum texto, nota ou agente declara FACT por conta própria.
     else if (ASSERTION_TYPES.includes(a.type) && BASIS_TYPE[a.basis] !== a.type) {
         errors.push(`${where}: ${a.type} não corresponde à basis ${a.basis}`);
     }
     if (a.basis === 'SYSTEM_PREDICATE') {
         if (!(typeof a.predicate_ref === 'string' && PRED_REF_RE.test(a.predicate_ref))) errors.push(`${where}.predicate_ref: esperado pred:<id>@<ver>`);
+        else {
+            // I1: o predicado precisa existir no registro pred/0.1 e a versão declarar pred/0.1.
+            const m = /^pred:([^@]+)@(.+)$/.exec(a.predicate_ref);
+            if (!predicates.PREDICATE_IDS.includes(m[1])) errors.push(`${where}.predicate_ref: ${m[1]} fora do registro ${predicates.PREDICATES_VERSION}`);
+            if (m[2] !== predicates.PREDICATE_VER) errors.push(`${where}.predicate_ref: versão ${m[2]} fora do registro ${predicates.PREDICATES_VERSION}`);
+            if (version.predicates_version !== predicates.PREDICATES_VERSION) errors.push(`${where}: FACT exige predicates_version ${predicates.PREDICATES_VERSION}`);
+        }
     } else if (a.predicate_ref !== null) errors.push(`${where}.predicate_ref: só SYSTEM_PREDICATE carrega predicado`);
+    // I2/INV-6: saída de agente nunca é FATO.
+    if (a.type === 'FACT' && version.produced_by === 'agent') errors.push(`${where}: FACT não vale em versão produced_by agent`);
     if (!isStr(a.statement_ref)) errors.push(`${where}.statement_ref`);
     if (!isStrArray(a.contradicted_by)) errors.push(`${where}.contradicted_by`);
     else for (const c of a.contradicted_by) {
@@ -142,13 +155,13 @@ function validateAssertion(a, i, sourceById, assertionIds, errors) {
 }
 
 /** §6.2: assertions[]. A evidência é resolvida contra context.sources[] da mesma versão. */
-function validateAssertions(list, ctx, errors) {
+function validateAssertions(list, ctx, version, errors) {
     if (!Array.isArray(list)) { errors.push('assertions: não é array'); return; }
     const sourceById = sourceMap(ctx);
     const ids = list.filter(isObj).map(a => a.id).filter(isStr);
     if (new Set(ids).size !== ids.length) errors.push('assertions: id duplicado');
     const assertionIds = new Set(ids);
-    list.forEach((a, i) => validateAssertion(a, i, sourceById, assertionIds, errors));
+    list.forEach((a, i) => validateAssertion(a, i, sourceById, assertionIds, version, errors));
 }
 
 /** FACT contrário à categoria: predicado contrário na versão, ou suporte contradito por outro FACT. */
@@ -179,6 +192,7 @@ function validateHypothesis(hp, i, byId, version, errors) {
         if (a) refs.push(a); else errors.push(`${where}.assertion_ids: ${id} não existe em assertions[]`);
     }
     if (!taxonomy.isCategory(hp.category) || !supportOk || refs.length !== hp.assertion_ids.length) return;
+    if (hp.category !== 'indeterminate' && hp.assertion_ids.length === 0) errors.push(`${where}.assertion_ids: categoria ${hp.category} exige ao menos uma assertion`);
     if (hp.support === 'UNKNOWN') return;
     const contra = contraryFact(hp.category, hp.assertion_ids, byId);
     if (contra) errors.push(`${where}.support: ${hp.support} com FACT contrário (${contra}); só UNKNOWN`);
@@ -200,13 +214,12 @@ function validateCause(cause, version, errors) {
     closedKeys(cause, CAUSE_KEYS, 'cause', errors);
     if (errors.length > before) return;
     if (!CAUSE_STATUSES.includes(cause.status)) errors.push('cause.status');
+    if (version.taxonomy_version !== taxonomy.TAXONOMY_VERSION) errors.push(`cause: exige taxonomy_version ${taxonomy.TAXONOMY_VERSION}`);
     if (!Array.isArray(cause.hypotheses)) { errors.push('cause.hypotheses: não é array'); return; }
     if (cause.status === 'UNKNOWN' && cause.hypotheses.length > 0) errors.push('cause: UNKNOWN não carrega hipótese nem categoria');
     if (cause.status === 'HYPOTHESES' && cause.hypotheses.length === 0) errors.push('cause: HYPOTHESES exige ao menos uma hipótese');
-    if (cause.status === 'HUMAN_CONFIRMED') {
-        if (version.produced_by !== 'human') errors.push('cause: HUMAN_CONFIRMED só em versão produced_by human');
-        if (cause.hypotheses.length === 0) errors.push('cause: HUMAN_CONFIRMED exige a hipótese confirmada');
-    }
+    // I3: a confirmação é da c5 (confirmed_cause com aprovador, INV-12); declarar produced_by human não basta.
+    if (cause.status === 'HUMAN_CONFIRMED') errors.push('cause: HUMAN_CONFIRMED é da c5 (confirmed_cause) e não vale em vNNN.json');
     const byId = new Map();
     if (Array.isArray(version.assertions)) for (const a of version.assertions) if (isObj(a) && isStr(a.id)) byId.set(a.id, a);
     cause.hypotheses.forEach((hp, i) => validateHypothesis(hp, i, byId, version, errors));
@@ -250,6 +263,14 @@ function validatePlatformSignal(s, i, sourceById, errors) {
     if (!PLATFORM_SIGNAL_KINDS.includes(s.kind)) errors.push(`${where}.kind: esperado ${PLATFORM_SIGNAL_KINDS.join(' ou ')}`);
     if (typeof s.admitted !== 'boolean') errors.push(`${where}.admitted`);
     if (!isStrArray(s.evidence_ids)) { errors.push(`${where}.evidence_ids`); return; }
+    // S2: preparação bloqueada é fato de plataforma; sem evidência de sistema não há sinal (spec_missing: a ausência é o fato).
+    if (s.kind === 'preparation_blocked') {
+        if (s.evidence_ids.length === 0) errors.push(`${where}: preparation_blocked exige evidência`);
+        for (const e of s.evidence_ids) {
+            const src = sourceById.get(e);
+            if (src && !(src.trust === 'TRUSTED_SYSTEM' && src.admitted === true)) errors.push(`${where}: preparation_blocked só sobre fonte TRUSTED_SYSTEM admitida (${e})`);
+        }
+    }
     for (const e of s.evidence_ids) {
         const src = sourceById.get(e);
         if (!src) errors.push(`${where}.evidence_ids: ${e} não existe em context.sources[]`);
@@ -278,7 +299,7 @@ function validatePlatformSignals(list, ctx, errors) {
 function validateContent(version, h) {
     const errors = [];
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'context')) validateContext(version.context, h, errors);
-    if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'assertions')) validateAssertions(version.assertions, version.context, errors);
+    if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'assertions')) validateAssertions(version.assertions, version.context, version, errors);
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'cause')) validateCause(version.cause, version, errors);
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'recommendation')) validateRecommendation(version.recommendation, version.context, errors);
     if (isObj(version) && Object.prototype.hasOwnProperty.call(version, 'platform_signals')) validatePlatformSignals(version.platform_signals, version.context, errors);

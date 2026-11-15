@@ -92,6 +92,15 @@ if (a.type === 'FACT' && !(a.basis === 'SYSTEM_PREDICATE' && PRED_RE.test(a.pred
 - **Nunca:** gravar `state.json` fora do state-writer; conteúdo corporativo em fixture; criar efeito, gate ou
   autorização a partir do diagnóstico; ligar flag ou fazer bump.
 
+## Decisões da G3 (15/11, Richard)
+
+Aplicadas no validador: spec/AC nunca `TRUSTED_SYSTEM` (B1); `predicate_ref` no registro `pred/0.1` e `predicates_version` declarada quando há FACT, `taxonomy_version` quando há `cause` (I1); FACT recusado em `produced_by: agent` (I2); `HUMAN_CONFIRMED` recusado, é da c5 (I3); `type: UNKNOWN` aceito sem basis nem predicado (I4); hipótese de categoria ≠ `indeterminate` exige ≥1 assertion (S1); `preparation_blocked` exige evidência de sistema admitida (S2); `factAssertion` exige `statement_ref` (S4).
+
+Registradas, sem código:
+- **I5, versionamento das regras.** O validador também relê versões já publicadas (`store`, `protocol`). Endurecer uma regra de uma versão publicada reclassificaria snapshot imutável como anomalia. Regra de evolução: mudança de regra nasce com novo `rules_version`/`taxonomy_version`/`predicates_version` e só é aditiva dentro de uma versão. As regras desta fatia são `rules/0.1`, `qa-cause-taxonomy/0.1` e `pred/0.1`.
+- **S3, produtor ausente.** `rules/0.1` cita ids de predicado (`spec_change_approved_in_cycle`, `db_migration_authorized_in_window`, `handed_back_qa_prior` e os contrários) que `evaluatePredicates` não emite; não há produtor de conteúdo. Hoje MODERATE só é alcançável por fixture. Esses ids ficam no registro como `RULE_REFERENCED` (reservados). Quem os emite é o produtor determinístico, que precisa de issue própria antes de a flag poder ligar (CLAUDE.md regra 9).
+- `context` obrigatório na publicação e "preparação bloqueada ⇒ causa UNKNOWN" são regras do produtor, não do validador.
+
 ## Perguntas abertas (com recomendação)
 
 1. **Forma de `platform_signals[]`.** A SDD só diz «preparação bloqueada, spec ausente», separados da causa;

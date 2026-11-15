@@ -64,9 +64,9 @@ test('predicates: fonte que não é TRUSTED_SYSTEM não produz FACT', () => {
 });
 
 test('predicates: assertion de FACT sem predicado de sistema é recusada pelo construtor', () => {
-    assert.throws(() => predicates.factAssertion({ id: 'x', predicate_id: 'x', trust: 'REPORTED' }),
+    assert.throws(() => predicates.factAssertion({ id: 'x', predicate_id: 'x', trust: 'REPORTED', statement_ref: 's' }),
         err => err.code === 'FACT_REQUIRES_SYSTEM_PREDICATE');
-    assert.throws(() => predicates.factAssertion({ id: 'x', predicate_id: 'Bad Id', trust: 'TRUSTED_SYSTEM' }),
+    assert.throws(() => predicates.factAssertion({ id: 'x', predicate_id: 'Bad Id', trust: 'TRUSTED_SYSTEM', statement_ref: 's' }),
         err => err.code === 'FACT_REQUIRES_SYSTEM_PREDICATE');
-    assert.equal(predicates.factAssertion({ id: 'x', predicate_id: 'x', trust: 'TRUSTED_SYSTEM' }).type, 'FACT');
+    assert.equal(predicates.factAssertion({ id: 'x', predicate_id: 'x', trust: 'TRUSTED_SYSTEM', statement_ref: 's' }).type, 'FACT');
 });

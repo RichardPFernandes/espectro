@@ -11,6 +11,17 @@ const PREDICATE_VER = '0.1';
 const TRUSTED = 'TRUSTED_SYSTEM';
 const PRED_ID_RE = /^[a-z][a-z0-9_]*$/;
 
+const rules = require('./qa-diagnosis-rules');
+
+// Registro pred/0.1 (G3 I1): FACT só cita predicado deste conjunto. `EMITTED` é o que
+// evaluatePredicates produz hoje; `RULE_REFERENCED` são os ids que rules/0.1 usa e que
+// ainda não têm produtor (reservados para o produtor determinístico; G3 S3).
+const EMITTED = Object.freeze(['has_rejection_key', 'missing_rejection_key', 'identity_quality_ok',
+    'identity_quality_degraded', 'identity_quality_unknown', 'has_transition_journal',
+    'missing_transition_journal', 'note_present', 'note_absent', 'retry_already_requested']);
+const RULE_REFERENCED = Object.freeze([...new Set([...Object.values(rules.COMPATIBLE), ...Object.values(rules.CONTRARY)].flat())]);
+const PREDICATE_IDS = Object.freeze([...EMITTED, ...RULE_REFERENCED]);
+
 function systemOnly(code, message) {
     const err = new Error(message);
     err.code = code;
@@ -18,7 +29,10 @@ function systemOnly(code, message) {
 }
 
 /** Monta uma assertion FACT. Recusa qualquer fonte que não seja TRUSTED_SYSTEM. */
-function factAssertion({ id, predicate_id, trust, evidence_ids = [], statement_ref = null }) {
+function factAssertion({ id, predicate_id, trust, evidence_ids = [], statement_ref }) {
+    if (typeof statement_ref !== 'string' || statement_ref === '') {
+        throw systemOnly('FACT_REQUIRES_STATEMENT_REF', 'statement_ref é obrigatório (o validador recusa FACT sem ele)');
+    }
     if (trust !== TRUSTED || typeof predicate_id !== 'string' || !PRED_ID_RE.test(predicate_id)) {
         throw systemOnly('FACT_REQUIRES_SYSTEM_PREDICATE', 'DB-04: FACT só por predicado de sistema sobre fonte TRUSTED_SYSTEM');
     }
@@ -70,6 +84,8 @@ function evaluatePredicates(pack) {
 
 module.exports = {
     PREDICATES_VERSION,
+    PREDICATE_VER,
+    PREDICATE_IDS,
     evaluatePredicates,
     factAssertion,
 };

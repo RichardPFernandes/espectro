@@ -80,7 +80,7 @@ test('AC-03: recusas do validador', () => {
     assert.equal(model.validateVersion([]).ok, false);
 });
 
-test('AC-03: seções de conteúdo opcionais; context passa a ser validado (c2b-4 T3), as demais ainda não', () => {
+test('AC-03: seções de conteúdo opcionais; e validadas por qa-diagnosis-content.js (c2b-4)', () => {
     const v = model.buildVersion({ ...header() }, { context: { sources: [], missing: [] }, platform_signals: [] });
     assert.equal(model.validateVersion(v).ok, true);
     assert.deepEqual(Object.keys(v).slice(-2), ['context', 'platform_signals']);
