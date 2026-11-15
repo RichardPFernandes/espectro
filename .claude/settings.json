@@ -1,4 +1,24 @@
 {
+  "permissions": {
+    "deny": [
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_run_code_unsafe",
+      "mcp__playwright__browser_file_upload",
+      "mcp__playwright__browser_drop",
+      "mcp__playwright__browser_route",
+      "mcp__playwright__browser_route_list",
+      "mcp__playwright__browser_unroute",
+      "mcp__playwright__browser_cookie_set",
+      "mcp__playwright__browser_cookie_get",
+      "mcp__playwright__browser_cookie_list",
+      "mcp__playwright__browser_cookie_delete",
+      "mcp__playwright__browser_cookie_clear",
+      "mcp__playwright__browser_set_storage_state",
+      "mcp__playwright__browser_storage_state",
+      "mcp__playwright__browser_localstorage_set",
+      "mcp__playwright__browser_sessionstorage_set"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -16,6 +36,15 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/processo-level.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__playwright__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/playwright-fs-guard.mjs\""
           }
         ]
       }
