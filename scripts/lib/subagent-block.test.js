@@ -9,7 +9,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { subagentBlockArgs, planDenySettingsEnabled, DENY_SETTINGS_JSON, NO_SUBAGENT_NODES } = require('./subagent-block');
+const { subagentBlockArgs, planDenySettingsEnabled, planImplementChainEnabled, isPlanImplementChain, DENY_SETTINGS_JSON, NO_SUBAGENT_NODES } = require('./subagent-block');
 
 // Expressão do AS-IS (readmine-watcher.js @ 5560d29, linha 4313), copiada literalmente.
 const AS_IS_NO_SUBAGENT_NODES = new Set(['plan']);
@@ -49,6 +49,48 @@ test('WATCHER_PLAN_DENY_SETTINGS: só 1|true|sim ligam; ausente ou outro valor =
     assert.strictEqual(planDenySettingsEnabled({}), false);
     for (const v of ['1', 'true', 'TRUE', 'sim']) assert.strictEqual(planDenySettingsEnabled({ WATCHER_PLAN_DENY_SETTINGS: v }), true, v);
     for (const v of ['', '0', 'false', 'nao', 'yes']) assert.strictEqual(planDenySettingsEnabled({ WATCHER_PLAN_DENY_SETTINGS: v }), false, v);
+});
+
+// PRI-353 T6 (AC5): segmento [plan, implement] na mesma sessão.
+test('AC5: segmento encadeado [plan, implement] sai sem --disallowedTools nem --settings de deny', () => {
+    for (const denySettings of [false, true]) {
+        for (const routed of [false, true]) {
+            const args = subagentBlockArgs({ nodes: ['plan', 'implement'], routed, denySettings, chain: true });
+            assert.deepStrictEqual(args, [], JSON.stringify({ denySettings, routed }));
+            assert.ok(!args.includes('--disallowedTools') && !args.includes('--settings'));
+        }
+    }
+});
+
+test('AC5: com a flag de encadeamento desligada, [plan, implement] fica no AS-IS e nós avulsos não mudam', () => {
+    assert.deepStrictEqual(subagentBlockArgs({ nodes: ['plan', 'implement'], chain: false }), ['--disallowedTools', 'Agent,Task']);
+    for (const nodes of NODE_LISTS) {
+        for (const denySettings of [false, true]) {
+            assert.deepStrictEqual(
+                subagentBlockArgs({ nodes, denySettings, chain: true }),
+                subagentBlockArgs({ nodes, denySettings }),
+                JSON.stringify({ nodes, denySettings }),
+            );
+        }
+    }
+});
+
+test('AC5: plan avulso e fetch_ticket+plan continuam bloqueados mesmo com a flag de encadeamento ligada', () => {
+    assert.deepStrictEqual(subagentBlockArgs({ nodes: ['plan'], chain: true }), ['--disallowedTools', 'Agent,Task']);
+    assert.deepStrictEqual(subagentBlockArgs({ nodes: ['fetch_ticket', 'plan'], chain: true, denySettings: true }), ['--settings', DENY_SETTINGS_JSON]);
+});
+
+test('isPlanImplementChain: só a sequência exata plan, implement', () => {
+    assert.strictEqual(isPlanImplementChain(['plan', 'implement']), true);
+    for (const nodes of [['plan'], ['implement'], ['implement', 'plan'], ['fetch_ticket', 'plan'], ['plan', 'implement', 'review'], [], null, undefined]) {
+        assert.strictEqual(isPlanImplementChain(nodes), false, JSON.stringify(nodes));
+    }
+});
+
+test('WATCHER_PLAN_IMPLEMENT_CHAIN: só 1|true|sim ligam; ausente ou outro valor = desligada', () => {
+    assert.strictEqual(planImplementChainEnabled({}), false);
+    for (const v of ['1', 'true', 'TRUE', 'sim']) assert.strictEqual(planImplementChainEnabled({ WATCHER_PLAN_IMPLEMENT_CHAIN: v }), true, v);
+    for (const v of ['', '0', 'false', 'nao', 'yes']) assert.strictEqual(planImplementChainEnabled({ WATCHER_PLAN_IMPLEMENT_CHAIN: v }), false, v);
 });
 
 // ---------------------------------------------------------------------------------
