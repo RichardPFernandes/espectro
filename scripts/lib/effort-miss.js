@@ -8,15 +8,9 @@
 // nunca zero. A gravação passa pelo state-writer (único autorizado a escrever state.json) e não
 // mexe em campo crítico, então não muda state_version.
 //
-// Uso (agente ou humano):
-//   node scripts/lib/effort-miss.js record <run> --phase=test --class=cobertura-de-ac \
-//       --what="…" --evidence=<ref> --by=review|verify|human [--would-high-catch=yes|no|unknown]
-
-const fs = require('fs');
-const path = require('path');
-
-const stateWriter = require('../state-writer');
-const phaseEffort = require('./phase-effort');
+// Este módulo é PURO (validação, leitura, projeção): não importa o writer, para o dashboard e a
+// plataforma poderem lê-lo sem violar a fronteira G3 (no-lib-upward). A gravação e a CLI estão em
+// scripts/effort-miss.js; o leitor por processo do dashboard, em scripts/effort-miss-read.js.
 
 const WOULD_HIGH_CATCH = ['yes', 'no', 'unknown'];
 const RECORDED_BY = ['review', 'verify', 'human'];
@@ -56,23 +50,6 @@ function buildRecord(input, { table, now = new Date().toISOString(), existing = 
     return rec;
 }
 
-function recordEffortMiss(runDir, input, { table, now } = {}) {
-    const tbl = table || (() => {
-        const loaded = phaseEffort.loadPhaseEffortTable();
-        if (!loaded.ok) throw new Error(loaded.error);
-        return loaded.table;
-    })();
-    if (!fs.existsSync(path.join(runDir, 'state.json'))) throw new Error(`EFFORT_MISS_RUN_NOT_FOUND: ${runDir}`);
-    let created = null;
-    const state = stateWriter.update(runDir, draft => {
-        const existing = Array.isArray(draft.effort_misses) ? draft.effort_misses : [];
-        created = buildRecord(input, { table: tbl, now, existing });
-        draft.effort_misses = [...existing, created];
-    }, { operation: 'effort_miss', actor: input.recorded_by || 'agent' });
-    if (!state) throw new Error(`EFFORT_MISS_RUN_NOT_FOUND: ${runDir}`);
-    return created;
-}
-
 function readEffortMisses(state) {
     const records = Array.isArray(state?.effort_misses) ? state.effort_misses : [];
     return records.length ? { status: 'RECORDED', records } : { status: 'UNKNOWN', records: [] };
@@ -102,22 +79,4 @@ function projectEffortMisses(entries) {
     };
 }
 
-function cli(argv) {
-    const args = Object.fromEntries(argv.filter(a => a.startsWith('--')).map(a => {
-        const i = a.indexOf('=');
-        return i < 0 ? [a.slice(2), true] : [a.slice(2, i), a.slice(i + 1)];
-    }));
-    const [cmd, runDir] = argv.filter(a => !a.startsWith('--'));
-    if (cmd !== 'record' || !runDir) throw new Error('uso: effort-miss.js record <run> --phase= --class= --what= --evidence= --by= [--would-high-catch=]');
-    const rec = recordEffortMiss(runDir, {
-        phase: args.phase, class: args.class, what_missed: args.what, evidence_ref: args.evidence,
-        recorded_by: args.by, ...(args['would-high-catch'] ? { would_high_catch: args['would-high-catch'] } : {}),
-    });
-    console.log(JSON.stringify(rec, null, 2));
-}
-
-if (require.main === module) {
-    try { cli(process.argv.slice(2)); } catch (e) { console.error(`[effort-miss] ${e.message}`); process.exit(1); }
-}
-
-module.exports = { buildRecord, validateRecord, recordEffortMiss, readEffortMisses, projectEffortMisses, WOULD_HIGH_CATCH, RECORDED_BY };
+module.exports = { buildRecord, validateRecord, readEffortMisses, projectEffortMisses, WOULD_HIGH_CATCH, RECORDED_BY };

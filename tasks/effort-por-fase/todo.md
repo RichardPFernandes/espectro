@@ -44,7 +44,7 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 
 - [x] Confirmar se `state.schema.json` aceita campo novo; run antiga sem o campo segue válida.
 - [x] Teste: schema aceita o registro; `state-writer` grava com CAS; `would_high_catch` nasce `unknown`.
-- [x] `scripts/lib/effort-miss.js` + campo `effort_misses` no schema + escrita pelo `state-writer`.
+- [x] `scripts/lib/effort-miss.js` (puro) + `scripts/effort-miss.js` (gravação e CLI) + `scripts/effort-miss-read.js` (leitor do dashboard) + campo `effort_misses` no schema.
 - [x] Endpoint read-only no dashboard; sem registro devolve UNKNOWN, nunca zero.
 
 **AC:** AC6. **Arquivos:** `.graph/schemas/state.schema.json`, `scripts/state-writer.js`,
@@ -81,7 +81,9 @@ Resultado "aceita, efeito UNKNOWN" = **parar e pedir decisão** antes de T2 em d
 
 ### Checkpoint C3
 - [ ] Página do benchmark revisada pelo Richard (vazia, só UNKNOWN).
-- [x] Revisão independente (G3, 1 revisor, 14/11/2026) do diff T1–T5: **FAIL**. MAJOR 2 (`effort_miss` sem denominador) corrigido na T5. **BLOCKER 1 aberto, decisão do Richard:** com Node 22, `arch:check` acusa 2 violações novas da T3 (`dashboard/server.js` → `scripts/lib/effort-miss.js`, regra `no-dashboard-scripts-internals`; `effort-miss.js` → `state-writer.js`, regra `no-lib-upward`), escondidas pelas falhas do Node 20. MINOR 3–6 (tabela latest, tokens/duração parciais, Δ não pareado, `--out` sem realpath) seguem para a PRI-354, salvo decisão em contrário. Segunda rodada só com decisão do Richard.
+- [x] Revisão independente (G3, 1 revisor, 14/11/2026) do diff T1–T5: **FAIL**. MAJOR 2 (`effort_miss` sem denominador) corrigido na T5. **BLOCKER 1 (decisão do Richard em 15/11/2026: separar o módulo; aplicado, ver abaixo):** com Node 22, `arch:check` acusa 2 violações novas da T3 (`dashboard/server.js` → `scripts/lib/effort-miss.js`, regra `no-dashboard-scripts-internals`; `effort-miss.js` → `state-writer.js`, regra `no-lib-upward`), escondidas pelas falhas do Node 20. MINOR 3–6 (tabela latest, tokens/duração parciais, Δ não pareado, `--out` sem realpath) seguem para a PRI-354, salvo decisão em contrário. Segunda rodada só com decisão do Richard.
+- [x] BLOCKER 1 aplicado (15/11/2026): `scripts/lib/effort-miss.js` ficou puro (validação, leitura, projeção); gravação e CLI `record` em `scripts/effort-miss.js`; o dashboard lê por processo via `scripts/effort-miss-read.js` (padrão do `routing-read.js`; falha do leitor = 502 UNKNOWN). `arch:check` em Node 22.23.2: sem violação nova (77 conhecidas ignoradas). Suítes (Node 20.20.2): `dashboard` 556/556; `scripts` 2086, 2075 passam, 5 falhas idênticas às da base.
+- [ ] Richard aceita o C3 (página vazia + correção do BLOCKER 1).
 
 ## T6. Plan + implement na mesma sessão
 

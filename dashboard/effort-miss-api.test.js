@@ -75,3 +75,22 @@ test('endpoint é só leitura: POST/PUT/DELETE não existem', async () => {
         assert.ok([404, 405].includes(res.status), `${method} → ${res.status}`);
     }
 });
+
+test('leitor por processo quebrado: 502 com status UNKNOWN, sem vazar caminho e sem zero', async () => {
+    const broken = createDashboard({ memoryDir: mainRuns, effortMissReadScript: path.join(tmp, 'nao-existe.js') });
+    await new Promise(r => broken.server.listen(0, '127.0.0.1', r));
+    try {
+        await broken.ready;
+        const res = await fetch(`http://localhost:${broken.server.address().port}/api/effort-misses`);
+        assert.strictEqual(res.status, 502);
+        const body = await res.json();
+        assert.strictEqual(body.status, 'UNKNOWN');
+        assert.strictEqual(body.total, null);
+        assert.ok(!JSON.stringify(body).includes(tmp));
+    } finally { broken.close(); }
+});
+
+test('o dashboard não importa scripts/lib/effort-miss (fronteira G3)', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+    assert.doesNotMatch(src, /require\([^)]*effort-miss/);
+});

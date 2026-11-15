@@ -79,7 +79,7 @@ O endpoint de versão do dashboard usa a mesma versão efetiva.
 | Devolver ao QA | `POST /api/runs/:id/handback-qa` (ou `then: handback_qa`) | versão da tela, na **reserva** antes do Redmine | — | UUID do clique (`QA_HANDBACK`), mesmo id na retomada de resultado incerto | 409 / `already_processed`; arquiva com lock até o rename |
 | Commit | agente: `transition --operation=commit` | versão + nó (`commit`) | sim (obrigatório) | — | agente: re-tenta 1x |
 | Archive | agente: `state-writer.js archive`; dashboard: `POST /api/runs/:id/archive` | versão + nó, lock até o `rename` da pasta | sim (obrigatório) | — | agente: aborta; dashboard: 409 |
-| Registro `effort_miss` | agente ou humano: `scripts/lib/effort-miss.js record` (PRI-353) | nenhuma (acréscimo sob o lock do writer; não é campo crítico) | não | — | falha alto se a run não existe; nada é gravado |
+| Registro `effort_miss` | agente ou humano: `scripts/effort-miss.js record` (PRI-353) | nenhuma (acréscimo sob o lock do writer; não é campo crítico) | não | — | falha alto se a run não existe; nada é gravado |
 | Despacho de um ticket (check-then-act) | watcher (tick) e dashboard (`dispatchNode`: ▶ Disparar, retomadas, replay) → `dispatchTicket` | — (reserva por ticket entre processos, ver "Despacho por ticket") | — | — | pula com `despacho_reservado` / `fetch_em_execucao`; dashboard: 409 |
 | Carimbo de PID do lease | watcher: `node-lease.recordAgentPid` | estado `running` e `node_started_at` sob lock; `execution_id` validado em `scripts/cas.js` | sim | — | lease liberado ou takeover: gravação tardia ignorada |
 | Release do lease | watcher/wrapper: `node-lease releaseNode` | — | sim (o do lease) | — | `SESSION_CONFLICT`: release ignorado |

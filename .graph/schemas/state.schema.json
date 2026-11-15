@@ -1638,7 +1638,7 @@
     },
     "effort_misses": {
       "type": "array",
-      "description": "PRI-353: registro effort_miss da run, só acréscimo, gravado por scripts/lib/effort-miss.js pelo state-writer. Campo ausente ou lista vazia = UNKNOWN, nunca zero erros. Não é campo crítico (não muda state_version).",
+      "description": "PRI-353: registro effort_miss da run, só acréscimo, gravado por scripts/effort-miss.js pelo state-writer. Campo ausente ou lista vazia = UNKNOWN, nunca zero erros. Não é campo crítico (não muda state_version).",
       "items": {
         "type": "object",
         "description": "PRI-353: erro de fase em esforço médio que esforço alto provavelmente pegaria. Só fase em esforço médio na tabela (.claude/phase-effort.json). would_high_catch é julgamento registrado por quem detectou (review, verify ou humano), nunca inferido; começa unknown.",

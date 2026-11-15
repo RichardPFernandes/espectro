@@ -50,9 +50,10 @@ const runComparator = require('../scripts/lib/run-comparator');
 const { projectCostTracking } = require('./cost-projection');
 const { buildWouldRouteMetrics } = require('./would-route-metrics');
 const routingProjection = require('./routing-projection');
-const effortMiss = require('../scripts/lib/effort-miss');
 // Leitor de roteamento por processo (G3: o dashboard não importa scripts/lib).
 const ROUTING_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'routing-read.js');
+// Leitor por processo do registro effort_miss (PRI-353, mesma fronteira G3).
+const EFFORT_MISS_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'effort-miss-read.js');
 // Tira PR de Draft ("Marcar como pronto" no painel de preview).
 const { markPrReady } = require('../scripts/check-pr-status');
 // Lista/detalha/aprova PRs do Bitbucket, pra aba "PRs" (GET/POST /api/prs*).
@@ -1393,17 +1394,41 @@ function createDashboard(options = {}) {
     });
 
     // PRI-353 (AC6): registro effort_miss das runs, só leitura. Ausência de registro é UNKNOWN,
-    // nunca zero (scripts/lib/effort-miss.js). Texto livre passa por redact() como o resto.
-    app.get('/api/effort-misses', (req, res) => {
+    // nunca zero. A projeção vem do leitor por processo (scripts/effort-miss-read.js): o dashboard
+    // não importa scripts/lib (G3). Texto livre passa por redact() como o resto.
+    const effortMissReadScript = options.effortMissReadScript || EFFORT_MISS_READ_SCRIPT;
+    function runEffortMissRead(input) {
+        return new Promise(resolve => {
+            const child = execFile(process.execPath, [effortMissReadScript, '--json'],
+                { cwd: repoRoot, env: consumerEnv, timeout: 20000, maxBuffer: 8 * 1024 * 1024 },
+                (err, stdout) => {
+                    let out = null;
+                    try { out = JSON.parse(stdout); } catch { out = null; }
+                    if (err || !out || out.ok !== true) {
+                        console.error(`[dashboard] effort-miss-read: ${redact(out?.error || err?.message || 'sem saída')}`);
+                        return resolve(null);
+                    }
+                    resolve(out.projection);
+                });
+            child.on('error', () => resolve(null));
+            child.stdin.on('error', () => {});
+            child.stdin.end(JSON.stringify(input));
+        });
+    }
+    app.get('/api/effort-misses', async (req, res) => {
         syncWatchedRoots();
         const reg = readRegistry();
         const entries = [];
         for (const [taskId, candidates] of collectCandidates()) {
             if (archivedAway(taskId, candidates, reg)) continue;
             const chosen = pickCandidate(taskId, candidates);
-            if (chosen) entries.push({ taskId, state: readRunState({ ...chosen, copies: candidates.length }) });
+            if (!chosen) continue;
+            const state = readRunState({ ...chosen, copies: candidates.length });
+            entries.push({ taskId, effort_misses: Array.isArray(state?.effort_misses) ? state.effort_misses : null });
         }
-        res.json(JSON.parse(redact(JSON.stringify(effortMiss.projectEffortMisses(entries)))));
+        const projection = await runEffortMissRead({ entries });
+        if (!projection) return res.status(502).json({ status: 'UNKNOWN', total: null, error: 'leitor do registro effort_miss indisponível' });
+        res.json(JSON.parse(redact(JSON.stringify(projection))));
     });
 
     // Força a varredura dos arquivados (botão Atualizar). Respeita o cache por ticket.
