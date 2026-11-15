@@ -32,7 +32,7 @@ const RISK = 'RISK_RECLASSIFIED';
 const seqOf = a => (Number.isInteger(a && a.seq) ? a.seq : 0);
 const last = list => (list.length ? list[list.length - 1] : null);
 
-/** Snapshot da Run admitido com a decomposição ligada (só o harness monta "on" antes da liberação). */
+/** Snapshot da Run admitido com a decomposição ligada ("on" vem do config do consumidor, PRI-341). */
 function isDecomposedSnapshot(snapshot) {
     return Boolean(snapshot && snapshot.decomposition === 'on');
 }

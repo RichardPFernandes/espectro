@@ -1,0 +1,60 @@
+{
+  "id": "routing-pri205",
+  "version": "p2-pilot-2026-11-16",
+  "mode": "ROUTED",
+  "status": "PROPOSTA",
+  "approval": {
+    "content_approved_by": "Richard Fernandes",
+    "content_approved_at": "2026-11-14",
+    "via": "sessão Claude Code PRI-341 (Q2: id e versão; Q3: baseline monomodelo; Q4: valores copiados da p1-2026-11-06 sem alterar)",
+    "file_pending": "arquivo pendente de revisão e merge pelo Richard; vira APROVADA só então (nova versão se o conteúdo mudar)",
+    "from_proposal": "tasks/pri-341/SPEC.md v1 e SPEC-s5.2.md, «Nova versão de policy» (Q9)",
+    "base_policy": { "id": "routing-pri205", "version": "p1-2026-11-06", "draft_sha256": "02923a43a6202ba83bab749ffa0547c67fc89528aaf5361b00a57b05d749c843" }
+  },
+  "classifier": {
+    "provider": "cheap_rule"
+  },
+  "class_to_tier": {
+    "C1": { "tier": "T1", "effort": "baixo" },
+    "C2": { "tier": "T2", "effort": "médio" },
+    "C3": { "tier": "T3", "effort": "alto" },
+    "C4": { "tier": "T3", "effort": "alto" },
+    "C5": { "tier": "T3", "effort": "máximo" }
+  },
+  "tiers": {
+    "T1": { "models": ["claude-sonnet-5-5"] },
+    "T2": { "models": ["claude-sonnet-5-5"] },
+    "T3": { "models": ["claude-opus-5-5"] }
+  },
+  "default_route": {
+    "model_id": "claude-opus-5-5",
+    "effort": "alto"
+  },
+  "effort_map": {
+    "baixo": "low",
+    "médio": "medium",
+    "alto": "high",
+    "máximo": "max"
+  },
+  "effort_applied": false,
+  "subagent_roles": {
+    "default": { "model_id": "claude-opus-5-5", "effort": "alto" }
+  },
+  "manifest_limits": {
+    "max_entries": 20000,
+    "max_bytes": 268435456
+  },
+  "workspace_watch_globs": [".env", ".env.*"],
+  "design_ref": {
+    "source": "prisma-evidence/pri-205/desenho-selecao-modelo.md (PROPOSTA v9)",
+    "source_sha256": "2d8919febfa6440f5bb248fce05025d23989d555efbe2932456fefb25885f6ec",
+    "sections": ["4.4", "4.6", "4.7", "5.1", "5.6", "6.1:D6", "6.1:D7", "6.2:D21"]
+  },
+  "planning_bias": {
+    "prefer_quality_on_doubt": true,
+    "sonnet_only_if_very_simple": true,
+    "source": "human_note_2026-11-05",
+    "alters_r1_r8": false
+  },
+  "note": "Policy de piloto (PRI-341). Mesmos valores da p1-2026-11-06 (C1/C2 no Sonnet 5.5; C3–C5 e default_route no Opus 5.5; ids completos; esforço declarado e NÃO aplicado), mais as seções da Q9: subagent_roles.default igual ao default_route, manifest_limits e workspace_watch_globs. Só tem efeito num consumidor cujo .claude/model-routing.json aponte para ela; criar esse arquivo é o T6 (AUTORIZO próprio)."
+}

@@ -208,6 +208,14 @@ function validateDecompositionSections(raw) {
                 return fail(`subagent_role_effort_invalid:${role}`);
             }
         }
+        // PRI-341 (T1, AC-4): o subagente `default` é igual ao default_route (v9 §5.1, D6), para os
+        // braços não derivarem. Esforço UNKNOWN (já exige effort_ref acima) não é comparável: só o
+        // modelo é conferido. Papel nomeado pode diferir. O default_route já foi validado pelo chamador.
+        const sd = raw.subagent_roles.default;
+        if (sd && raw.default_route) {
+            if (sd.model_id !== raw.default_route.model_id) return fail('subagent_default_model_differs_from_default_route');
+            if (sd.effort !== 'UNKNOWN' && sd.effort !== raw.default_route.effort) return fail('subagent_default_effort_differs_from_default_route');
+        }
     }
     if (raw.manifest_limits !== undefined) {
         const l = raw.manifest_limits;
@@ -331,7 +339,7 @@ function validPolicyRef(ref) {
  * @param {string} root raiz do consumidor
  * @param {{ readFile?: Function }=} opts
  * @returns {{ status: 'OFF', source: 'absent'|'declared' }
- *   | { status: 'ON', policy: object, policy_ref: object, policy_hash: string }
+ *   | { status: 'ON', decomposition?: 'on', policy: object, policy_ref: object, policy_hash: string }
  *   | { status: 'INVALID', cause: string, detail: string, transient: boolean }}
  */
 function readRoutingConfig(root, { readFile = fs.readFileSync } = {}) {
@@ -360,12 +368,10 @@ function readRoutingConfig(root, { readFile = fs.readFileSync } = {}) {
             : { status: 'OFF', source: 'declared', decomposition_ignored: true };
     }
     if (cfg.mode !== 'ON') return invalid('ROUTING_CONFIG_INVALID', 'mode_malformed');
-    // PRI-310 (S5.1, B1): `decomposition` ausente ou "off" = Run como na S4 (nada no
-    // snapshot). "on" fica reservado, fail-closed, em todas as fatias da S5: recusa de
-    // admissão pelo caminho do RC-5, sem criar Run. Sai só por PR de liberação próprio,
-    // depois das Portas da SDD. Valor fora do enum = config inválida.
-    if (cfg.decomposition !== undefined && cfg.decomposition !== 'off') {
-        if (cfg.decomposition === 'on') return invalid('DECOMPOSITION_RESERVED', 'reserved_until_release');
+    // PRI-310 (S5.1, B1): `decomposition` ausente ou "off" = Run como na S4 (nada no snapshot).
+    // PRI-341 (PR-B): "on" deixou de ser reservado; só liga a decomposição neste consumidor, e só
+    // com uma policy que declare `subagent_roles` (checado abaixo). Valor fora do enum = config inválida.
+    if (cfg.decomposition !== undefined && cfg.decomposition !== 'off' && cfg.decomposition !== 'on') {
         return invalid('ROUTING_CONFIG_INVALID', 'decomposition_invalid');
     }
 
@@ -401,8 +407,13 @@ function readRoutingConfig(root, { readFile = fs.readFileSync } = {}) {
     if (!checked.ok) return invalid(checked.cause, checked.detail);
     if (raw.id !== ref.id) return invalid('POLICY_INVALID', 'id_mismatch');
     if (raw.version !== ref.version) return invalid('POLICY_INVALID', 'version_mismatch');
+    // PRI-341 (PR-B): "on" exige que a policy declare `subagent_roles`; sem a seção a admissão é
+    // recusada (fail-closed). Isto só garante a declaração: a conferência do modelo do subagente
+    // depende da versão da CLI (U10-a) e subagentes embutidos ficam UNENFORCED (registro, sem bloqueio).
+    if (cfg.decomposition === 'on' && raw.subagent_roles === undefined) return invalid('POLICY_INVALID', 'decomposition_requires_subagent_roles');
     return {
         status: 'ON',
+        ...(cfg.decomposition === 'on' ? { decomposition: 'on' } : {}),
         policy: raw,
         policy_ref: { id: ref.id, version: ref.version, sha256: ref.sha256, path: ref.path },
         policy_hash: hash,

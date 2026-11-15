@@ -169,6 +169,40 @@ test('escrita com Sec-Fetch-Site cross-site/same-site é recusada; navegação G
     assert.strictEqual(await req('GET', { 'Sec-Fetch-Site': 'cross-site' }), 200, 'abrir por link não é escrita');
 });
 
+test('PRISMA_DASHBOARD_READONLY=1 (PRI-355): toda escrita é recusada, mesmo same-origin; leitura segue', async () => {
+    const port = dash.server.address().port;
+    const req = (method, headers = {}) => new Promise((resolve, reject) => {
+        const r = http.request({ host: '127.0.0.1', port, path: '/api/runs', method, headers: { Host: `localhost:${port}`, Origin: `http://localhost:${port}`, 'Sec-Fetch-Site': 'same-origin', ...headers } }, res => { res.resume(); resolve(res.statusCode); });
+        r.on('error', reject);
+        r.end();
+    });
+    const before = process.env.PRISMA_DASHBOARD_READONLY;
+    try {
+        delete process.env.PRISMA_DASHBOARD_READONLY;
+        assert.notStrictEqual(await req('POST'), 403, 'sem a flag, escrita same-origin não é barrada pelo filtro');
+        process.env.PRISMA_DASHBOARD_READONLY = '1';
+        for (const m of ['POST', 'PUT', 'PATCH', 'DELETE', 'PURGE', 'LINK']) assert.strictEqual(await req(m), 403, m);
+        assert.strictEqual(await req('GET'), 200, 'leitura continua');
+        assert.strictEqual(await req('HEAD'), 200, 'HEAD é leitura');
+        assert.notStrictEqual(await req('OPTIONS'), 403, 'OPTIONS não é escrita');
+        for (const v of ['true', '0', 'yes']) { process.env.PRISMA_DASHBOARD_READONLY = v; assert.notStrictEqual(await req('POST'), 403, `valor ${v} não ativa`); }
+        process.env.PRISMA_DASHBOARD_READONLY = '1';
+        const get = p => new Promise((resolve, reject) => {
+            http.get({ host: '127.0.0.1', port, path: p, headers: { Host: `localhost:${port}` } }, res => { let b = ''; res.on('data', d => { b += d; }); res.on('end', () => resolve({ status: res.statusCode, body: b })); }).on('error', reject);
+        });
+        const usage = await get('/api/claude/usage?refresh=1');
+        assert.deepStrictEqual([usage.status, JSON.parse(usage.body)], [200, { ok: false, error: 'somente leitura', cached: false }], 'usage é o stub, não roda claude -p');
+        assert.strictEqual(JSON.parse((await get('/api/fx')).body).source, 'somente leitura', 'fx não consulta rede');
+        const write = await new Promise((resolve, reject) => {
+            const r = http.request({ host: '127.0.0.1', port, path: '/api/runs', method: 'POST', headers: { Host: `localhost:${port}`, Origin: `http://localhost:${port}`, 'Sec-Fetch-Site': 'same-origin' } }, res => { let b = ''; res.on('data', d => { b += d; }); res.on('end', () => resolve(b)); });
+            r.on('error', reject); r.end();
+        });
+        assert.match(write, /somente leitura/, 'mensagem própria, não "somente localhost"');
+    } finally {
+        if (before === undefined) delete process.env.PRISMA_DASHBOARD_READONLY; else process.env.PRISMA_DASHBOARD_READONLY = before;
+    }
+});
+
 test('WebSocket: mudança em state.json chega como state_update em ≤3s', async () => {
     const ws = new WebSocket(base.replace('http', 'ws'));
     const messages = [];

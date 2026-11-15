@@ -1,5 +1,5 @@
 // node --test scripts/lib/dom06-decomposition.test.js
-// PRI-310 (PRI-287 S5.1): flag reservada (AC-02, AC-03), identidade (AC-04) e contrato do
+// PRI-310 (PRI-287 S5.1): flag (AC-02, AC-03; "on" liberado no PRI-341), identidade (AC-04) e contrato do
 // DOM-06 para subtarefas (AC-05 a AC-11).
 const test = require('node:test');
 const assert = require('node:assert');
@@ -38,7 +38,7 @@ const accept = (b, post = 'd1') => dom06.closeOnExit({ attemptFile: b.attemptFil
 
 // ---------------------------------------------------------------- flag (B1)
 
-function consumer(cfg) {
+function consumer(cfg, { roles = false } = {}) {
     const root = path.join(tmpRoot, `c${n++}`);
     fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
     const policy = {
@@ -47,6 +47,7 @@ function consumer(cfg) {
         tiers: { T1: { models: ['m1'] }, T2: { models: ['m2'] }, T3: { models: ['m3'] } },
         default_route: { model_id: 'm3', effort: 'alto' },
         effort_map: { baixo: 'low', 'médio': 'medium', alto: 'high', 'máximo': 'max' },
+        ...(roles ? { subagent_roles: { default: { model_id: 'm3', effort: 'alto' } } } : {}),
     };
     const bytes = JSON.stringify(policy);
     fs.writeFileSync(path.join(root, '.claude', 'routing-policy.json'), bytes);
@@ -72,9 +73,10 @@ test('AC-02: mode ON + valor fora do enum → ROUTING_CONFIG_INVALID (bloqueio d
     assert.deepStrictEqual([r.status, r.cause, r.detail], ['INVALID', 'ROUTING_CONFIG_INVALID', 'decomposition_invalid']);
 });
 
-test('AC-03: mode ON + "on" → DECOMPOSITION_RESERVED (fail-closed); "off" explícito → snapshot byte a byte igual ao de chave ausente', () => {
-    const reserved = policyLoader.readRoutingConfig(consumer(ref => ({ mode: 'ON', policy_ref: ref, decomposition: 'on' })));
-    assert.deepStrictEqual([reserved.status, reserved.cause], ['INVALID', 'DECOMPOSITION_RESERVED']);
+test('AC-03: mode ON + "on" → admitido com decomposition "on" (PRI-341) e snapshot com o campo; "off" explícito → snapshot byte a byte igual ao de chave ausente', () => {
+    const released = policyLoader.readRoutingConfig(consumer(ref => ({ mode: 'ON', policy_ref: ref, decomposition: 'on' }), { roles: true }));
+    assert.deepStrictEqual([released.status, released.decomposition], ['ON', 'on']);
+    assert.strictEqual(mr.buildRoutingSnapshot(released).decomposition, 'on');
     const absent = mr.buildRoutingSnapshot(policyLoader.readRoutingConfig(consumer(ref => ({ mode: 'ON', policy_ref: ref }))));
     const off = mr.buildRoutingSnapshot(policyLoader.readRoutingConfig(consumer(ref => ({ mode: 'ON', policy_ref: ref, decomposition: 'off' }))));
     assert.strictEqual(JSON.stringify(off), JSON.stringify(absent));
