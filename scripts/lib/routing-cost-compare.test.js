@@ -8,6 +8,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const cmp = require('./routing-cost-compare');
+const costTracking = require('./cost-tracking');
 
 const att = usd => ({ cost: usd === undefined ? undefined : { usd } });
 function state(nodes, decomposition) {
@@ -232,4 +233,25 @@ test('CLI: a mesma Run repetida, ou duas com o mesmo basename, é recusada (exit
         const same = spawnSync(process.execPath, [CLI, x, y], { encoding: 'utf8' });
         assert.deepStrictEqual([same.status, same.stdout], [2, '']);
     } finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+// I-2 (PRI-341): o custo de cada despacho de subtarefa/integração entra em nodes.implement.attempts
+// pelo gravador real (mergeRun, o mesmo que o watcher usa em finishCostRun), e o comparador o lê.
+test('I-2: estado gravado pelo mergeRun real (2 subtarefas + integração no implement) é lido pelo comparador', () => {
+    const m = (usd, tokens = 10) => ({ input_tokens: tokens, output_tokens: tokens, cost_usd: usd, duration_ms: 1000 });
+    let ct = null;
+    for (const metrics of [m(0.5), m(0.25), m(1.25)]) {
+        ct = costTracking.mergeRun(ct, { node: 'implement', agent: 'claude', metrics });
+    }
+    assert.strictEqual(ct.nodes.implement.attempts.length, 3);
+    const out = cmp.compareRuns([{ run_id: 'real-writer', state: { cost_tracking: ct, decomposition: DEC } }]);
+    const [r] = out.runs;
+    assert.deepStrictEqual([r.kind, r.attempts, r.priced_attempts, r.cost_usd, r.implement_cost_usd, r.complete], ['decomposed', 3, 3, 2, 2, true]);
+});
+
+test('I-2: Attempt sem custo gravado pelo mergeRun real vira "sem preço" (null), não 0', () => {
+    let ct = costTracking.mergeRun(null, { node: 'implement', agent: 'claude', metrics: { input_tokens: 10, output_tokens: 10, cost_usd: 1, duration_ms: 1 } });
+    ct = costTracking.mergeRun(ct, { node: 'implement', agent: 'claude', metrics: { input_tokens: 10, output_tokens: 10, duration_ms: 1 } });
+    const [r] = cmp.compareRuns([{ run_id: 'x', state: { cost_tracking: ct, decomposition: DEC } }]).runs;
+    assert.deepStrictEqual([r.attempts, r.priced_attempts, r.unpriced_attempts, r.complete], [2, 1, 1, false]);
 });
