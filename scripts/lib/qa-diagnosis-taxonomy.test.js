@@ -1,25 +1,35 @@
 'use strict';
-// PRI-181 C3 — taxonomia 0.1. Fixtures sintéticas.
+// PRI-274 c2b-4, T2 — taxonomia qa-cause-taxonomy/0.1 exata (SDD B v3 §6.3, DB-04).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const taxonomy = require('./qa-diagnosis-taxonomy');
 
-test('C3 taxonomy: versão 0.1 e enums congelados', () => {
+const SDD_CATEGORIES = ['code', 'requirement_spec', 'test', 'environment', 'data', 'configuration',
+    'db_migration', 'integration', 'already_resolved', 'invalid_rejection', 'indeterminate'];
+
+test('taxonomia: identidade e versão da SDD', () => {
+    assert.equal(taxonomy.TAXONOMY_ID, 'qa-cause-taxonomy/0.1');
     assert.equal(taxonomy.TAXONOMY_VERSION, '0.1');
-    assert.equal(taxonomy.CONFIDENCE.FACT, 'FACT');
-    assert.equal(taxonomy.CATEGORIES.IDENTITY, 'identity');
-    assert.equal(taxonomy.CATEGORIES.INDETERMINATE, 'indeterminate');
 });
 
-test('C3 taxonomy: FACT exige predicado de sistema (DB-04)', () => {
-    assert.throws(
-        () => taxonomy.assertFactOnlyFromSystem(taxonomy.CONFIDENCE.FACT, { systemPredicate: false }),
-        (err) => err.code === 'FACT_REQUIRES_SYSTEM_PREDICATE'
-    );
-    assert.doesNotThrow(() =>
-        taxonomy.assertFactOnlyFromSystem(taxonomy.CONFIDENCE.FACT, { systemPredicate: true })
-    );
-    assert.doesNotThrow(() =>
-        taxonomy.assertFactOnlyFromSystem(taxonomy.CONFIDENCE.UNKNOWN, { systemPredicate: false })
-    );
+test('taxonomia: exatamente as 11 categorias da SDD, congeladas', () => {
+    assert.deepEqual([...Object.values(taxonomy.CATEGORIES)].sort(), [...SDD_CATEGORIES].sort());
+    assert.ok(Object.isFrozen(taxonomy.CATEGORIES));
+    for (const c of SDD_CATEGORIES) assert.equal(taxonomy.isCategory(c), true, c);
+});
+
+test('taxonomia: nomes da taxonomia antiga não existem, sem alias', () => {
+    for (const old of ['identity', 'ingestion', 'database_migration', 'information_absent']) {
+        assert.equal(taxonomy.isCategory(old), false, old);
+        assert.ok(!Object.values(taxonomy.CATEGORIES).includes(old), old);
+    }
+    assert.equal(taxonomy.isCategory(undefined), false);
+    assert.equal(taxonomy.isCategory(null), false);
+    assert.equal(taxonomy.isCategory('CODE'), false);
+});
+
+test('taxonomia: support é ordinal MODERATE/WEAK/UNKNOWN, sem nível acima de MODERATE', () => {
+    assert.deepEqual([...Object.values(taxonomy.SUPPORT)].sort(), ['MODERATE', 'UNKNOWN', 'WEAK']);
+    assert.ok(Object.isFrozen(taxonomy.SUPPORT));
+    assert.equal(taxonomy.CONFIDENCE, undefined);
 });
