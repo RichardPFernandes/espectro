@@ -13,6 +13,16 @@
 12. In Review é a fila "Com o Richard": esperando decisão, aceite ou AUTORIZO dele, e nada mais. Limite de 3 itens. Fila cheia: não abra trabalho novo que vá precisar dele, e diga isso.
 13. Issue nova só nasce de fatia do roadmap, defeito ou pedido do Richard. Não crie issue de "Avaliar", "Planejar" ou "Design" por conta própria; ideia vira uma linha de comentário na issue da fatia em curso (exceção à regra 3).
 
+## Fluxo de desenvolvimento (agent-skills)
+
+Desenvolver o Prisma usa os comandos do plugin agent-skills, sempre com prefixo, mais três skills do repo que encaixam o Acordo. O grafo de `.claude/commands/` (`/plan`, `/implement`, `/review`, `/test`, `/verify`, `/commit`, `/fetch-ticket`) e os subagentes de `.claude/agents/` são do consumidor, lidos pelo watcher, e não se usam aqui.
+
+`/pri-start PRI-NNN` → (Médio/Alto) `/agent-skills:spec` e `/agent-skills:plan` → `/agent-skills:build` → `/pri-check` → `/pri-pr` → (Alto, depois do AUTORIZO) `/agent-skills:ship`.
+
+- Spec, plano e todo ficam em `tasks/fN-M-<nome>/` ou `tasks/pri-NNN/`; passe o caminho aos comandos. Nada de `SPEC.md` na raiz.
+- A suíte completa roda pela receita oficial (`/pri-check`), nunca com `npm test` cru.
+- A revisão é sempre por subagente em contexto limpo (`agent-skills:code-reviewer`), não no mesmo contexto.
+
 ## Onde está o resto
 
 - Fonte: [Prisma — Acordo de desenvolvimento (v2)](https://linear.app/prisma-app/document/prisma-acordo-de-desenvolvimento-62a84790f75a).

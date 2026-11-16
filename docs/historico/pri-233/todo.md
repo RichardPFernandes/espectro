@@ -1,6 +1,6 @@
 # Tarefas: PRI-233 (PRI-205 S4)
 
-> Fonte: [SPEC.md](../docs/historico/SPEC-pri-205-s3b.md) (aprovado em 2026-11-06) e [plan.md](plan.md)
+> Fonte: [SPEC.md](../SPEC-pri-205-s3b.md) (aprovado em 2026-11-06) e [plan.md](plan.md)
 > (proposta). Cada tarefa segue TDD: o teste nasce falhando. Comando focado:
 > `node --test scripts/lib/<arquivo>.test.js`. Registre todo teste novo na lista do
 > `npm test` do pacote.
@@ -255,7 +255,7 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 | MINOR-5: ticket novo recusado não aparece no Dashboard | **Pendente, registrado.** O aviso sai no Redmine e na notificação local. |
 | MINOR-6: docs e comentários desatualizados | **Corrigido** (matriz de evidência, este arquivo, comentário da T7 no watcher). |
 | NIT: `effort_applied` calculado tarde | **Corrigido.** |
-| Pedido: teste real do CLI | **Feito.** 1ª rodada: skill solta no projeto. 2ª rodada: plugin de marketplace, skill na conta e o router real como plugin em pasta na conta `personal`. A 2ª rodada corrigiu a regra de `pluginConfigs`: só com `options` é neutralizável. Ver AC-08 em `tasks/evidence.md`. |
+| Pedido: teste real do CLI | **Feito.** 1ª rodada: skill solta no projeto. 2ª rodada: plugin de marketplace, skill na conta e o router real como plugin em pasta na conta `personal`. A 2ª rodada corrigiu a regra de `pluginConfigs`: só com `options` é neutralizável. Ver AC-08 em [`tasks/evidence.md`](../../../tasks/evidence.md). |
 
 ## Fase 3: override, visibilidade e fechamento
 
