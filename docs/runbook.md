@@ -903,8 +903,12 @@ default for `-p` in a future release" (<https://code.claude.com/docs/en/headless
 faster with bare mode", lida em 16/11/2026). Se o padrão mudar, o despacho quebra sem erro.
 
 **Quando rodar:** a cada versão nova da CLI, na máquina do watcher, ANTES de trocar a CLI que o
-watcher usa. Faz duas chamadas reais e curtas com a conta da CLI; projeto sintético em diretório
-temporário, apagado ao final. Não toca watcher, estado nem consumidor.
+watcher usa. Só com o «sim» do Richard: são duas chamadas reais e curtas na conta da CLI. O projeto
+é sintético, em diretório temporário apagado ao final. Não toca watcher, estado nem consumidor.
+
+A sonda remove as variáveis `CLAUDE*` do ambiente do filho, então a CLI usa `~/.claude` e a conta
+padrão. A sessão das duas chamadas fica gravada em `~/.claude/projects` (onde as outras sondas do
+repositório leem os transcritos), mesmo com o diretório temporário apagado.
 
 ```bash
 node "$PRISMA_ROOT/scripts/probes/cli-smoke-probe.js" --claude-bin <caminho da CLI nova>
@@ -912,13 +916,15 @@ echo "exit=$?"   # sem --claude-bin usa CLI_SMOKE_CLAUDE_BIN ou `claude` do PATH
 ```
 
 **Como ler:** uma linha por item (comando customizado, hook de projeto, CLAUDE.md) mais a versão
-da CLI, e o mesmo em JSON.
+da CLI, e o mesmo em JSON. O comando e o hook são medidos por marcador; o item do CLAUDE.md é
+inferido da resposta do modelo (ele diz a palavra do projeto ou `AUSENTE`).
 
 | Exit | Significado | O que fazer |
 | -- | -- | -- |
-| 0 | Os três CARREGADO | Pode atualizar a CLI do watcher |
+| 0 | Os três CARREGADO e versão lida | Pode atualizar a CLI do watcher |
 | 2 | Algum NÃO CARREGADO | NÃO atualize a CLI do watcher. Mantenha a versão atual e abra uma fatia para fixar o modo explicitamente no despacho, lendo na página acima como a versão nova carrega cada item |
-| 3 | Algum DESCONHECIDO (CLI ausente, sem login, timeout, saída vazia, erro) | Não é aprovação. Resolva o motivo impresso e rode de novo |
+| 3 | Algum DESCONHECIDO ou versão não lida (CLI ausente, autenticação, timeout, saída vazia, erro) | Não é aprovação. Resolva o motivo impresso e rode de novo. Erro de autenticação com login válido pode ser o próprio sintoma da mudança: segundo a mesma página, o modo bare não lê credencial OAuth nem o keychain. Nesse caso trate como exit 2 |
+| 1 | Argumento inválido ou exceção da sonda | Não mediu nada. Confira o uso com `--help` |
 
 A página não documenta, na leitura acima, uma flag que desligue o `--bare`; por isso este runbook
 não indica qual flag usar para fixar o modo.
