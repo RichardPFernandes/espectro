@@ -222,7 +222,11 @@ const argvsOf = scenario => {
 const promptOf = argv => argv[argv.indexOf('-p') + 1];
 
 test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
-test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
+test.after(() => {
+    server.close();
+    // O wrapper destacado pode ainda estar gravando na Run quando o teste acaba (ENOTEMPTY no CI em Node 22).
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+});
 
 test('AC-26/AC-22: modo destacado — duas subtarefas + integração + agregação + transição; Review como gate', { timeout: 10 * 60 * 1000 }, async () => {
     const repo = consumer();
