@@ -3,7 +3,7 @@
 > **Status:** APROVADA pelo Richard em 14/11/2026; **reclassificada para Alto** no mesmo dia. Duas rodadas de
 > revisão (código, segurança, testes) feitas em 14/11; os achados da 2ª foram corrigidos e viraram testes de
 > regressão (sem 3ª rodada: decisão do Richard). Issue: PRI-355, rótulo `Processo: Alto`. Fica em `tasks/ui-verify/`
-> porque o `SPEC.md` da raiz é da PRI-205 S3b.
+> porque o `SPEC.md` da raiz era da PRI-205 S3b (hoje em `docs/historico/SPEC-pri-205-s3b.md`).
 > **AUTORIZO:** este PR só adiciona código atrás da flag `PRISMA_UI_VERIFY=off`. Ligar a flag em qualquer
 > consumidor precisa de AUTORIZO próprio do Richard (nada é ligado aqui).
 

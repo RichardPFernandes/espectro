@@ -1,6 +1,6 @@
 # Plano de implementação: PRI-205 S3b, núcleo 2 do Jev em modo sombra
 
-> Deriva do [SPEC.md](../../SPEC.md), aprovado pelo Richard em 2026-11-06. Este
+> Deriva do [SPEC.md](../../docs/historico/SPEC-pri-205-s3b.md), aprovado pelo Richard em 2026-11-06. Este
 > documento é o **COMO**; em caso de divergência, vale o SPEC. Status: **APROVADO pelo Richard em 2026-11-06** ("Approve, start T1"),
 > com as recomendações de P-1 a P-4. As tarefas estão em [todo.md](todo.md).
 >
