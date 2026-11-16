@@ -5,7 +5,8 @@ Estática: `npm run check`. Toda tarefa começa pelo teste que falha.
 
 ## Fase 1 — Base verde (PR 1)
 
-- [ ] **T1: testes de symlink comparam caminho real (AC-01)** · XS
+- [x] **T1: testes de symlink comparam caminho real (AC-01)** · XS
+  - Feita em 16/11: vermelho (2 falhas) e verde (46/46) nos dois arquivos; `npm test` no Mac, Node 24.22.1: 2.408 + 615 testes, 0 falhas. Linux fica para o job do PR 1.
   - Aceite: os dois testes "C0: árvore adversarial" passam no macOS e no Linux.
   - Verificar: `npm test` no Mac sai com 0 nas duas suítes.
   - Arquivos: `scripts/lib/qa-rejection-c0-oracle.test.js`, `scripts/lib/qa-rejection-current-golden.test.js`
