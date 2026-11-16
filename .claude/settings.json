@@ -49,5 +49,15 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "threejs-webgl@claude-design-skillstack": false,
+    "react-three-fiber@claude-design-skillstack": false,
+    "gsap-scrolltrigger@claude-design-skillstack": false,
+    "core-3d-animation@claude-design-skillstack": false,
+    "animation-components@claude-design-skillstack": false,
+    "extended-3d-scroll@claude-design-skillstack": false,
+    "authoring-motion@claude-design-skillstack": false,
+    "meta-skills@claude-design-skillstack": false
   }
 }

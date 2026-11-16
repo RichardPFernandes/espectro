@@ -1,74 +1,59 @@
 ---
 name: pri-check
-description: Antes do PR de uma issue PRI, roda as checagens e a suíte pela receita oficial e a revisão independente por subagente em contexto limpo, no número de revisores do nível.
+description: Antes do PR de uma issue PRI, roda checagens e suíte pela receita oficial, prova que os testes novos falham na main e faz a revisão independente por subagente em contexto limpo; grava check.json.
 disable-model-invocation: true
-argument-hint: "PRI-NNN"
+argument-hint: "[PRI-NNN]"
 ---
 
 # /pri-check
 
-Roda testes e revisão do fluxo de desenvolvimento. `<issue>` é o argumento
-(`$ARGUMENTS`, ex.: `pri-376`). O nível vem de `.prisma/level`. Se o arquivo
-não existir, rode `/pri-start` antes.
+Contexto em `.prisma/context.json`. Pare se o arquivo não existir ou se o `branch`
+dele divergir de `git branch --show-current`. Comece com a árvore limpa
+(`git status --porcelain` vazio): a evidência fica presa ao SHA do HEAD.
+`EV="$HOME/Workspace/prisma-evidence/<issue>/$(git rev-parse --short HEAD)"`.
 
-Comece com a árvore limpa (`git status --porcelain` vazio): a evidência fica
-ligada ao SHA do HEAD e não pode carregar alteração fora do commit.
+## 1. Testes (pré-voo; a prova oficial é a CI no SHA final)
 
-## 1. Testes pela receita oficial
+- Só docs e skills (`*.md`, `.claude/skills/`): não há suíte. Diga isso.
+- Mexeu em `.github/scripts/` ou `.claude/hooks/`:
+  `node --test .github/scripts/*.test.mjs .claude/hooks/*.test.mjs`. O harness não
+  roda esses testes.
+- Mexeu em `scripts/` ou `dashboard/`: rode a receita da seção "Primeiros passos" do
+  `README.md`, que é a mesma da CI, com `HOME` e `TMPDIR` dentro de `$EV`. Rode antes o
+  `npm ci --ignore-scripts --no-audit --no-fund --prefix <pacote>` só se faltar o
+  `node_modules`. Depois rode
+  `npm --prefix scripts run check:js && npm --prefix scripts run arch:check`.
+- Teste novo (Médio e Alto): numa worktree descartável da `origin/main`, copie só os
+  arquivos de teste novos e rode `node --test` neles. Eles precisam **falhar** lá.
+  Teste que passa na `main` não prova o AC: aponte isso.
+- Para comparar uma falha com a `main`, use uma worktree limpa. Nunca `git stash`.
+- Falha, timeout ou saída ausente não viram PASS: registre UNKNOWN com o motivo.
 
-Se a mudança só toca docs e skills (`*.md`, `.claude/skills/`), não há suíte para
-rodar. Diga isso e vá para a revisão. Se toca código, rode a receita da seção
-"Primeiros passos" do `README.md`, que é a mesma da CI:
+## 2. Revisão independente (única rodada, regra 6)
 
-```bash
-npm ci --ignore-scripts --no-audit --no-fund --prefix scripts
-npm ci --ignore-scripts --no-audit --no-fund --prefix dashboard
-CK="$PWD"; EV="$HOME/Workspace/prisma-evidence/<issue>/$(git rev-parse --short HEAD)"
-mkdir -p "$EV/home" "$EV/tmp"
-NODEBIN="$(dirname "$(command -v node)")"
-for pkg in scripts dashboard; do
-  env -i PATH="$NODEBIN:/usr/bin:/bin:/usr/sbin:/sbin" \
-    HOME="$EV/home" TMPDIR="$EV/tmp" \
-    NODE_OPTIONS="--require=$CK/harness/loopback-only.cjs" \
-    PRISMA_ROOT="$CK" REPO_PATH="$CK" \
-    npm --prefix "$CK/$pkg" test > "$EV/$pkg.tap" 2>&1
-  echo "$pkg exit=$?"
-done
-grep -hE '^# (tests|pass|fail)' "$EV"/*.tap; grep -h '^not ok' "$EV"/*.tap
-npm --prefix scripts run check:js && npm --prefix scripts run arch:check; echo "checks exit=$?"
-```
+Lance o revisor com o Agent tool, em contexto limpo e numa só mensagem:
 
-- Uma worktree nova não tem `node_modules`. Sem o `npm ci`, a suíte falha e a
-  comparação com a `main` falha igual.
-- Antes de culpar o diff por uma falha, compare com a `main` numa worktree limpa.
-  Não use `git stash`, porque a pilha é compartilhada entre worktrees.
-- Falha, timeout ou saída ausente não viram PASS. Registre UNKNOWN com o motivo.
-
-## 2. Revisão independente
-
-O revisor é outro agente Claude em contexto limpo. Ele recebe o diff e as fontes,
-nunca a sua conclusão. Esta é a única rodada (regra 6).
-
-| Nível | Revisores (Agent tool, em paralelo numa só mensagem) |
+| Nível | Revisor |
 | -- | -- |
-| Leve | 1: `agent-skills:code-reviewer` |
-| Médio | 1 (G3): `agent-skills:code-reviewer` |
-| Alto | 2: `agent-skills:code-reviewer` e mais um conforme o risco (`agent-skills:security-auditor` para credencial ou superfície externa, senão `agent-skills:test-engineer`) |
+| Leve | `agent-skills:code-reviewer` com `model: "sonnet"` (decisão D-b de 16/11/2026) |
+| Médio | `agent-skills:code-reviewer` (G3) |
+| Alto | `agent-skills:code-reviewer` e mais um: `agent-skills:security-auditor` (credencial, superfície externa) ou `agent-skills:test-engineer` |
 
-O brief de cada revisor leva:
+O brief leva o comando do diff (`git diff -M origin/main...HEAD`), a SPEC ou os ACs
+da issue e as regras do `CLAUDE.md` e do `AGENTS.md`. O pedido é focado:
 
-- o comando do diff (`git diff -M origin/main...HEAD`);
-- a spec (`<pasta>/SPEC.md`) ou os ACs da issue;
-- as regras do `CLAUDE.md` e do `AGENTS.md`;
-- o pedido: achados com `arquivo:linha`, classificados como Critical, Required,
-  Optional ou Nit, mais um veredito PASS ou FAIL.
+- cada AC atendido ou não, com `arquivo:linha`;
+- quebra de invariante (flag desligada, separação plataforma/consumidor, nada de
+  dado corporativo, segredo);
+- regressão e teste ausente.
 
-O revisor não edita arquivos.
+O revisor não opina sobre estilo nem elogia. Ele classifica os achados como Critical,
+Required, Optional ou Nit, termina com o veredito PASS ou FAIL e não edita arquivos.
 
-## 3. Depois
+**FAIL:** corrija e devolva só o novo diff ao mesmo revisor (SendMessage) para ele
+conferir. Se a sessão do revisor se perdeu, um revisor novo que confere só as
+correções não conta como segunda rodada.
 
-- **FAIL:** corrija, rode de novo os testes afetados e devolva só o novo diff ao mesmo
-  revisor (SendMessage), para ele conferir as correções. Isso não é uma segunda rodada.
-- **PASS:** resuma em até 6 linhas: exit de cada suíte e das checagens, totais,
-  caminho dos TAPs, veredito, e achados aceitos ou recusados com o motivo. Isso
-  alimenta a Evidência do `/pri-pr`.
+## 3. Registro
+
+Grave `$EV/check.json` com `{"sha", "nivel", "suites": {"<nome>": exit}, "checks": exit, "testes_novos_falham_na_main": true|false|null, "revisao": {"agente", "veredito"}}` e o relatório bruto do revisor em `$EV/review.md`. Resuma em até 6 linhas para a Evidência do `/pri-pr`.

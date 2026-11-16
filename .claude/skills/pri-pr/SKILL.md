@@ -7,8 +7,9 @@ argument-hint: "PRI-NNN"
 
 # /pri-pr
 
-Último passo do fluxo de desenvolvimento. Exige o `/pri-check` com PASS e a
-árvore limpa.
+Último passo do fluxo de desenvolvimento. Exige a árvore limpa e
+`~/Workspace/prisma-evidence/<issue>/<sha do HEAD>/check.json` com a revisão PASS.
+Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes.
 
 1. **Conferir:**
 
@@ -28,9 +29,10 @@ argument-hint: "PRI-NNN"
    `.github/pull_request_template.md`, sem deixar marcador `<...>`:
    - **Nível** e **Issue:** `Refs PRI-NNN`, mais o ID da fatia se houver.
    - **O que muda:** 2 a 3 linhas do ponto de vista de quem usa.
-   - **Evidência:** uma linha por AC, com o resultado (PASS, FAIL ou UNKNOWN) e a prova:
-     exit e totais da suíte, caminho do TAP, saída de comando ou print. A revisão
-     independente entra como linha própria, com o veredito.
+   - **Evidência:** uma linha por AC, com o resultado (PASS, FAIL ou UNKNOWN) e a prova.
+     A prova de testes é o run da CI no SHA final (link); o pré-voo local entra só
+     como apoio. A revisão independente entra como linha própria, com o veredito.
+   - **Alto:** deixe as seções `## Rollback` e `## Readback` para o `/pri-autorizo`.
    - **Fica ligado?** Comportamento novo nasce atrás de flag desligada. Diga qual flag e
      qual o gatilho, ou "não se aplica" quando a mudança não tem comportamento de Run.
 4. **Criar o PR:**
@@ -49,8 +51,7 @@ argument-hint: "PRI-NNN"
    comentário. Comentário é só para decisão ou bloqueio, em 3 linhas.
    - Leve e Médio: a issue vai para In Review só se precisar de decisão ou aceite do
      Richard. Mesclar é aceitar.
-   - Alto: In Review, esperando o aceite do Richard. O fluxo segue para o
-     `/agent-skills:ship` (veja o `CLAUDE.md`).
+   - Alto: In Review, esperando o aceite do Richard. O próximo passo é o `/pri-autorizo`.
    - A fila In Review tem limite de 3 itens.
 7. **Nunca** marque o PR como ready, nunca mescle, nunca use `Fixes` e nunca mova a
    issue para Done.

@@ -15,13 +15,15 @@
 
 ## Fluxo de desenvolvimento (agent-skills)
 
-Desenvolver o Prisma usa os comandos do plugin agent-skills (requisito: plugin `agent-skills` instalado), sempre com prefixo, mais três skills do repo que encaixam o Acordo. O grafo de `.claude/commands/` (`/plan`, `/implement`, `/review`, `/test`, `/verify`, `/commit`, `/fetch-ticket`) e os subagentes de `.claude/agents/` são templates da plataforma para o fluxo do consumidor, lidos pelo watcher, e não se usam aqui.
+O Prisma se desenvolve com as skills do plugin agent-skills (requisito: plugin `agent-skills` instalado), carregadas pelos comandos do repo em `.claude/skills/pri-*`, que trazem os ajustes do Acordo. Não use direto `/agent-skills:spec`, `:plan`, `:build` ou `:ship`: eles gravam na raiz, param para aprovação e abrem revisores extras. O grafo de `.claude/commands/` (`/plan`, `/implement`, `/review`, `/test`, `/verify`, `/commit`, `/fetch-ticket`) e os subagentes de `.claude/agents/` são templates da plataforma para o fluxo do consumidor, lidos pelo watcher, e não se usam aqui.
 
-`/pri-start PRI-NNN` → (Médio, spec só se precisar; Alto, spec obrigatória) `/agent-skills:spec` e `/agent-skills:plan` → `/agent-skills:build` → `/pri-check` → `/pri-pr` → (Alto) `/agent-skills:ship` sem fan-out, antes do AUTORIZO → readback depois do bump.
+`/pri-start PRI-NNN` → `/pri-spec` (Médio só se precisar; Alto sempre, aprovada pelo Richard) → `/pri-plan` → `/pri-build` → `/pri-check` → `/pri-pr` → (Alto) `/pri-autorizo` → AUTORIZO e bump → `/pri-autorizo PRI-NNN readback`.
 
-- Spec, plano e todo ficam em `tasks/fN-M-<nome>/` ou `tasks/pri-NNN/`; passe o caminho aos comandos. Nada de `SPEC.md` na raiz.
-- A suíte completa roda pela receita oficial (`/pri-check`), nunca com `npm test` cru.
-- A revisão é sempre por subagente em contexto limpo (`agent-skills:code-reviewer`), não no mesmo contexto.
+- Spec, plano e todo ficam em `tasks/fN-M-<nome>/` ou `tasks/pri-NNN/`. Nada de `SPEC.md` na raiz.
+- Médio segue sem parar para aprovar spec e plano (regra 8; D-a, 16/11/2026).
+- A revisão é sempre por subagente em contexto limpo (`agent-skills:code-reviewer`; no Leve, com `model: "sonnet"`, D-b, 16/11/2026).
+- A suíte completa roda pela receita oficial no `/pri-check`, nunca com `npm test` cru. A prova de testes no PR é o run da CI.
+- Skill nova em `.claude/skills/` precisa de `disable-model-invocation: true`, e nada vai para `.claude/agents/`: o watcher abre o consumidor com `--add-dir` deste repo, e o Claude Code carrega `skills`, `commands` e `agents` de diretórios adicionados.
 
 ## Onde está o resto
 
