@@ -20,7 +20,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pilot-redmine-'));
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 let n = 0;
-async function boot(tickets = [{ id: 9001, subject: 'Primeiro', description: 'Corpo', custom_fields: [{ id: 7, name: 'Branch Liberação', value: 'main' }] }]) {
+async function boot(tickets = [{ id: 9001, subject: 'Primeiro', description: 'Corpo', custom_fields: [{ id: 50, name: 'Branch Liberação', value: 'main' }] }]) {
     const dir = path.join(tmp, `c${++n}`);
     fs.mkdirSync(dir);
     const store = path.join(dir, 'store.json');
@@ -29,18 +29,22 @@ async function boot(tickets = [{ id: 9001, subject: 'Primeiro', description: 'Co
     fs.writeFileSync(from, JSON.stringify(tickets));
     pilot.seed(store, from);
     const server = pilot.createServer({ store, key: KEY, log });
-    await new Promise(r => server.listen(0, pilot.HOST, r));
-    const url = `http://${pilot.HOST}:${server.address().port}`;
+    const addr = await pilot.listen(server, 0);
+    const url = `http://${addr.address}:${addr.port}`;
     const close = () => new Promise(r => server.close(r));
     const requests = () => fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse) : [];
-    return { url, store, close, requests };
+    return { url, store, close, requests, dir };
 }
 
 const quiet = () => {};
 
-test('escuta só em loopback', async () => {
+test('listen escuta só em loopback, com trava do store enquanto está de pé', async () => {
     const s = await boot();
-    try { assert.match(s.url, /^http:\/\/127\.0\.0\.1:\d+$/); } finally { await s.close(); }
+    try {
+        assert.match(s.url, /^http:\/\/127\.0\.0\.1:\d+$/);
+        assert.ok(fs.existsSync(`${s.store}.lock`));
+    } finally { await s.close(); }
+    assert.ok(!fs.existsSync(`${s.store}.lock`), 'trava removida ao fechar');
 });
 
 test('sem a chave do piloto responde 401 e não devolve ticket', async () => {
@@ -57,7 +61,8 @@ test('lista do watcher: status Aprovada|Recusa QA e atribuídos a mim', async ()
     const s = await boot([{ id: 1, subject: 'a' }, { id: 2, subject: 'b' }]);
     try {
         const h = { headers: { 'X-Redmine-API-Key': KEY } };
-        await fetch(`${s.url}/issues/2.json`, { method: 'PUT', headers: { ...h.headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ issue: { status_id: 2 } }) });
+        const put = await fetch(`${s.url}/issues/2.json`, { method: 'PUT', headers: { ...h.headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ issue: { status_id: 2 } }) });
+        assert.strictEqual(put.status, 204);
         // Mesma URL que readmine-watcher.js:325 monta.
         const data = await (await fetch(`${s.url}/issues.json?assigned_to_id=me&status_id=11|13&sort=created_on:desc`, h)).json();
         assert.deepStrictEqual(data.issues.map(i => i.id), [1]);
@@ -138,12 +143,102 @@ test('rota desconhecida responde 404 e fica no log como UNHANDLED; a chave nunca
 
 test('seed recusa id repetido, ticket sem subject e não toca o store em caso de erro', async () => {
     const s = await boot();
+    await s.close();
+    const from = path.join(s.dir, 'dup.json');
+    fs.writeFileSync(from, JSON.stringify([{ id: 9001, subject: 'de novo' }]));
+    assert.throws(() => pilot.seed(s.store, from), /já existe/);
+    fs.writeFileSync(from, JSON.stringify([{ id: 9002 }]));
+    assert.throws(() => pilot.seed(s.store, from), /sem subject/);
+    assert.deepStrictEqual(pilot.loadStore(s.store).issues.map(i => i.id), [9001]);
+});
+
+const putJson = (s, id, body) => fetch(`${s.url}/issues/${id}.json`, {
+    method: 'PUT', headers: { 'X-Redmine-API-Key': KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+
+test('PUT fora do subconjunto (campo extra, sem wrapper issue) é 422 e fica no log como não tratado', async () => {
+    const s = await boot();
     try {
-        const from = path.join(tmp, `dup${n}.json`);
-        fs.writeFileSync(from, JSON.stringify([{ id: 9001, subject: 'de novo' }]));
-        assert.throws(() => pilot.seed(s.store, from), /já existe/);
-        fs.writeFileSync(from, JSON.stringify([{ id: 9002 }]));
-        assert.throws(() => pilot.seed(s.store, from), /sem subject/);
-        assert.deepStrictEqual(pilot.loadStore(s.store).issues.map(i => i.id), [9001]);
+        assert.strictEqual((await putJson(s, 9001, { issue: { subject: 'novo' } })).status, 422);
+        assert.strictEqual((await putJson(s, 9001, { notes: 'sem wrapper' })).status, 422);
+        assert.strictEqual((await putJson(s, 9001, { issue: { done_ratio: 'abc' } })).status, 422);
+        const unhandled = s.requests().filter(e => e.handled === false);
+        assert.strictEqual(unhandled.length, 2, 'campo extra e corpo sem wrapper são não tratados; done_ratio inválido é erro do cliente');
+        const issue = pilot.loadStore(s.store).issues[0];
+        assert.strictEqual(issue.subject, 'Primeiro');
+        assert.deepStrictEqual(issue.journals, []);
     } finally { await s.close(); }
+});
+
+test('filtro desconhecido na lista é 422 (não devolve a lista inteira como se filtrasse)', async () => {
+    const s = await boot();
+    try {
+        const res = await fetch(`${s.url}/issues.json?issue_id=999&status_id=*`, { headers: { 'X-Redmine-API-Key': KEY } });
+        assert.strictEqual(res.status, 422);
+        assert.strictEqual(s.requests().at(-1).handled, false);
+    } finally { await s.close(); }
+});
+
+test('chave mandada na query sai do log como <redacted>', async () => {
+    const s = await boot();
+    try {
+        await fetch(`${s.url}/issues/9001.json?key=${KEY}`, { headers: { 'X-Redmine-API-Key': KEY } });
+        assert.ok(!JSON.stringify(s.requests()).includes(KEY));
+    } finally { await s.close(); }
+});
+
+test('custom field por id numérico ou texto atualiza o mesmo campo, com old_value no journal', async () => {
+    const s = await boot();
+    try {
+        assert.strictEqual((await putJson(s, 9001, { issue: { custom_fields: [{ id: '50', value: 'develop' }] } })).status, 204);
+        const issue = pilot.loadStore(s.store).issues[0];
+        assert.deepStrictEqual(issue.custom_fields, [{ id: 50, name: 'Branch Liberação', value: 'develop' }]);
+        assert.deepStrictEqual(issue.journals[0].details[0], { property: 'cf', name: '50', old_value: 'main', new_value: 'develop' });
+    } finally { await s.close(); }
+});
+
+test('cliente real fetchLastRejectionNote acha a nota da Recusa QA (status 8 → 13)', async () => {
+    const s = await boot();
+    try {
+        assert.strictEqual((await putJson(s, 9001, { issue: { status_id: 8 } })).status, 204);
+        assert.strictEqual((await putJson(s, 9001, { issue: { status_id: 13, notes: 'Botão salvar não grava' } })).status, 204);
+        const r = await journalFetcher.fetchLastRejectionNote(9001, { redmineUrl: s.url, apiKey: KEY, fetch, log: quiet });
+        assert.strictEqual(r.note, 'Botão salvar não grava');
+        const list = await ticketList.fetchAssignedTickets({ redmineUrl: s.url, apiKey: KEY, log: quiet });
+        assert.deepStrictEqual(list.map(t => t.id), [9001]);
+    } finally { await s.close(); }
+});
+
+test('PUT com corpo lento não trava os outros pedidos; corpo acima de 1 MB recebe 413', async () => {
+    const http = require('http');
+    const s = await boot();
+    try {
+        const { port } = new URL(s.url);
+        const slow = http.request({ host: pilot.HOST, port, method: 'PUT', path: '/issues/9001.json',
+            headers: { 'X-Redmine-API-Key': KEY, 'Content-Type': 'application/json', 'Content-Length': 100 } });
+        slow.on('error', () => {});
+        slow.write('{"issue":');
+        const t0 = Date.now();
+        const res = await fetch(`${s.url}/issues/9001.json`, { headers: { 'X-Redmine-API-Key': KEY }, signal: AbortSignal.timeout(3000) });
+        assert.strictEqual(res.status, 200);
+        assert.ok(Date.now() - t0 < 1000, 'GET respondeu sem esperar o PUT lento');
+        slow.destroy();
+        const big = await putJson(s, 9001, { issue: { notes: 'x'.repeat(1024 * 1024 + 10) } });
+        assert.strictEqual(big.status, 413);
+    } finally { await s.close(); }
+});
+
+test('seed recusa rodar com o servidor de pé e valida os tipos dos campos', async () => {
+    const s = await boot();
+    const from = path.join(s.dir, 'mais.json');
+    fs.writeFileSync(from, JSON.stringify([{ id: 9100, subject: 'x' }]));
+    try {
+        assert.throws(() => pilot.seed(s.store, from), /servidor rodando/);
+    } finally { await s.close(); }
+    fs.writeFileSync(from, JSON.stringify([{ id: 9100, subject: 'x', created_on: 5 }]));
+    assert.throws(() => pilot.seed(s.store, from), /created_on/);
+    fs.writeFileSync(from, JSON.stringify([{ id: 9100, subject: 'x', custom_fields: [{ name: 'sem id' }] }]));
+    assert.throws(() => pilot.seed(s.store, from), /custom_fields/);
+    fs.writeFileSync(from, JSON.stringify([{ id: 9100, subject: 'x' }]));
+    assert.strictEqual(pilot.seed(s.store, from), 1);
 });
