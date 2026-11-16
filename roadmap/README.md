@@ -60,6 +60,10 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
 - Comportamento novo nasce atrás de flag desligada e entra no registro de flags (F1.1) no
   mesmo PR.
 - No máximo duas frentes por fase e um piloto de custo por vez.
+- Validar o mapa (IDs, dependências, status, links, decisões): `node scripts/lib/roadmap-lint.js`
+  (exit 1 se houver erro; também roda no `npm test` de `scripts`).
+- Modelo da SPEC de fatia: [`templates/fatia-spec.md.template`](../templates/fatia-spec.md.template),
+  copiado para `tasks/fN-M-<nome>/SPEC.md` quando a fatia entra no cycle.
 - Nunca: ligar flag no consumidor corporativo antes de F1.1, F1.2 e F1.3 (o launcher do
   piloto no próprio Espectro segue D11); afirmar ganho de custo sem a linha de base (F1.5);
   copiar dado do consumidor para este repo ou para o Linear.
