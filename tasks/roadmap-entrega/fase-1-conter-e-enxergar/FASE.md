@@ -21,13 +21,13 @@ retorno, teto.
 
 ## Fatias
 
-| ID | Fatia | Dias | Nível | AUTORIZO | Depende de | Decisão | Status |
-| -- | -- | -- | -- | -- | -- | -- | -- |
-| F1.1 | Registro de flags | 3 | Leve | Não | — | — | não iniciada |
-| F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | não iniciada |
-| F1.3 | Teto de turnos por run | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada |
-| F1.4 | Linha de base: retrabalho | 2 | Leve | Não | — | D1 | não iniciada |
-| F1.5 | Linha de base: custo por ticket | 3 | Leve | Não | F1.4 | D1, D6 | não iniciada |
+| ID | Fatia | Dias | Nível | AUTORIZO | Depende de | Decisão | Status | Issue no Linear |
+| -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| F1.1 | Registro de flags | 3 | Leve | Não | — | — | não iniciada | sem issue |
+| F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | não iniciada | sem issue; PRI-371 é a alternativa de D3 |
+| F1.3 | Teto de turnos por run | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | sem issue |
+| F1.4 | Linha de base: retrabalho | 2 | Leve | Não | — | D1 | não iniciada | sem issue; base é a PRI-327 (Done) |
+| F1.5 | Linha de base: custo por ticket | 3 | Leve | Não | F1.4 | D1, D6 | não iniciada | sem issue; PRI-82 relacionada |
 
 Sem folga. Se estourar, a F1.5 escorrega para o primeiro cycle da Fase 2: ela não bloqueia a
 F2.1, só a F2.2.
@@ -67,7 +67,7 @@ desenho fica para a spec.
 ### F1.4 — Linha de base: retrabalho
 
 - **Intenção.** A capa do weekly mostra quanto custa o retrabalho e quanto passa de primeira, por nó.
-- **Não inclui.** Custo por ticket (F1.5); qualquer mudança no despacho. Conferir a PRI-327 antes, para não duplicar.
+- **Não inclui.** Custo por ticket (F1.5); qualquer mudança no despacho. Parte do weekly entregue na PRI-327.
 - AC-01: A capa mostra custo do retrabalho por nó e primeira passada por nó, com n e período.
 - AC-02: Todo valor em USD traz o rótulo "imputado"; tokens e tempo de parede aparecem ao lado.
 - AC-03: Modelo e esforço padrão da conta e runs concluídas por semana estão registrados no relatório.

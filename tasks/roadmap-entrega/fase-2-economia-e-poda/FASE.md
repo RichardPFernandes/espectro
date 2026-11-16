@@ -21,11 +21,11 @@ liga de vez ou remove.
 
 ## Fatias
 
-| ID | Fatia e demonstração | Dias | Nível | AUTORIZO | Depende de | Premissa / decisão | Status |
-| -- | -- | -- | -- | -- | -- | -- | -- |
-| F2.1 | Portão de build antes do review: compilar, lint e teste dirigido depois do implement; falhou, volta ao implement sem abrir review. Termina ligado | 4 | Alto ao ligar | Sim | Fase 1 | Tamanho do ganho é hipótese; a F1.4 dá o antes | não iniciada |
-| F2.2 | Piloto de decomposição: PR que liga, 3 a 5 runs, quadro antes/depois, decisão ligar ou remover | 3 | Alto | Sim | F1.3, F1.5, F2.1 estabilizada | Teto: 5 runs ou 2 semanas (D6) | não iniciada |
-| F2.3 | Piloto de esforço por fase (PRI-354): ligar com data, medir custo, tempo e reprovação tardia, decidir | 2 | Alto | Sim | F2.2 decidida | Só liga sabendo o esforço padrão da conta; pode gastar mais. Teto: 15 runs ou 3 semanas | não iniciada |
-| F2.4 | dependency-cruiser em PR, com as 77 violações como base; falha só nas novas | 2 | Leve | Não | — | — | não iniciada |
-| F2.5 | Poda: remover a flag de `permissions.deny`, o writer de Self-SDD, a rota `coordination` e `scripts/src`; Jev congelado com data | 3 | Médio | Não | F2.4 | D5 | não iniciada |
-| F2.6 | Credenciais fora do shell do agente, por lista de permissão; teste + um ciclo ticket → PR completo | 4 | Alto | Sim | Fase 1 | Solução e esforço são hipótese | não iniciada |
+| ID | Fatia e demonstração | Dias | Nível | AUTORIZO | Depende de | Premissa / decisão | Status | Issue no Linear |
+| -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| F2.1 | Portão de build antes do review: compilar, lint e teste dirigido depois do implement; falhou, volta ao implement sem abrir review. Termina ligado | 4 | Alto ao ligar | Sim | Fase 1 | Tamanho do ganho é hipótese; a F1.4 dá o antes | não iniciada | sem issue; PRI-208 vizinha |
+| F2.2 | Piloto de decomposição: PR que liga, 3 a 5 runs, quadro antes/depois, decisão ligar ou remover | 3 | Alto | Sim | F1.3, F1.5, F2.1 estabilizada | Teto: 5 runs ou 2 semanas (D6) | não iniciada | PRI-341 (em andamento); PRI-335 é pré-requisito |
+| F2.3 | Piloto de esforço por fase (PRI-354): ligar com data, medir custo, tempo e reprovação tardia, decidir | 2 | Alto | Sim | F2.2 decidida | Só liga sabendo o esforço padrão da conta; pode gastar mais. Teto: 15 runs ou 3 semanas | não iniciada | PRI-354 (em andamento, AUTORIZO dado em 15/11) |
+| F2.4 | dependency-cruiser em PR, com as 77 violações como base; falha só nas novas | 2 | Leve | Não | — | — | não iniciada | sem issue; PRI-359 relacionada |
+| F2.5 | Poda: remover a flag de `permissions.deny`, o writer de Self-SDD, a rota `coordination` e `scripts/src`; Jev congelado com data | 3 | Médio | Não | F2.4 | D5 | não iniciada | PRI-315 (Done); conflita com PRI-349 e filhas |
+| F2.6 | Credenciais fora do shell do agente, por lista de permissão; teste + um ciclo ticket → PR completo | 4 | Alto | Sim | Fase 1 | Solução e esforço são hipótese | não iniciada | sem issue; PRI-316 vizinha |

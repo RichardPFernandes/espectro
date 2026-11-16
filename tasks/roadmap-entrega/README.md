@@ -15,6 +15,7 @@ tasks/roadmap-entrega/
 ├── README.md      este arquivo: estrutura e regras
 ├── ROADMAP.md     mapa raso: fases, ordem, status
 ├── DECISOES.md    D1–D10: premissa assumida, alternativa, efeito na ordem
+├── LINEAR.md      reconciliação com as issues abertas: vínculos e conflitos
 ├── fase-N-<nome>/
 │   ├── FASE.md    objetivo, critério de saída, tabela de fatias (fonte única das fatias)
 │   └── fN-M-<nome>/   criado quando a fatia começa: SPEC.md, plan.md, todo.md
