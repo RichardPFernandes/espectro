@@ -40,11 +40,13 @@ Evidência do PR.
   - Em 16/11: `--check` caiu de 227 para 190 faltantes, 0 com dois donos, 0 padrões sem arquivo, 0 flags fora do código. `.claude/commands/*` e `.graph/` ficam com `grafo` (os dois schemas de outras capacidades, `acceptance-evidence` e `spec-changelog`, ficam em `grafo` e são citados por `portoes` e `spec` na T4). `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde.
   - Para o PR: `process-identity` e `node-events` ficaram em `ciclo-da-run` (usados pelo watcher e pelo lease de `estado`); `claude-account`, `sanitize-log` e `agent-exit-signals` em `execucao`. `config` ficou `parcial`: o registro de flags é a F1.1.
 
-- [ ] **T4: produto — `spec`, `portoes`, `autorizacao`, `roteamento`, `qa`, `db-effect`, `sdd-writer`** · M
+- [x] **T4: produto — `spec`, `portoes`, `autorizacao`, `roteamento`, `qa`, `db-effect`, `sdd-writer`** · M
   - Aceite: os sete arquivos existem; `sdd-writer` com `situacao: sem-chamador`; nenhum conflito.
   - Verificar: `--check` sem conflito; contagem de faltantes cai.
   - Arquivos: `docs/capacidades/{spec,portoes,autorizacao,roteamento,qa,db-effect,sdd-writer}.md`
   - Depende de: T2. Pode rodar em paralelo com a T3.
+  - Em 16/11: `--check` caiu de 190 para 103 faltantes, 0 com dois donos, 0 padrões sem arquivo, 0 flags fora do código. `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde.
+  - Para o PR: `dom06-attempt.js` e `git-push-effect.sh` ficaram em `autorizacao` (admissão do Attempt que autoriza efeito externo; dúvida com `estado`). `schema-watcher.js` ficou em `db-effect` e `service-detector.js` em `portoes`, mas `plan-signals.js` os importa. `handoff-lint.js` ficou em `roteamento` junto da flag `WATCHER_PHASE_EFFORT`. Ficaram para a T5: `knowledge-graph.js` e `trace.js`, `maestro-guard-pre-done.js` e `validate-handoff.js`, `prisma-config.js`. As flags lidas só no `readmine-watcher.js` (`SPEC_DRAFT_AUTOGEN`, `SPEC_AUTO_REPAIR`, `WATCHER_QA_DIAGNOSTICO`, `WATCHER_RECUSA_QA_NOVO_CICLO`) estão no corpo, não em `flags`, pela regra do AC-02; o registro delas é a F1.1. `roteamento` ficou `parcial` (`mode: ON` aqui, `decomposition: off`, esforço por fase desligado) e `qa` `parcial` (diagnóstico desligado).
 
 - [ ] **T5: bordas e cobertura ligada — `medicao`, `integracoes`, `dashboard`, `ferramentas` (AC-03)** · M
   - Aceite: os quatro arquivos existem; `--check` sai 0 no repo; o teste de cobertura contra o repo real está ligado; a lista do que mudou de capacidade em relação à `PROPOSTA.md` está escrita para o PR.
