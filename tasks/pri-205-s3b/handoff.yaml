@@ -3,7 +3,7 @@ handoff_version: "1.1"
 task:
   id: "PRI-205"
   objective: "Especificar o núcleo 2 da classificação de roteamento com o Jev (TypeSafe) em modo sombra, como nova fatia (S3b) da PRI-205, e parar para aprovação do Richard antes de planejar ou codar."
-  specification_ref: "/Users/richardfernandes/Workspace/prisma/.claude/worktrees/pri-205-jev-sombra/SPEC.md"
+  specification_ref: "~/Workspace/prisma/.claude/worktrees/pri-205-jev-sombra/SPEC.md"
   acceptance_criteria:
     - "Issue nova no Linear (time PRI, filha da PRI-205) criada com a confirmação do Richard."
     - "SPEC.md da fatia escrito e apresentado para aprovação, com as perguntas em aberto."
@@ -28,13 +28,13 @@ execution:
   commit: null
 
 artifacts:
-  - path: "/Users/richardfernandes/Workspace/prisma/.claude/worktrees/pri-205-jev-sombra/SPEC.md"
+  - path: "~/Workspace/prisma/.claude/worktrees/pri-205-jev-sombra/SPEC.md"
     action: "MODIFIED"
     description: "Substitui, só neste branch, o SPEC.md da PRI-233 (convenção de um SPEC.md por fatia na raiz). Não commitado."
-  - path: "/Users/richardfernandes/Workspace/prisma-evidence/2026-11-06-pri-205-s3b-jev/SPEC.rascunho.md"
+  - path: "~/Workspace/prisma-evidence/2026-11-06-pri-205-s3b-jev/SPEC.rascunho.md"
     action: "CREATED"
     description: "Cópia do rascunho apresentado (SHA-256 f8b3ad57…811a7; Q0–Q10 decididas)."
-  - path: "/Users/richardfernandes/Workspace/prisma-evidence/2026-11-06-pri-205-s3b-jev/issue-draft.md"
+  - path: "~/Workspace/prisma-evidence/2026-11-06-pri-205-s3b-jev/issue-draft.md"
     action: "CREATED"
     description: "Texto da issue confirmada e não criada."
 
@@ -87,10 +87,10 @@ next:
     - "Issue criada."
 
 context_refs:
-  - "/Users/richardfernandes/Workspace/prisma-evidence/pri-205/desenho-selecao-modelo.md"
-  - "/Users/richardfernandes/Workspace/prisma-evidence/pri-205/hd-ativacao-final-proposta.md"
-  - "/Users/richardfernandes/Workspace/prisma-evidence/pri-205/recomendacao-dp9-jev.md"
-  - "/Users/richardfernandes/Workspace/prisma-evidence/2026-11-06-pri-233/policy-aprovada/aprovacao.md"
+  - "~/Workspace/prisma-evidence/pri-205/desenho-selecao-modelo.md"
+  - "~/Workspace/prisma-evidence/pri-205/hd-ativacao-final-proposta.md"
+  - "~/Workspace/prisma-evidence/pri-205/recomendacao-dp9-jev.md"
+  - "~/Workspace/prisma-evidence/2026-11-06-pri-233/policy-aprovada/aprovacao.md"
   - "https://linear.app/prisma-app/issue/PRI-205"
 
 facts:

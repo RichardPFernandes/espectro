@@ -185,7 +185,7 @@ find memory/runs .claude/worktrees -path '*/memory/runs/*/state.json' -not -path
 ```
 
 Atenção ao ler essa lista: os worktrees podem conter **cópias antigas** de runs de outros
-tickets (ex: `43499-...` dentro de `.claude/worktrees/43539/`). Para despachar, o watcher só
+tickets (ex: `<outro-ticket>-...` dentro de `.claude/worktrees/<ticket>/`). Para despachar, o watcher só
 considera, no worktree `.claude/worktrees/<ticket>/`, as pastas que começam com `<ticket>-`
 (`findActiveTask`). Ignore as demais ao diagnosticar um ticket.
 
@@ -493,7 +493,7 @@ Redmine para refletir o `state.json`, não o contrário.
 o `/commit` terminou, mas a transição para Ag Merge não aconteceu. Causas documentadas em
 `.claude/commands/commit.md` passo 7:
 - PR **não** abriu (credenciais Bitbucket ausentes) → transição pulada de propósito.
-- Redmine devolveu **422** exigindo campo customizado (achado no ticket #43425: "Necessita Lib.
+- Redmine devolveu **422** exigindo campo customizado (achado em um ticket: "Necessita Lib.
   Plano", id 7).
 - MCP do Redmine indisponível na sessão.
 
@@ -798,7 +798,7 @@ Passos:
 
 ## Autorização humana (ação privilegiada, SQL governado, devolução ao QA)
 
-Caso que originou (#42359): o `/implement` concluiu que a Recusa QA era do **banco** (check
+Caso que originou (um ticket do consumidor): o `/implement` concluiu que a Recusa QA era do **banco** (check
 constraint sem `SERVICO_ADICIONAL`; o SQL já estava versionado) e só podia parar em `blocked`
 com o motivo em texto. Agora o agente registra um **pedido estruturado** e um **aprovador
 cadastrado** decide no dashboard, escolhendo o banco.
@@ -896,8 +896,8 @@ usuário do macOS**, ou os agentes num sandbox sem acesso a `~/.config/prisma` e
 
 ## Comandos úteis de diagnóstico
 
-Todos da raiz do consumidor, com PRISMA_ROOT explícito. Substitua `<ticket>` (ex: `43670`) e `<task-id>` (ex:
-`43670-rastreabilidade-spec`).
+Todos da raiz do consumidor, com PRISMA_ROOT explícito. Substitua `<ticket>` (ex: `12345`) e `<task-id>` (ex:
+`12345-rastreabilidade-spec`).
 
 ```bash
 # --- Watcher / laço ---
