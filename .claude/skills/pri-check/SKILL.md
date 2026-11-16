@@ -18,13 +18,11 @@ dele divergir de `git branch --show-current`. Comece com a árvore limpa
 - Mexeu em `.github/scripts/` ou `.claude/hooks/`:
   `node --test .github/scripts/*.test.mjs .claude/hooks/*.test.mjs`. O harness não
   roda esses testes.
-- Mexeu em `scripts/` ou `dashboard/`: rode a receita da seção "Primeiros passos" do
-  `README.md`, que é a mesma da CI, com `HOME` e `TMPDIR` dentro de `$EV`. Rode antes o
-  `npm ci --ignore-scripts --no-audit --no-fund --prefix <pacote>` só se faltar o
-  `node_modules`. Depois rode
-  `npm --prefix scripts run check:js && npm --prefix scripts run arch:check`.
+- Mexeu em `scripts/` ou `dashboard/`: na raiz, `npm test > "$EV/suite.tap" 2>&1`
+  (é a receita oficial da CI) e `npm run check`. Se faltar `node_modules`, rode antes
+  `npm ci --ignore-scripts --no-audit --no-fund --prefix <pacote>`.
 - Teste novo (Médio e Alto): numa worktree descartável da `origin/main`, copie só os
-  arquivos de teste novos, rode o `npm ci` do pacote e depois `node --test` neles. Eles
+  arquivos de teste novos, rode o `npm ci` do pacote e depois `npm run test:changed`. Eles
   precisam **falhar por asserção** lá; `MODULE_NOT_FOUND` não conta.
   Teste que passa na `main` não prova o AC: aponte isso.
 - Para comparar uma falha com a `main`, use uma worktree limpa. Nunca `git stash`.

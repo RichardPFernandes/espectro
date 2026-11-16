@@ -16,8 +16,8 @@ abaixo. Onde divergem, valem os ajustes. O contexto vem de `.prisma/context.json
 - **Laço.** Faça todas as tarefas em ordem, sem parar entre elas. Para cada uma:
   1. Escreva o teste e veja ele falhar (RED).
   2. Implemente o mínimo para passar (GREEN).
-  3. Rode só o teste focado: `node --test <arquivo>`. A suíte completa é do
-     `/pri-check`, não daqui; nunca rode `npm test` cru.
+  3. Rode só os testes tocados: `npm run test:changed` na raiz. A suíte completa
+     (`npm test`) é do `/pri-check`, não daqui.
   4. Faça `git add` só dos arquivos da tarefa e commit com `(Refs PRI-NNN)` no título.
   5. Marque a tarefa como feita no `todo.md` (no Leve, não há `todo.md`).
 - **Pare e pergunte** quando:
