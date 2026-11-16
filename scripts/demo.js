@@ -10,6 +10,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
+// Acoplado à fixture (id 99999) e a scripts/lib/dry-run.js (TASK_SUFFIX e nós simulados).
 const NODES = ['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify', 'commit'];
 const TASK_ID = '99999-dry-run';
 

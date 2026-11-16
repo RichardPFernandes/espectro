@@ -13,7 +13,7 @@ Plataforma de engenharia de software com agentes: transforma um ticket em um
 grafo de nós auditáveis, com gates humanos, custo visível e estado autoritativo
 que nunca sai do projeto consumidor.
 
-[![Tests](https://github.com/RichardPFernandes/prisma/actions/workflows/tests.yml/badge.svg)](https://github.com/RichardPFernandes/prisma/actions/workflows/tests.yml)
+[![Tests](https://github.com/RichardPFernandes/espectro/actions/workflows/tests.yml/badge.svg)](https://github.com/RichardPFernandes/espectro/actions/workflows/tests.yml)
 ![Node](https://img.shields.io/badge/node-22%20%7C%2024-3DD68C)
 ![Status](https://img.shields.io/badge/status-dogfood%20(app--back)-F2A93B)
 [![Licença](https://img.shields.io/badge/licen%C3%A7a-Apache--2.0-6E9BFF)](LICENSE)
@@ -60,7 +60,7 @@ Um ciclo inteiro do grafo com um ticket sintético, sem credencial, sem rede e s
 instalar dependências. Precisa só de Node 22 ou 24:
 
 ```bash
-git clone https://github.com/RichardPFernandes/prisma.git && cd prisma
+git clone https://github.com/RichardPFernandes/espectro.git && cd espectro
 npm run demo
 ```
 

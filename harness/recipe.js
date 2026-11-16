@@ -8,12 +8,13 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
+const PACKAGES = ['scripts', 'dashboard'];
 
-// Mesmo ambiente do `env -i` da receita: nada do ambiente de quem chama passa.
-function recipeEnv(root = ROOT, scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'espectro-test-'))) {
+// Mesmo ambiente do `env -i` da receita (PATH igual ao da CI): nada de quem chama passa.
+function recipeEnv(root, scratch) {
     for (const dir of ['home', 'tmp']) fs.mkdirSync(path.join(scratch, dir), { recursive: true });
     return {
-        PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`,
+        PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`,
         HOME: path.join(scratch, 'home'),
         TMPDIR: path.join(scratch, 'tmp'),
         NODE_OPTIONS: `--require=${path.join(root, 'harness', 'loopback-only.cjs')}`,
@@ -22,16 +23,33 @@ function recipeEnv(root = ROOT, scratch = fs.mkdtempSync(path.join(os.tmpdir(), 
     };
 }
 
-function main() {
-    const env = recipeEnv();
-    const failed = [];
-    for (const pkg of ['scripts', 'dashboard']) {
-        const r = spawnSync('npm', ['--prefix', path.join(ROOT, pkg), 'test'], { cwd: ROOT, env, stdio: 'inherit' });
-        if (r.status !== 0) failed.push(`${pkg} (exit ${r.status ?? r.signal ?? r.error?.code})`);
+// Roda fn(env) com um scratch temporário próprio, removido ao final, inclusive em falha.
+function withRecipeEnv(fn, root = ROOT) {
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'espectro-test-'));
+    try {
+        return fn(recipeEnv(root, scratch));
+    } finally {
+        fs.rmSync(scratch, { recursive: true, force: true });
     }
+}
+
+// Pacotes sem dependências instaladas; a suíte quebraria no meio com erro pouco claro.
+function missingInstalls(root = ROOT, exists = fs.existsSync) {
+    return PACKAGES.filter(pkg => !exists(path.join(root, pkg, 'node_modules')));
+}
+
+function main() {
+    const missing = missingInstalls();
+    if (missing.length) {
+        for (const pkg of missing) console.error(`[recipe] ${pkg}/ sem node_modules. Rode: npm ci --ignore-scripts --no-audit --no-fund --prefix ${pkg}`);
+        process.exitCode = 2;
+        return;
+    }
+    const failed = withRecipeEnv(env => PACKAGES.filter(pkg =>
+        spawnSync('npm', ['--prefix', path.join(ROOT, pkg), 'test'], { cwd: ROOT, env, stdio: 'inherit' }).status !== 0));
     if (failed.length) console.error(`[recipe] falhou: ${failed.join(', ')}`);
     process.exitCode = failed.length ? 1 : 0;
 }
 
-module.exports = { recipeEnv, ROOT };
+module.exports = { recipeEnv, withRecipeEnv, missingInstalls, ROOT };
 if (require.main === module) main();
