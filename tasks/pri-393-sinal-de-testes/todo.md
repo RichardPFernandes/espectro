@@ -12,7 +12,10 @@ Estática: `npm run check`. Toda tarefa começa pelo teste que falha.
   - Arquivos: `scripts/lib/qa-rejection-c0-oracle.test.js`, `scripts/lib/qa-rejection-current-golden.test.js`
   - Depende de: nada
 
-- [ ] **T2: `validate-handoff.test.js` volta para a receita (AC-03)** · S
+- [x] **T2: `validate-handoff.test.js` volta para a receita (AC-03)** · S
+  - Feita em 16/11: vermelho (teste novo em `harness/run-tests.test.js`) e verde (56/56 nos dois arquivos); `npm test` no Mac, Node 24.22.1: 2.453 + 615 testes, 0 falhas; o aviso lista 2 arquivos. Linux fica para o job do PR 1.
+  - Regra lida: `pre-done` recusa só `/tmp` e `/private/tmp`. Os homes do teste ficam no TMPDIR da receita; com TMPDIR dentro de `/tmp` (Linux local sem `TMPDIR` definido) o teste falha com mensagem que manda rodar `TMPDIR=/var/tmp npm test`. Na CI o TMPDIR é `RUNNER_TEMP`, fora de `/tmp`.
+  - O teste "symlink para /tmp" cria e apaga um diretório em `/tmp` de verdade: é o que a regra testa.
   - Aceite: o teste não usa `/workspace`; a entrada sai de `harness/test-exclusions.json`; passa na receita.
   - Verificar: `npm test`; o aviso "fora da receita" lista só 2 arquivos.
   - Arquivos: `scripts/validate-handoff.test.js`, `harness/test-exclusions.json`

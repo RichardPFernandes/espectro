@@ -141,6 +141,13 @@ test('receita: todo *.test.js versionado roda em uma suíte ou está na lista de
     }
 });
 
+test('receita: validate-handoff.test.js roda na suíte scripts e não usa caminho fixo fora do TMPDIR', () => {
+    const rel = 'scripts/validate-handoff.test.js';
+    assert.equal(readExclusions().has(rel), false, `${rel} ainda está em harness/test-exclusions.json`);
+    assert.ok(discover(root, 'scripts').files.includes(rel), `${rel} não foi descoberto para a suíte scripts`);
+    assert.doesNotMatch(fs.readFileSync(path.join(root, rel), 'utf8'), /['"`]\/workspace['"`/]/, 'o teste ainda cria diretório em /workspace');
+});
+
 test('exclusões: entrada sem motivo é recusada', t => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'f02-exclusoes-'));
     t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
