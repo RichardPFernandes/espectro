@@ -894,6 +894,37 @@ usuário do macOS**, ou os agentes num sandbox sem acesso a `~/.config/prisma` e
 
 ---
 
+## Sonda de fumaça da CLI (antes de atualizar a CLI do watcher)
+
+O despacho usa `claude -p` e depende de três coisas que a CLI carrega do projeto: os comandos
+customizados (`.claude/commands/*.md`), os hooks (`.claude/settings.json`) e o `CLAUDE.md`. A
+documentação da CLI diz que o modo `--bare` não descobre nenhum deles e que ele "will become the
+default for `-p` in a future release" (<https://code.claude.com/docs/en/headless>, seção "Start
+faster with bare mode", lida em 16/11/2026). Se o padrão mudar, o despacho quebra sem erro.
+
+**Quando rodar:** a cada versão nova da CLI, na máquina do watcher, ANTES de trocar a CLI que o
+watcher usa. Faz duas chamadas reais e curtas com a conta da CLI; projeto sintético em diretório
+temporário, apagado ao final. Não toca watcher, estado nem consumidor.
+
+```bash
+node "$PRISMA_ROOT/scripts/probes/cli-smoke-probe.js" --claude-bin <caminho da CLI nova>
+echo "exit=$?"   # sem --claude-bin usa CLI_SMOKE_CLAUDE_BIN ou `claude` do PATH
+```
+
+**Como ler:** uma linha por item (comando customizado, hook de projeto, CLAUDE.md) mais a versão
+da CLI, e o mesmo em JSON.
+
+| Exit | Significado | O que fazer |
+| -- | -- | -- |
+| 0 | Os três CARREGADO | Pode atualizar a CLI do watcher |
+| 2 | Algum NÃO CARREGADO | NÃO atualize a CLI do watcher. Mantenha a versão atual e abra uma fatia para fixar o modo explicitamente no despacho, lendo na página acima como a versão nova carrega cada item |
+| 3 | Algum DESCONHECIDO (CLI ausente, sem login, timeout, saída vazia, erro) | Não é aprovação. Resolva o motivo impresso e rode de novo |
+
+A página não documenta, na leitura acima, uma flag que desligue o `--bare`; por isso este runbook
+não indica qual flag usar para fixar o modo.
+
+---
+
 ## Comandos úteis de diagnóstico
 
 Todos da raiz do consumidor, com PRISMA_ROOT explícito. Substitua `<ticket>` (ex: `43670`) e `<task-id>` (ex:
