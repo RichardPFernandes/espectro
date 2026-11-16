@@ -47,7 +47,7 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
    `FASE.md` guarda só o estado da fatia (`não iniciada`, `em spec`, `em andamento`, `ligada`,
    `concluída`, `removida`) e é atualizado no PR que muda esse estado. Se os dois divergirem,
    vale a issue e corrige-se o `FASE.md`.
-9. **`tasks/` antigo não muda.** As pastas `tasks/pri-*` e `tasks/evidence.md` são de trabalhos
+9. **`tasks/` antigo fica onde está.** As pastas `tasks/pri-*` e `tasks/evidence.md` são de trabalhos
    anteriores e seguem como estão. O `plan.md` e o `todo.md` da PRI-233 foram para
    `docs/historico/pri-233/` em 16/11, porque travavam os comandos do agent-skills. Só as pastas
    `tasks/fN-M-<nome>/` pertencem a este roadmap.

@@ -1,21 +1,28 @@
 ---
 name: pri-check
-description: Antes do PR de uma issue PRI, roda a suíte pela receita oficial e a revisão independente por subagente em contexto limpo, no número de revisores do nível.
+description: Antes do PR de uma issue PRI, roda as checagens e a suíte pela receita oficial e a revisão independente por subagente em contexto limpo, no número de revisores do nível.
 disable-model-invocation: true
-argument-hint: "[PRI-NNN]"
+argument-hint: "PRI-NNN"
 ---
 
 # /pri-check
 
-Roda os testes e a revisão do fluxo de desenvolvimento. O nível vem de
-`.prisma/level`. Se o arquivo não existir, rode `/pri-start` antes.
+Roda testes e revisão do fluxo de desenvolvimento. `<issue>` é o argumento
+(`$ARGUMENTS`, ex.: `pri-376`). O nível vem de `.prisma/level`. Se o arquivo
+não existir, rode `/pri-start` antes.
+
+Comece com a árvore limpa (`git status --porcelain` vazio): a evidência fica
+ligada ao SHA do HEAD e não pode carregar alteração fora do commit.
 
 ## 1. Testes pela receita oficial
 
-Rode a receita da seção "Primeiros passos" do `README.md` (é a mesma da CI), com a
-evidência fora de `/tmp`:
+Se a mudança só toca docs e skills (`*.md`, `.claude/skills/`), não há suíte para
+rodar. Diga isso e vá para a revisão. Se toca código, rode a receita da seção
+"Primeiros passos" do `README.md`, que é a mesma da CI:
 
 ```bash
+npm ci --ignore-scripts --no-audit --no-fund --prefix scripts
+npm ci --ignore-scripts --no-audit --no-fund --prefix dashboard
 CK="$PWD"; EV="$HOME/Workspace/prisma-evidence/<issue>/$(git rev-parse --short HEAD)"
 mkdir -p "$EV/home" "$EV/tmp"
 NODEBIN="$(dirname "$(command -v node)")"
@@ -28,20 +35,19 @@ for pkg in scripts dashboard; do
   echo "$pkg exit=$?"
 done
 grep -hE '^# (tests|pass|fail)' "$EV"/*.tap; grep -h '^not ok' "$EV"/*.tap
+npm --prefix scripts run check:js && npm --prefix scripts run arch:check
 ```
 
-- Se a mudança só toca um pacote, rode só ele.
-- Se só toca docs e skills (`*.md`, `.claude/skills/`), não há suíte para rodar. Diga isso.
+- Uma worktree nova não tem `node_modules`. Sem o `npm ci`, a suíte falha e a
+  comparação com a `main` falha igual.
 - Antes de culpar o diff por uma falha, compare com a `main` numa worktree limpa.
   Não use `git stash`, porque a pilha é compartilhada entre worktrees.
 - Falha, timeout ou saída ausente não viram PASS. Registre UNKNOWN com o motivo.
-- Detalhes e armadilhas da receita: `.agents/skills/prisma-tests/SKILL.md` e
-  `docs/runbook.md`.
 
 ## 2. Revisão independente
 
 O revisor é outro agente Claude em contexto limpo. Ele recebe o diff e as fontes,
-nunca a sua conclusão.
+nunca a sua conclusão. Esta é a única rodada (regra 6).
 
 | Nível | Revisores (Agent tool, em paralelo numa só mensagem) |
 | -- | -- |
@@ -51,8 +57,8 @@ nunca a sua conclusão.
 
 O brief de cada revisor leva:
 
-- o comando do diff (`git diff origin/main...HEAD`);
-- a spec (`tasks/<pasta>/SPEC.md`) ou os ACs da issue;
+- o comando do diff (`git diff -M origin/main...HEAD`);
+- a spec (`<pasta>/SPEC.md`) ou os ACs da issue;
 - as regras do `CLAUDE.md` e do `AGENTS.md`;
 - o pedido: achados com `arquivo:linha`, classificados como Critical, Required,
   Optional ou Nit, mais um veredito PASS ou FAIL.
@@ -62,7 +68,7 @@ O revisor não edita arquivos.
 ## 3. Depois
 
 - **FAIL:** corrija, rode de novo os testes afetados e devolva só o novo diff ao mesmo
-  revisor (SendMessage). Uma segunda rodada completa só com decisão do Richard (regra 6).
-- **PASS:** resuma em até 6 linhas: exit de cada suíte, totais, caminho dos TAPs,
-  veredito e achados aceitos ou recusados com o motivo. Isso alimenta a Evidência do
-  `/pri-pr`.
+  revisor (SendMessage), para ele conferir as correções. Isso não é uma segunda rodada.
+- **PASS:** resuma em até 6 linhas: exit de cada suíte e das checagens, totais,
+  caminho dos TAPs, veredito, e achados aceitos ou recusados com o motivo. Isso
+  alimenta a Evidência do `/pri-pr`.

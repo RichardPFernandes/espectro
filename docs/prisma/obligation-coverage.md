@@ -86,7 +86,7 @@ Cruzamento com a [PRI-359](https://linear.app/prisma-app/issue/PRI-359). Ela reg
 - **depcruise (3)**: reproduzidas aqui. Classe ambiente (Node 20).
 - **C0 adversarial (2)**: reproduzidas só com TMPDIR em `/var/folders`. Classe ambiente. Confirma `tasks/pri-287-s5/evidence-s5.1.md:38`.
 - **consumer B (2)** e **fundação TS (4)**: não reproduzidas na `7da4e97`. Passaram nas 3 rodadas Node 20, na Node 22 e no recorte com TMPDIR em `/var/folders`. A causa na SHA da PRI-274 segue `UNKNOWN`. Nesta SHA elas não falham.
-- A instabilidade de `cost-tracking.test.js` citada em `tasks/todo.md:120` não apareceu nas 4 rodadas.
+- A instabilidade de `cost-tracking.test.js` citada em `docs/historico/pri-233/todo.md:120` não apareceu nas 4 rodadas.
 
 Vazamento de isolamento (não é falha, mas a suíte escreve fora do sandbox): `scripts/lib/dom06-decomposition.test.js:245` (AC-09) provoca um `SESSION_CONFLICT` num run em TMPDIR. `scripts/cas.js:439-451` não acha `/memory/runs` nesse caminho, cai em `REPO_PATH` e corta em `/.claude/worktrees/`. Rodada a receita num worktree dentro do checkout principal, a linha vai para `<checkout principal>/logs/state-conflicts.jsonl`. As 4 rodadas desta fatia acrescentaram 4 linhas (`task_id` `run16`, 18:15:29Z, 18:23:33Z, 18:31:37Z e 18:36:09Z) ao arquivo não rastreado do checkout vivo `~/Workspace/prisma`. Nada foi apagado. 46 das 47 linhas do arquivo são esse fixture. Isso explica a «observação lateral» do PR #149. No CI não acontece, porque não existe `.claude/worktrees/`.
 

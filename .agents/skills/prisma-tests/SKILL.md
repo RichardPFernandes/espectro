@@ -40,8 +40,7 @@ Os dois `npm test` passam por `harness/run-tests.js`.
 
 ## Regras
 
-- Compare com a `main` limpa antes de culpar o diff (`git stash -u` ou outro worktree).
-- Teste novo entra na lista explícita do script `test` do `package.json` do pacote; o runner não descobre arquivos sozinho.
+- Compare com a `main` limpa antes de culpar o diff, numa worktree separada. Nunca `git stash`: a pilha é compartilhada entre worktrees.
 - Relate: node/npm usados, HEAD, se a árvore tinha diff, totais por suíte e cada `not ok` com arquivo e mensagem.
 - Resultado desta sessão **não** é evidência oficial do ciclo despachado (fronteira interativa / `AGENTS.md`).
 

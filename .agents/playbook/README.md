@@ -36,6 +36,6 @@ Estes artefatos são do **bootstrap Prisma**. Em projetos consumidores onde o Pr
 ## Fora deste playbook
 
 - Ciclo automático do produto (watcher / Attempt / S4)
-- `npx skills add` em massa / pacote Addy inteiro
+- `npx skills add` em massa (o agent-skills entra como plugin do Claude Code, não copiado para `.agents/`)
 - Definition of Done genérico como gate
 - C1 PRI-181 / Authority Runtime

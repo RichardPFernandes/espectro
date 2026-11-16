@@ -15,9 +15,9 @@
 
 ## Fluxo de desenvolvimento (agent-skills)
 
-Desenvolver o Prisma usa os comandos do plugin agent-skills, sempre com prefixo, mais três skills do repo que encaixam o Acordo. O grafo de `.claude/commands/` (`/plan`, `/implement`, `/review`, `/test`, `/verify`, `/commit`, `/fetch-ticket`) e os subagentes de `.claude/agents/` são do consumidor, lidos pelo watcher, e não se usam aqui.
+Desenvolver o Prisma usa os comandos do plugin agent-skills (requisito: plugin `agent-skills` instalado), sempre com prefixo, mais três skills do repo que encaixam o Acordo. O grafo de `.claude/commands/` (`/plan`, `/implement`, `/review`, `/test`, `/verify`, `/commit`, `/fetch-ticket`) e os subagentes de `.claude/agents/` são templates da plataforma para o fluxo do consumidor, lidos pelo watcher, e não se usam aqui.
 
-`/pri-start PRI-NNN` → (Médio/Alto) `/agent-skills:spec` e `/agent-skills:plan` → `/agent-skills:build` → `/pri-check` → `/pri-pr` → (Alto, depois do AUTORIZO) `/agent-skills:ship`.
+`/pri-start PRI-NNN` → (Médio/Alto, spec só se precisar) `/agent-skills:spec` e `/agent-skills:plan` → `/agent-skills:build` → `/pri-check` → `/pri-pr` → (Alto) `/agent-skills:ship` sem fan-out, antes do AUTORIZO → readback depois do bump.
 
 - Spec, plano e todo ficam em `tasks/fN-M-<nome>/` ou `tasks/pri-NNN/`; passe o caminho aos comandos. Nada de `SPEC.md` na raiz.
 - A suíte completa roda pela receita oficial (`/pri-check`), nunca com `npm test` cru.
