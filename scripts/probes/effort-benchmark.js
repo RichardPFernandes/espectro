@@ -61,26 +61,87 @@ function armCheck(run, arm) {
     return applied ? { status: 'CONFIRMED' } : { status: 'CONTRADICTED', reason: 'braço fixo sem phase_effort aplicado' };
 }
 
+// PRI-354 (MINOR 4): soma parcial não entra na mediana. O cost-tracking grava 0 quando a duração
+// não foi medida (e nenhum despacho real dura 0 ms) e conta runs_without_tokens por nó.
+const PARTIAL = Symbol('PARTIAL');
+
+// Fase coberta por um segmento (also_covers: implement cobrindo plan no [plan, implement]) não tem
+// medição separada: tanto a fase coberta quanto a que cobre ficam parciais (não comparáveis).
+function coveredBySegment(run, phase) {
+    const nodes = isObj(run?.cost_tracking?.nodes) ? run.cost_tracking.nodes : {};
+    return Object.entries(nodes).some(([node, entry]) => {
+        const covers = Array.isArray(entry?.also_covers) ? entry.also_covers.filter(c => PHASES.includes(c)) : [];
+        return covers.length > 0 && (node === phase || covers.includes(phase));
+    });
+}
+
 function phaseDuration(run, phase) {
-    const projected = projectCostTracking(run?.cost_tracking)?.nodes?.[phase];
-    return finite(projected?.duration_ms);
+    const projected = finite(projectCostTracking(run?.cost_tracking)?.nodes?.[phase]?.duration_ms);
+    if (projected === null) return coveredBySegment(run, phase) ? PARTIAL : null;
+    if (projected <= 0 || coveredBySegment(run, phase)) return PARTIAL;
+    const node = run?.cost_tracking?.nodes?.[phase];
+    const attempts = Array.isArray(node?.attempts) ? node.attempts : null;
+    if (attempts) {
+        const runs = finite(node.runs);
+        if ((runs !== null && attempts.length < runs) || attempts.some(a => !(finite(a?.duration_ms) > 0))) return PARTIAL;
+    }
+    return projected;
+}
+
+function phaseTokens(run, value, phase) {
+    if (value === null) return coveredBySegment(run, phase) ? PARTIAL : null;
+    const node = run?.cost_tracking?.nodes?.[phase];
+    const without = finite(node?.runs_without_tokens);
+    // Um dos dois contadores ausente = soma de um lado só (o cost-tracking só conta os dois null).
+    const oneSided = (finite(node?.input_tokens) === null) !== (finite(node?.output_tokens) === null);
+    return (without !== null && without > 0) || oneSided || coveredBySegment(run, phase) ? PARTIAL : value;
 }
 
 const measure = values => {
-    const known = values.filter(v => v !== null);
-    return { median: median(known), n: known.length };
+    const known = values.filter(v => typeof v === 'number');
+    const partial = values.filter(v => v === PARTIAL).length;
+    return { median: median(known), n: known.length, ...(partial ? { partial } : {}) };
 };
-const delta = (asIs, fixed) => (asIs.median !== null && fixed.median !== null ? fixed.median - asIs.median : null);
+
+// PRI-354 (MINOR 5): Δ pareado = mediana das diferenças por par, só onde os dois lados mediram.
+function pairedDelta(asIsValues, fixedValues) {
+    const diffs = asIsValues.map((a, i) => (typeof a === 'number' && typeof fixedValues[i] === 'number' ? fixedValues[i] - a : null)).filter(v => v !== null);
+    return { value: median(diffs), n: diffs.length };
+}
+
+// PRI-354 (MINOR 3): nível por fase vem do que o braço fixo gravou (Attempt.phase_effort), inclusive
+// fase coberta no mesmo segmento (also_covers). Sem gravação, a tabela atual entra rotulada.
+function recordedLevels(runs, phase) {
+    const levels = new Set();
+    for (const run of runs) {
+        const nodes = isObj(run?.cost_tracking?.nodes) ? run.cost_tracking.nodes : {};
+        for (const [node, entry] of Object.entries(nodes)) {
+            for (const a of Array.isArray(entry?.attempts) ? entry.attempts : []) {
+                const covers = node === phase || (Array.isArray(a?.also_covers) && a.also_covers.includes(phase));
+                if (covers && a?.phase_effort?.effort_applied === true && typeof a.phase_effort.level === 'string') levels.add(a.phase_effort.level);
+            }
+        }
+    }
+    return [...levels].sort();
+}
+
+function phaseEffortOf(fixedRuns, phase, table) {
+    const levels = recordedLevels(fixedRuns, phase);
+    if (levels.length === 1) return { effort: levels[0], effort_source: 'RECORDED', medium: levels[0] === 'medium' };
+    if (levels.length > 1) return { effort: `misto (${levels.join(', ')})`, effort_source: 'RECORDED', medium: levels.includes('medium') };
+    const fromTable = table?.[phase] ?? null;
+    return { effort: fromTable, effort_source: fromTable ? 'TABLE_LATEST' : 'UNKNOWN', medium: fromTable === 'medium' };
+}
 
 function failedRuns(statuses) {
     const known = statuses.filter(s => s !== null);
     return { count: known.length ? known.filter(s => comparator.statusOutcome(s) === 'failure').length : null, n: known.length };
 }
 
-function effortMissByPhase(fixedRuns, table) {
+function effortMissByPhase(fixedRuns, mediumByPhase) {
     const projected = projectEffortMisses(fixedRuns.map(r => ({ taskId: r.taskId, state: r.state })));
     return Object.fromEntries(PHASES.map(phase => {
-        if (table?.[phase] !== 'medium') return [phase, { status: 'NOT_APPLICABLE' }];
+        if (!mediumByPhase[phase]) return [phase, { status: 'NOT_APPLICABLE' }];
         const bucket = projected.by_phase[phase];
         // Denominador: sem ele "sim 0" leria como zero acertos nas N runs, e a maioria é UNKNOWN.
         const runsRecorded = projected.runs.filter(r => r.records.some(rec => rec.phase === phase)).length;
@@ -112,21 +173,32 @@ function buildBenchmark({ pairs = [], expectedPairs = DEFAULT_EXPECTED, table, s
         return typeof v === 'string' && v !== NA ? v : null;
     };
 
+    const fixedRuns = valid.map(p => p.fixed);
+    const mediumByPhase = {};
     const phases = PHASES.map(phase => {
-        const row = { phase, effort: tbl[phase] ?? null };
+        const { effort, effort_source, medium } = phaseEffortOf(fixedRuns, phase, tbl);
+        mediumByPhase[phase] = medium;
+        const row = { phase, effort, effort_source };
+        const values = {};
         for (const arm of ARMS) {
             const side = arm === 'as_is' ? 'a' : 'b';
             const retries = valid.map(p => finite(p[arm].state?.retries?.[phase])).filter(v => v !== null);
+            values[arm] = {
+                duration: valid.map(p => phaseDuration(p[arm], phase)),
+                tokens: valid.map(p => phaseTokens(p[arm], numberOrNull(p.cmp.tokenDiff.nodes.find(n => n.node === phase)?.[side]), phase)),
+            };
             row[arm] = {
-                duration_ms: measure(valid.map(p => phaseDuration(p[arm], phase))),
-                tokens: measure(valid.map(p => numberOrNull(p.cmp.tokenDiff.nodes.find(n => n.node === phase)?.[side]))),
+                duration_ms: measure(values[arm].duration),
+                tokens: measure(values[arm].tokens),
                 retries: { total: retries.length ? retries.reduce((a, b) => a + b, 0) : null, n: retries.length },
             };
         }
-        row.delta = { duration_ms: delta(row.as_is.duration_ms, row.fixed.duration_ms), tokens: delta(row.as_is.tokens, row.fixed.tokens) };
+        const dDur = pairedDelta(values.as_is.duration, values.fixed.duration);
+        const dTok = pairedDelta(values.as_is.tokens, values.fixed.tokens);
+        row.delta = { duration_ms: dDur.value, duration_n: dDur.n, tokens: dTok.value, tokens_n: dTok.n };
         return row;
     });
-    const misses = effortMissByPhase(valid.map(p => p.fixed), tbl);
+    const misses = effortMissByPhase(fixedRuns, mediumByPhase);
     for (const row of phases) row.effort_miss = misses[row.phase];
 
     return {
@@ -134,7 +206,10 @@ function buildBenchmark({ pairs = [], expectedPairs = DEFAULT_EXPECTED, table, s
         source,
         notes: [
             'Uso de limite = tokens de entrada+saída (proxy). A assinatura não expõe o consumo de limite por run.',
-            'UNKNOWN = sem medição. Nunca vale zero. Mediana só sobre quem mediu (n ao lado).',
+            'UNKNOWN = sem medição. Nunca vale zero. Mediana só sobre quem mediu (n ao lado); soma parcial fica fora e é contada como "parcial".',
+            'Δ = mediana das diferenças fixo − AS-IS por par, só entre pares medidos dos dois lados (n de pares ao lado).',
+            'Esforço por fase = o que o braço fixo gravou (phase_effort). "tabela atual" = sem gravação; vale só como referência.',
+            'Fase rodada dentro de um segmento (also_covers, ex.: plan+implement) não tem medição separada e conta como parcial.',
             'effort_miss é julgamento de quem registrou (review, verify ou humano) e só existe para fase em esforço médio.',
         ],
         pairs: { expected: expectedPairs, received: pairs.length, valid: valid.length, excluded, unconfirmed },
@@ -159,7 +234,11 @@ function fmtMs(ms) {
     return s >= 60 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s` : `${s}s`;
 }
 const fmtInt = v => (v === null ? UNKNOWN : Math.round(v).toLocaleString('pt-BR'));
-const withN = (text, n) => (text === UNKNOWN ? text : `${text} (n=${n})`);
+const withN = (text, n, partial = 0) => {
+    const p = partial ? `${partial} parcial` : '';
+    if (text === UNKNOWN) return p ? `${text} (${p})` : text;
+    return `${text} (n=${n}${p ? `, ${p}` : ''})`;
+};
 const signed = (v, fmt) => (v === null ? UNKNOWN : v === 0 ? fmt(0) : `${v > 0 ? '+' : '−'}${fmt(Math.abs(v))}`);
 
 function missCell(m) {
@@ -170,13 +249,14 @@ function missCell(m) {
 
 function renderHtml(b) {
     const td = (text, extra = '') => `<td class="m${extra}">${esc(text)}</td>`;
-    const rows = b.phases.map(p => `<tr><th scope="row">${esc(p.phase)}<span class="eff">${esc(p.effort ?? 'sem entrada')}</span></th>` + [
-        td(withN(fmtMs(p.as_is.duration_ms.median), p.as_is.duration_ms.n)),
-        td(withN(fmtMs(p.fixed.duration_ms.median), p.fixed.duration_ms.n)),
-        td(signed(p.delta.duration_ms, fmtMs)),
-        td(withN(fmtInt(p.as_is.tokens.median), p.as_is.tokens.n)),
-        td(withN(fmtInt(p.fixed.tokens.median), p.fixed.tokens.n)),
-        td(signed(p.delta.tokens, fmtInt)),
+    const effLabel = p => (p.effort ?? 'sem entrada') + (p.effort_source === 'TABLE_LATEST' ? ' (tabela atual, sem gravação)' : '');
+    const rows = b.phases.map(p => `<tr><th scope="row">${esc(p.phase)}<span class="eff">${esc(effLabel(p))}</span></th>` + [
+        td(withN(fmtMs(p.as_is.duration_ms.median), p.as_is.duration_ms.n, p.as_is.duration_ms.partial)),
+        td(withN(fmtMs(p.fixed.duration_ms.median), p.fixed.duration_ms.n, p.fixed.duration_ms.partial)),
+        td(withN(signed(p.delta.duration_ms, fmtMs), p.delta.duration_n)),
+        td(withN(fmtInt(p.as_is.tokens.median), p.as_is.tokens.n, p.as_is.tokens.partial)),
+        td(withN(fmtInt(p.fixed.tokens.median), p.fixed.tokens.n, p.fixed.tokens.partial)),
+        td(withN(signed(p.delta.tokens, fmtInt), p.delta.tokens_n)),
         td(withN(fmtInt(p.as_is.retries.total), p.as_is.retries.n)),
         td(withN(fmtInt(p.fixed.retries.total), p.fixed.retries.n)),
         td(missCell(p.effort_miss)),
@@ -274,12 +354,36 @@ function readManifest(file) {
     });
 }
 
-function assertOutOutsideRuns(out, runs) {
-    const target = path.resolve(out);
-    for (const r of runs) {
-        const dir = path.resolve(r.dir);
-        if (target === dir || target.startsWith(dir + path.sep)) throw new Error(`--out dentro do diretório da run ${r.ref}: escolha outro caminho; o benchmark não escreve em runs`);
+// PRI-354 (MINOR 6): caminho canônico, segmento a segmento, como o kernel resolve: symlink é
+// seguido ANTES do `..` seguinte (path.resolve faria o contrário), e realpath.native normaliza
+// maiúsculas no APFS. Parte que ainda não existe é anexada como está.
+function canonicalPath(p, cwd = process.cwd()) {
+    const raw = path.isAbsolute(p) ? p : `${cwd}${path.sep}${p}`;
+    let cur = path.parse(raw).root;
+    let exists = true;
+    for (const seg of raw.slice(cur.length).split(path.sep)) {
+        if (!seg || seg === '.') continue;
+        if (seg === '..') { cur = path.dirname(cur); continue; }
+        cur = path.join(cur, seg);
+        if (exists && fs.existsSync(cur)) cur = fs.realpathSync.native(cur);
+        else exists = false;
     }
+    return cur;
+}
+
+const inside = (target, dir) => target === dir || target.startsWith(dir + path.sep);
+const fold = p => p.toLowerCase(); // APFS/HFS+ padrão não diferencia maiúsculas: compara dobrado
+
+// Devolve o caminho canônico conferido; é nele que o benchmark grava.
+function assertOutOutsideRuns(out, runs, { repoPath = null } = {}) {
+    const target = canonicalPath(out);
+    for (const r of runs) {
+        if (inside(fold(target), fold(canonicalPath(r.dir)))) throw new Error(`--out dentro do diretório da run ${r.ref}: escolha outro caminho; o benchmark não escreve em runs`);
+    }
+    if (repoPath && inside(fold(target), fold(canonicalPath(path.join(repoPath, 'memory'))))) {
+        throw new Error('--out dentro de memory/ do consumidor: escolha outro caminho; o benchmark não escreve em memory/');
+    }
+    return target;
 }
 
 function main(argv = process.argv.slice(2), io = { stdout: process.stdout, stderr: process.stderr, env: process.env }) {
@@ -289,11 +393,11 @@ function main(argv = process.argv.slice(2), io = { stdout: process.stdout, stder
         const repoPath = io.env.REPO_PATH || process.cwd();
         const refs = args.manifest ? readManifest(args.manifest) : [];
         const loaded = refs.map(p => ({ id: p.id, as_is: comparator.loadRun(p.as_is, { repoPath }), fixed: comparator.loadRun(p.fixed, { repoPath }) }));
-        assertOutOutsideRuns(args.out, loaded.flatMap(p => [p.as_is, p.fixed]));
+        const outDir = assertOutOutsideRuns(args.out, loaded.flatMap(p => [p.as_is, p.fixed]), { repoPath });
         const result = buildBenchmark({ pairs: loaded, expectedPairs: args.expected, source: args.manifest ? path.basename(args.manifest) : 'NO_MANIFEST' });
-        fs.mkdirSync(args.out, { recursive: true });
-        fs.writeFileSync(path.join(args.out, JSON_FILE), `${JSON.stringify(result, null, 2)}\n`);
-        fs.writeFileSync(path.join(args.out, HTML_FILE), renderHtml(result));
+        fs.mkdirSync(outDir, { recursive: true });
+        fs.writeFileSync(path.join(outDir, JSON_FILE), `${JSON.stringify(result, null, 2)}\n`);
+        fs.writeFileSync(path.join(outDir, HTML_FILE), renderHtml(result));
         io.stdout.write(`benchmark gravado em ${args.out} (${result.pairs.valid} de ${result.pairs.received} pares válidos)\n`);
         return 0;
     } catch (e) {
@@ -304,4 +408,4 @@ function main(argv = process.argv.slice(2), io = { stdout: process.stdout, stder
 
 if (require.main === module) process.exitCode = main();
 
-module.exports = { buildBenchmark, renderHtml, parseArgs, main, armCheck, PHASES };
+module.exports = { buildBenchmark, renderHtml, parseArgs, main, armCheck, assertOutOutsideRuns, canonicalPath, PHASES };
