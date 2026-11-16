@@ -79,14 +79,15 @@ test('AC-27: sem subagent_roles na policy → linha default UNENFORCED, sem --ag
     assert.ok(!mr.routedArgs([], r, { agentsJson: roles.agentsJson }).includes('--agents'));
 });
 
-test('AC-27: mecanismo só nas versões provadas da CLI (U10-a: 2.1.319 e 2.1.323), cada uma com a própria prova', () => {
+test('AC-27: mecanismo só nas versões provadas da CLI (U10-a: 2.1.319, 2.1.323 e 2.1.325), cada uma com a própria prova', () => {
     assert.deepStrictEqual(mr.subagentMechanism('2.1.319'), { status: 'VERIFIED', mechanism: 'agents_flag', cli_version: '2.1.319', proof_ref: 'tasks/pri-287-s5/u10-probe-evidence.json' });
     assert.deepStrictEqual(mr.subagentMechanism('2.1.323'), { status: 'VERIFIED', mechanism: 'agents_flag', cli_version: '2.1.323', proof_ref: 'tasks/pri-287-s5/u10-probe-evidence-2.1.323.json' });
+    assert.deepStrictEqual(mr.subagentMechanism('2.1.325'), { status: 'VERIFIED', mechanism: 'agents_flag', cli_version: '2.1.325', proof_ref: 'tasks/pri-366/u10-probe-evidence-2.1.325.json' });
     for (const v of ['2.1.320', '2.1.322', '2.1.324', '2.2.0', 'toString', '__proto__']) {
         assert.deepStrictEqual([v, mr.subagentMechanism(v).status, mr.subagentMechanism(v).reason, mr.subagentMechanism(v).proof_ref], [v, 'UNVERIFIED', 'CLI_VERSION_NOT_PROVEN', null]);
     }
     assert.strictEqual(mr.subagentMechanism(null).reason, 'CLI_VERSION_UNKNOWN');
-    assert.deepStrictEqual(mr.SUBAGENT_MECHANISM_PROOF.cli_versions, ['2.1.319', '2.1.323']);
+    assert.deepStrictEqual(mr.SUBAGENT_MECHANISM_PROOF.cli_versions, ['2.1.319', '2.1.323', '2.1.325']);
 });
 
 test('AC-27: cada proof_ref aponta para evidência no repositório com controle que vê o frontmatter e duas provas do --agents na própria versão', () => {
@@ -150,9 +151,9 @@ test('AC-27: com subagent_roles e mecanismo verificado → só agentes reproduz�
     assert.deepStrictEqual([big.agentsJson, big.roles[0].enforcement, big.roles[0].cause], [null, 'UNENFORCED', 'AGENTS_ARG_TOO_LARGE']);
 });
 
-test('PRI-366: CLI 2.1.325 (a do watcher, sem prova U10-a) → UNVERIFIED, papéis UNENFORCED e sem --agents', () => {
-    const mechanism = mr.subagentMechanism('2.1.325');
-    assert.deepStrictEqual(mechanism, { status: 'UNVERIFIED', mechanism: 'agents_flag', cli_version: '2.1.325', proof_ref: null, reason: 'CLI_VERSION_NOT_PROVEN' });
+test('PRI-366: CLI fora da lista (2.1.326) → UNVERIFIED, papéis UNENFORCED e sem --agents', () => {
+    const mechanism = mr.subagentMechanism('2.1.326');
+    assert.deepStrictEqual(mechanism, { status: 'UNVERIFIED', mechanism: 'agents_flag', cli_version: '2.1.326', proof_ref: null, reason: 'CLI_VERSION_NOT_PROVEN' });
     const p = policy({ subagent_roles: { default: { model_id: 'm-t3', effort: 'alto' }, revisor: { model_id: 'm-t2', effort: 'médio' } } });
     const agents = [{ name: 'revisor', redefinable: true, definition: { description: 'Revisa', prompt: 'Você revisa.' } }];
     const roles = mr.subagentRoles({ snapshot: snapshotOf(p), agents, mechanism });
@@ -164,8 +165,21 @@ test('PRI-366: CLI 2.1.325 (a do watcher, sem prova U10-a) → UNVERIFIED, papé
     const r = resolve({ policy: p, signals: SIGNALS, subagentRoles: roles.roles, subagentMechanism: mechanism });
     assert.deepStrictEqual([r.decision.subagent, r.decision.subagent_mechanism.status], ['UNENFORCED', 'UNVERIFIED']);
     assert.ok(!mr.routedArgs([], r, { agentsJson: roles.agentsJson }).includes('--agents'));
-    // Lista de provadas intacta: 2.1.325 só entra com PROOF_OBTAINED próprio (R8).
-    assert.deepStrictEqual(mr.SUBAGENT_MECHANISM_PROOF.cli_versions, ['2.1.319', '2.1.323']);
+});
+
+test('PRI-366: CLI 2.1.325 (a do watcher, U10-a PROOF_OBTAINED) → VERIFIED; agente reproduzível ENFORCED com --agents', () => {
+    const mechanism = mr.subagentMechanism('2.1.325');
+    assert.deepStrictEqual([mechanism.status, mechanism.proof_ref], ['VERIFIED', 'tasks/pri-366/u10-probe-evidence-2.1.325.json']);
+    const p = policy({ subagent_roles: { default: { model_id: 'm-t3', effort: 'alto' }, revisor: { model_id: 'm-t2', effort: 'médio' } } });
+    const agents = [{ name: 'revisor', redefinable: true, definition: { description: 'Revisa', prompt: 'Você revisa.' } }];
+    const roles = mr.subagentRoles({ snapshot: snapshotOf(p), agents, mechanism });
+    assert.deepStrictEqual(roles.roles.map(r => [r.role, r.enforcement, r.effort_enforcement, r.cause || null]), [
+        ['revisor', 'ENFORCED', 'UNKNOWN', null],
+        ['default', 'UNENFORCED', 'UNKNOWN', 'BUILTIN_NOT_VERIFIED'],
+    ]);
+    const r = resolve({ policy: p, signals: SIGNALS, subagentRoles: roles.roles, subagentMechanism: mechanism });
+    assert.strictEqual(r.decision.subagent, 'PARTIAL');
+    assert.deepStrictEqual(mr.routedArgs([], r, { agentsJson: roles.agentsJson }).slice(-2), ['--agents', roles.agentsJson]);
 });
 
 test('AC-27: observação pós-saída — observed_model por papel; divergência = SUBAGENT_MODEL_MISMATCH; CONFLICTED não conta', () => {

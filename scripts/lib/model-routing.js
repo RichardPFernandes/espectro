@@ -383,6 +383,7 @@ const SUBAGENT_MECHANISM_PROOF = Object.freeze({
     proof_refs: Object.freeze({
         '2.1.319': 'tasks/pri-287-s5/u10-probe-evidence.json',
         '2.1.323': 'tasks/pri-287-s5/u10-probe-evidence-2.1.323.json',
+        '2.1.325': 'tasks/pri-366/u10-probe-evidence-2.1.325.json',
     }),
     get cli_versions() { return Object.freeze(Object.keys(this.proof_refs)); },
 });
