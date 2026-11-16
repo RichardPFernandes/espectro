@@ -271,6 +271,34 @@ for (const [name, value] of [
     });
 }
 
+// PRI-336 (AC-01): a policy só confere os valores de effort_map usados por class_to_tier e
+// default_route. Uma chave extra com valor fora de CLI_EFFORTS passa no carregamento; o
+// override que a cita é recusado, sem cli_effort inválido na decisão nem no argv.
+test('passo 3: override com esforço mapeado para valor fora de CLI_EFFORTS → recusa, sem cli_effort inválido (PRI-336)', () => {
+    const p = policy({ effort_map: { ...policy().effort_map, turbo: 'ultra' } });
+    const { validateRoutedPolicy, CLI_EFFORTS } = require('./model-routing-policy');
+    assert.strictEqual(validateRoutedPolicy(p).ok, true, 'pré-condição: a chave extra passa no carregamento');
+    assert.strictEqual(CLI_EFFORTS.has('ultra'), false);
+    const r = resolve({ policy: p, overrides: [ov('ticket', { model_id: 'm-t3', effort: 'turbo' })] });
+    assert.deepStrictEqual([r.ok, r.result, r.cause, r.detail], [false, 'NOT_STARTED', 'PROVIDER_NOT_ELIGIBLE', 'override_ineligible']);
+    assert.strictEqual(r.decision.chosen, null);
+    assert.strictEqual(r.decision.override_ref.ref, 'ov-ticket');
+    assert.throws(() => mr.routedArgs(['claude'], r), /ROUTED_ARGS_REQUIRE_OK_DECISION/);
+    // Controle: a mesma policy com esforço válido no override segue resolvendo com cli_effort do CLI.
+    const ok = resolve({ policy: p, overrides: [ov('ticket', { model_id: 'm-t3', effort: 'alto' })] });
+    assert.strictEqual(ok.ok, true);
+    assert.strictEqual(ok.decision.chosen.cli_effort, 'high');
+    assert.deepStrictEqual(mr.routedArgs(['claude'], ok),
+        ['claude', '--model', 'm-t3', '--effort', 'high', '--settings', '/run/routing-settings.json']);
+    // Sem mecanismo verificado (produção hoje) a recusa vale igual: lado seguro, sem cli_effort inválido gravado.
+    const unavailable = resolve({
+        policy: p, overrides: [ov('ticket', { model_id: 'm-t3', effort: 'turbo' })],
+        capabilities: { ...VERIFIED, effortMechanism: { status: 'UNAVAILABLE' } },
+    });
+    assert.deepStrictEqual([unavailable.ok, unavailable.detail, unavailable.decision.effort_applied], [false, 'override_ineligible', false]);
+    assert.strictEqual(unavailable.decision.chosen, null);
+});
+
 // ── Classificador (A3/A4) ──────────────────────────────────────────────────────
 
 test('A3: R1–R8 rodam mesmo com classifier.provider = off', () => {
