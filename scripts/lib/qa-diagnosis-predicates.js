@@ -1,168 +1,91 @@
 'use strict';
-// PRI-181 C3 — predicados determinísticos (DB-04).
+// PRI-274 c2b-4 — predicados determinísticos pred/0.1 (SDD B v3 §6.2, INV-6, DB-04).
 //
-// FACT só quando o predicado é checagem de sistema sobre signals coletados.
-// Sem classificar causa de código/ambiente automaticamente (isso fica UNKNOWN /
-// WEAK sem prova). Sem nível causal automático.
+// Cada predicado vira uma assertion FACT com basis SYSTEM_PREDICATE e predicate_ref
+// `pred:<id>@<ver>`, e só sobre fonte TRUSTED_SYSTEM: com outra classe de confiança nada
+// é emitido. Predicado não classifica causa nem categoria (INV-4); a causa é da seção
+// `cause` e fica UNKNOWN sem evidência de sistema compatível.
 
-const taxonomy = require('./qa-diagnosis-taxonomy');
+const PREDICATES_VERSION = 'pred/0.1';
+const PREDICATE_VER = '0.1';
+const TRUSTED = 'TRUSTED_SYSTEM';
+const PRED_ID_RE = /^[a-z][a-z0-9_]*$/;
 
-const { CATEGORIES: C, CONFIDENCE: K, assertFactOnlyFromSystem } = taxonomy;
+const rules = require('./qa-diagnosis-rules');
 
-function finding({
-    predicate_id,
-    category,
-    confidence,
-    systemPredicate = false,
-    summary,
-    signal_keys = [],
-    lens = null,
-}) {
-    assertFactOnlyFromSystem(confidence, { systemPredicate });
+// Registro pred/0.1 (G3 I1): FACT só cita predicado deste conjunto. `EMITTED` é o que
+// evaluatePredicates produz hoje; `RULE_REFERENCED` são os ids que rules/0.1 usa e que
+// ainda não têm produtor (reservados para o produtor determinístico; G3 S3).
+const EMITTED = Object.freeze(['has_rejection_key', 'missing_rejection_key', 'identity_quality_ok',
+    'identity_quality_degraded', 'identity_quality_unknown', 'has_transition_journal',
+    'missing_transition_journal', 'note_present', 'note_absent', 'retry_already_requested']);
+const RULE_REFERENCED = Object.freeze([...new Set([...Object.values(rules.COMPATIBLE), ...Object.values(rules.CONTRARY)].flat())]);
+const PREDICATE_IDS = Object.freeze([...EMITTED, ...RULE_REFERENCED]);
+
+function systemOnly(code, message) {
+    const err = new Error(message);
+    err.code = code;
+    return err;
+}
+
+/** Monta uma assertion FACT. Recusa qualquer fonte que não seja TRUSTED_SYSTEM. */
+function factAssertion({ id, predicate_id, trust, evidence_ids = [], statement_ref }) {
+    if (typeof statement_ref !== 'string' || statement_ref === '') {
+        throw systemOnly('FACT_REQUIRES_STATEMENT_REF', 'statement_ref é obrigatório (o validador recusa FACT sem ele)');
+    }
+    if (trust !== TRUSTED || typeof predicate_id !== 'string' || !PRED_ID_RE.test(predicate_id)) {
+        throw systemOnly('FACT_REQUIRES_SYSTEM_PREDICATE', 'DB-04: FACT só por predicado de sistema sobre fonte TRUSTED_SYSTEM');
+    }
     return {
-        predicate_id,
-        category,
-        confidence,
-        system_predicate: systemPredicate === true,
-        summary,
-        signal_keys,
-        lens, // lentes 28/10 mapeadas sem nova enum
-        causal_level: null, // DB-04: sem nível causal automático
+        id,
+        type: 'FACT',
+        basis: 'SYSTEM_PREDICATE',
+        predicate_ref: `pred:${predicate_id}@${PREDICATE_VER}`,
+        evidence_ids: [...evidence_ids],
+        contradicted_by: [],
+        statement_ref,
     };
 }
 
 /**
- * Avalia predicados de sistema sobre o pacote coletado.
- * @returns {{ findings: object[], findings_status: string, taxonomy_version: string }}
+ * Avalia predicados de sistema sobre os signals de um pack.
+ * @param {{ trust?: string, signals?: object }} pack
+ * @returns {{ assertions: object[], predicates_version: string, causal_auto: false }}
  */
 function evaluatePredicates(pack) {
-    const s = pack?.signals || {};
-    const findings = [];
-
-    if (s.has_rejection_key && s.rejection_key) {
-        findings.push(finding({
-            predicate_id: 'sys.has_rejection_key',
-            category: C.IDENTITY,
-            confidence: K.FACT,
-            systemPredicate: true,
-            summary: 'rejection_key presente (identidade C1).',
-            signal_keys: ['has_rejection_key', 'rejection_key'],
-        }));
-    } else {
-        findings.push(finding({
-            predicate_id: 'sys.missing_rejection_key',
-            category: C.IDENTITY,
-            confidence: K.FACT,
-            systemPredicate: true,
-            summary: 'rejection_key ausente — identidade UNKNOWN.',
-            signal_keys: ['has_rejection_key'],
-            lens: 'information_absent',
-        }));
-    }
-
-    if (s.identity_quality === 'OK') {
-        findings.push(finding({
-            predicate_id: 'sys.identity_quality_ok',
-            category: C.IDENTITY,
-            confidence: K.FACT,
-            systemPredicate: true,
-            summary: 'identity_quality=OK.',
-            signal_keys: ['identity_quality'],
-        }));
-    } else if (s.identity_quality === 'DEGRADED') {
-        findings.push(finding({
-            predicate_id: 'sys.identity_quality_degraded',
-            category: C.IDENTITY,
-            confidence: K.FACT,
-            systemPredicate: true,
-            summary: 'identity_quality=DEGRADED (ex.: nota fora da transição).',
-            signal_keys: ['identity_quality'],
-        }));
-    } else if (s.identity_quality === 'UNKNOWN' || s.identity_quality == null) {
-        findings.push(finding({
-            predicate_id: 'sys.identity_quality_unknown',
-            category: C.IDENTITY,
-            confidence: K.FACT,
-            systemPredicate: true,
-            summary: 'identity_quality=UNKNOWN ou ausente.',
-            signal_keys: ['identity_quality'],
-            lens: 'information_absent',
-        }));
-    }
-
-    if (s.transition_journal_id != null) {
-        findings.push(finding({
-            predicate_id: 'sys.has_transition_journal',
-            category: C.INGESTION,
-            confidence: K.FACT,
-            systemPredicate: true,
-            summary: 'Journal de transição status→13 presente (DB-01).',
-            signal_keys: ['transition_journal_id'],
-        }));
-    } else {
-        findings.push(finding({
-            predicate_id: 'sys.missing_transition_journal',
-            category: C.INGESTION,
-            confidence: K.FACT,
-            systemPredicate: true,
-            summary: 'Sem transition_journal_id.',
-            signal_keys: ['transition_journal_id'],
-            lens: 'information_absent',
-        }));
-    }
-
-    findings.push(finding({
-        predicate_id: s.note_present ? 'sys.note_present' : 'sys.note_absent',
-        category: C.INGESTION,
-        confidence: K.FACT,
-        systemPredicate: true,
-        summary: s.note_present
-            ? 'Campo note preenchido (conteúdo não inspecionado pelo predicado).'
-            : 'Campo note ausente/vazio.',
-        signal_keys: ['note_present'],
-        lens: s.note_present ? null : 'information_absent',
+    const out = { assertions: [], predicates_version: PREDICATES_VERSION, causal_auto: false };
+    if (pack?.trust !== TRUSTED) return out;
+    const s = pack.signals || {};
+    const trust = pack.trust;
+    const emit = (predicate_id, signal_keys) => out.assertions.push(factAssertion({
+        id: `a-${predicate_id}`,
+        predicate_id,
+        trust,
+        statement_ref: `signals:${signal_keys.join(',')}`,
     }));
 
-    if (s.retry_requested) {
-        findings.push(finding({
-            predicate_id: 'sys.retry_already_requested',
-            category: C.INGESTION,
-            confidence: K.FACT,
-            systemPredicate: true,
-            summary: 'retry_requested_at presente no qa_rejection.',
-            signal_keys: ['retry_requested'],
-        }));
-    }
+    if (s.has_rejection_key && s.rejection_key) emit('has_rejection_key', ['has_rejection_key', 'rejection_key']);
+    else emit('missing_rejection_key', ['has_rejection_key']);
 
-    // Sem prova de sistema sobre causa de código/ambiente/spec → UNKNOWN explícito
-    // (não inventar FACT causal). Lente "indeterminate".
-    findings.push(finding({
-        predicate_id: 'sys.cause_indeterminate',
-        category: C.INDETERMINATE,
-        confidence: K.UNKNOWN,
-        systemPredicate: true,
-        summary: 'Causa da recusa indeterminada: predicados C3 não classificam código/spec/ambiente sem evidência de sistema adicional.',
-        signal_keys: [],
-        lens: 'information_absent',
-    }));
+    if (s.identity_quality === 'OK') emit('identity_quality_ok', ['identity_quality']);
+    else if (s.identity_quality === 'DEGRADED') emit('identity_quality_degraded', ['identity_quality']);
+    else if (s.identity_quality === 'UNKNOWN' || s.identity_quality == null) emit('identity_quality_unknown', ['identity_quality']);
 
-    const hasFact = findings.some(f => f.confidence === K.FACT);
-    const onlyUnknown = findings.every(f => f.confidence === K.UNKNOWN);
-    let findings_status = 'EVALUATED';
-    if (!findings.length) findings_status = 'UNKNOWN';
-    else if (onlyUnknown) findings_status = 'UNKNOWN';
-    else if (hasFact) findings_status = 'EVALUATED';
+    if (s.transition_journal_id != null) emit('has_transition_journal', ['transition_journal_id']);
+    else emit('missing_transition_journal', ['transition_journal_id']);
 
-    return {
-        findings,
-        findings_status,
-        taxonomy_version: taxonomy.TAXONOMY_VERSION,
-        evaluated_at: new Date().toISOString(),
-        causal_auto: false,
-    };
+    // Presença apenas; o conteúdo da nota nunca é inspecionado pelo predicado (INV-5).
+    emit(s.note_present ? 'note_present' : 'note_absent', ['note_present']);
+
+    if (s.retry_requested) emit('retry_already_requested', ['retry_requested']);
+
+    return out;
 }
 
 module.exports = {
+    PREDICATES_VERSION,
+    PREDICATE_VER,
+    PREDICATE_IDS,
     evaluatePredicates,
-    finding,
+    factAssertion,
 };

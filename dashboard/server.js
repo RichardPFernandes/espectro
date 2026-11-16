@@ -50,8 +50,11 @@ const runComparator = require('../scripts/lib/run-comparator');
 const { projectCostTracking } = require('./cost-projection');
 const { buildWouldRouteMetrics } = require('./would-route-metrics');
 const routingProjection = require('./routing-projection');
+const uiVerifyProjection = require('./ui-verify-projection');
 // Leitor de roteamento por processo (G3: o dashboard não importa scripts/lib).
 const ROUTING_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'routing-read.js');
+// Leitor por processo do registro effort_miss (PRI-353, mesma fronteira G3).
+const EFFORT_MISS_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'effort-miss-read.js');
 // Tira PR de Draft ("Marcar como pronto" no painel de preview).
 const { markPrReady } = require('../scripts/check-pr-status');
 // Lista/detalha/aprova PRs do Bitbucket, pra aba "PRs" (GET/POST /api/prs*).
@@ -1383,6 +1386,38 @@ function createDashboard(options = {}) {
         }));
     });
 
+    // Aba "Verificações de UI" (PRI-361): lê .prisma/ui-verify/ do checkout da plataforma (veredito,
+    // achados e PNGs do /verify-ui, PRI-355). Só GET, nunca escreve. Atrás de PRISMA_UI_VERIFY_TAB=on
+    // (padrão desligada). Desligada, a listagem responde 200 `{enabled:false}` (a página pergunta a cada
+    // carga; um 404 aqui seria erro de console e requisição >= 400 em toda tela, e o /verify-ui da
+    // PRI-355 reprovaria o próprio dashboard) e a rota de imagem responde 404 como se não existisse.
+    const uiVerifyDir = path.resolve(options.uiVerifyDir || path.join(prismaRoot, '.prisma', 'ui-verify'));
+    const uiVerifyTabOn = () => env.PRISMA_UI_VERIFY_TAB === 'on';
+    const UI_VERIFY_LIMIT_MAX = 200;
+    app.get('/api/ui-verify', (req, res) => {
+        if (!uiVerifyTabOn()) return res.json({ enabled: false, tasks: [] });
+        let limit;
+        if (req.query.limit != null) {
+            const n = Number(req.query.limit);
+            if (!/^\d+$/.test(String(req.query.limit)) || n < 1 || n > UI_VERIFY_LIMIT_MAX) {
+                return res.status(400).json({ error: `limit deve ser inteiro entre 1 e ${UI_VERIFY_LIMIT_MAX}` });
+            }
+            limit = n;
+        }
+        try {
+            res.json(redactDeep({ enabled: true, tasks: uiVerifyProjection.listVerifications(uiVerifyDir, { limit }) }));
+        } catch {
+            res.status(500).json({ error: 'não foi possível ler as verificações de UI' });
+        }
+    });
+    app.get('/api/ui-verify/:task/:file', (req, res) => {
+        if (!uiVerifyTabOn()) return res.status(404).json({ error: 'not found' });
+        const png = uiVerifyProjection.readImage(uiVerifyDir, req.params.task, req.params.file);
+        if (!png) return res.status(404).json({ error: 'not found' });
+        res.set({ 'Content-Type': 'image/png', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
+        res.end(png);
+    });
+
     // memory/patterns.md (scripts/memory-consolidator.js) pra aba "Padrões" — arquivo
     // + metadata de quando/quantos runs a última consolidação analisou. Sem token
     // real esperado aqui, mas passa por redact() por consistência com a regra
@@ -1406,6 +1441,44 @@ function createDashboard(options = {}) {
             totalConsolidations: counterState.total_consolidations ?? 0,
             completedRunsAtLastRun: counterState.completed_runs_at_last_run ?? null,
         });
+    });
+
+    // PRI-353 (AC6): registro effort_miss das runs, só leitura. Ausência de registro é UNKNOWN,
+    // nunca zero. A projeção vem do leitor por processo (scripts/effort-miss-read.js): o dashboard
+    // não importa scripts/lib (G3). Texto livre passa por redact() como o resto.
+    const effortMissReadScript = options.effortMissReadScript || EFFORT_MISS_READ_SCRIPT;
+    function runEffortMissRead(input) {
+        return new Promise(resolve => {
+            const child = execFile(process.execPath, [effortMissReadScript, '--json'],
+                { cwd: repoRoot, env: consumerEnv, timeout: 20000, maxBuffer: 8 * 1024 * 1024 },
+                (err, stdout) => {
+                    let out = null;
+                    try { out = JSON.parse(stdout); } catch { out = null; }
+                    if (err || !out || out.ok !== true) {
+                        console.error(`[dashboard] effort-miss-read: ${redact(out?.error || err?.message || 'sem saída')}`);
+                        return resolve(null);
+                    }
+                    resolve(out.projection);
+                });
+            child.on('error', () => resolve(null));
+            child.stdin.on('error', () => {});
+            child.stdin.end(JSON.stringify(input));
+        });
+    }
+    app.get('/api/effort-misses', async (req, res) => {
+        syncWatchedRoots();
+        const reg = readRegistry();
+        const entries = [];
+        for (const [taskId, candidates] of collectCandidates()) {
+            if (archivedAway(taskId, candidates, reg)) continue;
+            const chosen = pickCandidate(taskId, candidates);
+            if (!chosen) continue;
+            const state = readRunState({ ...chosen, copies: candidates.length });
+            entries.push({ taskId, effort_misses: Array.isArray(state?.effort_misses) ? state.effort_misses : null });
+        }
+        const projection = await runEffortMissRead({ entries });
+        if (!projection) return res.status(502).json({ status: 'UNKNOWN', total: null, error: 'leitor do registro effort_miss indisponível' });
+        res.json(JSON.parse(redact(JSON.stringify(projection))));
     });
 
     // Força a varredura dos arquivados (botão Atualizar). Respeita o cache por ticket.

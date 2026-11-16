@@ -4,7 +4,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "case \"$UIPORT\" in ''|*[!0-9]*) echo 'PRISMA_UI_PORT inválida (só dígitos)' >&2; exit 2;; esac; exec npx -y @playwright/mcp@0.0.85 --browser chrome --isolated --allowed-origins \"http://localhost:$UIPORT;http://127.0.0.1:$UIPORT\" --output-dir .prisma/ui-verify"
+        "case \"$UIPORT\" in ''|*[!0-9]*) echo 'PRISMA_UI_PORT inválida (só dígitos)' >&2; exit 2;; esac; B=tools/playwright-mcp/node_modules/.bin/playwright-mcp; [ -x \"$B\" ] || { echo 'Playwright MCP não instalado: (cd tools/playwright-mcp && npm ci --ignore-scripts)' >&2; exit 2; }; exec \"$B\" --browser chrome --isolated --allowed-origins \"http://localhost:$UIPORT;http://127.0.0.1:$UIPORT\" --output-dir .prisma/ui-verify"
       ],
       "env": {
         "UIPORT": "${PRISMA_UI_PORT:-3399}",

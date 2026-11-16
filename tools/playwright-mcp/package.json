@@ -1,0 +1,12 @@
+{
+  "name": "prisma-playwright-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright MCP vendorizado para a verificação de UI (docs/ui-verify.md). Instalar com: npm ci --ignore-scripts",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@playwright/mcp": "0.0.85"
+  }
+}

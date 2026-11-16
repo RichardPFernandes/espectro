@@ -38,9 +38,8 @@ global.fetch = async url => {
     return { ok: true, status: 200, json: async () => ({ issue: { journals: fixture.journals[response] } }) };
 };
 
-// Spies: módulos C2/C3 (publish/analyze) e c2b-1 (store/model) não podem ser chamados pelo watcher.
-const spied = { publish: require('./qa-diagnosis-publish'), analyze: require('./qa-diagnosis-analyze'),
-    store: require('./qa-diagnosis-store'), model: require('./qa-diagnosis-model') };
+// Spies: módulos c2b-1 (store/model) não podem ser chamados pelo watcher.
+const spied = { store: require('./qa-diagnosis-store'), model: require('./qa-diagnosis-model') };
 const touched = [];
 for (const [mod, exp] of Object.entries(spied)) {
     for (const [name, fn] of Object.entries(exp)) {
