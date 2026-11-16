@@ -306,7 +306,13 @@ function resolveRoute(input = {}) {
     if (override) {
         const value = override.value || {};
         const okModel = typeof value.model_id === 'string' && isEligible(value.model_id);
-        const okEffort = typeof value.effort === 'string' && Object.prototype.hasOwnProperty.call(policy.effort_map, value.effort);
+        // PRI-336: a policy só confere contra CLI_EFFORTS os valores de effort_map usados por
+        // class_to_tier e default_route; uma chave extra com valor fora do CLI passaria aqui e
+        // geraria cli_effort inválido (argv e requested.effort, no dia em que o mecanismo de
+        // esforço for VERIFIED). Pré-condição para esse VERIFIED: o valor mapeado é conferido.
+        const okEffort = typeof value.effort === 'string'
+            && Object.prototype.hasOwnProperty.call(policy.effort_map, value.effort)
+            && policyLoader.CLI_EFFORTS.has(policy.effort_map[value.effort]);
         if (!okModel || !okEffort) return refuse('PROVIDER_NOT_ELIGIBLE', 'override_ineligible', decision);
         const tier = tierOf(policy, value.model_id);
         decision.candidates = [{ tier, model_id: value.model_id, status: 'CHOSEN', reason: 'HUMAN_OVERRIDE' }];
