@@ -197,6 +197,30 @@ test('versão de Node: .nvmrc, os três package.json, README e runbook dizem a m
     }
 });
 
+// Bloco de um job do workflow, cortado pelo recuo: o harness não tem parser de YAML.
+function workflowJob(rel, job) {
+    const lines = fs.readFileSync(path.join(root, rel), 'utf8').split('\n');
+    const start = lines.indexOf(`  ${job}:`);
+    if (start === -1) return null;
+    const end = lines.findIndex((line, i) => i > start && /^ {0,2}\S/.test(line));
+    return lines.slice(start, end === -1 ? undefined : end).join('\n');
+}
+
+test('CI: o job static roda em Node 24 o check:js dos dois pacotes e o lint:src, um passo cada, sem engolir falha', () => {
+    const job = workflowJob('.github/workflows/tests.yml', 'static');
+    assert.ok(job, 'tests.yml não tem o job static');
+    assert.match(job, /^ +node-version: '24'$/m, 'o job static não fixa Node 24');
+    // Um comando por passo: o passo que falha derruba o job e aparece pelo nome.
+    const runs = [...job.matchAll(/^ +(?:- )?run: (.+)$/gm)].map(m => m[1].trim());
+    for (const [pkg, script] of [['scripts', 'check:js'], ['dashboard', 'check:js'], ['scripts', 'lint:src']]) {
+        const cmd = `npm --prefix ${pkg} run ${script}`;
+        assert.ok(runs.includes(cmd), `o job static não tem um passo só com "${cmd}"`);
+        const scripts = JSON.parse(fs.readFileSync(path.join(root, pkg, 'package.json'), 'utf8')).scripts;
+        assert.ok(scripts[script], `${pkg}/package.json não tem o script ${script}`);
+    }
+    assert.doesNotMatch(job, /continue-on-error|\|\| *true|set \+e/, 'o job static não pode engolir falha');
+});
+
 test('exclusões: entrada sem motivo é recusada', t => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'f02-exclusoes-'));
     t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));

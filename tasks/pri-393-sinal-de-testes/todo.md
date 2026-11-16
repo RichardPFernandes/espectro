@@ -30,7 +30,10 @@ Estática: `npm run check`. Toda tarefa começa pelo teste que falha.
   - Arquivos: `.nvmrc`, `package.json`, `scripts/package.json`, `dashboard/package.json`, `harness/run-tests.js`, `README.md`, `docs/runbook.md`
   - Depende de: nada
 
-- [ ] **T4: CI roda `check:js` e ESLint (AC-05)** · S
+- [x] **T4: CI roda `check:js` e ESLint (AC-05)** · S
+  - Feita em 16/11: vermelho ("tests.yml não tem o job static") e verde (117/117 no `test:changed`); `npm test` no Mac, Node 24.22.1: 2.468 + 615 testes, 0 falhas; os três comandos do job e o `npm run check` com exit 0 no Node 24. O job verde no Linux fica para o PR 1.
+  - Um comando por passo, sem `continue-on-error`: o passo que falha derruba o job e aparece pelo nome. O teste exige isso.
+  - Visto e não mexido: o `check:js` de cada pacote confere um arquivo só (`scripts/src/platform/marker.js`, `dashboard/src/server/marker.js`). O job roda o que existe; ampliar o que o `check:js` cobre é outro trabalho.
   - Aceite: job `static` em Node 24 roda `check:js` de `scripts` e `dashboard` e o `lint:src`; falha se um falhar.
   - Verificar: teste em `harness/` que lê o workflow e exige os três comandos; job verde no PR.
   - Arquivos: `.github/workflows/tests.yml`, `harness/run-tests.test.js`
