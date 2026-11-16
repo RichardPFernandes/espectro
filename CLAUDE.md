@@ -15,4 +15,5 @@
 - Fonte: [Prisma — Acordo de desenvolvimento (v2)](https://linear.app/prisma-app/document/prisma-acordo-de-desenvolvimento-62a84790f75a).
 - PR: use `.github/pull_request_template.md`. O check `processo-check` exige um rótulo `processo:leve|medio|alto` e a seção Evidência preenchida; no leve, também barra SPEC/handoff/evidence novo e mais de 400 linhas.
 - Aviso cedo local: grave o nível da sessão em `.prisma/level` (`leve`, `medio` ou `alto`; o diretório é ignorado pelo git). Com `leve`, o hook `.claude/hooks/processo-level.mjs` nega criar SPEC, handoff ou evidence. O hook é contornável; a barreira real é o CI.
+- Roadmap de entrega (proposta até o Richard aprovar): [`ROADMAP.md`](ROADMAP.md) e [`roadmap/`](roadmap/README.md). Trabalho de fatia cita o ID (`F1.2`) na issue, na branch e no PR; fase só abre com o critério de saída da anterior.
 - Instruções do repositório (arquitetura, separação plataforma/consumidor, gates): @AGENTS.md

@@ -189,6 +189,7 @@ Preparação, diagnóstico, cutover e retorno: [docs/consumer-operations.md](doc
 | --- | --- |
 | Entender a arquitetura e os contratos | [Baseline e contratos](docs/prisma/README.md) |
 | Operar e diagnosticar | [Runbook](docs/runbook.md) · [Consumo e cutover](docs/consumer-operations.md) |
+| Saber o que vem a seguir | [Roadmap de entrega](ROADMAP.md) · [fases, decisões e regras](roadmap/README.md) |
 | Escrever specs | [Guia de specs](docs/spec-guide.md) · [Versionamento](docs/spec-versioning.md) |
 | Verificar a UI no navegador (opcional, atrás de flag) | [Verificação de UI](docs/ui-verify.md) |
 | Entregar ou interromper uma tarefa | Regras de processo no topo do [CLAUDE.md](CLAUDE.md) (Acordo v2) · evidência no PR ([template](.github/pull_request_template.md)) · handoff Maestri opcional: [contrato](docs/handoff-contract.md) |
