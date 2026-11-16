@@ -1,0 +1,48 @@
+# SPEC F<fase>.<n>: <nome da fatia>
+
+<!-- SPEC de fatia da plataforma. Salve em tasks/f<fase>-<n>-<slug>/SPEC.md quando a fatia entrar
+     no cycle. Leve não tem SPEC; Médio: até 1 página, só se preciso; Alto: 1 a 2 páginas
+     (CLAUDE.md, regra 5). Apague todos os comentários antes de pedir revisão. -->
+
+> **Fatia:** [F<fase>.<n>](../../roadmap/fase-<fase>-<nome>/FASE.md) · **Issue:** PRI-<n> · **Nível:** Médio | Alto (motivo em uma linha)
+> **AUTORIZO:** não precisa | pendente | dado em DD/MM/AAAA · **Flag:** `<NOME_DA_FLAG>` (desligada) | nenhuma
+> **Decisões citadas:** D<n>, D<n> | nenhuma · **Código lido em:** `main` `<sha curto>`
+
+## Contexto (AS-IS)
+
+<!-- O que existe hoje, em 3 a 6 itens, cada um com `arquivo:linha`. Só o que a fatia toca. -->
+- <fato observado> (`caminho/arquivo.js:123`)
+
+## Objetivo
+
+<!-- Um parágrafo: o que passa a ser verdade quando a fatia fecha. Parta da "Intenção" da semente no FASE.md. -->
+
+## Não inclui
+
+<!-- Copie o "Não inclui" da semente e acrescente o que apareceu ao ler o código. Cite a fatia que cobre cada item. -->
+- <item> (fica para F<fase>.<n>)
+
+## Critérios de aceite
+
+<!-- Comece pelos ACs da semente no FASE.md, mantendo os IDs. Cada AC é verificável por teste, comando ou
+     tela. ID nunca muda: AC cortado vira "(removido em AAAA-MM-DD: motivo)". Com flag, o AC-01 é
+     "flag desligada = comportamento atual, byte a byte". -->
+- AC-01: <condição observável>
+- AC-02: <condição observável>
+
+## Como se demonstra
+
+<!-- O comando, o teste ou a tela que prova cada AC, e o que vai na seção Evidência do PR. Não crie evidence.md. -->
+- AC-01: `<comando ou teste>` → <resultado esperado>
+
+## Fica ligado?
+
+<!-- Regra 9: toda fatia termina em algo ligado ou demonstrável. Escolha uma linha e apague a outra. -->
+- Sim: ligado em <onde> ao fim da fatia, com AUTORIZO de DD/MM/AAAA.
+- Não: atrás de `<NOME_DA_FLAG>`, no registro de flags (F1.1). Gatilho para ligar: <condição e data de decisão>.
+
+## Riscos e perguntas abertas
+
+<!-- Até 5 itens. Risco: o que pode dar errado e como se percebe. Pergunta: quem decide e a recomendação
+     (regra 8). Decisão do Richard vai para roadmap/DECISOES.md, não fica aqui. -->
+- <risco ou pergunta> — <mitigação, ou quem decide e recomendação>
