@@ -3,7 +3,8 @@
 > **Status:** PROPOSTA de 15/11/2026, aguardando aprovação do Richard. Estrutura, regras e
 > decisões: [`roadmap/`](roadmap/README.md).
 
-> Um cycle = 1 semana = 5 dias úteis de um dev. Total agendado: 22 cycles. Todo ganho de
+> A coluna Cycles conta semanas de trabalho (5 dias úteis de um dev), não cycles do Linear,
+> que têm 14 dias. Total agendado: 22 semanas. Todo ganho de
 > custo é hipótese até a F1.5: nenhum dado de run real foi lido no estudo. Semanas são
 > relativas: S1 é o primeiro cycle depois do cycle corrente.
 
@@ -19,6 +20,7 @@
 
 | Fase | Objetivo | Cycles | Semanas | Depende de | Status |
 | -- | -- | -- | -- | -- | -- |
+| [0. Destravar](roadmap/fase-0-destravar/FASE.md) | CI legível, exposição do repo tratada, um comando para ver rodar, regras de fluxo | ao lado | S1–S3 | — | em andamento |
 | [1. Conter e enxergar](roadmap/fase-1-conter-e-enxergar/FASE.md) | Registro de flags, ponto de retorno, teto por run, push dos repos irmãos, linha de base | 4 | S1–S4 | — | não iniciada |
 | [2. Primeira economia ligada, primeira poda](roadmap/fase-2-economia-e-poda/FASE.md) | Portão de build ligado, dois pilotos decididos, código morto fora, credenciais reduzidas | 4 | S5–S8 | Fase 1; os pilotos F2.2 e F2.3 seguem em paralelo (D11) | não iniciada; F2.2 e F2.3 em andamento |
 | [3. Lugar seguro para medir](roadmap/fase-3-lugar-seguro-para-medir/FASE.md) | Rodar sem Redmine, projeto-amostra com três tickets de ouro, limite de tempo | 5 | S9–S13 | Fase 2 | não iniciada |

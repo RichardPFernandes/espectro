@@ -17,6 +17,7 @@
 | D9 | Mais contato ou menos gates? | Mesmos pontos de decisão, com melhor evidência e aviso | Mais pontos de decisão | F6.8 e F6.9 sobem para a Fase 4 | |
 | D10 | Issues Done | Arquivar, nunca apagar | Continuar apagando | Não muda a ordem; tira a confiança das métricas de fluxo | |
 | D11 | Os pilotos de decomposição (PRI-341) e de esforço por fase (PRI-354) esperam a Fase 1? | Não. Já têm AUTORIZO e rodam no launcher do piloto, no próprio Espectro; seguem em paralelo com a Fase 1, com a PRI-335 feita antes de ligar a decomposição. "Nenhuma flag antes da Fase 1" vale para o consumidor corporativo (app-back). Recomendação do coordenador | Os pilotos esperam o fim da Fase 1 | Na alternativa, F2.2 e F2.3 voltam a "não iniciada" e a depender de F1.3, F1.5 e F2.1 | 16/11/2026: seguir como for melhor para o projeto. Vale a premissa: em paralelo |
+| D12 | Regras de fluxo: mesclar é aceitar no Leve e no Médio, fila "Com o Richard" com limite de três, teto de entrada de issues, piloto no próprio Espectro como Médio | Aprovadas | Manter o Acordo v2 como está | Fatia F0.4; a F0.8 depende delas | 16/11/2026: aprovadas |
 
 ## Exceções de gate
 

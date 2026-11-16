@@ -47,7 +47,7 @@ desenho fica para a spec.
 - **Não inclui.** Ligar ou remover qualquer flag; mudar comportamento.
 - AC-01: Existe uma tabela versionada com todas as flags lidas pelo código, e um teste falha se o código ler uma flag ausente da tabela.
 - AC-02: O teste falha quando uma flag está sem data de decisão ou com a data vencida.
-- AC-03: As cinco flags de ambiente que faltam estão no `.env.example`.
+- AC-03: Toda variável de ambiente lida pelo código está no `.env.example` (um estudo contou 50 fora dele), e as que o exemplo lista sem leitura no código saem ou ganham justificativa.
 - AC-04: Cada um dos 9 itens construídos e desligados tem uma data de decisão na tabela.
 
 ### F1.2 — Ponto de retorno do consumidor
@@ -57,7 +57,7 @@ desenho fica para a spec.
 - AC-01: Um comando único devolve o checkout do consumidor à marca de "último verde".
 - AC-02: O launcher recusa subir com árvore suja ou fora da `main`, com mensagem que diz o motivo.
 - AC-03: Depois de avançar a marca, uma checagem de saúde roda e o resultado fica registrado.
-- AC-04: O ensaio de volta foi executado uma vez, com evidência no PR.
+- AC-04: O ensaio de volta foi executado uma vez, com evidência no PR; a marca de "último verde" é uma tag anotada (hoje não há tag, release nem changelog).
 - AC-05: Testes em worktree não gravam no log de conflitos do checkout vivo (PRI-372).
 
 ### F1.3 — Teto de turnos por run

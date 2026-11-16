@@ -14,7 +14,7 @@ quando a fatia vai começar.
 ROADMAP.md             mapa raso: fases, ordem, status
 roadmap/
 ├── README.md          este arquivo: estrutura e regras
-├── DECISOES.md        D1–D11: premissa assumida, alternativa, efeito na ordem
+├── DECISOES.md        D1–D12: premissa assumida, alternativa, efeito na ordem
 ├── LINEAR.md          reconciliação com as issues abertas: vínculos e conflitos
 ├── BASE.md            por que o roadmap é este: diagnóstico, evidências, riscos
 ├── ACOMPANHAMENTO.md  métricas semanais, rito e série

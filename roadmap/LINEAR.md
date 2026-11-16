@@ -4,6 +4,12 @@
 > abertas: 11 em andamento ou revisão, 62 Ready, 98 Backlog. Nada foi alterado no Linear.
 > O vínculo fatia ↔ issue está na coluna "Issue no Linear" de cada `FASE.md`.
 
+## Limite de issues
+
+Em 16/11 o workspace atingiu o limite de issues do plano gratuito do Linear: não foi possível
+criar as issues da Fase 0. Enquanto o limite valer, as fatias F0.1 a F0.6 usam a PRI-376 e os
+critérios de aceite ficam no `FASE.md` e no PR.
+
 ## Conflitos com o roadmap
 
 | O que o roadmap dizia | O que o Linear mostra | Decisão necessária | Situação no mapa |

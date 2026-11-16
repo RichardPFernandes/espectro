@@ -27,3 +27,14 @@ então precisa do teto da Fase 1.
 | F3.4 | Alerta de run acima de N vezes a mediana, mais teto em dinheiro ou sonda da cota, conforme D1 | 3 | Alto ao ligar | Sim | F1.3, F1.5 | D1 | não iniciada | sem issue |
 | F3.5 | Encerrar agente vivo por tempo, com motivo registrado (sem alarme) | 5 | Alto | Sim | F1.3 | Estimativa cortada para caber | não iniciada | sem issue |
 | F3.6 | Métricas de gate no weekly: gates respondidos, espera mediana, escalations, tempo humano × máquina × espera | 2 | Leve | Não | — | Conferir a PRI-327 | não iniciada | PRI-151 |
+| F3.7 | Experimento: prova de valor antecipada com três tickets de ouro tirados de issues fechadas, Espectro contra o agente direto. Antecipa a F5.4 | 3 | Leve | Não | F3.1 | Aprovado em 16/11; resultado pode reordenar as Fases 4 e 5 | não iniciada | PRI-81 relacionada |
+
+## Semente
+
+### F3.7 — Prova de valor antecipada
+
+- **Intenção.** Saber cedo se o grafo com gates entrega mais do que o agente direto na mesma tarefa.
+- **Não inclui.** Otimizar o resultado; mais de três tickets.
+- AC-01: três tickets de ouro tirados de issues já fechadas, com o diff mesclado como gabarito.
+- AC-02: dois braços (Espectro e agente direto), com repetição, medindo testes do gabarito, arquivos fora do escopo, custo e turnos.
+- AC-03: o quadro é publicado mesmo se o Espectro perder.
