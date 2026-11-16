@@ -172,6 +172,18 @@ function evaluatePluginProof({ accountDir = null, projectDir = null, home = os.h
 // Conferido no CLI real 2.1.319 (~/Workspace/prisma-evidence/2026-11-06-pri-233/
 // cli-plugin-proof.md): skill solta no projeto e na conta, plugin de marketplace em
 // enabledPlugins e o router como plugin em skills/ da conta (@skills-dir).
+// PRI-366 (U-08): a prova vale só para a versão exata da CLI (R8). Versões com prova própria
+// do --settings gerado no CLI real; lido só pelo inventário offline (cli-proof-inventory),
+// nunca pelo despacho. A 2.1.319 é a prova manual (fora do repositório); a partir da 2.1.325,
+// scripts/probes/plugin-neutralization-probe.js (offline, sem credencial).
+const PLUGIN_NEUTRALIZATION_PROOF = Object.freeze({
+    mechanism: 'routed_settings',
+    proof_refs: Object.freeze({
+        '2.1.319': 'prisma-evidence:2026-11-06-pri-233/cli-plugin-proof.md',
+        '2.1.325': 'tasks/pri-366/plugin-neutralization-2.1.325.json',
+    }),
+});
+
 function routedPluginProof({ runDir, ...opts } = {}) {
     const evaluation = evaluatePluginProof(opts);
     if (evaluation.status !== 'NEUTRALIZABLE') return evaluation;
@@ -189,7 +201,7 @@ function routedPluginProof({ runDir, ...opts } = {}) {
 }
 
 module.exports = {
-    routedPluginProof, evaluatePluginProof,
+    routedPluginProof, evaluatePluginProof, PLUGIN_NEUTRALIZATION_PROOF,
     accountCostMetadata, detectEffortRouterPlugin, withClaudeAccount, resolveClaudeAccount,
     listClaudeAccounts, expandHome, DEFAULT_ACCOUNT, DEFAULT_PREFS_FILE,
 };

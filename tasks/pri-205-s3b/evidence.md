@@ -1,6 +1,6 @@
 # Evidência: PRI-205 S3b (núcleo 2 do Jev em sombra)
 
-> Estado de cada AC do [SPEC](../../SPEC.md), por fase. Só vale o que foi executado e
+> Estado de cada AC do [SPEC](../../docs/historico/SPEC-pri-205-s3b.md), por fase. Só vale o que foi executado e
 > está registrado aqui. O nó Verify do grafo de Runs (`spec-authority.js`,
 > `acceptance-evidence.json`) é para tasks do consumidor e não se aplica a uma
 > fatia da plataforma; o checklist dele é aplicado à mão.

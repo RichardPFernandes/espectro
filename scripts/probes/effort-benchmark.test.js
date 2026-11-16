@@ -20,7 +20,8 @@ function mkRun(id, { fixed = false, status = 'committed', nodes = {}, retries, m
             ...(m.in !== undefined ? { input_tokens: m.in } : {}),
             ...(m.out !== undefined ? { output_tokens: m.out } : {}),
             ...(m.ms !== undefined ? { duration_ms: m.ms } : {}),
-            ...(noAttempts ? {} : { attempts: [fixed ? applied(TABLE[node] || 'high') : {}] }),
+            ...(noAttempts ? {} : { attempts: [{ ...(fixed ? applied(m.level || TABLE[node] || 'high') : {}), ...(m.ms !== undefined ? { duration_ms: m.ms } : {}) }] }),
+            ...(m.noTokensRuns !== undefined ? { runs_without_tokens: m.noTokensRuns } : {}),
         };
     }
     const state = { task_id: id, status, ...(retries ? { retries } : {}), ...(misses ? { effort_misses: misses } : {}) };
@@ -247,4 +248,108 @@ test('effort_miss leva denominador: runs fixas sem registro seguem UNKNOWN, nunc
     const html = bench.renderHtml(b);
     assert.match(html, /registrado em 1 de 3 runs fixas/);
     assert.match(html, /demais UNKNOWN/);
+});
+
+// PRI-354: MINOR 3–6 da G3 da PRI-353.
+
+test('MINOR 3: nível por fase vem do phase_effort gravado nas runs, não da tabela latest', () => {
+    const pairs = [{ id: 'p1', as_is: mkRun('synthetic-a1', { nodes: { test: { in: 1, out: 1, ms: 10 } } }),
+        fixed: mkRun('synthetic-f1', { fixed: true, nodes: { test: { in: 1, out: 1, ms: 10, level: 'high' } } }) }];
+    // a tabela atual diz test=medium, mas a run gravou high
+    const b = bench.buildBenchmark({ pairs, table: TABLE });
+    const row = phaseRow(b, 'test');
+    assert.strictEqual(row.effort, 'high');
+    assert.strictEqual(row.effort_source, 'RECORDED');
+    assert.strictEqual(row.effort_miss.status, 'NOT_APPLICABLE');
+    // fase sem Attempt no braço fixo cai na tabela, rotulada
+    const plan = phaseRow(b, 'plan');
+    assert.strictEqual(plan.effort, 'high');
+    assert.strictEqual(plan.effort_source, 'TABLE_LATEST');
+});
+
+test('MINOR 3: níveis diferentes entre runs aparecem como misto, sem escolher um', () => {
+    const pairs = ['high', 'medium'].map((level, i) => ({ id: `p${i}`,
+        as_is: mkRun(`synthetic-a${i}`, { nodes: { test: { in: 1, out: 1, ms: 10 } } }),
+        fixed: mkRun(`synthetic-f${i}`, { fixed: true, nodes: { test: { in: 1, out: 1, ms: 10, level } } }) }));
+    const row = phaseRow(bench.buildBenchmark({ pairs, table: TABLE }), 'test');
+    assert.strictEqual(row.effort, 'misto (high, medium)');
+    assert.strictEqual(row.effort_source, 'RECORDED');
+});
+
+test('MINOR 4: tokens com runs_without_tokens > 0 e duração com Attempt sem duration_ms viram UNKNOWN', () => {
+    const asIs = mkRun('synthetic-a1', { nodes: { plan: { in: 100, out: 100, ms: 1000, noTokensRuns: 1 } } });
+    const fixed = mkRun('synthetic-f1', { fixed: true, nodes: { plan: { in: 100, out: 100, ms: 1000 } } });
+    fixed.cost_tracking.nodes.plan.attempts.push({ ...applied('high'), duration_ms: 0 });
+    const b = bench.buildBenchmark({ pairs: [{ id: 'p1', as_is: asIs, fixed }], table: TABLE });
+    const plan = phaseRow(b, 'plan');
+    assert.deepStrictEqual(plan.as_is.tokens, { median: null, n: 0, partial: 1 });
+    assert.deepStrictEqual(plan.fixed.duration_ms, { median: null, n: 0, partial: 1 });
+    assert.strictEqual(plan.delta.tokens, null);
+    assert.strictEqual(plan.delta.duration_ms, null);
+    assert.match(bench.renderHtml(b), /1 parcial/);
+});
+
+test('MINOR 4: Attempts a menos que runs no nó = duração parcial', () => {
+    const run = mkRun('synthetic-f1', { fixed: true, nodes: { plan: { in: 1, out: 1, ms: 1000 } } });
+    run.cost_tracking.nodes.plan.runs = 2;
+    const b = bench.buildBenchmark({ pairs: [{ id: 'p1', as_is: mkRun('synthetic-a1', { nodes: { plan: { in: 1, out: 1, ms: 5 } } }), fixed: run }], table: TABLE });
+    assert.deepStrictEqual(phaseRow(b, 'plan').fixed.duration_ms, { median: null, n: 0, partial: 1 });
+});
+
+test('MINOR 5: Δ é a mediana das diferenças por par, só entre pares medidos dos dois lados', () => {
+    const p = (i, a, f) => ({ id: `p${i}`,
+        as_is: mkRun(`synthetic-a${i}`, { nodes: { plan: a === null ? { in: 1, out: 1 } : { in: 1, out: 1, ms: a } } }),
+        fixed: mkRun(`synthetic-f${i}`, { fixed: true, nodes: { plan: f === null ? { in: 1, out: 1 } : { in: 1, out: 1, ms: f } } }) });
+    // pares: (100→150), (1000→1010), (sem AS-IS → 9000). Não pareado: med(150,1010,9000) − med(100,1000) = 460.
+    // Pareado: med(+50, +10) = 30, n=2; o 3º par fica fora.
+    const b = bench.buildBenchmark({ pairs: [p(1, 100, 150), p(2, 1000, 1010), p(3, null, 9000)], table: TABLE });
+    const plan = phaseRow(b, 'plan');
+    assert.strictEqual(plan.delta.duration_ms, 30);
+    assert.strictEqual(plan.delta.duration_n, 2);
+});
+
+test('MINOR 6: --out por symlink para dentro de uma run é recusado (realpath)', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-real-'));
+    const runDir = path.join(tmp, 'runs', 'synthetic-r1');
+    fs.mkdirSync(runDir, { recursive: true });
+    const link = path.join(tmp, 'atalho');
+    fs.symlinkSync(runDir, link);
+    assert.throws(() => bench.assertOutOutsideRuns(path.join(link, 'saida'), [{ ref: 'synthetic-r1', dir: runDir }]), /dentro do diretório da run/);
+    assert.doesNotThrow(() => bench.assertOutOutsideRuns(path.join(tmp, 'fora'), [{ ref: 'synthetic-r1', dir: runDir }]));
+});
+
+test('MINOR 4 (G3 PRI-354): nó sem attempts com duration_ms 0 e tokens de um lado só não viram medição', () => {
+    const asIs = mkRun('synthetic-a1', { noAttempts: true, nodes: { plan: { in: 100, ms: 0 } } });
+    const fixed = mkRun('synthetic-f1', { fixed: true, nodes: { plan: { in: 100, out: 100, ms: 5000 } } });
+    const plan = phaseRow(bench.buildBenchmark({ pairs: [{ id: 'p1', as_is: asIs, fixed }], table: TABLE }), 'plan');
+    assert.deepStrictEqual(plan.as_is.duration_ms, { median: null, n: 0, partial: 1 });
+    assert.deepStrictEqual(plan.as_is.tokens, { median: null, n: 0, partial: 1 });
+    assert.strictEqual(plan.delta.duration_ms, null);
+});
+
+test('segmento plan+implement (also_covers): plan e implement do braço ficam parciais, nunca comparados', () => {
+    const asIs = mkRun('synthetic-a1', { nodes: { plan: { in: 10, out: 10, ms: 1000 }, implement: { in: 10, out: 10, ms: 2000 } } });
+    const fixed = mkRun('synthetic-f1', { fixed: true, nodes: { implement: { in: 30, out: 30, ms: 30000 } } });
+    fixed.cost_tracking.nodes.implement.also_covers = ['plan'];
+    const b = bench.buildBenchmark({ pairs: [{ id: 'p1', as_is: asIs, fixed }], table: TABLE });
+    for (const phase of ['plan', 'implement']) {
+        const row = phaseRow(b, phase);
+        assert.strictEqual(row.fixed.duration_ms.median, null, phase);
+        assert.strictEqual(row.fixed.duration_ms.partial, 1, phase);
+        assert.strictEqual(row.delta.duration_ms, null, phase);
+    }
+});
+
+test('MINOR 6 (G3 PRI-354): symlink seguido de .., maiúsculas e memory/ do consumidor são recusados', () => {
+    const tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'bench-real2-')));
+    const repo = path.join(tmp, 'repo');
+    const runDir = path.join(repo, 'memory', 'runs', 'synthetic-r1');
+    fs.mkdirSync(path.join(runDir, 'sub'), { recursive: true });
+    const runs = [{ ref: 'synthetic-r1', dir: runDir }];
+    fs.symlinkSync(path.join(runDir, 'sub'), path.join(tmp, 'atalho'));
+    // atalho/.. = runDir fisicamente (path.resolve diria tmp/)
+    assert.throws(() => bench.assertOutOutsideRuns(path.join(tmp, 'atalho') + '/../saida', runs), /dentro do diretório da run/);
+    assert.throws(() => bench.assertOutOutsideRuns(runDir.toUpperCase() + '/x', runs), /dentro do diretório da run/);
+    assert.throws(() => bench.assertOutOutsideRuns(path.join(repo, 'memory', 'runs'), runs, { repoPath: repo }), /memory\//);
+    assert.strictEqual(bench.assertOutOutsideRuns(path.join(tmp, 'fora', 'x'), runs, { repoPath: repo }), path.join(tmp, 'fora', 'x'));
 });
