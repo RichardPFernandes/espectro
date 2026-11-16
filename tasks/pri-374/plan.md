@@ -25,7 +25,7 @@ validateDecompositionSections (model-routing-policy.js:202-209)
 ## Tarefas
 
 ### Fase 1: carregamento e retomada
-- [ ] T1: policy com esforço de papel fora de `CLI_EFFORTS` é recusada no carregamento (testes primeiro, depois o código). S, 2 arquivos.
+- [x] T1: policy com esforço de papel fora de `CLI_EFFORTS` é recusada no carregamento (testes primeiro, depois o código). S, 2 arquivos.
 - [ ] T2: snapshot com essa policy é recusado na resolução (`snapshot_policy_invalid`). XS, 1 arquivo de teste.
 
 ### Checkpoint 1

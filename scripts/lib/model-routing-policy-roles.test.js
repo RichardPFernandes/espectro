@@ -61,3 +61,30 @@ test('AC-4: effort UNKNOWN não dispensa o modelo: modelo diferente continua inv
     const r = validateRoutedPolicy(policy({ subagent_roles: { default: { model_id: 'claude-sonnet-5-5', effort: 'UNKNOWN', effort_ref: 'U1' } } }));
     assert.deepStrictEqual([r.ok, r.detail], [false, 'subagent_default_model_differs_from_default_route']);
 });
+
+// PRI-374 (opção A): o esforço do papel é conferido pelo valor mapeado, não só pela chave.
+// Parte 2 da pré-condição para aplicar esforço de subagente (parte 1: PRI-336, override humano).
+const TURBO_MAP = { baixo: 'low', médio: 'medium', alto: 'high', máximo: 'max', turbo: 'ultra' };
+
+test('PRI-374 AC-01: papel nomeado com esforço mapeado fora de CLI_EFFORTS → POLICY_INVALID', () => {
+    const r = validateRoutedPolicy(policy({ effort_map: TURBO_MAP, subagent_roles: {
+        reviewer: { model_id: 'claude-sonnet-5-5', effort: 'turbo' },
+    } }));
+    assert.deepStrictEqual([r.ok, r.cause, r.detail], [false, 'POLICY_INVALID', 'subagent_role_effort_value_invalid:reviewer']);
+});
+
+test('PRI-374 AC-01: papel default com esforço mapeado fora de CLI_EFFORTS → detalhe do valor, não da igualdade', () => {
+    const r = validateRoutedPolicy(policy({ effort_map: TURBO_MAP, subagent_roles: {
+        default: { model_id: 'claude-opus-5-5', effort: 'turbo' },
+    } }));
+    assert.deepStrictEqual([r.ok, r.cause, r.detail], [false, 'POLICY_INVALID', 'subagent_role_effort_value_invalid:default']);
+});
+
+test('PRI-374 AC-03 (opção A): chave extra inválida sem uso continua aceita; papel com chave válida e UNKNOWN também', () => {
+    const r = validateRoutedPolicy(policy({ effort_map: TURBO_MAP, subagent_roles: {
+        default: { model_id: 'claude-opus-5-5', effort: 'alto' },
+        revisor: { model_id: 'claude-sonnet-5-5', effort: 'médio' },
+        explorador: { model_id: 'claude-sonnet-5-5', effort: 'UNKNOWN', effort_ref: 'U1' },
+    } }));
+    assert.deepStrictEqual(r.ok, true);
+});

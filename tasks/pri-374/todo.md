@@ -7,13 +7,13 @@ Plano: `tasks/pri-374/plan.md`. Spec: `tasks/pri-374/SPEC.md` (opção A).
 **Descrição:** acrescentar a conferência do valor mapeado em `validateDecompositionSections`, com o comentário que registra a parte 2 da pré-condição (parte 1: PRI-336). Testes primeiro.
 
 **Critérios de aceite:**
-- [ ] `effort_map.turbo = 'ultra'` + `subagent_roles.reviewer.effort = 'turbo'` → `[false, 'POLICY_INVALID', 'subagent_role_effort_value_invalid:reviewer']`.
-- [ ] O mesmo com o papel `default` (`effort: 'turbo'`) → `subagent_role_effort_value_invalid:default`.
-- [ ] Continuam válidos: `UNKNOWN` + `effort_ref`; papel com chave válida; e chave extra `turbo: 'ultra'` sem uso (opção A, fixada em teste).
+- [x] `effort_map.turbo = 'ultra'` + `subagent_roles.reviewer.effort = 'turbo'` → `[false, 'POLICY_INVALID', 'subagent_role_effort_value_invalid:reviewer']`.
+- [x] O mesmo com o papel `default` (`effort: 'turbo'`) → `subagent_role_effort_value_invalid:default`.
+- [x] Continuam válidos: `UNKNOWN` + `effort_ref`; papel com chave válida; e chave extra `turbo: 'ultra'` sem uso (opção A, fixada em teste).
 
 **Verificação:**
-- [ ] Vermelho antes: `node --test scripts/lib/model-routing-policy-roles.test.js` falha nos dois testes novos de recusa.
-- [ ] Verde depois: o mesmo comando passa.
+- [x] Vermelho antes: `node --test scripts/lib/model-routing-policy-roles.test.js` falha nos dois testes novos de recusa.
+- [x] Verde depois: o mesmo comando passa.
 
 **Dependências:** nenhuma.
 **Arquivos:** `scripts/lib/model-routing-policy.js`, `scripts/lib/model-routing-policy-roles.test.js`.
