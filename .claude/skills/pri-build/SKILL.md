@@ -19,7 +19,7 @@ abaixo. Onde divergem, valem os ajustes. O contexto vem de `.prisma/context.json
   3. Rode só o teste focado: `node --test <arquivo>`. A suíte completa é do
      `/pri-check`, não daqui; nunca rode `npm test` cru.
   4. Faça `git add` só dos arquivos da tarefa e commit com `(Refs PRI-NNN)` no título.
-  5. Marque a tarefa como feita no `todo.md`.
+  5. Marque a tarefa como feita no `todo.md` (no Leve, não há `todo.md`).
 - **Pare e pergunte** quando:
   - um teste não passa sem uma correção óbvia (siga `agent-skills:debugging-and-error-recovery`);
   - a spec é ambígua;

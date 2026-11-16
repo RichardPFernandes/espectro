@@ -45,7 +45,8 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes.
    Termine o corpo com a linha de atribuição pedida pela sessão.
 5. **Conferir os checks:** rode `gh pr checks <n> --watch` em segundo plano. A suíte
    da CI leva até 15 minutos. Se o `processo-check` falhar, corrija o corpo ou o
-   rótulo. Não afrouxe a regra.
+   rótulo. Não afrouxe a regra. Com a CI verde, ponha o link do run na Evidência
+   (`gh pr edit <n> --body-file <arquivo>`).
 6. **Linear.** Edite o bloco de Estado no topo da issue (Estado, Próximo passo,
    Decisão pendente, Ligado ao fechar, Nível) com o link do PR. Não poste status em
    comentário. Comentário é só para decisão ou bloqueio, em 3 linhas.

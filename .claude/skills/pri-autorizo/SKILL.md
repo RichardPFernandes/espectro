@@ -29,5 +29,7 @@ Atualize o bloco de Estado. Não execute nada no consumidor.
 
 Só depois do AUTORIZO explícito e do bump feito. Rode cada item do Readback e
 registre o resultado (PASS, FAIL ou UNKNOWN, com a prova) na seção Evidência do
-PR. Qualquer FAIL dispara o rollback descrito e um comentário de bloqueio. A issue
-continua em In Review até o aceite do Richard.
+PR. Em qualquer FAIL, pare: deixe um comentário de bloqueio com o rollback proposto e
+não execute nada no consumidor. O rollback também precisa de AUTORIZO, salvo se o
+pedido original o incluía de forma explícita. A issue continua em In Review até o
+aceite do Richard.

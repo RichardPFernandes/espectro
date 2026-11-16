@@ -23,7 +23,7 @@ O Prisma se desenvolve com as skills do plugin agent-skills (requisito: plugin `
 - Médio segue sem parar para aprovar spec e plano (regra 8; D-a, 16/11/2026).
 - A revisão é sempre por subagente em contexto limpo (`agent-skills:code-reviewer`; no Leve, com `model: "sonnet"`, D-b, 16/11/2026).
 - A suíte completa roda pela receita oficial no `/pri-check`, nunca com `npm test` cru. A prova de testes no PR é o run da CI.
-- Skill nova em `.claude/skills/` precisa de `disable-model-invocation: true`, e nada vai para `.claude/agents/`: o watcher abre o consumidor com `--add-dir` deste repo, e o Claude Code carrega `skills`, `commands` e `agents` de diretórios adicionados.
+- Skill nova em `.claude/skills/` precisa de `disable-model-invocation: true`, e nenhum agente do fluxo de desenvolvimento vai para `.claude/agents/`: o watcher abre o consumidor com `--add-dir` deste repo, e o Claude Code carrega `skills`, `commands` e `agents` de diretórios adicionados.
 
 ## Onde está o resto
 

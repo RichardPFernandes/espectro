@@ -10,7 +10,7 @@ argument-hint: "[PRI-NNN]"
 Contexto em `.prisma/context.json`. Pare se o arquivo não existir ou se o `branch`
 dele divergir de `git branch --show-current`. Comece com a árvore limpa
 (`git status --porcelain` vazio): a evidência fica presa ao SHA do HEAD.
-`EV="$HOME/Workspace/prisma-evidence/<issue>/$(git rev-parse --short HEAD)"`.
+`EV="$HOME/Workspace/prisma-evidence/<issue>/$(git rev-parse --short HEAD)"`, com `<issue>` tirado do `context.json`.
 
 ## 1. Testes (pré-voo; a prova oficial é a CI no SHA final)
 
@@ -24,7 +24,8 @@ dele divergir de `git branch --show-current`. Comece com a árvore limpa
   `node_modules`. Depois rode
   `npm --prefix scripts run check:js && npm --prefix scripts run arch:check`.
 - Teste novo (Médio e Alto): numa worktree descartável da `origin/main`, copie só os
-  arquivos de teste novos e rode `node --test` neles. Eles precisam **falhar** lá.
+  arquivos de teste novos, rode o `npm ci` do pacote e depois `node --test` neles. Eles
+  precisam **falhar por asserção** lá; `MODULE_NOT_FOUND` não conta.
   Teste que passa na `main` não prova o AC: aponte isso.
 - Para comparar uma falha com a `main`, use uma worktree limpa. Nunca `git stash`.
 - Falha, timeout ou saída ausente não viram PASS: registre UNKNOWN com o motivo.
@@ -52,7 +53,8 @@ Required, Optional ou Nit, termina com o veredito PASS ou FAIL e não edita arqu
 
 **FAIL:** corrija e devolva só o novo diff ao mesmo revisor (SendMessage) para ele
 conferir. Se a sessão do revisor se perdeu, um revisor novo que confere só as
-correções não conta como segunda rodada.
+correções não conta como segunda rodada. Com a conferência PASS, refaça a seção 1 no
+SHA novo e grave o registro abaixo nesse SHA, com `"revisao": {"agente", "veredito": "PASS", "conferencia_de": "<sha revisado antes>"}`.
 
 ## 3. Registro
 

@@ -14,7 +14,8 @@ arquivo, rode `/pri-start` antes.
 
 - **Nível.** Leve não tem SPEC: pare. No Médio, escreva a SPEC só se a issue não
   bastar como contrato; se bastar, diga isso e siga para o `/pri-plan`.
-- **Onde.** Grave em `<pasta>/SPEC.md`. Nunca na raiz, nem em `docs/` ou `spec/`.
+- **Onde.** Grave em `<pasta>/SPEC.md`, e o mapa de módulos, se houver, também na
+  pasta. Nada na raiz, em `docs/` ou em `spec/`.
 - **Tamanho.** Até 1 página no Médio; de 1 a 2 páginas no Alto.
 - **Conteúdo.** Só quatro seções: Objetivo, Critérios de aceite, Limites (sempre /
   perguntar antes / nunca) e Fora de escopo.
