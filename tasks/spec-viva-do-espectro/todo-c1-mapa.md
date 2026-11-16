@@ -6,7 +6,7 @@ começa pelo teste que falha.
 
 ## Fase 1 — Script e regras
 
-- [ ] **T1: ler cabeçalho e achar o dono de um arquivo (AC-02, AC-06)** · S
+- [x] **T1: ler cabeçalho e achar o dono de um arquivo (AC-02, AC-06)** · S
   - Aceite: o script lê o cabeçalho de `docs/capacidades/*.md` (escalar, lista em linha, lista em bloco) e recusa campo ausente, valor fora do enum ou forma não suportada; `--of <caminho>` imprime o id e sai 0, ou sai 1 sem dono; `estado.md` existe como primeira capacidade real.
   - Verificar: teste focado verde; `node scripts/capability-map.js --of scripts/cas.js` → `estado`.
   - Arquivos: `scripts/capability-map.js`, `scripts/capability-map.test.js`, `docs/capacidades/estado.md`
