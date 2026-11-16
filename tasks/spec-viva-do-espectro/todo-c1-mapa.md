@@ -32,11 +32,13 @@ Em cada capacidade: cabeçalho completo, duas a quatro frases, até cinco arquiv
 começar, até 40 linhas. Situação e flags conferidas no código; guardar caminho e linha para a
 Evidência do PR.
 
-- [ ] **T3: base e ciclo — `estado`, `grafo`, `config`, `ciclo-da-run`, `execucao`** · M
+- [x] **T3: base e ciclo — `estado`, `grafo`, `config`, `ciclo-da-run`, `execucao`** · M
   - Aceite: os cinco arquivos existem; `.claude/commands/` e `.graph/` têm dono; nenhum arquivo dessas capacidades casa com dois padrões.
   - Verificar: `--check` mostra a contagem de faltantes caindo e nenhum conflito.
   - Arquivos: `docs/capacidades/{estado,grafo,config,ciclo-da-run,execucao}.md`
   - Depende de: T2
+  - Em 16/11: `--check` caiu de 227 para 190 faltantes, 0 com dois donos, 0 padrões sem arquivo, 0 flags fora do código. `.claude/commands/*` e `.graph/` ficam com `grafo` (os dois schemas de outras capacidades, `acceptance-evidence` e `spec-changelog`, ficam em `grafo` e são citados por `portoes` e `spec` na T4). `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde.
+  - Para o PR: `process-identity` e `node-events` ficaram em `ciclo-da-run` (usados pelo watcher e pelo lease de `estado`); `claude-account`, `sanitize-log` e `agent-exit-signals` em `execucao`. `config` ficou `parcial`: o registro de flags é a F1.1.
 
 - [ ] **T4: produto — `spec`, `portoes`, `autorizacao`, `roteamento`, `qa`, `db-effect`, `sdd-writer`** · M
   - Aceite: os sete arquivos existem; `sdd-writer` com `situacao: sem-chamador`; nenhum conflito.
