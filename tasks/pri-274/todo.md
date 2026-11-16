@@ -80,4 +80,4 @@
   - Depende de: T1–T6.
 
 ### Checkpoint: completo
-- [ ] ACs da SPEC atendidos, PR em draft, G3 feito, AUTORIZO D-C2b-4 registrado. Merge é do Richard.
+- [x] ACs da SPEC atendidos, PR #145 em draft, G3 feito, AUTORIZO D-C2b-4 dado pelo Richard em 15/11. Falta só o merge, que é do Richard.
