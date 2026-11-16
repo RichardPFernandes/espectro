@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "PRI-353: esforço fixo por fase no fluxo de código. Palpite aprovado como ponto de partida (D1); o piloto da PRI-354 corrige. Nó fora da tabela herda o esforço da sessão. Só vale com WATCHER_PHASE_EFFORT ligada.",
+  "table": {
+    "plan": "high",
+    "implement": "high",
+    "review": "high",
+    "test": "medium",
+    "verify": "medium",
+    "commit": "low"
+  },
+  "reopen_criteria": {
+    "min_runs_with_flag": 15,
+    "min_yes_same_class_and_phase": 3,
+    "max_share_of_runs_with_yes_per_phase": 0.2
+  }
+}
