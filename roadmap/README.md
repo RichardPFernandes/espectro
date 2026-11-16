@@ -66,8 +66,4 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
 | OpenSpec (verdade corrente × mudança proposta × arquivo) | `arquivo/` para o que fechou | Deltas de spec: o repo não tem specs de comportamento |
 | INNOQ, custos ocultos do SDD | Spec curta e na hora, plano descartável, decisão fora da spec | Detalhar todas as fatias de antemão |
 
-Fontes: [Spec Kit](https://github.com/github/spec-kit) ·
-[roadmap sobre o Spec Kit](https://habr.com/ru/articles/1063940/) ·
-[Kiro, boas práticas](https://kiro.dev/docs/specs/best-practices/) ·
-[OpenSpec, conceitos](https://openspec.dev/docs/core-concepts) ·
-[INNOQ](https://www.innoq.com/en/blog/2026/04/versteckte-kosten-spec-driven-development/)
+Fontes: [Spec Kit](https://github.com/github/spec-kit) · [roadmap sobre o Spec Kit](https://habr.com/ru/articles/1063940/) · [Kiro](https://kiro.dev/docs/specs/best-practices/) · [OpenSpec](https://openspec.dev/docs/core-concepts) · [INNOQ](https://www.innoq.com/en/blog/2026/04/versteckte-kosten-spec-driven-development/)
