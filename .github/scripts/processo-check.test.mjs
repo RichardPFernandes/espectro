@@ -74,7 +74,7 @@ test('Evidência vazia, só com comentário HTML ou com o exemplo do template �
 });
 
 test('Evidência em prosa, sem tabela, conta', () => {
-    assert.equal(run({ labels: ['processo:alto'], body: '## Evidência\nCI verde: https://github.com/x/y/actions/runs/1\n' }).ok, true);
+    assert.equal(run({ labels: ['processo:medio'], body: '## Evidência\nCI verde: https://github.com/x/y/actions/runs/1\n' }).ok, true);
     assert.deepEqual(evidenceLines('## Evidencia\nok\n### sub\nmais', 'Evidência', ''), null);
 });
 
@@ -125,4 +125,16 @@ test('CLI com payload simulado: exit 1 sem rótulo, exit 0 com médio', () => {
     const pass = spawnSync(process.execPath, [CLI, '--event', ev(['processo:medio']), '--files', files], { encoding: 'utf8', env });
     assert.equal(pass.status, 0, pass.stdout + pass.stderr);
     assert.match(pass.stdout, /processo-check: PASS\n- nível: medio/);
+});
+
+test('alto sem Rollback, Readback e SPEC citada → FAIL; completo → OK', () => {
+    const r = run({ labels: ['processo:alto'] });
+    assert.equal(r.ok, false);
+    assert.match(r.errors.join('\n'), /seção "## Rollback"/);
+    assert.match(r.errors.join('\n'), /seção "## Readback"/);
+    assert.match(r.errors.join('\n'), /citar a SPEC/);
+    const body = `${BODY_OK}\nSPEC: [tasks/f1-2-teto/SPEC.md](tasks/f1-2-teto/SPEC.md)\n\n## Rollback\n- reverter o bump para a0\n\n## Readback\n- \`status\` mostra a flag ligada`;
+    assert.equal(run({ labels: ['processo:alto'], body }).ok, true);
+    assert.equal(run({ labels: ['processo:alto'], body: body.replace('- reverter o bump para a0', '') }).ok, false);
+    assert.equal(run({ labels: ['processo:alto'], body: body.replace(/tasks\/f1-2-teto\/SPEC\.md/g, 'tasks/<pasta>/SPEC.md') }).ok, false);
 });
