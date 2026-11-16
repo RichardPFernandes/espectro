@@ -13,10 +13,10 @@ Plataforma de engenharia de software com agentes: transforma um ticket em um
 grafo de nós auditáveis, com gates humanos, custo visível e estado autoritativo
 que nunca sai do projeto consumidor.
 
-[![Tests](https://github.com/RichardPFernandes/prisma/actions/workflows/tests.yml/badge.svg)](https://github.com/RichardPFernandes/prisma/actions/workflows/tests.yml)
+[![Tests](https://github.com/RichardPFernandes/espectro/actions/workflows/tests.yml/badge.svg)](https://github.com/RichardPFernandes/espectro/actions/workflows/tests.yml)
 ![Node](https://img.shields.io/badge/node-22%20%7C%2024-3DD68C)
 ![Status](https://img.shields.io/badge/status-dogfood%20(app--back)-F2A93B)
-![Repo](https://img.shields.io/badge/repo-privado-6E9BFF)
+[![Licença](https://img.shields.io/badge/licen%C3%A7a-Apache--2.0-6E9BFF)](LICENSE)
 
 </div>
 
@@ -27,6 +27,7 @@ que nunca sai do projeto consumidor.
 ## Sumário
 
 - [O que é](#o-que-é)
+- [Veja funcionando](#veja-funcionando)
 - [Como funciona](#como-funciona)
 - [Identidade](#identidade)
 - [Estrutura do repositório](#estrutura-do-repositório)
@@ -52,6 +53,43 @@ deixar que a automação se passe por autoridade sobre o domínio. Ele entrega:
 O **app-back** é o primeiro consumidor (dogfood). Configuração, credenciais,
 dados, worktrees e estado autoritativo ficam no consumidor; este repositório
 contém só o código da plataforma e seus assets versionados.
+
+## Veja funcionando
+
+Um ciclo inteiro do grafo com um ticket sintético, sem credencial, sem rede e sem
+instalar dependências. Precisa só de Node 22 ou 24:
+
+```bash
+git clone https://github.com/RichardPFernandes/espectro.git && cd espectro
+npm run demo
+```
+
+Leva cerca de 13 segundos (medido com Node 22; as esperas por nó são artificiais
+e `DRY_RUN_DELAY_FACTOR=0 npm run demo` as zera). O que aparece:
+
+- O watcher real processa o ticket `#99999` da
+  [fixture](scripts/fixtures/ticket-example.json) e passa pelos sete nós, de
+  `fetch_ticket` a `commit`, com os portões de spec, plano e build avaliados.
+- Cada chamada externa vira uma linha `[dry-run]`: a nota que iria para o
+  tracker, o PR que seria aberto.
+- No fim, o resumo e o caminho do `state.json` arquivado, para abrir e conferir:
+
+```text
+[demo] Ciclo simulado fechado em 13.1s: fetch_ticket → plan → implement → review → test → verify → commit
+[demo] status committed · plano 100/100 · risco low · 16 eventos
+[demo] Estado para inspecionar: <pasta temporária>/consumidor/memory/runs/_archive/99999-dry-run/state.json
+```
+
+O que a demo **não** faz:
+
+- Não chama modelo nem agente: cada nó é simulado por
+  [`scripts/lib/dry-run.js`](scripts/lib/dry-run.js), que grava o que o nó gravaria.
+- Não toca tracker nem forge: o Redmine é respondido pela fixture e o PR só é
+  logado. Uma guarda bloqueia qualquer chamada externa que escape.
+- Não escreve neste checkout: o consumidor é uma pasta temporária criada por
+  [`scripts/demo.js`](scripts/demo.js), e `git status` fica igual.
+- Não prova qualidade de código gerado, custo real nem integração com um
+  consumidor: mostra a orquestração e a persistência do estado.
 
 ## Como funciona
 
@@ -126,8 +164,9 @@ existe vira placeholder explícito, nunca número plausível.
 └── docs/         baseline, runbooks, contratos e histórico
 ```
 
-São dois pacotes Node independentes, cada um com manifest e lock próprios. Não
-há runner na raiz.
+São dois pacotes Node independentes, cada um com manifest e lock próprios. O
+`package.json` da raiz só guarda atalhos (`npm test`, `npm run test:changed`,
+`npm run demo`, `npm run check`): não é workspace, não tem dependências nem lock.
 
 ## Primeiros passos
 
@@ -159,25 +198,33 @@ com Node 20.20.2/npm 10.8.2), npm e Git.
    done
    ```
 
+   Na raiz, `npm test` roda essa mesma receita. `npm run test:changed` roda só os
+   testes alterados em relação à `main` e os vizinhos de mesmo nome dos arquivos
+   alterados; serve de atalho local e não substitui a suíte.
+
 3. Checagens estáticas, quando tocar no código:
 
    ```bash
    npm --prefix scripts run check:js && npm --prefix scripts run arch:check
    ```
 
-Este README não inicia watcher, agente ou preview. Iniciar a plataforma contra um
-consumidor real segue o [runbook de consumo](docs/consumer-operations.md).
+   Ou, na raiz, `npm run check`.
+
+Fora da [demo simulada](#veja-funcionando), nada neste README inicia watcher,
+agente ou preview. Iniciar a plataforma contra um consumidor real segue o
+[runbook de consumo](docs/consumer-operations.md).
 
 ## Consumo pelo app-back
 
-O consumidor entregue na PRI-63 está fixado em `a50ff9f`; a `main` posterior
-contém mudanças ainda não admitidas nele.
+O app-back não consome mais uma revisão fixada: desde novembro de 2026 o
+dashboard dele roda a partir de um checkout de desenvolvimento desta plataforma,
+então commit, merge ou troca de branch nesse checkout chega ao consumidor. O modo
+diverge do pin aprovado e está registrado para reconciliação; revisão em uso,
+launcher e salvaguardas ausentes ficam em
+[docs/consumer-operations.md](docs/consumer-operations.md), seção "Modo vigente".
 
-- Não use latest para reatar uma Run nem atualize o pin por publicação de
-  documentação.
-- No app-back, `npm start` do dashboard chama o launcher dele, que fixa roots,
-  revisão e hashes da configuração. `npm run start:source` é o retorno explícito,
-  após parada, conferência de writers e saneamento do ambiente.
+- Trabalho de desenvolvimento vai para um worktree próprio, nunca para o
+  checkout que o consumidor executa.
 - Código e assets pertencem a `PRISMA_ROOT`; `REPO_PATH`, `.env`, memory,
   worktrees e histórico pertencem ao consumidor. Segredos nunca entram aqui.
 
@@ -222,5 +269,4 @@ no runbook de consumo.
 
 ## Licença
 
-Repositório privado de [RichardPFernandes](https://github.com/RichardPFernandes).
-Não há licença pública; uso e distribuição dependem de autorização do titular.
+Repositório público sob a [Apache License 2.0](LICENSE).
