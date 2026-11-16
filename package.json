@@ -2,6 +2,9 @@
   "name": "espectro",
   "private": true,
   "description": "Atalhos da raiz. Não é workspace: scripts/ e dashboard/ seguem pacotes independentes, cada um com seu lock.",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "node harness/recipe.js",
     "test:changed": "node harness/test-changed.js",

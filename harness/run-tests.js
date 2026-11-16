@@ -28,6 +28,27 @@ function resolveRoots(env) {
     return roots;
 }
 
+// Versão mínima de Node: a fonte é engines.node do package.json da raiz. Só a
+// forma `>=X[.Y[.Z]]` é lida; outra faixa é erro, não "qualquer versão serve".
+const ROOT_PACKAGE = path.join(__dirname, '..', 'package.json');
+
+function requiredNode(file = ROOT_PACKAGE) {
+    return JSON.parse(fs.readFileSync(file, 'utf8')).engines?.node;
+}
+
+function assertNodeVersion(current, required) {
+    const min = /^>=(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(required || '');
+    if (!min) throw new Error(`engines.node do package.json da raiz deve ter a forma >=X[.Y[.Z]]; veio ${JSON.stringify(required)}`);
+    const have = current.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        const want = Number(min[i + 1] || 0);
+        if (have[i] > want) return;
+        if (have[i] < want) {
+            throw new Error(`Node ${current} não serve: a suíte exige Node ${required} (engines.node do package.json da raiz). Rode \`nvm use\`: o .nvmrc aponta a versão recomendada`);
+        }
+    }
+}
+
 function childEnv(env, roots) {
     const out = {};
     for (const key of ENV_ALLOWLIST) if (env[key] !== undefined) out[key] = env[key];
@@ -87,6 +108,7 @@ function main([suite, ...files]) {
     let roots;
     let targets;
     try {
+        assertNodeVersion(process.versions.node, requiredNode());
         roots = resolveRoots(process.env);
         if (!SUITES.includes(suite)) throw new Error('uso: run-tests.js <scripts|dashboard> [arquivos de teste]');
         const packageDir = path.join(roots.PRISMA_ROOT, suite);
@@ -113,5 +135,5 @@ function main([suite, ...files]) {
     });
 }
 
-module.exports = { resolveRoots, childEnv, ENV_ALLOWLIST, SUITES, findTestFiles, listTestFiles, suiteOf, readExclusions, discover };
+module.exports = { resolveRoots, childEnv, ENV_ALLOWLIST, SUITES, findTestFiles, listTestFiles, suiteOf, readExclusions, discover, requiredNode, assertNodeVersion };
 if (require.main === module) main(process.argv.slice(2));

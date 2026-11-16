@@ -237,7 +237,8 @@ test('C0: árvore adversarial reproduz sentinelas únicas, symlink real e arquiv
     for (const item of corpus.sentinels) assert.ok(fs.readFileSync(path.join(tree, item.path), 'utf8').includes(item.marker));
     const link = path.join(tree, corpus.symlink.path);
     assert.ok(fs.lstatSync(link).isSymbolicLink());
-    assert.equal(fs.realpathSync(link), path.join(tree, 'outside/link-target.txt'));
+    // realpath dos dois lados: no macOS o TMPDIR fica sob /var, que é link para /private/var.
+    assert.equal(fs.realpathSync(link), fs.realpathSync(path.join(tree, 'outside/link-target.txt')));
     const large = path.join(tree, corpus.sentinels.find(item => item.kind === 'large').path);
     assert.equal(fs.statSync(large).size, corpus.large_file_bytes);
     assert.ok(fs.statSync(large).size > corpus.test_limit_bytes);

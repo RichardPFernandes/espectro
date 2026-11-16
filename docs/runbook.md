@@ -85,7 +85,9 @@ Status do Redmine que o sistema mexe:
 Procedimento de desenvolvimento da plataforma, não de operação do consumidor. Rode
 em checkout/floor descartável da revisão exata, com dependências já preparadas
 pelos locks de cada pacote. Não use o consumidor ativo como fixture. O ambiente
-de referência é Node 20.20.2/npm 10.8.2. Registre as versões efetivamente
+de referência é Node 24 (`.nvmrc`); o mínimo é Node 22 (`engines.node` do
+`package.json` da raiz), e o harness recusa versão mais antiga com exit 2,
+dizendo a exigida. Registre as versões efetivamente
 executadas, HEAD e diff: testes de árvore modificada não certificam o commit base
 sozinho.
 
