@@ -12,7 +12,7 @@ começa pelo teste que falha.
   - Arquivos: `scripts/capability-map.js`, `scripts/capability-map.test.js`, `docs/capacidades/estado.md`
   - Depende de: nada
 
-- [ ] **T2: regras de cobertura e de flag, em casos sintéticos (AC-02, AC-03)** · S
+- [x] **T2: regras de cobertura e de flag, em casos sintéticos (AC-02, AC-03)** · S
   - Aceite: em diretório temporário, o teste mostra falha com mensagem para arquivo sem dono, arquivo com dois donos, padrão que não casa com nada e flag que não aparece no código da capacidade; `--check` no repo lista quantos arquivos faltam e sai 1.
   - Verificar: teste focado verde; `--check` imprime a contagem.
   - Arquivos: `scripts/capability-map.js`, `scripts/capability-map.test.js`
@@ -21,6 +21,10 @@ começa pelo teste que falha.
 ### Conferência A
 
 - [ ] As quatro falhas sintéticas aparecem com arquivo e comando de correção; `npm test` verde.
+  - Em 16/11, depois da T2: as quatro falhas aparecem, com arquivo e comando. `--check` no repo:
+    faltam 227 de 232 arquivos, sai 1. `npm test` (Node 24): 2 falhas, as mesmas da `main`
+    (`/var` e `/private/var` em `qa-rejection-c0-oracle` e `qa-rejection-current-golden`,
+    corrigidas na PRI-393, ainda não mesclada). Nenhuma falha do mapa. `npm run check` verde.
 
 ## Fase 2 — Classificação
 

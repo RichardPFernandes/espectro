@@ -4,18 +4,29 @@
 // índice separado. Página de entrada: docs/capacidades/README.md.
 //
 //   node scripts/capability-map.js --of scripts/cas.js    → imprime "estado" e sai 0
+//   node scripts/capability-map.js --check                → confere o mapa inteiro
 //
-// Sai 1 quando o arquivo não tem exatamente uma capacidade dona; 2 em erro de uso ou de
-// cabeçalho. O cabeçalho é um subconjunto de YAML lido aqui mesmo (o repo não tem
+// --of sai 1 quando o arquivo não tem exatamente uma capacidade dona. --check lista cada
+// problema com o arquivo e o comando que confere a correção, fecha com a contagem e sai 1
+// se houver problema. Os dois saem 2 em erro de uso ou de cabeçalho. O cabeçalho é um subconjunto de YAML lido aqui mesmo (o repo não tem
 // biblioteca de YAML): texto simples, lista em linha ([a, b]) ou lista em bloco ("- a").
 // Qualquer outra forma é erro. Um padrão de `modulos` é um caminho exato ou um prefixo
 // terminado em "*"; não há precedência entre padrões.
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const CAPABILITIES_DIR = path.join(ROOT, 'docs', 'capacidades');
-const USAGE = 'uso: node scripts/capability-map.js --of <caminho>';
+const CAPABILITIES_PATH = 'docs/capacidades';
+const CLI = 'node scripts/capability-map.js';
+const USAGE = `uso: ${CLI} --check | --of <caminho>`;
+
+// O que precisa de capacidade dona: o código dos dois pacotes e tudo o que define os nós e
+// o grafo. Teste segue o vizinho; fixture e .gitkeep não são código.
+const CODE_ROOTS = ['scripts/', 'dashboard/'];
+const CODE_EXTENSIONS = ['.js', '.mjs', '.cjs', '.sh'];
+const WHOLE_ROOTS = ['.claude/commands/', '.graph/'];
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage']);
 
 const TEXT_FIELDS = ['id', 'tipo', 'resumo', 'situacao', 'spec'];
 const LIST_FIELDS = ['flags', 'modulos'];
@@ -117,23 +128,103 @@ function matches(pattern, file) {
     return pattern.endsWith('*') ? file.startsWith(pattern.slice(0, -1)) : file === pattern;
 }
 
-function ownersOf(capabilities, file) {
-    return capabilities.filter(capability => capability.modulos.some(pattern => matches(pattern, file))).map(capability => capability.id);
+function owns(capability, file) {
+    return capability.modulos.some(pattern => matches(pattern, file));
 }
 
-function main([command, target]) {
-    if (command !== '--of' || !target) {
-        console.error(USAGE);
-        return 2;
+function ownersOf(capabilities, file) {
+    return capabilities.filter(capability => owns(capability, file)).map(capability => capability.id);
+}
+
+function isCovered(file) {
+    const parts = file.split('/');
+    const name = parts.at(-1);
+    if (name === '.gitkeep' || name.endsWith('.test.js') || parts.includes('fixtures')) return false;
+    if (WHOLE_ROOTS.some(root => file.startsWith(root))) return true;
+    return CODE_ROOTS.some(root => file.startsWith(root)) && CODE_EXTENSIONS.includes(path.extname(name));
+}
+
+function walk(root, rel = '') {
+    return fs.readdirSync(path.join(root, rel), { withFileTypes: true }).flatMap(entry => {
+        const child = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) return SKIP_DIRS.has(entry.name) ? [] : walk(root, child);
+        return entry.isFile() ? [child] : [];
+    });
+}
+
+// Mesma listagem da receita de testes (harness/run-tests.js): com git, os versionados mais
+// os novos não ignorados; sem git (export), o disco.
+function listFiles(root) {
+    if (!fs.existsSync(path.join(root, '.git'))) return walk(root).sort();
+    const args = ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'];
+    const git = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    if (git.status !== 0) throw new Error(`git ls-files falhou: ${(git.stderr || git.error?.message || '').trim()}`);
+    return [...new Set(git.stdout.split('\0'))].filter(rel => rel && fs.existsSync(path.join(root, rel))).sort();
+}
+
+// Nomes (identificadores) que aparecem no código de uma capacidade. A flag conta quando é
+// um deles por inteiro: SPEC_X dentro de SPEC_X_MAX não conta.
+function namesInCode(root, files) {
+    return new Set(files.flatMap(file => fs.readFileSync(path.join(root, file), 'utf8').split(/[^A-Za-z0-9_]+/)));
+}
+
+// Confere o mapa de um repo e devolve { total, problems: [{ rule, message }] }. `total` é
+// quantos arquivos precisam de dona. Cada mensagem cita o arquivo e o comando que confere.
+function checkMap(root) {
+    const capabilities = readCapabilities(path.join(root, CAPABILITIES_PATH));
+    const files = listFiles(root);
+    const covered = files.filter(isCovered);
+    const problems = [];
+    const add = (rule, message) => problems.push({ rule, message });
+
+    for (const file of covered) {
+        const owners = ownersOf(capabilities, file);
+        const confirm = `confira: ${CLI} --of ${file}`;
+        if (!owners.length) {
+            add('sem-dona', `${file}: sem capacidade dona. Inclua o caminho em "modulos" de um ${CAPABILITIES_PATH}/<id>.md e ${confirm}`);
+        } else if (owners.length > 1) {
+            add('mais-de-uma-dona', `${file}: mais de uma capacidade dona (${owners.join(', ')}). Deixe o caminho em "modulos" de uma só e ${confirm}`);
+        }
     }
+    for (const capability of capabilities) {
+        const doc = `${CAPABILITIES_PATH}/${capability.id}.md`;
+        const confirm = `confira: ${CLI} --check`;
+        for (const pattern of capability.modulos) {
+            if (files.some(file => matches(pattern, file))) continue;
+            add('padrao-sem-arquivo', `${doc}: o padrão "${pattern}" não casa com nenhum arquivo. Corrija ou tire o padrão e ${confirm}`);
+        }
+        if (!capability.flags.length) continue;
+        const names = namesInCode(root, covered.filter(file => owns(capability, file)));
+        for (const flag of capability.flags) {
+            if (names.has(flag)) continue;
+            const fix = 'Tire a flag do cabeçalho ou inclua em "modulos" o arquivo que a lê';
+            add('flag-fora-do-codigo', `${doc}: a flag ${flag} não aparece no código da capacidade. ${fix}, e ${confirm}`);
+        }
+    }
+    return { total: covered.length, problems };
+}
+
+function summary({ total, problems }) {
+    if (!problems.length) return `mapa de capacidades: ${total} arquivos, cada um com uma capacidade dona`;
+    const count = rule => problems.filter(problem => problem.rule === rule).length;
+    return [
+        `mapa de capacidades: faltam ${count('sem-dona')} de ${total} arquivos (sem capacidade dona)`,
+        `com mais de uma dona: ${count('mais-de-uma-dona')}`,
+        `padrões sem arquivo: ${count('padrao-sem-arquivo')}`,
+        `flags fora do código: ${count('flag-fora-do-codigo')}`,
+    ].join('; ');
+}
+
+function runCheck() {
+    const report = checkMap(ROOT);
+    for (const { message } of report.problems) console.error(message);
+    console.log(summary(report));
+    return report.problems.length ? 1 : 0;
+}
+
+function runOf(target) {
     const file = path.relative(ROOT, path.resolve(target)).split(path.sep).join('/');
-    let owners;
-    try {
-        owners = ownersOf(readCapabilities(CAPABILITIES_DIR), file);
-    } catch (error) {
-        console.error(error.message);
-        return 2;
-    }
+    const owners = ownersOf(readCapabilities(path.join(ROOT, CAPABILITIES_PATH)), file);
     if (owners.length === 1) {
         console.log(owners[0]);
         return 0;
@@ -142,5 +233,17 @@ function main([command, target]) {
     return 1;
 }
 
-module.exports = { parseHeader, readCapabilities, matches, ownersOf };
+function main([command, target]) {
+    try {
+        if (command === '--check' && !target) return runCheck();
+        if (command === '--of' && target) return runOf(target);
+    } catch (error) {
+        console.error(error.message);
+        return 2;
+    }
+    console.error(USAGE);
+    return 2;
+}
+
+module.exports = { parseHeader, readCapabilities, matches, ownersOf, isCovered, checkMap, summary };
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
