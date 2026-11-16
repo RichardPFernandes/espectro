@@ -1,4 +1,7 @@
-# Mapa do roadmap
+# Roadmap de entrega do Espectro
+
+> **Status:** PROPOSTA de 15/11/2026, aguardando aprovação do Richard. Estrutura, regras e
+> decisões: [`tasks/roadmap-entrega/`](tasks/roadmap-entrega/README.md).
 
 > Um cycle = 1 semana = 5 dias úteis de um dev. Total agendado: 21 cycles. Todo ganho de
 > custo é hipótese até a F1.5: nenhum dado de run real foi lido no estudo.
@@ -15,12 +18,12 @@
 
 | Fase | Objetivo | Cycles | Depende de | Status |
 | -- | -- | -- | -- | -- |
-| [1. Conter e enxergar](fase-1-conter-e-enxergar/FASE.md) | Registro de flags, ponto de retorno, teto por run, linha de base | 3 | — | não iniciada |
-| [2. Primeira economia ligada, primeira poda](fase-2-economia-e-poda/FASE.md) | Portão de build ligado, dois pilotos decididos, código morto fora, credenciais reduzidas | 4 | Fase 1 | não iniciada |
-| [3. Lugar seguro para medir](fase-3-lugar-seguro-para-medir/FASE.md) | Rodar sem Redmine, projeto-amostra com três tickets de ouro, limite de tempo | 5 | Fase 2 | não iniciada |
-| [4. Segunda rodada de custo e fila única](fase-4-custo-e-fila-unica/FASE.md) | Antes/depois por flag, modelo por fase, fila "Aguardando você" com aviso | 5 | Fase 3 | não iniciada |
-| [5. Custo no caso real e prova de valor](fase-5-caso-real-e-prova-de-valor/FASE.md) | Roteamento que vale para Java, Espectro × agente direto | 4 | Fase 4 | não iniciada |
-| [6. Fila condicional](fase-6-fila-condicional/FASE.md) | Itens que só entram com gatilho | sem agenda | gatilho de cada item | não iniciada |
+| [1. Conter e enxergar](tasks/roadmap-entrega/fase-1-conter-e-enxergar/FASE.md) | Registro de flags, ponto de retorno, teto por run, linha de base | 3 | — | não iniciada |
+| [2. Primeira economia ligada, primeira poda](tasks/roadmap-entrega/fase-2-economia-e-poda/FASE.md) | Portão de build ligado, dois pilotos decididos, código morto fora, credenciais reduzidas | 4 | Fase 1 | não iniciada |
+| [3. Lugar seguro para medir](tasks/roadmap-entrega/fase-3-lugar-seguro-para-medir/FASE.md) | Rodar sem Redmine, projeto-amostra com três tickets de ouro, limite de tempo | 5 | Fase 2 | não iniciada |
+| [4. Segunda rodada de custo e fila única](tasks/roadmap-entrega/fase-4-custo-e-fila-unica/FASE.md) | Antes/depois por flag, modelo por fase, fila "Aguardando você" com aviso | 5 | Fase 3 | não iniciada |
+| [5. Custo no caso real e prova de valor](tasks/roadmap-entrega/fase-5-caso-real-e-prova-de-valor/FASE.md) | Roteamento que vale para Java, Espectro × agente direto | 4 | Fase 4 | não iniciada |
+| [6. Fila condicional](tasks/roadmap-entrega/fase-6-fila-condicional/FASE.md) | Itens que só entram com gatilho | sem agenda | gatilho de cada item | não iniciada |
 
 ## Antes da Fase 1 (horas, não dias)
 
@@ -29,7 +32,7 @@
 - [ ] Conferir qual pasta o launcher do consumidor usa e devolvê-la para a `main` limpa.
 - [ ] Registrar três números: modelo e esforço padrão da conta, runs concluídas por semana, assinatura ou API paga.
 - [ ] Triar o cycle corrente para duas frentes.
-- [ ] Responder D1, D3 e D5 em [`DECISOES.md`](DECISOES.md), ou aceitar as premissas.
+- [ ] Responder D1, D3 e D5 em [`DECISOES.md`](tasks/roadmap-entrega/DECISOES.md), ou aceitar as premissas.
 
 ## Fora do roadmap agora
 

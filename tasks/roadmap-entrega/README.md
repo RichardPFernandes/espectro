@@ -11,9 +11,9 @@ quando a fatia vai começar.
 ## Estrutura
 
 ```text
+ROADMAP.md         na raiz do repo: mapa raso com fases, ordem e status
 tasks/roadmap-entrega/
 ├── README.md      este arquivo: estrutura e regras
-├── ROADMAP.md     mapa raso: fases, ordem, status
 ├── DECISOES.md    D1–D10: premissa assumida, alternativa, efeito na ordem
 ├── LINEAR.md      reconciliação com as issues abertas: vínculos e conflitos
 ├── fase-N-<nome>/
@@ -24,7 +24,7 @@ tasks/roadmap-entrega/
 
 ## Regras da estrutura
 
-1. **Três níveis, cada um com um dono de informação.** `ROADMAP.md` ordena fases. `FASE.md`
+1. **Três níveis, cada um com um dono de informação.** [`ROADMAP.md`](../../ROADMAP.md), na raiz, ordena fases. `FASE.md`
    lista fatias e o critério de saída. A spec da fatia diz o quê; `plan.md` diz como. Nada se
    repete entre níveis: o nível de cima aponta para o de baixo.
 2. **O mapa é raso.** Ele nomeia, limita e ordena. Desenho técnico só dentro da spec da fatia.
