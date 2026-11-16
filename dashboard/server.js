@@ -7,6 +7,7 @@ const chokidar = require('chokidar');
 const { createCoordination, applyCoordinationDefault } = require('./coordination');
 const { createVersion } = require('./version');
 const { createOnboarding } = require('./onboarding');
+const { createObsidian } = require('./obsidian');
 const { createHoursBackfillJob } = require('./redmine-hours-backfill');
 const fs = require('fs');
 const os = require('os');
@@ -53,6 +54,8 @@ const routingProjection = require('./routing-projection');
 const uiVerifyProjection = require('./ui-verify-projection');
 // Leitor de roteamento por processo (G3: o dashboard não importa scripts/lib).
 const ROUTING_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'routing-read.js');
+// Leitor por processo do registro effort_miss (PRI-353, mesma fronteira G3).
+const EFFORT_MISS_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'effort-miss-read.js');
 // Tira PR de Draft ("Marcar como pronto" no painel de preview).
 const { markPrReady } = require('../scripts/check-pr-status');
 // Lista/detalha/aprova PRs do Bitbucket, pra aba "PRs" (GET/POST /api/prs*).
@@ -1439,6 +1442,44 @@ function createDashboard(options = {}) {
             totalConsolidations: counterState.total_consolidations ?? 0,
             completedRunsAtLastRun: counterState.completed_runs_at_last_run ?? null,
         });
+    });
+
+    // PRI-353 (AC6): registro effort_miss das runs, só leitura. Ausência de registro é UNKNOWN,
+    // nunca zero. A projeção vem do leitor por processo (scripts/effort-miss-read.js): o dashboard
+    // não importa scripts/lib (G3). Texto livre passa por redact() como o resto.
+    const effortMissReadScript = options.effortMissReadScript || EFFORT_MISS_READ_SCRIPT;
+    function runEffortMissRead(input) {
+        return new Promise(resolve => {
+            const child = execFile(process.execPath, [effortMissReadScript, '--json'],
+                { cwd: repoRoot, env: consumerEnv, timeout: 20000, maxBuffer: 8 * 1024 * 1024 },
+                (err, stdout) => {
+                    let out = null;
+                    try { out = JSON.parse(stdout); } catch { out = null; }
+                    if (err || !out || out.ok !== true) {
+                        console.error(`[dashboard] effort-miss-read: ${redact(out?.error || err?.message || 'sem saída')}`);
+                        return resolve(null);
+                    }
+                    resolve(out.projection);
+                });
+            child.on('error', () => resolve(null));
+            child.stdin.on('error', () => {});
+            child.stdin.end(JSON.stringify(input));
+        });
+    }
+    app.get('/api/effort-misses', async (req, res) => {
+        syncWatchedRoots();
+        const reg = readRegistry();
+        const entries = [];
+        for (const [taskId, candidates] of collectCandidates()) {
+            if (archivedAway(taskId, candidates, reg)) continue;
+            const chosen = pickCandidate(taskId, candidates);
+            if (!chosen) continue;
+            const state = readRunState({ ...chosen, copies: candidates.length });
+            entries.push({ taskId, effort_misses: Array.isArray(state?.effort_misses) ? state.effort_misses : null });
+        }
+        const projection = await runEffortMissRead({ entries });
+        if (!projection) return res.status(502).json({ status: 'UNKNOWN', total: null, error: 'leitor do registro effort_miss indisponível' });
+        res.json(JSON.parse(redact(JSON.stringify(projection))));
     });
 
     // Força a varredura dos arquivados (botão Atualizar). Respeita o cache por ticket.
@@ -3474,6 +3515,8 @@ function createDashboard(options = {}) {
         redmineFetch: options.hoursBackfillFetch,
     });
     hoursBackfill.mount(app);
+    // Botão "Abrir no Obsidian" (PRI-373): só monta as rotas com PRISMA_OBSIDIAN=on.
+    createObsidian({ env: consumerEnv, prefsFile, prismaRoot, exportFn: options.obsidianExport }).mount(app);
     app.put('/api/watcher/prefs', (req, res) => {
         const body = req.body || {};
         const patch = {};

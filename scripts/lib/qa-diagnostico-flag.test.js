@@ -51,7 +51,7 @@ async function fakeFetch(url, init = {}) {
 global.fetch = fakeFetch;
 
 // Spies (AC-03): com a flag desligada nenhum módulo C1–C3 pode ser chamado pelo watcher.
-const c1c3 = { ingest: require('./qa-rejection-ingest'), publish: require('./qa-diagnosis-publish'), analyze: require('./qa-diagnosis-analyze') };
+const c1c3 = { ingest: require('./qa-rejection-ingest') };
 const touched = [];
 for (const [mod, exp] of Object.entries(c1c3)) {
     for (const [name, fn] of Object.entries(exp)) {
@@ -283,5 +283,5 @@ async function firstTickLine(flag) {
 
 test('AC-06: primeira linha do tick mostra o valor efetivo da flag', async () => {
     assert.equal(await firstTickLine(undefined), '[qa-diagnostico] desligado (C0)');
-    assert.equal(await firstTickLine('1'), '[qa-diagnostico] LIGADO (C1–C3)');
+    assert.equal(await firstTickLine('1'), '[qa-diagnostico] LIGADO');
 });

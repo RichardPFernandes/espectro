@@ -21,10 +21,24 @@ function planDenySettingsEnabled(env = process.env) {
     return /^(1|true|sim)$/i.test(env.WATCHER_PLAN_DENY_SETTINGS || '');
 }
 
-function subagentBlockArgs({ nodes, routed = false, denySettings = false }) {
+// PRI-353 (T6, AC5): WATCHER_PLAN_IMPLEMENT_CHAIN (desligada por padrão) permite um segmento
+// [plan, implement] na mesma sessão. O bloqueio de subagente é por sessão, não por nó: se fosse
+// aplicado ao segmento, o implement herdaria o bloqueio do plan. Então o segmento encadeado sai
+// sem bloqueio no argv e o "plan sem subagente" fica só como instrução de texto (decisão do
+// Richard sobre enforcement pendente). Plan avulso e fetch_ticket+plan seguem como hoje.
+function planImplementChainEnabled(env = process.env) {
+    return /^(1|true|sim)$/i.test(env.WATCHER_PLAN_IMPLEMENT_CHAIN || '');
+}
+
+function isPlanImplementChain(nodes) {
+    return Array.isArray(nodes) && nodes.length === 2 && nodes[0] === 'plan' && nodes[1] === 'implement';
+}
+
+function subagentBlockArgs({ nodes, routed = false, denySettings = false, chain = false }) {
     if (!Array.isArray(nodes) || !nodes.some(n => NO_SUBAGENT_NODES.has(n))) return [];
+    if (chain && isPlanImplementChain(nodes)) return [];
     if (denySettings && !routed) return ['--settings', DENY_SETTINGS_JSON];
     return ['--disallowedTools', BLOCKED_TOOLS.join(',')];
 }
 
-module.exports = { NO_SUBAGENT_NODES, BLOCKED_TOOLS, DENY_SETTINGS_JSON, planDenySettingsEnabled, subagentBlockArgs };
+module.exports = { NO_SUBAGENT_NODES, BLOCKED_TOOLS, DENY_SETTINGS_JSON, planDenySettingsEnabled, planImplementChainEnabled, isPlanImplementChain, subagentBlockArgs };

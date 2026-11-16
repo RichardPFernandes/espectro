@@ -67,6 +67,9 @@ const dom06 = require('./lib/dom06-attempt');
 const decompositionRuntime = require('./lib/decomposition-runtime');
 const decompositionVisit = require('./lib/decomposition-visit');
 const subagentBlock = require('./lib/subagent-block');
+const phaseEffort = require('./lib/phase-effort');
+const handoffLint = require('./lib/handoff-lint');
+const planImplementChain = require('./lib/plan-implement-chain');
 
 // Consumer env loads before watcher initialization. Explicit REPO_PATH wins;
 // otherwise the caller must run in the consumer root. Candidate code has no .env.
@@ -3598,13 +3601,16 @@ function releaseLease(lease, code) {
         }
         if (lease.dom06Role) return { claim, planVersion };
         // PRI-310 (S5.1): mesma saída única do wrapper destacado (node-lease.js release).
+        // PRI-354: segmento [plan, implement] fecha os dois Attempts (ver plan-implement-chain.js).
         dom06.closeOnExit({
             attemptFile: lease.dom06AttemptFile,
             attemptId: lease.dom06AttemptId,
             node: lease.node || (Array.isArray(lease.nodes) ? lease.nodes[0] : null),
-            code,
+            // Aqui a saída é sempre final (exit/erro do child em --follow, ou simulação): code nulo = sinal.
+            code: lease.chain ? planImplementChain.planExitCode(lease, code, planImplementChain.readLeaseState(lease), { claim, signalled: code == null }) : code,
             claim,
         });
+        if (lease.chain) planImplementChain.closeChainOnExit(lease, code, { claim, signalled: code == null });
     } catch (e) {
         console.error('[recovery] falha liberando lease do nó:', e.message);
     }
@@ -3812,7 +3818,7 @@ function writeCostLedger(ticketId, ledger) {
     fs.writeFileSync(costLedgerPath(ticketId), JSON.stringify(ledger, null, 2));
 }
 
-function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null, signalContext = null, routing = null }) {
+function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null, signalContext = null, routing = null, phaseEffortLevel = null }) {
     if (DRY_RUN) return null;
     try {
         const selected = agent === 'claude' ? resolveClaudeAccount() : null;
@@ -3823,7 +3829,8 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
             pricing_snapshot: costTracking.pricingSnapshot(),
             ...(selected?.dir ? { claude_config_dir: selected.dir } : {}),
             ...prospectiveSignalsForRun(agent, nodes, signalContext),
-            ...(routing?.ok ? { routing_decision: routing.decision } : {}) };
+            ...(routing?.ok ? { routing_decision: routing.decision } : {}),
+            ...(phaseEffortLevel ? { phase_effort: { level: phaseEffortLevel, effort_applied: true } } : {}) };
         const ledger = readCostLedger(ticketId);
         ledger.pending.push(run);
         writeCostLedger(ticketId, ledger);
@@ -4317,6 +4324,29 @@ function nodeContextBlock(node, { ticket, dir = null, worktreePath }) {
 // e um único comando (`/plan`, `/review` ou `/verify`) pra resumir uma task ativa —
 // nunca encadeia através de um nó com veredito (review/test/verify), porque o
 // resultado desses só se sabe depois de rodar.
+// PRI-353: tabela inválida com a flag ligada não derruba o watcher nem despacha em silêncio:
+// registra o erro e despacha sem --effort (o Attempt não grava phase_effort).
+function resolvePhaseEffort(nodes, routing) {
+    const none = { args: [], level: null };
+    if (!phaseEffort.phaseEffortEnabled()) return none;
+    const loaded = phaseEffort.loadPhaseEffortTable();
+    if (!loaded.ok) {
+        console.error(`[esforço] ${loaded.error}: despacho segue sem --effort.`);
+        return none;
+    }
+    return phaseEffort.phaseEffortArgs({ nodes, enabled: true, table: loaded.table, routedEffortApplied: routing?.decision?.effort_applied === true });
+}
+
+// PRI-353 (T4, AC4): instrução de handoff (`## Decisões` no plan.md) para fase em esforço alto, só com
+// WATCHER_PHASE_EFFORT ligada. Desligada = '' e o prompt fica idêntico. Tabela inválida: sem instrução
+// (o erro já foi registrado por resolvePhaseEffort); nunca derruba o despacho.
+function resolveHandoffNote(nodes) {
+    if (!phaseEffort.phaseEffortEnabled()) return '';
+    const loaded = phaseEffort.loadPhaseEffortTable();
+    if (!loaded.ok) return '';
+    return handoffLint.handoffNote({ nodes, enabled: true, table: loaded.table, prismaRoot: PRISMA_ROOT });
+}
+
 async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null, routing = null }) {
     const qaSection = isRecusaQA
         ? `\n\nEste ticket voltou como Recusa QA — é retrabalho, não trabalho novo. ` +
@@ -4324,10 +4354,12 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
           `Trate isso como o critério de aceite principal do /plan.`
         : '';
 
+    const handoffNote = resolveHandoffNote(nodes);
     const prompt =
         `Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ` +
         `ticket #${ticket.id} (tipo: ${ticket.tracker?.name || '?'}). Rode, nesta ordem: ` +
         `${commands.join(', ')}. ${extraNote} ` +
+        (handoffNote ? `${handoffNote} ` : '') +
         `Leia cada template correspondente em ${PRISMA_ROOT}/.claude/commands/ e siga-o ` +
         `como instrução do nó; use ${PRISMA_ROOT}/scripts para os executáveis da plataforma. ` +
         `PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. ` +
@@ -4353,7 +4385,7 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
         '--session-id', sessionId,
         '--permission-mode', 'acceptEdits',
         '--allowedTools', 'mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob',
-        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled() }),
+        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled(), chain: subagentBlock.planImplementChainEnabled() }),
         // Sem isto, Claude ficava confinado ao cwd (worktree do consumidor) e não
         // enxergava os worktrees irmãos mesmo com branch/worktree já criados pelo
         // watcher, apesar da instrução em plan.md/commit.md dizer pra tratá-los
@@ -4365,10 +4397,13 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     // PRI-233 T7: só com resolução ok (Run ON); sem routing o argv é o do AS-IS.
     // PRI-311 (S5.2b, B8): `--agents` só em Attempt com papel e com subagent_roles na policy.
     if (routing) args.push(...modelRouting.routedArgs([], routing, { agentsJson: routing.agentsJson || null }));
+    // PRI-353: esforço fixo por fase, só com WATCHER_PHASE_EFFORT ligada (desligada = argv inalterado).
+    const phaseEffortResolved = resolvePhaseEffort(nodes, routing);
+    args.push(...phaseEffortResolved.args);
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
     const costRun = startCostRun(ticket.id, {
-        agent: 'claude', nodes, sessionId, admissionDecision, routing,
+        agent: 'claude', nodes, sessionId, admissionDecision, routing, phaseEffortLevel: phaseEffortResolved.level,
         signalContext: { ticket, worktreePath, isRecusaQA, base: signalBaseBranch(ticket) },
     });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);
@@ -5167,6 +5202,19 @@ async function dispatchTicketReserved(ticket) {
         }
     }
 
+    // PRI-354: segmento [plan, implement] numa sessão (WATCHER_PLAN_IMPLEMENT_CHAIN, desligada).
+    // Fora das condições de plan-implement-chain.js o despacho é o de sempre, por nó.
+    let chainActive = false;
+    if (node === 'plan' && subagentBlock.planImplementChainEnabled()) {
+        const check = planImplementChain.chainEligibility({
+            enabled: true, node, state, routed: !!nodeRouting, decomposed: !!decomposed,
+            preBuildSkipped: buildValidator.skipRequested(),
+            specExists: fs.existsSync(path.join(worktreePath, 'memory', 'spec', `${id}-spec.md`)),
+        });
+        chainActive = check.eligible;
+        console.log(`Task ${taskId}: segmento plan+implement ${chainActive ? 'elegível' : `não elegível (${check.reason})`}.`);
+    }
+
     // Portão de build entre plan e implement — ver runPreBuildGate. Antes do lease:
     // o Maven roda aqui no watcher, não é o agente que está "running".
     let preBuildNote = '';
@@ -5194,6 +5242,15 @@ async function dispatchTicketReserved(ticket) {
     const churnDue = decomposed
         ? needsChurnGate(state) && decompositionVisit.churnDue(dir, state.decomposition, decomposed.action)
         : needsChurnGate(state);
+    // PRI-354: no segmento, a âncora do churn (1º implement) é gravada antes do plan, que só
+    // escreve em memory/. Sem implement no histórico, runChurnGate só grava a âncora.
+    if (chainActive && !SIMULATE) {
+        const anchor = await runChurnGate(ticket, active, worktreePath);
+        if (!anchor.proceed) {
+            console.warn(`Task ${taskId}: âncora de churn não confirmada — plan sai avulso.`);
+            chainActive = false;
+        }
+    }
     if (SIMULATE && churnDue) {
         console.log(`[dry-run] Task ${taskId}: portão de churn pulado (sem worktree git do ticket).`);
     } else if (churnDue) {
@@ -5251,12 +5308,39 @@ async function dispatchTicketReserved(ticket) {
         console.warn(`Task ${taskId}: admissão DOM06 ${nodeAdmission.attempt.result} (${nodeAdmission.reason}) — ${node} não despachado e não conta como PASS.`);
         return { action: 'skip', reason: `dom06_${String(nodeAdmission.attempt.result).toLowerCase()}`, taskId, node, admission: nodeAdmission.attempt.result };
     }
+    // PRI-354: segundo Attempt, do implement, admitido antes do spawn. Não admitido = plan avulso.
+    let implementAdmission = null;
+    if (chainActive) {
+        implementAdmission = dom06.prepareDispatch({
+            runDir: dir, node: 'implement', ticketId: id, baseBranch: base,
+            specHash: dom06SpecHash(state, worktreePath, id), cause: 'dispatch',
+        });
+        if (!implementAdmission.dispatch) {
+            console.warn(`Task ${taskId}: admissão DOM06 do implement ${implementAdmission.attempt.result} — plan sai avulso.`);
+            chainActive = false;
+            implementAdmission = null;
+        }
+    }
     const lease = nodeLease.acquireNode(dir, { node, timeoutMs: NODE_TIMEOUT_MS, extra: executionSpec ? { execution_spec: executionSpec } : null });
     attachDom06Lease(lease, nodeAdmission, node, { task: taskId });
     if (lease) lease.retriesBefore = Number(state.retries?.[node]) || 0; // node_retry na saída (nodeEvents)
+    if (lease && chainActive) {
+        lease.nodes = ['plan', 'implement'];
+        lease.chain = {
+            historyBase: Array.isArray(state.history) ? state.history.length : 0,
+            retriesBefore: { plan: Number(state.retries?.plan) || 0, implement: Number(state.retries?.implement) || 0 },
+            implementAttemptFile: implementAdmission.attemptFile,
+            implementAttemptId: implementAdmission.attempt.attempt_id,
+            specPath: path.join(worktreePath, 'memory', 'spec', `${id}-spec.md`),
+        };
+    } else if (chainActive) {
+        // Sem lease não há onde fechar o segundo Attempt: revoga e despacha o plan avulso.
+        dom06.revoke(implementAdmission.attemptFile, { reason: 'CHAIN_NO_LEASE' });
+        chainActive = false;
+    }
     appendEvent(taskId, {
         type: 'node_start', node, agent: 'claude', ts: lease?.startedAt,
-        detail: `Despachando ${node} para Claude` + (recovery ? ' (redespacho após nó órfão)' : ''),
+        detail: `Despachando ${chainActive ? 'plan+implement (mesma sessão)' : node} para Claude` + (recovery ? ' (redespacho após nó órfão)' : ''),
     }, dir);
     checkWrittenState(dir);
     beginCycle({ ticketId: id, taskId, node, dir, leaseStartedAt: lease?.startedAt || null });
@@ -5269,14 +5353,16 @@ async function dispatchTicketReserved(ticket) {
 
     segment = await dispatchClaudeSegment({
         ticket, isRecusaQA, qaFeedback, worktreePath, lease, admissionDecision: nodeAdmission, routing: nodeRouting,
-        commands: decomposed && decomposed.commands ? decomposed.commands : [`/${node} ${taskId}`],
-        nodes: [node],
+        commands: decomposed && decomposed.commands ? decomposed.commands
+            : chainActive ? planImplementChain.chainCommands({ taskId, ticketId: id, prismaRoot: PRISMA_ROOT }) : [`/${node} ${taskId}`],
+        nodes: chainActive ? ['plan', 'implement'] : [node],
         contextBlock: decomposed && decomposed.contextBlock ? decomposed.contextBlock : nodeContextBlock(node, { ticket, dir, worktreePath }),
         extraNote: (node === 'commit'
             ? commitRiskNote(state)
             : node === 'plan'
                 ? `Se memory/runs/${taskId}/context.md tiver o bloco entre ${specValidator.CONTEXT_BEGIN} e ` +
-                  `${specValidator.CONTEXT_END} (avisos do portão de spec), preserve-o ao reescrever o arquivo.` + planFeedbackNote(state) + invalidate.promptNote(state)
+                  `${specValidator.CONTEXT_END} (avisos do portão de spec), preserve-o ao reescrever o arquivo.` + planFeedbackNote(state) + invalidate.promptNote(state) +
+                  (chainActive ? ` ${planImplementChain.chainNote({ taskId, ticketId: id, prismaRoot: PRISMA_ROOT })}` : '')
                 : '') + (testScope ? testScopeNote(node, testScope.services) : '') + schemaChecklistNote(schemaResult) + preBuildNote + recovery + humanInputNote(humanInput, unblock) + cycleReplayer.replayPromptNote(state) + qaRetryNote(taskId, node),
         extraEnv: {
             ...(testScope ? { AFFECTED_SERVICES: testScope.services.join(',') } : {}),
@@ -5302,7 +5388,8 @@ async function dispatchTicketReserved(ticket) {
             ...fresh,
             status: 'session_limit',
             session_interrupted: true,
-            interrupted_node: node,
+            // PRI-354: no segmento, o nó interrompido é o que o state mostra (implement, se o plan concluiu).
+            interrupted_node: lease?.chain && fresh.node ? fresh.node : node,
             interrupted_at: at,
             updated_at: at,
         });
@@ -6000,7 +6087,7 @@ function writeWatcherModeFile() {
 async function main() {
     // PRI-181 c0b: valor efetivo da flag a cada tick (sem dado de ticket). Fica em main(),
     // depois do ramo --health-check, para não sujar testes, node-dispatcher nem o JSON do health.
-    console.log(QA_DIAGNOSTICO ? '[qa-diagnostico] LIGADO (C1–C3)' : '[qa-diagnostico] desligado (C0)');
+    console.log(QA_DIAGNOSTICO ? '[qa-diagnostico] LIGADO' : '[qa-diagnostico] desligado (C0)');
     // Um writer por REPO_PATH, antes de qualquer escrita do tick (custo, sync, recovery).
     // --dry-run só lê: não trava e não cria arquivo. Recusa = exit 75, sem seguir o tick.
     if (!DRY_RUN && !watcherLock.acquireForProcess({ repoPath: REPO_PATH, role: SIMULATE ? 'simulate' : 'watcher' })) {

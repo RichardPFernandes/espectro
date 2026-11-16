@@ -302,3 +302,31 @@ test('PRI-315 D1: flag do deny ligada não muda o despacho roteado com plan', { 
     assert.ok(planArgv, 'o despacho com plan deveria manter --disallowedTools');
     assert.strictEqual(planArgv.filter(a => a === '--settings').length, 1, 'só o --settings da SP-2');
 });
+
+// PRI-354 (D1, "Nunca encadear sob roteamento ON"): com WATCHER_PLAN_IMPLEMENT_CHAIN ligada e
+// todas as outras condições valendo (plan, spec no worktree, pré-build pulado), a Run ON despacha
+// o plan avulso, roteado, com o bloqueio de subagente de sempre e sem /implement no mesmo prompt.
+test('PRI-354 D1: flag do encadeamento ligada não encadeia plan+implement numa Run ON', { timeout: 5 * 60 * 1000 }, async () => {
+    const { description } = require(path.join(PRISMA_ROOT, 'scripts', 'fixtures', 'ticket-example.json'));
+    const variant = 'on_chain_flag';
+    const repo = consumer(variant);
+    const id = 287031;
+    seedOnRun(repo, id, { node: 'plan' });
+    fs.mkdirSync(path.join(worktreeOf(repo, id), 'memory', 'spec'), { recursive: true });
+    fs.writeFileSync(path.join(worktreeOf(repo, id), 'memory', 'spec', `${id}-spec.md`), description);
+    const scenario = `${variant}--plan--dispatch`;
+    const r = await dispatch(repo, id, scenario, { WATCHER_PLAN_IMPLEMENT_CHAIN: '1' });
+    assert.strictEqual(r.result?.action, 'dispatched', `não despachou (${r.result?.reason})\n${r.output}`);
+    assert.match(r.output, /segmento plan\+implement não elegível \(ROUTED\)/);
+    const argvs = argvsOf(scenario);
+    assert.strictEqual(argvs.length, 1);
+    const [argv] = argvs;
+    const prompt = argv[argv.indexOf('-p') + 1];
+    assert.ok(prompt.includes(`/plan ${id}-og`));
+    assert.ok(!prompt.includes('/implement'), 'Run ON não pode encadear o implement');
+    assert.ok(argv.includes('--model'), 'o plan segue roteado');
+    assert.ok(argv.includes('--disallowedTools'), 'bloqueio de subagente do plan avulso mantido');
+    const attempts = fs.readdirSync(path.join(taskDirOf(repo, id), 'dom06', 'attempts')).filter(f => f.endsWith('.json'))
+        .map(f => JSON.parse(fs.readFileSync(path.join(taskDirOf(repo, id), 'dom06', 'attempts', f), 'utf8')).node);
+    assert.ok(!attempts.includes('implement'), 'nenhum Attempt do implement admitido');
+});
