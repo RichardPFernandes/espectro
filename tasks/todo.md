@@ -1,6 +1,6 @@
 # Tarefas: PRI-233 (PRI-205 S4)
 
-> Fonte: [SPEC.md](../SPEC.md) (aprovado em 2026-11-06) e [plan.md](plan.md)
+> Fonte: [SPEC.md](../docs/historico/SPEC-pri-205-s3b.md) (aprovado em 2026-11-06) e [plan.md](plan.md)
 > (proposta). Cada tarefa segue TDD: o teste nasce falhando. Comando focado:
 > `node --test scripts/lib/<arquivo>.test.js`. Registre todo teste novo na lista do
 > `npm test` do pacote.
