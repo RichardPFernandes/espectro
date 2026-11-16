@@ -1,6 +1,6 @@
 # Núcleo 2 do roteamento: Jev em modo sombra
 
-PRI-205 S3b. Spec: [SPEC.md](../SPEC.md) (§B1–B11). Plano e evidência:
+PRI-205 S3b. Spec: [SPEC-pri-205-s3b.md](historico/SPEC-pri-205-s3b.md) (§B1–B11). Plano e evidência:
 `tasks/pri-205-s3b/`. Escrito em 2026-11-08.
 
 ## O que faz
