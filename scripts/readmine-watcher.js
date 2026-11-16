@@ -69,6 +69,7 @@ const decompositionVisit = require('./lib/decomposition-visit');
 const subagentBlock = require('./lib/subagent-block');
 const phaseEffort = require('./lib/phase-effort');
 const handoffLint = require('./lib/handoff-lint');
+const planImplementChain = require('./lib/plan-implement-chain');
 
 // Consumer env loads before watcher initialization. Explicit REPO_PATH wins;
 // otherwise the caller must run in the consumer root. Candidate code has no .env.
@@ -3600,13 +3601,16 @@ function releaseLease(lease, code) {
         }
         if (lease.dom06Role) return { claim, planVersion };
         // PRI-310 (S5.1): mesma saída única do wrapper destacado (node-lease.js release).
+        // PRI-354: segmento [plan, implement] fecha os dois Attempts (ver plan-implement-chain.js).
         dom06.closeOnExit({
             attemptFile: lease.dom06AttemptFile,
             attemptId: lease.dom06AttemptId,
             node: lease.node || (Array.isArray(lease.nodes) ? lease.nodes[0] : null),
-            code,
+            // Aqui a saída é sempre final (exit/erro do child em --follow, ou simulação): code nulo = sinal.
+            code: lease.chain ? planImplementChain.planExitCode(lease, code, planImplementChain.readLeaseState(lease), { claim, signalled: code == null }) : code,
             claim,
         });
+        if (lease.chain) planImplementChain.closeChainOnExit(lease, code, { claim, signalled: code == null });
     } catch (e) {
         console.error('[recovery] falha liberando lease do nó:', e.message);
     }
@@ -5198,6 +5202,19 @@ async function dispatchTicketReserved(ticket) {
         }
     }
 
+    // PRI-354: segmento [plan, implement] numa sessão (WATCHER_PLAN_IMPLEMENT_CHAIN, desligada).
+    // Fora das condições de plan-implement-chain.js o despacho é o de sempre, por nó.
+    let chainActive = false;
+    if (node === 'plan' && subagentBlock.planImplementChainEnabled()) {
+        const check = planImplementChain.chainEligibility({
+            enabled: true, node, state, routed: !!nodeRouting, decomposed: !!decomposed,
+            preBuildSkipped: buildValidator.skipRequested(),
+            specExists: fs.existsSync(path.join(worktreePath, 'memory', 'spec', `${id}-spec.md`)),
+        });
+        chainActive = check.eligible;
+        console.log(`Task ${taskId}: segmento plan+implement ${chainActive ? 'elegível' : `não elegível (${check.reason})`}.`);
+    }
+
     // Portão de build entre plan e implement — ver runPreBuildGate. Antes do lease:
     // o Maven roda aqui no watcher, não é o agente que está "running".
     let preBuildNote = '';
@@ -5225,6 +5242,15 @@ async function dispatchTicketReserved(ticket) {
     const churnDue = decomposed
         ? needsChurnGate(state) && decompositionVisit.churnDue(dir, state.decomposition, decomposed.action)
         : needsChurnGate(state);
+    // PRI-354: no segmento, a âncora do churn (1º implement) é gravada antes do plan, que só
+    // escreve em memory/. Sem implement no histórico, runChurnGate só grava a âncora.
+    if (chainActive && !SIMULATE) {
+        const anchor = await runChurnGate(ticket, active, worktreePath);
+        if (!anchor.proceed) {
+            console.warn(`Task ${taskId}: âncora de churn não confirmada — plan sai avulso.`);
+            chainActive = false;
+        }
+    }
     if (SIMULATE && churnDue) {
         console.log(`[dry-run] Task ${taskId}: portão de churn pulado (sem worktree git do ticket).`);
     } else if (churnDue) {
@@ -5282,12 +5308,39 @@ async function dispatchTicketReserved(ticket) {
         console.warn(`Task ${taskId}: admissão DOM06 ${nodeAdmission.attempt.result} (${nodeAdmission.reason}) — ${node} não despachado e não conta como PASS.`);
         return { action: 'skip', reason: `dom06_${String(nodeAdmission.attempt.result).toLowerCase()}`, taskId, node, admission: nodeAdmission.attempt.result };
     }
+    // PRI-354: segundo Attempt, do implement, admitido antes do spawn. Não admitido = plan avulso.
+    let implementAdmission = null;
+    if (chainActive) {
+        implementAdmission = dom06.prepareDispatch({
+            runDir: dir, node: 'implement', ticketId: id, baseBranch: base,
+            specHash: dom06SpecHash(state, worktreePath, id), cause: 'dispatch',
+        });
+        if (!implementAdmission.dispatch) {
+            console.warn(`Task ${taskId}: admissão DOM06 do implement ${implementAdmission.attempt.result} — plan sai avulso.`);
+            chainActive = false;
+            implementAdmission = null;
+        }
+    }
     const lease = nodeLease.acquireNode(dir, { node, timeoutMs: NODE_TIMEOUT_MS, extra: executionSpec ? { execution_spec: executionSpec } : null });
     attachDom06Lease(lease, nodeAdmission, node, { task: taskId });
     if (lease) lease.retriesBefore = Number(state.retries?.[node]) || 0; // node_retry na saída (nodeEvents)
+    if (lease && chainActive) {
+        lease.nodes = ['plan', 'implement'];
+        lease.chain = {
+            historyBase: Array.isArray(state.history) ? state.history.length : 0,
+            retriesBefore: { plan: Number(state.retries?.plan) || 0, implement: Number(state.retries?.implement) || 0 },
+            implementAttemptFile: implementAdmission.attemptFile,
+            implementAttemptId: implementAdmission.attempt.attempt_id,
+            specPath: path.join(worktreePath, 'memory', 'spec', `${id}-spec.md`),
+        };
+    } else if (chainActive) {
+        // Sem lease não há onde fechar o segundo Attempt: revoga e despacha o plan avulso.
+        dom06.revoke(implementAdmission.attemptFile, { reason: 'CHAIN_NO_LEASE' });
+        chainActive = false;
+    }
     appendEvent(taskId, {
         type: 'node_start', node, agent: 'claude', ts: lease?.startedAt,
-        detail: `Despachando ${node} para Claude` + (recovery ? ' (redespacho após nó órfão)' : ''),
+        detail: `Despachando ${chainActive ? 'plan+implement (mesma sessão)' : node} para Claude` + (recovery ? ' (redespacho após nó órfão)' : ''),
     }, dir);
     checkWrittenState(dir);
     beginCycle({ ticketId: id, taskId, node, dir, leaseStartedAt: lease?.startedAt || null });
@@ -5300,14 +5353,16 @@ async function dispatchTicketReserved(ticket) {
 
     segment = await dispatchClaudeSegment({
         ticket, isRecusaQA, qaFeedback, worktreePath, lease, admissionDecision: nodeAdmission, routing: nodeRouting,
-        commands: decomposed && decomposed.commands ? decomposed.commands : [`/${node} ${taskId}`],
-        nodes: [node],
+        commands: decomposed && decomposed.commands ? decomposed.commands
+            : chainActive ? planImplementChain.chainCommands({ taskId, ticketId: id, prismaRoot: PRISMA_ROOT }) : [`/${node} ${taskId}`],
+        nodes: chainActive ? ['plan', 'implement'] : [node],
         contextBlock: decomposed && decomposed.contextBlock ? decomposed.contextBlock : nodeContextBlock(node, { ticket, dir, worktreePath }),
         extraNote: (node === 'commit'
             ? commitRiskNote(state)
             : node === 'plan'
                 ? `Se memory/runs/${taskId}/context.md tiver o bloco entre ${specValidator.CONTEXT_BEGIN} e ` +
-                  `${specValidator.CONTEXT_END} (avisos do portão de spec), preserve-o ao reescrever o arquivo.` + planFeedbackNote(state) + invalidate.promptNote(state)
+                  `${specValidator.CONTEXT_END} (avisos do portão de spec), preserve-o ao reescrever o arquivo.` + planFeedbackNote(state) + invalidate.promptNote(state) +
+                  (chainActive ? ` ${planImplementChain.chainNote({ taskId, ticketId: id, prismaRoot: PRISMA_ROOT })}` : '')
                 : '') + (testScope ? testScopeNote(node, testScope.services) : '') + schemaChecklistNote(schemaResult) + preBuildNote + recovery + humanInputNote(humanInput, unblock) + cycleReplayer.replayPromptNote(state) + qaRetryNote(taskId, node),
         extraEnv: {
             ...(testScope ? { AFFECTED_SERVICES: testScope.services.join(',') } : {}),
@@ -5333,7 +5388,8 @@ async function dispatchTicketReserved(ticket) {
             ...fresh,
             status: 'session_limit',
             session_interrupted: true,
-            interrupted_node: node,
+            // PRI-354: no segmento, o nó interrompido é o que o state mostra (implement, se o plan concluiu).
+            interrupted_node: lease?.chain && fresh.node ? fresh.node : node,
             interrupted_at: at,
             updated_at: at,
         });
