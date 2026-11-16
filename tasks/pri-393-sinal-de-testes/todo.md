@@ -41,8 +41,8 @@ Estática: `npm run check`. Toda tarefa começa pelo teste que falha.
 
 ### Checkpoint 1
 
-- [ ] `npm test` verde no Mac; job `Tests` verde nas duas versões; job `static` verde.
-- [ ] PR 1 em draft com a tabela de evidência (AC-01, AC-02, AC-03, AC-05).
+- [x] `npm test` verde no Mac; job `Tests` verde nas duas versões; job `static` verde. Em 16/11, PR #177: `Node 22`, `Node 24`, `Static checks` e `processo-check` passaram.
+- [x] PR 1 em draft com a tabela de evidência (AC-01, AC-02, AC-03, AC-05): #177.
 - [ ] Richard revisa antes da fase 2.
 
 ## Fase 2 — Checkout intocado (PR 2)
