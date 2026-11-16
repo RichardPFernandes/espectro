@@ -6,7 +6,7 @@
 
 | ID | Fatia | Dias (1ª fatia) | Nível | AUTORIZO | Depende de | Gatilho | Status | Issue no Linear |
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
-| F6.1 | Prefixo e cache por nó: medir `cache_read` do primeiro turno e decidir se ataca | 2 | Leve | Não | F1.5 | Medido em 16/11: 95 a 98 % lido do cache, primeiro turno frio só no plan. Recomendação: não atacar | não iniciada | sem issue |
+| F6.1 | (removida em 2026-11-16: medido, cache não é alavanca) Prefixo e cache por nó: medir `cache_read` do primeiro turno e decidir se ataca | 2 | Leve | Não | F1.5 | Medido em 16/11: 95 a 98 % lido do cache, primeiro turno frio só no plan. Decisão: não atacar | removida | sem issue |
 | F6.2 | Pular ou enxugar nós por classe | 5 | Alto ao ligar | Sim | F5.2 | Classe confiável depois da F5.2; D1 = dinheiro | não iniciada | sem issue |
 | F6.3 | `--follow` no launcher | 2 | Alto | Sim | F1.2 | D1 = tempo | não iniciada | sem issue |
 | F6.4 | Piloto da cadeia plan+implement, ou remoção | 2 | Alto | Sim | F2.3 | Validade: fim da Fase 4. Sem piloto até lá, remove | não iniciada | sem issue |

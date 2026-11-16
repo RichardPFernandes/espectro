@@ -85,7 +85,9 @@ Status do Redmine que o sistema mexe:
 Procedimento de desenvolvimento da plataforma, não de operação do consumidor. Rode
 em checkout/floor descartável da revisão exata, com dependências já preparadas
 pelos locks de cada pacote. Não use o consumidor ativo como fixture. O ambiente
-de referência é Node 20.20.2/npm 10.8.2. Registre as versões efetivamente
+de referência é Node 24 (`.nvmrc`); o mínimo é Node 22 (`engines.node` do
+`package.json` da raiz), e o harness recusa versão mais antiga com exit 2,
+dizendo a exigida. Registre as versões efetivamente
 executadas, HEAD e diff: testes de árvore modificada não certificam o commit base
 sozinho.
 
@@ -185,7 +187,7 @@ find memory/runs .claude/worktrees -path '*/memory/runs/*/state.json' -not -path
 ```
 
 Atenção ao ler essa lista: os worktrees podem conter **cópias antigas** de runs de outros
-tickets (ex: `43499-...` dentro de `.claude/worktrees/43539/`). Para despachar, o watcher só
+tickets (ex: `<outro-ticket>-...` dentro de `.claude/worktrees/<ticket>/`). Para despachar, o watcher só
 considera, no worktree `.claude/worktrees/<ticket>/`, as pastas que começam com `<ticket>-`
 (`findActiveTask`). Ignore as demais ao diagnosticar um ticket.
 
@@ -493,7 +495,7 @@ Redmine para refletir o `state.json`, não o contrário.
 o `/commit` terminou, mas a transição para Ag Merge não aconteceu. Causas documentadas em
 `.claude/commands/commit.md` passo 7:
 - PR **não** abriu (credenciais Bitbucket ausentes) → transição pulada de propósito.
-- Redmine devolveu **422** exigindo campo customizado (achado no ticket #43425: "Necessita Lib.
+- Redmine devolveu **422** exigindo campo customizado (achado em um ticket: "Necessita Lib.
   Plano", id 7).
 - MCP do Redmine indisponível na sessão.
 
@@ -798,7 +800,7 @@ Passos:
 
 ## Autorização humana (ação privilegiada, SQL governado, devolução ao QA)
 
-Caso que originou (#42359): o `/implement` concluiu que a Recusa QA era do **banco** (check
+Caso que originou (um ticket do consumidor): o `/implement` concluiu que a Recusa QA era do **banco** (check
 constraint sem `SERVICO_ADICIONAL`; o SQL já estava versionado) e só podia parar em `blocked`
 com o motivo em texto. Agora o agente registra um **pedido estruturado** e um **aprovador
 cadastrado** decide no dashboard, escolhendo o banco.
@@ -894,10 +896,47 @@ usuário do macOS**, ou os agentes num sandbox sem acesso a `~/.config/prisma` e
 
 ---
 
+## Sonda de fumaça da CLI (antes de atualizar a CLI do watcher)
+
+O despacho usa `claude -p` e depende de três coisas que a CLI carrega do projeto: os comandos
+customizados (`.claude/commands/*.md`), os hooks (`.claude/settings.json`) e o `CLAUDE.md`. A
+documentação da CLI diz que o modo `--bare` não descobre nenhum deles e que ele "will become the
+default for `-p` in a future release" (<https://code.claude.com/docs/en/headless>, seção "Start
+faster with bare mode", lida em 16/11/2026). Se o padrão mudar, o despacho quebra sem erro.
+
+**Quando rodar:** a cada versão nova da CLI, na máquina do watcher, ANTES de trocar a CLI que o
+watcher usa. Só com o «sim» do Richard: são duas chamadas reais e curtas na conta da CLI. O projeto
+é sintético, em diretório temporário apagado ao final. Não toca watcher, estado nem consumidor.
+
+A sonda remove as variáveis `CLAUDE*` do ambiente do filho, então a CLI usa `~/.claude` e a conta
+padrão. A sessão das duas chamadas fica gravada em `~/.claude/projects` (onde as outras sondas do
+repositório leem os transcritos), mesmo com o diretório temporário apagado.
+
+```bash
+node "$PRISMA_ROOT/scripts/probes/cli-smoke-probe.js" --claude-bin <caminho da CLI nova>
+echo "exit=$?"   # sem --claude-bin usa CLI_SMOKE_CLAUDE_BIN ou `claude` do PATH
+```
+
+**Como ler:** uma linha por item (comando customizado, hook de projeto, CLAUDE.md) mais a versão
+da CLI, e o mesmo em JSON. O comando e o hook são medidos por marcador; o item do CLAUDE.md é
+inferido da resposta do modelo (ele diz a palavra do projeto ou `AUSENTE`).
+
+| Exit | Significado | O que fazer |
+| -- | -- | -- |
+| 0 | Os três CARREGADO e versão lida | Pode atualizar a CLI do watcher |
+| 2 | Algum NÃO CARREGADO | NÃO atualize a CLI do watcher. Mantenha a versão atual e abra uma fatia para fixar o modo explicitamente no despacho, lendo na página acima como a versão nova carrega cada item |
+| 3 | Algum DESCONHECIDO ou versão não lida (CLI ausente, autenticação, timeout, saída vazia, erro) | Não é aprovação. Resolva o motivo impresso e rode de novo. Erro de autenticação com login válido pode ser o próprio sintoma da mudança: segundo a mesma página, o modo bare não lê credencial OAuth nem o keychain. Nesse caso trate como exit 2 |
+| 1 | Argumento inválido ou exceção da sonda | Não mediu nada. Confira o uso com `--help` |
+
+A página não documenta, na leitura acima, uma flag que desligue o `--bare`; por isso este runbook
+não indica qual flag usar para fixar o modo.
+
+---
+
 ## Comandos úteis de diagnóstico
 
-Todos da raiz do consumidor, com PRISMA_ROOT explícito. Substitua `<ticket>` (ex: `43670`) e `<task-id>` (ex:
-`43670-rastreabilidade-spec`).
+Todos da raiz do consumidor, com PRISMA_ROOT explícito. Substitua `<ticket>` (ex: `12345`) e `<task-id>` (ex:
+`12345-rastreabilidade-spec`).
 
 ```bash
 # --- Watcher / laço ---
