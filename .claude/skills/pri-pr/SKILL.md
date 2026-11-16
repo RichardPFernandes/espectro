@@ -9,7 +9,8 @@ argument-hint: "PRI-NNN"
 
 Último passo do fluxo de desenvolvimento. Exige a árvore limpa e
 `~/Workspace/prisma-evidence/<issue>/<sha do HEAD>/check.json` com a revisão PASS.
-Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes.
+Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
+`.claude/hooks/pri-fluxo.mjs` nega o `gh pr create`).
 
 1. **Conferir:**
 
@@ -32,7 +33,9 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes.
    - **Evidência:** uma linha por AC, com o resultado (PASS, FAIL ou UNKNOWN) e a prova.
      A prova de testes é o run da CI no SHA final (link); o pré-voo local entra só
      como apoio. A revisão independente entra como linha própria, com o veredito.
-   - **Alto:** deixe as seções `## Rollback` e `## Readback` para o `/pri-autorizo`.
+   - **Alto:** antes de criar o PR, rode a parte "Pedido" do `/pri-autorizo` e cite a
+     SPEC (`tasks/<pasta>/SPEC.md`). Sem `## Rollback`, `## Readback` e a SPEC citada,
+     o `processo-check` falha.
    - **Fica ligado?** Comportamento novo nasce atrás de flag desligada. Diga qual flag e
      qual o gatilho, ou "não se aplica" quando a mudança não tem comportamento de Run.
 4. **Criar o PR:**
