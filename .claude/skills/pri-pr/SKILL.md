@@ -15,7 +15,7 @@ argument-hint: "PRI-NNN"
    ```bash
    git fetch -q origin && git status --porcelain
    git diff -M --name-status --diff-filter=AR origin/main...HEAD
-   git diff -M --shortstat origin/main...HEAD
+   git diff -M --shortstat origin/main...HEAD -- . ':!**/package-lock.json' ':!**/*.snap' ':!**/__snapshots__/**'
    ```
 
    - Nenhum arquivo novo ou renomeado pode casar com `evidence*.md`,

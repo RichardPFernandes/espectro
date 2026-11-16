@@ -35,7 +35,7 @@ for pkg in scripts dashboard; do
   echo "$pkg exit=$?"
 done
 grep -hE '^# (tests|pass|fail)' "$EV"/*.tap; grep -h '^not ok' "$EV"/*.tap
-npm --prefix scripts run check:js && npm --prefix scripts run arch:check
+npm --prefix scripts run check:js && npm --prefix scripts run arch:check; echo "checks exit=$?"
 ```
 
 - Uma worktree nova não tem `node_modules`. Sem o `npm ci`, a suíte falha e a
