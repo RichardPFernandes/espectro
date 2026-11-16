@@ -24,17 +24,17 @@ Plano: `tasks/pri-374/plan.md`. Spec: `tasks/pri-374/SPEC.md` (opção A).
 **Descrição:** teste no padrão de `model-routing.test.js:119`: snapshot com hash coerente cuja policy tem `subagent_roles.reviewer.effort` mapeado para `ultra` → `resolveRoute` devolve `[false, 'CONFIG_UNVERIFIABLE', 'snapshot_policy_invalid']`, sem exceção.
 
 **Critérios de aceite:**
-- [ ] O teste novo passa com T1 e falha sem ele (conferido revertendo T1 localmente).
+- [x] O teste novo passa com T1 e falha sem ele (conferido revertendo T1 localmente).
 
 **Verificação:**
-- [ ] `node --test scripts/lib/model-routing.test.js`
+- [x] `node --test scripts/lib/model-routing.test.js`
 
 **Dependências:** T1.
 **Arquivos:** `scripts/lib/model-routing.test.js`.
 **Tamanho:** XS.
 
 ## Checkpoint 1
-- [ ] `node --test scripts/lib/model-routing-policy-roles.test.js scripts/lib/model-routing.test.js scripts/lib/model-routing-decomposed.test.js` verde.
+- [x] `node --test scripts/lib/model-routing-policy-roles.test.js scripts/lib/model-routing.test.js scripts/lib/model-routing-decomposed.test.js` verde.
 
 ## T3: suíte, revisão G3, PR e Linear
 
