@@ -1,0 +1,31 @@
+/* Fontes locais do dashboard (PRI-390). Origem, versão e sha256 em README.md; licença OFL 1.1.
+   Mesmo recorte que o Google Fonts entregava: Inter 400–700 e JetBrains Mono 400–600, sem itálico
+   (o itálico continua sintetizado pelo navegador, como antes). */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('InterVariable.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('JetBrainsMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('JetBrainsMono-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('JetBrainsMono-SemiBold.woff2') format('woff2');
+}
