@@ -4,6 +4,9 @@
   "private": true,
   "description": "Dashboard local de observabilidade do watcher (scripts/readmine-watcher.js) com canal humano→agente",
   "main": "server.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",

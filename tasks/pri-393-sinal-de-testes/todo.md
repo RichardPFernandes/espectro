@@ -21,7 +21,10 @@ Estática: `npm run check`. Toda tarefa começa pelo teste que falha.
   - Arquivos: `scripts/validate-handoff.test.js`, `harness/test-exclusions.json`
   - Depende de: nada. Ler antes a regra de `pre-done` sobre caminho temporário.
 
-- [ ] **T3: versão de Node declarada e conferida (AC-02)** · M
+- [x] **T3: versão de Node declarada e conferida (AC-02)** · M
+  - Feita em 16/11: vermelho (3 testes novos em `harness/run-tests.test.js`) e verde (15/15 em Node 24.22.1 e 22.23.2); `npm test` no Mac, Node 24.22.1: 2.456 + 615 testes, 0 falhas; `npm run check`, `lint:src` e `check:js` do dashboard com exit 0. Em Node 20.20.2, `npm test` sai com 2: "Node 20.20.2 não serve: a suíte exige Node >=22".
+  - Mínimo é `>=22` (a matriz da CI mantém o 22); o `.nvmrc` aponta para o 24. O harness só lê a forma `>=X[.Y[.Z]]`; outra faixa em `engines.node` é erro.
+  - Fora da lista de arquivos: `harness/recipe.js` faz a mesma conferência (sem ela o `npm test` sairia com 1, não 2) e os dois `package-lock.json` ganharam o `engines` que o npm grava.
   - Aceite: `.nvmrc` (24) e `engines.node` nos três `package.json`; o harness recusa Node abaixo do mínimo com exit 2 e mensagem que diz a versão exigida; README e runbook citam a mesma versão.
   - Verificar: teste novo em `harness/run-tests.test.js`; `nvm use 20 && npm test` sai com 2.
   - Arquivos: `.nvmrc`, `package.json`, `scripts/package.json`, `dashboard/package.json`, `harness/run-tests.js`, `README.md`, `docs/runbook.md`

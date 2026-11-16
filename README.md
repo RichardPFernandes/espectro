@@ -170,8 +170,9 @@ São dois pacotes Node independentes, cada um com manifest e lock próprios. O
 
 ## Primeiros passos
 
-**Requisitos:** Node 22 ou 24 (matriz da CI; a extração original foi verificada
-com Node 20.20.2/npm 10.8.2), npm e Git.
+**Requisitos:** Node 22 ou mais novo (`engines.node`; a CI roda 22 e 24), npm e
+Git. O `.nvmrc` aponta para o Node 24: `nvm use` na raiz escolhe a versão. Com
+Node mais antigo, `npm test` recusa com exit 2 e diz a versão exigida.
 
 1. Instale as dependências travadas em cada pacote:
 

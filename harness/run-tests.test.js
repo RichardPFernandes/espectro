@@ -5,7 +5,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
-const { resolveRoots, childEnv, SUITES, findTestFiles, listTestFiles, readExclusions, discover } = require('./run-tests');
+const { resolveRoots, childEnv, SUITES, findTestFiles, listTestFiles, readExclusions, discover, requiredNode, assertNodeVersion } = require('./run-tests');
 const root = path.resolve(__dirname, '..');
 const ASSETS = ['.claude/spec-hash-config.json', '.claude/config-contract.json', 'scripts/fixtures/ticket-example.json'];
 
@@ -146,6 +146,55 @@ test('receita: validate-handoff.test.js roda na suíte scripts e não usa caminh
     assert.equal(readExclusions().has(rel), false, `${rel} ainda está em harness/test-exclusions.json`);
     assert.ok(discover(root, 'scripts').files.includes(rel), `${rel} não foi descoberto para a suíte scripts`);
     assert.doesNotMatch(fs.readFileSync(path.join(root, rel), 'utf8'), /['"`]\/workspace['"`/]/, 'o teste ainda cria diretório em /workspace');
+});
+
+test('versão de Node: o mínimo sai de engines.node da raiz; abaixo dele é recusado com a versão exigida', () => {
+    assert.equal(requiredNode(), JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).engines.node);
+    for (const ok of ['22.0.0', '22.23.2', '24.22.1', '26.0.0']) assert.doesNotThrow(() => assertNodeVersion(ok, '>=22'));
+    assert.doesNotThrow(() => assertNodeVersion('22.12.0', '>=22.12'));
+    for (const old of ['20.20.2', '18.19.1', '21.99.99']) {
+        assert.throws(() => assertNodeVersion(old, '>=22'), new RegExp(`Node ${old.replaceAll('.', '\\.')}.*exige Node >=22`));
+    }
+    assert.throws(() => assertNodeVersion('22.11.9', '>=22.12'), /exige Node >=22\.12/);
+    // Faixa que o harness não sabe ler não vira "qualquer versão serve".
+    for (const range of [undefined, '', '^22', '22 || 24', '>=22 <25']) {
+        assert.throws(() => assertNodeVersion('24.22.1', range), /engines\.node/);
+    }
+});
+
+test('versão de Node: runner e receita recusam antes de rodar teste, com exit 2 e a versão exigida', t => {
+    // Cópia do harness ao lado de um package.json que exige um Node que não existe:
+    // prova o caminho real (leitura de engines, mensagem, exit) sem trocar de Node.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pri393-node-'));
+    t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(tmp, 'harness'));
+    for (const name of ['run-tests.js', 'recipe.js']) fs.copyFileSync(path.join(__dirname, name), path.join(tmp, 'harness', name));
+    fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ engines: { node: '>=999' } }));
+    for (const args of [['run-tests.js', 'scripts'], ['recipe.js']]) {
+        const r = spawnSync(process.execPath, [path.join(tmp, 'harness', args[0]), ...args.slice(1)], {
+            cwd: tmp, encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH, HOME: tmp, TMPDIR: tmp },
+        });
+        assert.equal(r.status, 2, `${args[0]}: ${r.stderr}`);
+        assert.match(r.stderr, new RegExp(`Node ${process.versions.node.replaceAll('.', '\\.')}.*exige Node >=999`), args[0]);
+        assert.doesNotMatch(r.stdout, /TAP version/, args[0]);
+    }
+});
+
+test('versão de Node: .nvmrc, os três package.json, README e runbook dizem a mesma coisa', () => {
+    const required = requiredNode();
+    const min = Number(/^>=(\d+)/.exec(required)[1]);
+    for (const rel of ['scripts/package.json', 'dashboard/package.json']) {
+        assert.equal(JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8')).engines?.node, required, rel);
+    }
+    const nvmrc = fs.readFileSync(path.join(root, '.nvmrc'), 'utf8').trim();
+    assert.match(nvmrc, /^\d+$/, '.nvmrc declara só o major');
+    assert.doesNotThrow(() => assertNodeVersion(`${nvmrc}.0.0`, required), '.nvmrc fora de engines.node');
+    for (const rel of ['README.md', 'docs/runbook.md']) {
+        const cited = [...fs.readFileSync(path.join(root, rel), 'utf8').matchAll(/\bNode (\d+)/g)].map(m => Number(m[1]));
+        assert.ok(cited.includes(min), `${rel} não cita o mínimo, Node ${min}`);
+        assert.ok(cited.includes(Number(nvmrc)), `${rel} não cita o Node do .nvmrc, ${nvmrc}`);
+        assert.deepStrictEqual(cited.filter(major => major < min), [], `${rel} cita Node abaixo do mínimo`);
+    }
 });
 
 test('exclusões: entrada sem motivo é recusada', t => {

@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { requiredNode, assertNodeVersion } = require('./run-tests');
 
 const ROOT = path.resolve(__dirname, '..');
 const PACKAGES = ['scripts', 'dashboard'];
@@ -39,6 +40,15 @@ function missingInstalls(root = ROOT, exists = fs.existsSync) {
 }
 
 function main() {
+    // Mesma conferência do runner, feita uma vez aqui: sem ela, o `npm test` em Node
+    // antigo sairia com 1 ("falhou: scripts, dashboard") em vez de 2 com o motivo.
+    try {
+        assertNodeVersion(process.versions.node, requiredNode());
+    } catch (err) {
+        console.error(`[recipe] ${err.message}`);
+        process.exitCode = 2;
+        return;
+    }
     const missing = missingInstalls();
     if (missing.length) {
         for (const pkg of missing) console.error(`[recipe] ${pkg}/ sem node_modules. Rode: npm ci --ignore-scripts --no-audit --no-fund --prefix ${pkg}`);
