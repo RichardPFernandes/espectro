@@ -32,7 +32,7 @@ validateDecompositionSections (model-routing-policy.js:202-209)
 - [x] Testes focados verdes; o teste de T1 falha sem a mudança (vermelho registrado).
 
 ### Fase 2: entrega
-- [ ] T3: suíte oficial, revisão G3, PR em draft e Estado da issue (AC-02). Sem código novo.
+- [x] T3: suíte oficial, revisão G3, PR em draft e Estado da issue (AC-02). Sem código novo.
 
 ### Checkpoint 2
 - [ ] AC-01 a AC-03 com evidência no PR; aceite do Richard.

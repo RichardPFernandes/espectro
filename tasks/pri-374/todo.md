@@ -41,14 +41,14 @@ Plano: `tasks/pri-374/plan.md`. Spec: `tasks/pri-374/SPEC.md` (opção A).
 **Descrição:** fechar a entrega pelo Acordo v2 (Médio).
 
 **Critérios de aceite:**
-- [ ] Suíte oficial verde (skill `prisma-tests`: `scripts/` e `dashboard/` via `harness/run-tests.js`), incluindo os goldens ON/OFF e `routing-pilot-policy.test.js` (AC-03).
-- [ ] Uma revisão G3 por subagente Claude em contexto limpo, sem achado bloqueante aberto.
-- [ ] PR em draft com "Refs PRI-374", rótulo `processo:medio` e seção Evidência preenchida (vermelho → verde, saída da suíte, versão do commit).
-- [ ] Estado da issue atualizado, com a linha da AC-02 (parte 2 da pré-condição; parte 1: PRI-336).
+- [x] Suíte oficial verde (skill `prisma-tests`: `scripts/` e `dashboard/` via `harness/run-tests.js`), incluindo os goldens ON/OFF e `routing-pilot-policy.test.js` (AC-03).
+- [x] Uma revisão G3 por subagente Claude em contexto limpo, sem achado bloqueante aberto.
+- [x] PR em draft com "Refs PRI-374", rótulo `processo:medio` e seção Evidência preenchida (vermelho → verde, saída da suíte, versão do commit).
+- [x] Estado da issue atualizado, com a linha da AC-02 (parte 2 da pré-condição; parte 1: PRI-336).
 
 **Verificação:**
-- [ ] O check `processo-check` passa no PR.
-- [ ] Leitura de volta da issue no Linear.
+- [x] O check `processo-check` passa no PR.
+- [x] Leitura de volta da issue no Linear.
 
 **Dependências:** T1, T2.
 **Arquivos:** nenhum de código.
