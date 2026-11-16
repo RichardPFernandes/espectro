@@ -124,6 +124,17 @@ test('passo 1: snapshot com hash coerente mas policy não roteável → snapshot
     assert.deepStrictEqual([r.ok, r.cause, r.detail], [false, 'CONFIG_UNVERIFIABLE', 'snapshot_policy_invalid']);
 });
 
+// PRI-374 (AC-01): a regra nova do carregador vale para snapshot já gravado. Hash coerente, mas o
+// esforço do papel mapeia para fora de CLI_EFFORTS → recusado ao retomar, sem exceção.
+test('passo 1: snapshot com esforço de subagent_roles fora de CLI_EFFORTS → snapshot_policy_invalid (PRI-374)', () => {
+    const { sha256: _old, ...body } = mr.buildRoutingSnapshot(loaded());
+    body.policy.effort_map = { ...body.policy.effort_map, turbo: 'ultra' };
+    body.policy.subagent_roles = { reviewer: { model_id: 'm-t3', effort: 'turbo' } };
+    const snap = { ...body, sha256: mr.canonicalSha256(body) };
+    const r = mr.resolveRoute({ snapshot: snap, node: 'implement', signals: signalsOf(C1_GROUP), provider: { state: 'ACTIVE' }, capabilities: VERIFIED });
+    assert.deepStrictEqual([r.ok, r.result, r.cause, r.detail], [false, 'NOT_STARTED', 'CONFIG_UNVERIFIABLE', 'snapshot_policy_invalid']);
+});
+
 // ── Passo 2: provider ──────────────────────────────────────────────────────────
 
 for (const state of ['DISABLED', 'DRAINING', 'UNKNOWN', undefined]) {
