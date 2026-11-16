@@ -62,5 +62,8 @@ O que nunca muda, em qualquer nível:
 - Issue não se apaga: cancela ou arquiva. Antes de qualquer limpeza, conferir
   se há filhas abertas.
 
+O que fazer a seguir está em `ROADMAP.md` e `roadmap/` (fases, fatias com ID
+estável, decisões). É proposta até o Richard aprovar.
+
 Este arquivo é instrução nova do scaffold. Regras e configuração de cada
 consumidor continuam no respectivo projeto; nenhum estado vivo é definido aqui.
