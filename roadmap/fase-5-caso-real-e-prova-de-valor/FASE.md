@@ -18,10 +18,10 @@ uma linha de base madura.
 
 ## Fatias
 
-| ID | Fatia e demonstração | Dias | Nível | AUTORIZO | Depende de | Premissa / decisão | Status |
-| -- | -- | -- | -- | -- | -- | -- | -- |
-| F5.1 | Reconciliar o classificador e rodar em sombra para trabalho Java (PRI-318) | 4 | Médio | Não | F1.5 | Reavaliar antes: se a F4.2 já entregou o ganho, a frente encolhe | não iniciada |
-| F5.2 | Recalibrar e ligar o roteamento no consumidor | 4 | Alto | Sim | F5.1 | Um piloto por vez | não iniciada |
-| F5.3 | Análise de retries: quantas runs a terceira tentativa salva; se o plan-score prevê retrabalho | 2 | Leve (Alto se mudar limite) | Só se mudar limite | F1.5 | — | não iniciada |
-| F5.4 | Método e harness da prova de valor: mesmos tickets de ouro no Espectro e no agente direto (PRI-81) | 5 | Médio | Não | F3.3, F1.5 | Desenho é hipótese | não iniciada |
-| F5.5 | Rodar e publicar o quadro: custo, tempo humano, resultado | 3 | Leve | Não | F5.4 | — | não iniciada |
+| ID | Fatia e demonstração | Dias | Nível | AUTORIZO | Depende de | Premissa / decisão | Status | Issue no Linear |
+| -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| F5.1 | Reconciliar o classificador e rodar em sombra para trabalho Java (PRI-318) | 4 | Médio | Não | F1.5 | Reavaliar antes: se a F4.2 já entregou o ganho, a frente encolhe | não iniciada | PRI-318 |
+| F5.2 | Recalibrar e ligar o roteamento no consumidor | 4 | Alto | Sim | F5.1 | Um piloto por vez | não iniciada | sem issue |
+| F5.3 | Análise de retries: quantas runs a terceira tentativa salva; se o plan-score prevê retrabalho | 2 | Leve (Alto se mudar limite) | Só se mudar limite | F1.5 | — | não iniciada | sem issue |
+| F5.4 | Método e harness da prova de valor: mesmos tickets de ouro no Espectro e no agente direto (PRI-81) | 5 | Médio | Não | F3.3, F1.5 | Desenho é hipótese | não iniciada | PRI-81, PRI-76 |
+| F5.5 | Rodar e publicar o quadro: custo, tempo humano, resultado | 3 | Leve | Não | F5.4 | — | não iniciada | sem issue |

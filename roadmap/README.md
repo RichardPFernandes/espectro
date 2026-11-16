@@ -1,8 +1,8 @@
 # Roadmap de entrega do Espectro (SDD)
 
 > **Status:** PROPOSTA de 15/11/2026, aguardando aprovação do Richard. Nada implementado.
-> Base: estudo de `main` em `a4e3899`. Documento completo, com riscos e rastreabilidade
-> dos candidatos C01–C35: [Espectro — Roadmap de entrega](https://claude.ai/artifact/4aeBzR9oNB9VQqD7bG8r6R).
+> Base: estudo de `main` em `a4e3899`. Diagnóstico, evidências, riscos e rastreabilidade dos
+> candidatos C01–C35: [`BASE.md`](BASE.md).
 
 O Espectro mede bem e ainda não reduz nada: o gargalo é fechar o que já está construído.
 O `ROADMAP.md` da raiz e este diretório organizam o trabalho em fases e fatias, com uma spec por fatia, escrita só
@@ -14,8 +14,10 @@ quando a fatia vai começar.
 ROADMAP.md             mapa raso: fases, ordem, status
 roadmap/
 ├── README.md          este arquivo: estrutura e regras
-├── DECISOES.md        D1–D10: premissa assumida, alternativa, efeito na ordem
+├── DECISOES.md        D1–D11: premissa assumida, alternativa, efeito na ordem
 ├── LINEAR.md          reconciliação com as issues abertas: vínculos e conflitos
+├── BASE.md            por que o roadmap é este: diagnóstico, evidências, riscos
+├── ACOMPANHAMENTO.md  métricas semanais, rito e série
 ├── fase-N-<nome>/
 │   └── FASE.md        objetivo, critério de saída, tabela de fatias (fonte única das fatias)
 └── arquivo/           fases fechadas, movidas inteiras
@@ -40,9 +42,13 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
    PR. A pasta da fatia em `tasks/` pode ser apagada depois do merge.
 7. **Gate por fase.** Uma fase só abre quando o critério de saída da anterior está marcado no
    `FASE.md` dela, ou quando o Richard registra a exceção em `DECISOES.md`.
-8. **Linear continua sendo o gestor do trabalho.** Status operacional (em andamento, bloqueio)
-   mora na issue. Aqui fica só o estado da fatia: `não iniciada`, `em spec`, `em andamento`,
-   `ligada`, `concluída`, `removida`.
+8. **O Linear manda no status.** Em andamento, bloqueio e conclusão moram na issue. O
+   `FASE.md` guarda só o estado da fatia (`não iniciada`, `em spec`, `em andamento`, `ligada`,
+   `concluída`, `removida`) e é atualizado no PR que muda esse estado. Se os dois divergirem,
+   vale a issue e corrige-se o `FASE.md`.
+9. **`tasks/` antigo não muda.** `tasks/plan.md`, `tasks/todo.md` e as pastas `tasks/pri-*`
+   são de trabalhos anteriores e seguem como estão. Só as pastas `tasks/fN-M-<nome>/`
+   pertencem a este roadmap.
 
 ## O que vale para toda fatia
 
@@ -53,8 +59,9 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
 - Comportamento novo nasce atrás de flag desligada e entra no registro de flags (F1.1) no
   mesmo PR.
 - No máximo duas frentes por fase e um piloto de custo por vez.
-- Nunca: ligar flag no consumidor antes de F1.1, F1.2 e F1.3; afirmar ganho de custo sem a
-  linha de base (F1.5); copiar dado do consumidor para este repo ou para o Linear.
+- Nunca: ligar flag no consumidor corporativo antes de F1.1, F1.2 e F1.3 (o launcher do
+  piloto no próprio Espectro segue D11); afirmar ganho de custo sem a linha de base (F1.5);
+  copiar dado do consumidor para este repo ou para o Linear.
 
 ## Por que esta estrutura
 
