@@ -420,14 +420,19 @@ if (require.main === module) {
                 const operationalCause = require('./agent-exit-signals').operationalCause({ code, output: tail, stderr: tail });
                 roleCtx = { manifestPost, currentPlanVersion, operationalCause };
             }
+            // PRI-354: no segmento [plan, implement], erro depois de o implement começar não
+            // desfaz o plan; o Attempt do implement fecha (ou é revogado) logo abaixo.
+            const chain = require('./plan-implement-chain');
+            const planCode = arg.chain ? chain.planExitCode(arg, code, chain.readLeaseState(arg), { claim }) : code;
             require('./dom06-attempt').closeOnExit({
                 attemptFile: arg.dom06AttemptFile,
                 attemptId: arg.dom06AttemptId,
                 node: arg.node || (Array.isArray(arg.nodes) ? arg.nodes[0] : null),
-                code,
+                code: planCode,
                 claim,
                 ...roleCtx,
             });
+            if (arg.chain) chain.closeChainOnExit(arg, code, { claim });
         }
     } catch (e) {
         console.error('[recovery] falha liberando lease:', e.message);

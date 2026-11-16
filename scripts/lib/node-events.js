@@ -24,6 +24,7 @@
 const fs = require('fs');
 const path = require('path');
 const stateWriter = require('../state-writer');
+const chain = require('./plan-implement-chain');
 
 const GRAPH_PATH = path.join(__dirname, '..', '..', '.graph', 'graph.yaml');
 // Fallback se .graph/graph.yaml não puder ser lido — mesmos valores de hoje.
@@ -138,7 +139,9 @@ function recordNodeExit(lease, code, dir = lease?.dir) {
         if (!lease || !dir) return false;
         const state = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
         if (state.node_started_at && lease.startedAt && state.node_started_at !== lease.startedAt) return false;
-        const nodes = lease.nodes || (lease.node ? [lease.node] : []);
+        // PRI-354: segmento [plan, implement] entra só com os nós que de fato rodaram. Plan concluído e
+        // saída com erro: node_end do plan e node_error do implement (não do plan).
+        const nodes = chain.exitNodes(lease, state, code);
         if (!nodes.length) return false;
         const events = [];
         if (!lease.dir) {
@@ -149,7 +152,16 @@ function recordNodeExit(lease, code, dir = lease?.dir) {
                 });
             }
         }
-        events.push(...exitEvents({ nodes, state, code, retriesBefore: lease.retriesBefore || 0 }));
+        if (lease.chain && nodes.includes('implement')) {
+            events.push({
+                type: 'node_start', node: 'implement', agent: 'claude', ts: lease.startedAt,
+                detail: 'Implement no mesmo segmento do plan (WATCHER_PLAN_IMPLEMENT_CHAIN); início exato UNKNOWN, ts é o do segmento',
+            });
+            if (code !== 0) {
+                events.push({ type: 'node_end', node: 'plan', agent: 'claude', exit_code: 0, detail: 'Nó plan concluído (segmento plan+implement)' });
+            }
+        }
+        events.push(...exitEvents({ nodes: lease.chain && code !== 0 ? [nodes[nodes.length - 1]] : nodes, state, code, retriesBefore: chain.retriesBeforeFor(lease, nodes) }));
         return appendEvents(dir, events);
     } catch (e) {
         console.error(`[events] falha registrando saída do nó (${lease?.node || lease?.nodes}): ${e.message}`);
