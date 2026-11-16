@@ -7,6 +7,7 @@ const chokidar = require('chokidar');
 const { createCoordination, applyCoordinationDefault } = require('./coordination');
 const { createVersion } = require('./version');
 const { createOnboarding } = require('./onboarding');
+const { createObsidian } = require('./obsidian');
 const { createHoursBackfillJob } = require('./redmine-hours-backfill');
 const fs = require('fs');
 const os = require('os');
@@ -3441,6 +3442,8 @@ function createDashboard(options = {}) {
         redmineFetch: options.hoursBackfillFetch,
     });
     hoursBackfill.mount(app);
+    // Botão "Abrir no Obsidian" (PRI-373): só monta as rotas com PRISMA_OBSIDIAN=on.
+    createObsidian({ env: consumerEnv, prefsFile, prismaRoot, exportFn: options.obsidianExport }).mount(app);
     app.put('/api/watcher/prefs', (req, res) => {
         const body = req.body || {};
         const patch = {};

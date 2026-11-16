@@ -10,6 +10,16 @@ node scripts/obsidian-export.js --out ~/Vaults/espectro
 
 Depois, no Obsidian: **Abrir pasta como cofre** e escolha a pasta. Rode de novo para atualizar. O comando só escreve em pasta vazia ou em vault que ele mesmo gerou (marcador `.espectro-vault.json`), e recusa `--out` dentro do repositório. Notas editadas no vault são apagadas na próxima exportação.
 
+## Botão no dashboard
+
+Com `PRISMA_OBSIDIAN=on` no ambiente do dashboard (padrão: desligado, e valor fora de `on`/`off` conta como desligado), o pé do menu lateral ganha **Abrir no Obsidian**. Sem flag, nenhuma rota é montada e nada aparece.
+
+- **Sem vault ainda:** o botão vira **Criar vault e abrir no Obsidian**; o caminho que ele vai criar aparece ao passar o mouse (padrão `~/Vaults/espectro`). O clique roda o exportador e guarda a pasta em `dashboard/dashboard-prefs.json` (`obsidian_vault`, ignorado pelo git).
+- **Com vault:** abre `obsidian://open?path=<pasta>` no Obsidian. Só abre; não regera.
+- O dashboard não grava no vault: quem grava é o exportador, com as mesmas recusas de sempre (pasta alheia, dentro do repositório). O modo `PRISMA_DASHBOARD_READONLY=1` bloqueia a criação.
+- Só funciona na máquina onde o dashboard roda (`obsidian://` abre o app local).
+- Não verificado no app: se o Obsidian abre uma pasta que ainda não é um vault registrado, ou se pede para você escolher. Se pedir, use uma vez "Abrir pasta como cofre".
+
 ## Arquitetura das notas
 
 | Camada | Pasta / nota | Papel |
