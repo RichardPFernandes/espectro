@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Utilit\u00e1rios de opera\u00e7\u00e3o do orquestrador (readmine-watcher.js e scripts/lib) \u2014 n\u00e3o \u00e9 c\u00f3digo de produto",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -b --pretty false",
     "check:js": "tsc -p tsconfig.checkjs.json --pretty false --noEmit",
