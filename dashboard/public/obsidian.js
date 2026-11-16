@@ -1,5 +1,6 @@
 // Botão "Abrir no Obsidian" (PRI-373), no pé do rail (#navFoot). Só aparece com PRISMA_OBSIDIAN=on:
-// com a flag desligada GET /api/obsidian dá 404 e nada é desenhado. Sem vault, o botão mostra a pasta
+// com a flag desligada GET /api/obsidian dá 404 e nada é desenhado; no somente leitura da verificação
+// de UI vem 200 com enabled:false (PRI-390), que também esconde o botão. Sem vault, o botão mostra a pasta
 // que vai criar (via POST /api/obsidian/export) antes de gravar. Script clássico; usa api, esc, $, toast.
 (() => {
   let st = null, busy = false;
@@ -31,5 +32,5 @@
     }
   }
 
-  fetch('/api/obsidian').then(r => (r.ok ? r.json() : null)).then(s => { if (s) { st = s; row.hidden = false; paint(); } }).catch(() => {});
+  fetch('/api/obsidian').then(r => (r.ok ? r.json() : null)).then(s => { if (s && s.enabled !== false) { st = s; row.hidden = false; paint(); } }).catch(() => {});
 })();

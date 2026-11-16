@@ -962,6 +962,9 @@ function createDashboard(options = {}) {
         if (!readOnlyMode() || req.method !== 'GET') return next();
         if (req.path === '/api/claude/usage') return res.json({ ok: false, error: 'somente leitura', cached: false });
         if (req.path === '/api/fx') return res.json({ rate: null, source: 'somente leitura', date: null });
+        // PRI-390: a tela inicial não pode depender do 404 de flag desligada, e a verificação não lê
+        // vault nem prefs reais. Vale com PRISMA_OBSIDIAN ligada ou não.
+        if (req.path === '/api/obsidian') return res.json({ enabled: false, vault: null, ready: false, uri: null });
         if (req.path === '/api/version' && req.query.refresh) req.query = { ...req.query, refresh: undefined };
         next();
     });

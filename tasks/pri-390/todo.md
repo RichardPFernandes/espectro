@@ -3,7 +3,7 @@
 > Fonte: [SPEC](SPEC.md) e [plano](plan.md). TDD: o teste nasce falhando. Comando focado:
 > `node harness/run-tests.js dashboard <arquivo>.test.js`.
 
-- [ ] **T1: `/api/obsidian` neutra no modo de fixture** (AC-2)
+- [x] **T1: `/api/obsidian` neutra no modo de fixture** (AC-2) — feita: RED nos testes novos, verde depois; suíte do dashboard 569/569
   - Aceite: com `PRISMA_DASHBOARD_READONLY=1`, a resposta é 200 `{enabled:false, vault:null, ready:false, uri:null}` com `PRISMA_OBSIDIAN` `on` e `off`. Sem o modo, o comportamento é o de hoje (404 desligada; `state()` ligada). O botão fica escondido com `enabled:false` e aparece com o estado normal.
   - Verificar: `node harness/run-tests.js dashboard obsidian-api.test.js server.test.js`
   - Arquivos: `dashboard/server.js`, `dashboard/public/obsidian.js`, `dashboard/obsidian-api.test.js`
