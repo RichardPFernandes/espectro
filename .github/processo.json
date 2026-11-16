@@ -19,7 +19,7 @@
       "Rollback",
       "Readback"
     ],
-    "specPathPattern": "tasks/[^\\s)`]*SPEC[^\\s)`]*\\.md"
+    "specPathPattern": "tasks/[\\w./-]*SPEC[\\w./-]*\\.md"
   },
   "ignoredForLineCount": [
     "**/package-lock.json",

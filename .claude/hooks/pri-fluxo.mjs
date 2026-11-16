@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const REVISORES = /^(agent-skills:)?(code-reviewer|security-auditor|test-engineer)$/;
-const GRAFO = new Set(['plan', 'implement', 'implement-step', 'implement-integrate', 'review',
+export const GRAFO = new Set(['plan', 'implement', 'implement-step', 'implement-integrate', 'review',
     'test', 'verify', 'verify-ui', 'commit', 'fetch-ticket', 'init-project']);
 
 const git = (cwd, ...args) => {
@@ -46,6 +46,7 @@ export function prGate(input, env = process.env) {
 
 export function revisorSomenteLeitura(input) {
     if (!REVISORES.test(String(input.agent_type || ''))) return null;
+    if (!devRoot(input.cwd || process.cwd())) return null;
     return deny(`O revisor (${input.agent_type}) não edita arquivos: devolva os achados com arquivo:linha.`);
 }
 
@@ -55,11 +56,11 @@ export function grafoForaDoDev(input) {
     return { decision: 'block', reason: `/${input.command_name} é do grafo do consumidor e não vale no desenvolvimento do Prisma. Use os comandos /pri-* (CLAUDE.md, "Fluxo de desenvolvimento").` };
 }
 
-// `gh pr create` como comando (início de um segmento da primeira linha), não como
-// texto dentro de mensagem de commit ou heredoc.
+// `gh pr create` como comando: início de um segmento de qualquer linha, aceitando
+// `(`, variáveis de ambiente e `-R dono/repo`. Texto no meio de mensagem não conta.
+const PR_CREATE = /^\s*\(?\s*(?:\w+=\S+\s+)*gh\s+(?:-R\s+\S+\s+)?pr\s+create\b/;
 export function isPrCreate(command) {
-    const first = String(command || '').split('\n')[0];
-    return first.split(/&&|\|\||;|\|/).some((seg) => /^\s*gh\s+pr\s+create\b/.test(seg));
+    return String(command || '').split(/\n|&&|\|\||;|\|/).some((seg) => PR_CREATE.test(seg));
 }
 
 export function decide(input, env = process.env) {

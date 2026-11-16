@@ -136,4 +136,5 @@ test('alto sem Rollback, Readback e SPEC citada → FAIL; completo → OK', () =
     const body = `${BODY_OK}\nSPEC: [tasks/f1-2-teto/SPEC.md](tasks/f1-2-teto/SPEC.md)\n\n## Rollback\n- reverter o bump para a0\n\n## Readback\n- \`status\` mostra a flag ligada`;
     assert.equal(run({ labels: ['processo:alto'], body }).ok, true);
     assert.equal(run({ labels: ['processo:alto'], body: body.replace('- reverter o bump para a0', '') }).ok, false);
+    assert.equal(run({ labels: ['processo:alto'], body: body.replace(/tasks\/f1-2-teto\/SPEC\.md/g, 'tasks/<pasta>/SPEC.md') }).ok, false);
 });

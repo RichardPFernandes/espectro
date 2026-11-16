@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { decide } from './pri-fluxo.mjs';
+import { decide, isPrCreate, GRAFO } from './pri-fluxo.mjs';
 
 const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), 'pri-fluxo.mjs');
 const g = (cwd, ...a) => execFileSync('git', ['-C', cwd, ...a], { encoding: 'utf8' }).trim();
@@ -67,11 +67,14 @@ test('outros comandos Bash passam, inclusive texto que só cita gh pr create', (
 });
 
 test('revisor não escreve; agente principal e outros subagentes escrevem', () => {
-    const w = (agent_type) => ({ hook_event_name: 'PreToolUse', tool_name: 'Edit', agent_type, tool_input: { file_path: '/x' } });
+    const dev = repo();
+    const w = (agent_type) => ({ hook_event_name: 'PreToolUse', tool_name: 'Edit', cwd: dev, agent_type, tool_input: { file_path: '/x' } });
     for (const a of ['agent-skills:code-reviewer', 'code-reviewer', 'agent-skills:security-auditor', 'agent-skills:test-engineer']) {
         assert.equal(decide(w(a))?.hookSpecificOutput?.permissionDecision, 'deny', a);
     }
     for (const a of [undefined, 'general-purpose', 'test-writer']) assert.equal(decide(w(a)), null, String(a));
+    // Fora da sessão de dev (piloto do grafo neste repo), o revisor escreve.
+    assert.equal(decide({ ...w('agent-skills:test-engineer'), cwd: repo({ level: null }) }), null);
 });
 
 test('comando do grafo bloqueado só em sessão de dev; agent-skills e pri-* passam', () => {
@@ -87,4 +90,16 @@ test('CLI: lê stdin e devolve o bloqueio em JSON', () => {
     const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'UserPromptExpansion', cwd: repo(), command_name: 'review' }), encoding: 'utf8' });
     assert.equal(r.status, 0);
     assert.equal(JSON.parse(r.stdout).decision, 'block');
+});
+
+test('isPrCreate pega variações de comando', () => {
+    for (const c of ['git push\ngh pr create', 'FOO=1 gh pr create', 'gh -R a/b pr create', '(gh pr create)']) assert.equal(isPrCreate(c), true, c);
+});
+
+test('matcher do UserPromptExpansion em settings.json cobre exatamente o GRAFO', () => {
+    const settings = JSON.parse(fs.readFileSync(path.join(path.dirname(HOOK), '..', 'settings.json'), 'utf8'));
+    const re = new RegExp(settings.hooks.UserPromptExpansion[0].matcher);
+    const cmds = fs.readdirSync(path.join(path.dirname(HOOK), '..', 'commands')).map((f) => f.replace(/\.md$/, ''));
+    assert.deepEqual(cmds.filter((c) => re.test(c)).sort(), [...GRAFO].sort());
+    for (const c of ['agent-skills:plan', 'pri-plan']) assert.equal(re.test(c), false, c);
 });
