@@ -13,10 +13,22 @@
 12. In Review é a fila "Com o Richard": esperando decisão, aceite ou AUTORIZO dele, e nada mais. Limite de 3 itens. Fila cheia: não abra trabalho novo que vá precisar dele, e diga isso.
 13. Issue nova só nasce de fatia do roadmap, defeito ou pedido do Richard. Não crie issue de "Avaliar", "Planejar" ou "Design" por conta própria; ideia vira uma linha de comentário na issue da fatia em curso (exceção à regra 3).
 
+## Fluxo de desenvolvimento (agent-skills)
+
+O Prisma se desenvolve com as skills do plugin agent-skills (requisito: plugin `agent-skills` instalado), carregadas pelos comandos do repo em `.claude/skills/pri-*`, que trazem os ajustes do Acordo. Não use direto `/agent-skills:spec`, `:plan`, `:build` ou `:ship`: eles gravam na raiz, param para aprovação e abrem revisores extras. O grafo de `.claude/commands/` (`/plan`, `/implement`, `/review`, `/test`, `/verify`, `/commit`, `/fetch-ticket`) e os subagentes de `.claude/agents/` são templates da plataforma para o fluxo do consumidor, lidos pelo watcher, e não se usam aqui.
+
+`/pri-start PRI-NNN` → `/pri-spec` (Médio só se precisar; Alto sempre, aprovada pelo Richard) → `/pri-plan` → `/pri-build` → `/pri-check` → `/pri-pr` → (Alto) `/pri-autorizo` → AUTORIZO e bump → `/pri-autorizo PRI-NNN readback`.
+
+- Spec, plano e todo ficam em `tasks/fN-M-<nome>/` ou `tasks/pri-NNN/`. Nada de `SPEC.md` na raiz.
+- Médio segue sem parar para aprovar spec e plano (regra 8; D-a, 16/11/2026).
+- A revisão é sempre por subagente em contexto limpo (`agent-skills:code-reviewer`; no Leve, com `model: "sonnet"`, D-b, 16/11/2026).
+- Testes na raiz: `npm run test:changed` durante o build, `npm test` (receita oficial) e `npm run check` no `/pri-check`. Nunca `npm test` dentro de `scripts/` ou `dashboard/`. A prova de testes no PR é o run da CI.
+- Skill nova em `.claude/skills/` precisa de `disable-model-invocation: true`, e nenhum agente do fluxo de desenvolvimento vai para `.claude/agents/`: o watcher abre o consumidor com `--add-dir` deste repo, e o Claude Code carrega `skills`, `commands` e `agents` de diretórios adicionados.
+
 ## Onde está o resto
 
 - Fonte: [Prisma — Acordo de desenvolvimento (v2)](https://linear.app/prisma-app/document/prisma-acordo-de-desenvolvimento-62a84790f75a).
 - PR: use `.github/pull_request_template.md`. O check `processo-check` exige um rótulo `processo:leve|medio|alto` e a seção Evidência preenchida; no leve, também barra SPEC/handoff/evidence novo e mais de 400 linhas.
-- Aviso cedo local: grave o nível da sessão em `.prisma/level` (`leve`, `medio` ou `alto`; o diretório é ignorado pelo git). Com `leve`, o hook `.claude/hooks/processo-level.mjs` nega criar SPEC, handoff ou evidence. O hook é contornável; a barreira real é o CI.
+- Aviso cedo local: grave o nível da sessão em `.prisma/level` (`leve`, `medio` ou `alto`; o diretório é ignorado pelo git). Com `leve`, o hook `.claude/hooks/processo-level.mjs` nega criar SPEC, handoff ou evidence. Na mesma condição, `.claude/hooks/pri-fluxo.mjs` nega `gh pr create` sem o `check.json` do `/pri-check` no HEAD, nega escrita aos subagentes revisores e bloqueia os comandos do grafo. Os hooks são contornáveis; a barreira real é o CI, que no alto também exige Rollback, Readback e a SPEC citada.
 - Roadmap de entrega (proposta até o Richard aprovar): [`ROADMAP.md`](ROADMAP.md) e [`roadmap/`](roadmap/README.md). Trabalho de fatia cita o ID (`F1.2`) na issue, na branch e no PR; fase só abre com o critério de saída da anterior.
 - Instruções do repositório (arquitetura, separação plataforma/consumidor, gates): @AGENTS.md
