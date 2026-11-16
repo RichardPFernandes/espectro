@@ -15,13 +15,13 @@
 
 - [x] **Checagem A:** `(cd dashboard && npm test)` verde (573/573).
 
-- [ ] **T3: Teste do fixture offline** (AC-1, AC-3) — depende de T1 e T2
+- [x] **T3: Teste do fixture offline** (AC-1, AC-3) — feita: 4 testes novos (varredura com autoteste das linhas do `main`, varredura de disco, 200 de todo recurso a partir de `/`, `/api/obsidian` neutra com flag on/off/ausente). Sensibilidade provada: com o `index.html` do `main`, a varredura reprova as 3 origens do Google; com um `<link>` local inexistente, o teste dos 200 reprova com 404
   - Já existe: a T2 criou o arquivo com os testes das fontes e o registrou no `npm test`. A T3 acrescenta a varredura genérica (a), os 200 de todo recurso local (b) e o `/api/obsidian` neutro (c).
   - Aceite: `ui-fixture-offline.test.js` reprova uma origem externa em HTML ou CSS, exige 200 em todo recurso local e `font/woff2` nas fontes, e confere `/api/obsidian` neutra. Está registrado no `npm test`. Falha com o `index.html` do `main`.
   - Verificar: `node harness/run-tests.js dashboard ui-fixture-offline.test.js`; para ver a falha, apontar a parte (a) do teste para o `index.html` do `main` (`git show main:dashboard/public/index.html > <scratchpad>/index.html`), sem stash.
   - Arquivos: `dashboard/ui-fixture-offline.test.js`, `dashboard/package.json`
 
-- [ ] **Checagem B:** `(cd dashboard && npm test)` verde e o teste novo provadamente sensível.
+- [x] **Checagem B:** `(cd dashboard && npm test)` verde (577/577), `check:js` limpo, e o teste novo provadamente sensível.
 
 - [ ] **T4: `/verify-ui` real e PR** (AC-4) — depende de T3
   - Aceite: com AC de texto visível, a tela inicial dá PASSOU; com AC de texto inexistente, dá FALHOU. Os dois `verdict.json` ficam em `~/Workspace/prisma-evidence/pri-390/` e são citados no PR. `docs/ui-verify.md` ganhou uma linha. PR em draft com `processo:medio` e "Refs PRI-390". Revisão G3 feita, sem MAJOR aberto.
