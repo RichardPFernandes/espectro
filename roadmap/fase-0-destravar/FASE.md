@@ -2,7 +2,7 @@
 
 > Ao lado da Fase 1 · Status: em andamento. Itens aprovados pelo Richard em 16/11/2026 a partir
 > do estudo "O que falta e como acelerar". Frente A: engenharia do repo. Frente B: fluxo e
-> exposição. Nenhuma fatia toca o consumidor corporativo, salvo a F0.5.
+> exposição. Nenhuma fatia toca o consumidor corporativo.
 
 **Objetivo.** Tirar o que freia todo o resto: CI que falha sem dizer por quê, repo público
 com exposição desnecessária, falta de um comando para ver o Espectro rodar e regras de fluxo
@@ -29,7 +29,7 @@ execuções.
 | F0.2 | CI mostra qual teste falhou; lista de testes por glob | 2 | Leve | Não | — | — | em andamento | PRI-376 |
 | F0.3 | Um comando na raiz e "Veja funcionando" no README | 3 | Leve | Não | — | — | em andamento | PRI-376 |
 | F0.4 | Regras de fluxo no Acordo e entrada do agente mais enxuta | 1 | Leve | Não | — | D12 | em andamento | PRI-376 |
-| F0.5 | Poda dos prompts dos nós: só o que não é instrução | 2 | Alto | Sim | — | — | em andamento | PRI-376 |
+| F0.5 | (removida em 2026-11-16: a premissa caiu) Poda dos prompts dos nós | 2 | Alto | Sim | — | O preâmbulo não é idêntico nos 11 comandos e é quase todo instrução; o ganho seria de cerca de 0,5 KB em 125 KB. Um teste fixa o hash de `implement.md`, `review.md` e `commit.md` (`scripts/lib/decomposition-watcher.test.js`). Reabrir só com medição de duplicação interna | removida | PRI-376 |
 | F0.6 | Sonda de fumaça da CLI contra mudança no modo `-p` | 2 | Leve | Não | — | — | em andamento | PRI-376 |
 | F0.7 | ESLint só de erros no JavaScript de produção e teto de linhas nos três arquivos grandes | 2 | Leve | Não | F0.2 | — | não iniciada | sem issue |
 | F0.8 | Merge automático do Leve com CI verde e lista de caminhos | 2 | Alto | Sim | F0.2, F0.4 | D12 | não iniciada | sem issue |
