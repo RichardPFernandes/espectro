@@ -4,7 +4,7 @@
   "status": "CANDIDATE_NOT_CUT_OVER",
   "active_execution": "app-back origin scripts remain the running consumer; this tree is not switched on",
   "source_head": "a1ac43307cc5f275caf5a70ad3068c9af099b127",
-  "source_root": "/Users/richardfernandes/Workspace/app-back",
+  "source_root": "~/Workspace/app-back",
   "destination_branch": "feat/pri-60-platform-extraction",
   "accepted_list_sha256": "e3ba5c9ffa43c6fb2cb1e955ec1a2715af1337df5f11835941a42ae9b104ca84",
   "selected": 230,

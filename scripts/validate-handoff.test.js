@@ -144,9 +144,15 @@ test('credencial no arquivo reprova sem ecoar o valor', () => {
     assert.ok(!JSON.stringify(r.results).includes(fake));
 });
 
-const homeParent = fs.mkdtempSync(path.join('/workspace', '.pre-done-'));
+// Homes sintéticos dentro do TMPDIR (o da receita), pelo caminho real. A checagem pré-Done
+// trata /tmp e /private/tmp como efêmeros: com o TMPDIR ali, estes testes não valem.
+const homeParent = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'pre-done-'));
 test.after(() => fs.rmSync(homeParent, { recursive: true, force: true }));
-const makeHome = () => fs.mkdtempSync(path.join(homeParent, 'home-'));
+const makeHome = () => {
+    assert.doesNotMatch(homeParent, /^\/(private\/)?tmp\//,
+        `TMPDIR resolve para ${path.dirname(homeParent)}, que a checagem pré-Done recusa como efêmero; rode com TMPDIR fora de /tmp (ex.: TMPDIR=/var/tmp npm test)`);
+    return fs.mkdtempSync(path.join(homeParent, 'home-'));
+};
 const preCodes = (r) => r.results.map((x) => x.code);
 
 function planningPack(home) {
@@ -275,7 +281,9 @@ test('handoff temporário e arquivo fora da Evidence não substituem o Handoff F
 test('symlink para /tmp não conta como arquivo persistido', () => {
     const home = makeHome();
     const pack = planningPack(home);
-    const target = path.join(os.tmpdir(), `pre-done-link-${process.pid}-${Date.now()}.md`);
+    // O alvo precisa estar no /tmp de verdade: o TMPDIR da receita fica fora dele.
+    const targetDir = fs.mkdtempSync('/tmp/pre-done-link-');
+    const target = path.join(targetDir, 'alvo.md');
     fs.writeFileSync(target, 'alvo\n');
     try {
         fs.rmSync(pack.handoffFinal);
@@ -283,7 +291,7 @@ test('symlink para /tmp não conta como arquivo persistido', () => {
         const r = checkPreDone(pack.doc, { homeDir: home, handoffPath: pack.transfer, baseDir: home });
         assert.ok(preCodes(r).includes('PRE_DONE_EPHEMERAL'), preCodes(r).join());
     } finally {
-        fs.rmSync(target, { force: true });
+        fs.rmSync(targetDir, { recursive: true, force: true });
     }
 });
 

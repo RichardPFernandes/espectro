@@ -60,10 +60,10 @@
    real. Com esse volume, piloto no consumidor leva semanas para juntar amostra; o
    projeto-amostra da F3.1 vale mais cedo.
 
-## Reordenação recomendada (aguarda o Richard)
+## Reordenação aprovada pelo Richard em 16/11
 
-- F3.1 entra na Fase 2 no lugar da F2.3, como a D6 já previa.
-- F4.2 sobe para logo depois da F3.1 e da F3.3, sem esperar a F4.1: com volume baixo, as
-  coortes da F4.1 não juntam amostra no consumidor.
-- F6.1 sai da fila (medida). F6.10 sai da fila condicional se a F5.3 achar causa repetida.
-- A ordem dos IDs não muda até a decisão; só as notas das fatias apontam para cá.
+- F3.1 é feita na Fase 2 no lugar da F2.3 (D6).
+- F4.2 é feita na Fase 3, logo depois da F3.3, sem esperar a F4.1 (D1): com volume baixo,
+  as coortes da F4.1 não juntam amostra no consumidor.
+- F6.1 removida (medida). F6.10 sai da fila condicional se a F5.3 achar causa repetida.
+- Os IDs não mudam: a fatia fica na linha do `FASE.md` de origem, com a nota de onde é feita.

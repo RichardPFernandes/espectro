@@ -17,7 +17,7 @@ a entrega seguinte. Não há arquivo da implementação existente incorporado aq
 
 Destino confirmado pelo usuário na PRI-59: GitHub, conta `RichardPFernandes`,
 repo privado [prisma](https://github.com/RichardPFernandes/prisma), branch inicial
-`main`, checkout `/Users/richardfernandes/Workspace/prisma`. A operação autorizada
+`main`, checkout `~/Workspace/prisma`. A operação autorizada
 é criar e publicar somente este bootstrap próprio revisado. O repo privado foi
 criado pela sessão autenticada do usuário; a publicação usa sua autenticação
 SSH existente, sem incorporar implementação ou estado do consumidor.
