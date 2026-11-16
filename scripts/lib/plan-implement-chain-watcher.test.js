@@ -59,7 +59,10 @@ if (mode && m) {
     fs.writeFileSync(dir + '/plan.md', mode === 'bad-plan' ? '# Plano\\n\\n## Plano de execução\\n1. Ajustar.\\n' : ${JSON.stringify(GOOD_PLAN)});
     s.node = 'implement';
     if (mode === 'complete' || mode === 'bad-plan') { s.history = [...(s.history || []), 'implement']; s.node = 'review'; }
-    fs.writeFileSync(f, JSON.stringify(s));
+    // Escrita atômica: released() lê este arquivo em paralelo e um writeFileSync direto
+    // deixa uma janela de arquivo vazio ("Unexpected end of JSON input", intermitente sob carga).
+    fs.writeFileSync(f + '.fake.tmp', JSON.stringify(s));
+    fs.renameSync(f + '.fake.tmp', f);
     if (mode === 'plan-fail') process.exit(143);
 }
 `,
