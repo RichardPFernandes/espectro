@@ -68,6 +68,7 @@ test('report: lista no log, anota no Actions e grava o resumo; suíte limpa não
     assert.match(log, /\[dashboard\] sem falha no TAP/);
     const md = fs.readFileSync(summary, 'utf8');
     assert.match(md, /\*\*scripts\*\* `scripts\/lib\/quebra-ao-carregar\.test\.js:1`/);
+    assert.match(md, /— `filho com #`$/m);
     assert.doesNotMatch(md, /\*\*dashboard\*\*/);
 });
 
@@ -80,4 +81,22 @@ test('report: suíte que morre sem "not ok" mostra o fim do TAP; TAP ausente é 
     report([file, path.join(tmp, 'dashboard.tap')], { env: {}, out: l => lines.push(l) });
     assert.match(lines[0], /falhou sem "not ok"[\s\S]*REPO_PATH deve ser/);
     assert.match(lines[1], /\[dashboard\] TAP ilegível/);
+});
+
+test('report: texto do TAP não vira comando de workflow nem quebra o markdown do resumo', t => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tap-failures-'));
+    t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+    const summary = path.join(tmp, 'summary.md');
+    const a = path.join(tmp, 'scripts.tap');
+    fs.writeFileSync(a, "not ok 1 - nome com `crase` e <b>\n  ---\n  location: '/ck/a:b,c.test.js:3:1'\n  error: '::add-mask::segredo'\n  ...\n");
+    const b = path.join(tmp, 'dashboard.tap');
+    fs.writeFileSync(b, 'saída\n::stop-commands::x\n  ::add-mask::y\n```\nfim\n');
+    const lines = [];
+    report([a, b], { root: '/ck', env: { GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: summary }, out: l => lines.push(l) });
+    const commands = lines.join('\n').split('\n').filter(l => /^\s*::/.test(l));
+    assert.deepStrictEqual(commands, ['::error file=a%3Ab%2Cc.test.js,line=3::nome com `crase` e <b>']);
+    assert.match(lines.join('\n'), /: :add-mask::segredo[\s\S]*: :stop-commands::x\n {2}: :add-mask::y/);
+    const md = fs.readFileSync(summary, 'utf8');
+    assert.match(md, /— `nome com 'crase' e <b>`$/m);
+    assert.equal(md.match(/```/g).length, 2, 'a cauda não fecha a cerca');
 });

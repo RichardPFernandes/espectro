@@ -2,7 +2,7 @@
 // Harness somente de testes: não muda a resolução de roots do runtime.
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 
 // O filho não herda o env de quem roda: config do consumidor, credenciais e
 // variáveis de integração mudariam o resultado. Só passam estas chaves + roots.
@@ -36,8 +36,10 @@ function childEnv(env, roots) {
 
 // Descoberta por nome: todo `*.test.js` do checkout roda em exatamente uma suíte.
 // `dashboard/` vai para a suíte dashboard; o resto, para scripts. Ficam de fora
-// só dependências, saída de build, checkouts aninhados (worktrees) e o que
-// harness/test-exclusions.json lista com motivo.
+// o que harness/test-exclusions.json lista com motivo e os `*.test.mjs` (hooks e
+// processo-check), que não são desta receita e rodam no workflow processo-check.
+// Com git, vale `git ls-files`: versionados mais os novos ainda não commitados
+// (não ignorados), para rodarem localmente. Sem git (export), varre o disco.
 const SUITES = ['scripts', 'dashboard'];
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage']);
 const EXCLUSIONS_FILE = path.join(__dirname, 'test-exclusions.json');
@@ -56,20 +58,29 @@ function findTestFiles(root, rel = '') {
     return found.sort();
 }
 
+function listTestFiles(root) {
+    if (!fs.existsSync(path.join(root, '.git'))) return findTestFiles(root);
+    const git = spawnSync('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.test.js'], { encoding: 'utf8' });
+    if (git.status !== 0) throw new Error(`git ls-files falhou: ${(git.stderr || git.error?.message || '').trim()}`);
+    return [...new Set(git.stdout.split('\0'))].filter(rel => rel && fs.existsSync(path.join(root, rel))).sort();
+}
+
 const suiteOf = rel => (rel.startsWith('dashboard/') ? 'dashboard' : 'scripts');
 
 function readExclusions(file = EXCLUSIONS_FILE) {
-    const out = {};
+    const out = new Map();
     for (const { arquivo, motivo } of JSON.parse(fs.readFileSync(file, 'utf8')).excluir) {
         if (!arquivo || !motivo || !String(motivo).trim()) throw new Error(`exclusão sem arquivo ou motivo em ${path.basename(file)}`);
-        out[arquivo] = motivo;
+        if (out.has(arquivo)) throw new Error(`exclusão duplicada: ${arquivo}`);
+        if (arquivo.startsWith('harness/')) throw new Error(`teste do harness não pode ser excluído: ${arquivo}`);
+        out.set(arquivo, motivo);
     }
     return out;
 }
 
 function discover(root, suite, exclusions = readExclusions()) {
-    const mine = findTestFiles(root).filter(rel => suiteOf(rel) === suite);
-    return { files: mine.filter(rel => !(rel in exclusions)), excluded: mine.filter(rel => rel in exclusions) };
+    const mine = listTestFiles(root).filter(rel => suiteOf(rel) === suite);
+    return { files: mine.filter(rel => !exclusions.has(rel)), excluded: mine.filter(rel => exclusions.has(rel)) };
 }
 
 function main([suite, ...files]) {
@@ -83,7 +94,7 @@ function main([suite, ...files]) {
         if (!files.length) {
             const exclusions = readExclusions();
             const found = discover(roots.PRISMA_ROOT, suite, exclusions);
-            for (const rel of found.excluded) console.error(`[test-roots] fora da receita: ${rel} — ${exclusions[rel]}`);
+            for (const rel of found.excluded) console.error(`[test-roots] fora da receita: ${rel} — ${exclusions.get(rel)}`);
             if (!found.files.length) throw new Error(`nenhum *.test.js descoberto para a suíte ${suite}`);
             targets = found.files.map(rel => path.join(roots.PRISMA_ROOT, rel));
         }
@@ -102,5 +113,5 @@ function main([suite, ...files]) {
     });
 }
 
-module.exports = { resolveRoots, childEnv, ENV_ALLOWLIST, SUITES, findTestFiles, suiteOf, readExclusions, discover };
+module.exports = { resolveRoots, childEnv, ENV_ALLOWLIST, SUITES, findTestFiles, listTestFiles, suiteOf, readExclusions, discover };
 if (require.main === module) main(process.argv.slice(2));
