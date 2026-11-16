@@ -222,9 +222,11 @@ const argvsOf = scenario => {
 const promptOf = argv => argv[argv.indexOf('-p') + 1];
 
 test.before(() => new Promise(r => server.listen(0, '127.0.0.1', r)));
-// maxRetries: o filtro de log destacado (sanitize-log.js) pode dar o último write logo depois
-// do release; ENOTEMPTY no rmdir é corrida de limpeza, não falha de teste.
-test.after(() => { server.close(); fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); });
+test.after(() => {
+    server.close();
+    // Paliativo além da espera do B2: o filtro de log destacado pode gravar um pouco depois do release.
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+});
 
 test('AC-26/AC-22: modo destacado — duas subtarefas + integração + agregação + transição; Review como gate', { timeout: 10 * 60 * 1000 }, async () => {
     const repo = consumer();
@@ -369,12 +371,11 @@ test('B2: plano intercalado → NOT_DECOMPOSABLE gravado e o Implement segue com
     const argv = argvsOf('intercalado')[0];
     assert.match(promptOf(argv), new RegExp(`Rode, nesta ordem: /implement ${taskIdOf(id)}\\.`));
     assert.ok(dom06.listAttempts(dir).every(a => !a.role), 'nenhum Attempt com papel');
-    // Espera o wrapper destacado terminar: o efeito execute_node é o último write do release.
-    // Sem isso o after() apaga o tmp com o release ainda escrevendo (ENOTEMPTY no CI).
-    const fulfilled = () => dom06.listAttempts(dir).some(a => a.node === 'implement'
-        && (a.effects || []).some(e => e.obligation_id === 'execute_node' && e.status === 'fulfilled'));
-    for (let i = 0; i < 300 && !fulfilled(); i++) await new Promise(res => setTimeout(res, 100));
-    assert.ok(fulfilled(), 'release destacado não fechou o Attempt do Implement');
+    // O wrapper destacado ainda roda o release do lease depois do stub; sem esperar, o test.after
+    // apagava a pasta com ele gravando (ENOTEMPTY no CI em Node 22). settle() não serve: não há Attempt com papel.
+    const deadline = Date.now() + 60000;
+    while (readState(repo, id).status === 'running' && Date.now() < deadline) await new Promise(res => setTimeout(res, 200));
+    assert.notStrictEqual(readState(repo, id).status, 'running', 'o wrapper destacado não devolveu o lease em 60 s');
 });
 
 test('AC-29: implement.md, review.md e commit.md byte a byte iguais aos de 2024597', () => {
