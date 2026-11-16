@@ -1,0 +1,16 @@
+{
+  "excluir": [
+    {
+      "arquivo": "provenance/pri-62/consumption-rollback.test.js",
+      "motivo": "ensaio manual: exige as variáveis PRI62_* e um checkout de consumidor que a receita não fornece"
+    },
+    {
+      "arquivo": "scripts/harness/pri-69/pri-69.e2e.test.js",
+      "motivo": "e2e com processos reais (rodar por scripts/harness/pri-69/run.js); sob a receita, 6 de 11 cenários falharam na medição da F0.2, causa não investigada"
+    },
+    {
+      "arquivo": "scripts/validate-handoff.test.js",
+      "motivo": "cria diretório temporário em /workspace, caminho fixo fora do checkout e do TMPDIR: onde ele não existe, falha ao carregar (ENOENT)"
+    }
+  ]
+}

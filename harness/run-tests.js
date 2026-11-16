@@ -2,7 +2,7 @@
 // Harness somente de testes: não muda a resolução de roots do runtime.
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 
 // O filho não herda o env de quem roda: config do consumidor, credenciais e
 // variáveis de integração mudariam o resultado. Só passam estas chaves + roots.
@@ -34,19 +34,76 @@ function childEnv(env, roots) {
     return { ...out, ...roots };
 }
 
+// Descoberta por nome: todo `*.test.js` do checkout roda em exatamente uma suíte.
+// `dashboard/` vai para a suíte dashboard; o resto, para scripts. Ficam de fora
+// o que harness/test-exclusions.json lista com motivo e os `*.test.mjs` (hooks e
+// processo-check), que não são desta receita e rodam no workflow processo-check.
+// Com git, vale `git ls-files`: versionados mais os novos ainda não commitados
+// (não ignorados), para rodarem localmente. Sem git (export), varre o disco.
+const SUITES = ['scripts', 'dashboard'];
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage']);
+const EXCLUSIONS_FILE = path.join(__dirname, 'test-exclusions.json');
+
+function findTestFiles(root, rel = '') {
+    const found = [];
+    for (const entry of fs.readdirSync(path.join(root, rel), { withFileTypes: true })) {
+        const child = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+            if (SKIP_DIRS.has(entry.name) || fs.existsSync(path.join(root, child, '.git'))) continue;
+            found.push(...findTestFiles(root, child));
+        } else if (entry.isFile() && entry.name.endsWith('.test.js')) {
+            found.push(child);
+        }
+    }
+    return found.sort();
+}
+
+function listTestFiles(root) {
+    if (!fs.existsSync(path.join(root, '.git'))) return findTestFiles(root);
+    const git = spawnSync('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.test.js'], { encoding: 'utf8' });
+    if (git.status !== 0) throw new Error(`git ls-files falhou: ${(git.stderr || git.error?.message || '').trim()}`);
+    return [...new Set(git.stdout.split('\0'))].filter(rel => rel && fs.existsSync(path.join(root, rel))).sort();
+}
+
+const suiteOf = rel => (rel.startsWith('dashboard/') ? 'dashboard' : 'scripts');
+
+function readExclusions(file = EXCLUSIONS_FILE) {
+    const out = new Map();
+    for (const { arquivo, motivo } of JSON.parse(fs.readFileSync(file, 'utf8')).excluir) {
+        if (!arquivo || !motivo || !String(motivo).trim()) throw new Error(`exclusão sem arquivo ou motivo em ${path.basename(file)}`);
+        if (out.has(arquivo)) throw new Error(`exclusão duplicada: ${arquivo}`);
+        if (arquivo.startsWith('harness/')) throw new Error(`teste do harness não pode ser excluído: ${arquivo}`);
+        out.set(arquivo, motivo);
+    }
+    return out;
+}
+
+function discover(root, suite, exclusions = readExclusions()) {
+    const mine = listTestFiles(root).filter(rel => suiteOf(rel) === suite);
+    return { files: mine.filter(rel => !exclusions.has(rel)), excluded: mine.filter(rel => exclusions.has(rel)) };
+}
+
 function main([suite, ...files]) {
     let roots;
+    let targets;
     try {
         roots = resolveRoots(process.env);
-        if (!['scripts', 'dashboard'].includes(suite) || !files.length) throw new Error('uso: run-tests.js <scripts|dashboard> <arquivos de teste>');
+        if (!SUITES.includes(suite)) throw new Error('uso: run-tests.js <scripts|dashboard> [arquivos de teste]');
+        const packageDir = path.join(roots.PRISMA_ROOT, suite);
+        targets = files.map(file => path.resolve(packageDir, file));
+        if (!files.length) {
+            const exclusions = readExclusions();
+            const found = discover(roots.PRISMA_ROOT, suite, exclusions);
+            for (const rel of found.excluded) console.error(`[test-roots] fora da receita: ${rel} — ${exclusions.get(rel)}`);
+            if (!found.files.length) throw new Error(`nenhum *.test.js descoberto para a suíte ${suite}`);
+            targets = found.files.map(rel => path.join(roots.PRISMA_ROOT, rel));
+        }
     } catch (err) {
         console.error(`[test-roots] ${err.message}`);
         process.exitCode = 2;
         return;
     }
-    const packageDir = path.join(roots.PRISMA_ROOT, suite);
-    const child = spawn(process.execPath, ['--test', '--test-reporter=tap',
-        ...files.map(file => path.resolve(packageDir, file))], {
+    const child = spawn(process.execPath, ['--test', '--test-reporter=tap', ...targets], {
         cwd: roots.REPO_PATH, env: childEnv(process.env, roots), stdio: 'inherit',
     });
     child.on('error', err => { console.error(err.message); process.exitCode = 1; });
@@ -56,5 +113,5 @@ function main([suite, ...files]) {
     });
 }
 
-module.exports = { resolveRoots, childEnv, ENV_ALLOWLIST };
+module.exports = { resolveRoots, childEnv, ENV_ALLOWLIST, SUITES, findTestFiles, listTestFiles, suiteOf, readExclusions, discover };
 if (require.main === module) main(process.argv.slice(2));
