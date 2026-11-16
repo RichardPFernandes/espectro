@@ -60,6 +60,8 @@ jobs:
           printf 'scripts exit=%s; dashboard exit=%s\n' "$scripts_exit" "$dashboard_exit"
           sha256sum "$EV/scripts.tap" "$EV/dashboard.tap"
           if (( scripts_exit != 0 || dashboard_exit != 0 )); then
+            # Lista os testes que falharam no log e no resumo do job; o TAP inteiro segue no artefato.
+            node "$CK/harness/tap-failures.js" "$EV/scripts.tap" "$EV/dashboard.tap" || true
             exit 1
           fi
       - name: Preserve TAP
