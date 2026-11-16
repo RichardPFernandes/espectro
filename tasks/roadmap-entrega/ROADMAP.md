@@ -33,14 +33,12 @@
 
 ## Fora do roadmap agora
 
-A decomposição não se congela (pilota na F2.2) e `docs/consumer-operations.md` não se arquiva.
-
 | Item | Ação | Condição para retomar |
 | -- | -- | -- |
 | Ligar qualquer flag no consumidor | Parar até o fim da Fase 1 | F1.1 a F1.3 fechadas |
 | `WATCHER_PLAN_DENY_SETTINGS`, writer de Self-SDD | Remover na F2.5 | Decisão do Richard, com chamador definido |
 | Classificador Jev, verificação de UI | Congelar com data no registro de flags | Dado que justifique; F6.8 |
-| Recusas de QA, cadeia plan+implement | Congelar | F6.10; F6.4 |
+| Recusas de QA, cadeia plan+implement (a decomposição não se congela: pilota na F2.2) | Congelar | F6.10; F6.4 |
 | Migração TypeScript, reescrita do watcher | Estacionar; extrair só o trecho tocado em cada fatia | Gargalo de manutenção medido |
 | Discovery, porta de tracker e forge, abertura | Não começar | D2; D4 |
 | Novos documentos de governança | Parar | Só se uma fatia exigir |

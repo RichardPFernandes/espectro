@@ -64,7 +64,6 @@ tasks/roadmap-entrega/
 | Kiro (uma spec por feature, não uma para o projeto todo) | Uma spec por fatia; a fase não tem spec | `requirements.md` + `design.md` separados |
 | OpenSpec (verdade corrente × mudança proposta × arquivo) | `arquivo/` para o que fechou | Deltas de spec: o repo não tem specs de comportamento |
 | INNOQ, custos ocultos do SDD | Spec curta e na hora, plano descartável, decisão fora da spec | Detalhar todas as fatias de antemão |
-| agent-skills (mapa de capacidades antes das specs) | Mapa aprovado antes de qualquer spec de fatia | — |
 
 Fontes: [Spec Kit](https://github.com/github/spec-kit) ·
 [roadmap sobre o Spec Kit](https://habr.com/ru/articles/1063940/) ·
