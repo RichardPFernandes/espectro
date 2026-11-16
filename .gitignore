@@ -21,6 +21,7 @@ memory/knowledge-graph.json
 
 # Saída e preferências locais
 *.log
+**/logs/**/*.jsonl
 *.tmp
 *.pid
 .DS_Store
