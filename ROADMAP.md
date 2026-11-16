@@ -13,7 +13,7 @@
 | -- | -- |
 | O consumidor está contido | Flags sem data de decisão = 0 (teste no CI); volta ao último verde em um comando, ensaiada; nenhuma run passa do teto sem decisão humana |
 | O custo por ticket cai, com prova | Custo por ticket entregue abaixo da linha de base, com n e período, na régua de D1 |
-| Menos coisa desligada | Itens construídos e desligados: 9 hoje, no máximo 5 ao fim da Fase 2, no máximo 3 ao fim da Fase 4 |
+| Menos coisa desligada | Itens construídos e desligados: 9 hoje, no máximo 6 ao fim da Fase 2, no máximo 4 ao fim da Fase 4 |
 
 ## Fases
 
@@ -33,14 +33,15 @@
 - [ ] Conferir qual pasta o launcher do consumidor usa e devolvê-la para a `main` limpa.
 - [ ] Registrar três números: modelo e esforço padrão da conta, runs concluídas por semana, assinatura ou API paga.
 - [ ] Triar o cycle corrente para duas frentes.
-- [ ] Responder D1, D3, D5 e D11 em [`DECISOES.md`](roadmap/DECISOES.md), ou aceitar as premissas.
+- [ ] Responder D1, D3, D5 e D8 em [`DECISOES.md`](roadmap/DECISOES.md), ou aceitar as premissas.
 
 ## Fora do roadmap agora
 
 | Item | Ação | Condição para retomar |
 | -- | -- | -- |
 | Ligar qualquer flag no consumidor corporativo (app-back) | Parar até o fim da Fase 1. Não vale para o launcher do piloto no próprio Espectro: PRI-341 e PRI-354 seguem em paralelo (D11) | F1.1 a F1.3 fechadas |
-| `WATCHER_PLAN_DENY_SETTINGS`, writer de Self-SDD | Remover na F2.5 | Decisão do Richard (D5), com chamador definido |
+| `WATCHER_PLAN_DENY_SETTINGS` | Remover na F2.5: medido sem ganho | Nova medição, por decisão do Richard |
+| Writer de Self-SDD (PRI-349 e filhas) | Manter o código; tirar as issues do cycle até a Fase 2 fechar | D5 |
 | Classificador Jev, verificação de UI | Congelar com data no registro de flags | Dado que justifique; F6.8 |
 | Recusas de QA, cadeia plan+implement (a decomposição não se congela: pilota na F2.2) | Congelar | F6.10; F6.4 |
 | Migração TypeScript, reescrita do watcher | Estacionar; extrair só o trecho tocado em cada fatia | Gargalo de manutenção medido |

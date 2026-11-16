@@ -8,9 +8,9 @@
 
 | O que o roadmap dizia | O que o Linear mostra | Decisão necessária | Situação no mapa |
 | -- | -- | -- | -- |
-| Nenhuma flag liga antes do fim da Fase 1 | PRI-354 tem AUTORIZO de 15/11 para ligar o esforço por fase no launcher de um piloto no próprio Espectro, depois do baseline da PRI-341 | Os dois pilotos esperam a Fase 1, ou seguem em paralelo por rodarem num launcher próprio, fora do consumidor corporativo | Refletido como premissa: seguem em paralelo (D11). Aguarda o Richard |
+| Nenhuma flag liga antes do fim da Fase 1 | PRI-354 tem AUTORIZO de 15/11 para ligar o esforço por fase no launcher de um piloto no próprio Espectro, depois do baseline da PRI-341 | Os dois pilotos esperam a Fase 1, ou seguem em paralelo por rodarem num launcher próprio, fora do consumidor corporativo | Decidido em 16/11: seguem em paralelo (D11) |
 | F2.3 com teto de 15 runs | PRI-354 define 10 pares de runs | Vale a issue; ajustar a F2.3 | Refletido na F2.3 |
-| F2.5 remove o writer de Self-SDD | PRI-349, PRI-297, PRI-265, PRI-319 e PRI-264 estão Ready no cycle | Remover e cancelar as cinco, ou manter e tirar da F2.5 (D5) | Aguardando D5; a F2.5 cita a dependência |
+| F2.5 removia o writer de Self-SDD | PRI-349, PRI-297, PRI-265, PRI-319 e PRI-264 estão Ready no cycle | Remover e cancelar as cinco, ou manter e tirar da F2.5 (D5) | Refletido: o writer fica; as issues saem do cycle até a Fase 2 fechar (D5) |
 | Classificador Jev congelado | PRI-321 e PRI-291 Ready no cycle; PRI-358 e PRI-90 abertas | Cancelar ou estacionar (D5) | Aguardando D5 |
 | Verificação de UI desligada até a F6.8 | PRI-360 e PRI-361 em andamento; PRI-370 e PRI-362 no Backlog | Terminar as duas em andamento e parar, ou congelar já | Aguardando D5 |
 | D4: ninguém externo em seis meses | A PRI-354 já trata o Espectro como consumidor piloto | D4 passa a "o próprio repo do Espectro"; a F3.2 pode encolher | Refletido em D4 e na F3.2 |

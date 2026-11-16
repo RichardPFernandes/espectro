@@ -16,8 +16,8 @@
 
 - A partir da F3.6 entram no mesmo quadro: gates por run e espera mediana.
 - Se as métricas M1–M4 do Acordo v2 já cobrirem alguma destas, use a M e não crie outra.
-- Metas ligadas a estas métricas: itens desligados em no máximo 5 ao fim da Fase 2 e no
-  máximo 3 ao fim da Fase 4; issues em andamento em no máximo duas frentes.
+- Metas ligadas a estas métricas: itens desligados em no máximo 6 ao fim da Fase 2 e no
+  máximo 4 ao fim da Fase 4; issues em andamento em no máximo duas frentes.
 
 ## Rito semanal (30 min, segunda)
 
