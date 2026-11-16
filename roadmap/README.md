@@ -17,6 +17,7 @@ roadmap/
 ├── DECISOES.md        D1–D12: premissa assumida, alternativa, efeito na ordem
 ├── LINEAR.md          reconciliação com as issues abertas: vínculos e conflitos
 ├── BASE.md            por que o roadmap é este: diagnóstico, evidências, riscos
+├── DADOS.md           números reais de runs (só agregados) e o que mudam na ordem
 ├── ACOMPANHAMENTO.md  métricas semanais, rito e série
 ├── fase-N-<nome>/
 │   └── FASE.md        objetivo, critério de saída, tabela de fatias (fonte única das fatias)

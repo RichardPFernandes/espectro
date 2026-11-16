@@ -36,6 +36,7 @@ agregados: nenhum ticket, nome ou conteúdo de run do consumidor entra aqui.
 | Semana | Custo por ticket entregue | Primeira passada | Runs bloqueadas pelo teto | Itens desligados | Frentes ativas | Nota |
 | -- | -- | -- | -- | -- | -- | -- |
 | EXEMPLO DE FORMATO (apagar) AAAA-MM-DD | — USD imputado · — tokens (n = —) | — % (n = —) | — de — | — | — | Uma frase: o que mudou e por quê |
+| 2026-11-16 (linha de base, todo o histórico) | 24,1 USD imputado, mediana (n = 19); tokens sem medição | 48 % sem retry em review, test e verify (n = 25) | sem medição | 9 (contado em 15/11) | sem medição | Primeira leitura à mão dos dados reais; detalhes em [`DADOS.md`](DADOS.md) |
 | | | | | | | |
 
 Como preencher:

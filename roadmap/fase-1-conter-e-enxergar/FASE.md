@@ -27,7 +27,7 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
 | F1.1 | Registro de flags | 3 | Leve | Não | — | — | não iniciada | PRI-377 |
 | F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | não iniciada | PRI-379; inclui a PRI-372; PRI-371 é a alternativa de D3 |
-| F1.3 | Teto de turnos por run | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | PRI-380 |
+| F1.3 | Teto de turnos por run; inclui parar depois de N falhas seguidas do mesmo nó ([`DADOS.md`](../DADOS.md), item 6) | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | PRI-380 |
 | F1.4 | Linha de base: retrabalho | 2 | Leve | Não | — | D1 | não iniciada | PRI-378; base é a PRI-327 (Done) |
 | F1.5 | Linha de base: custo por ticket | 3 | Leve | Não | F1.4 | D1, D6 | não iniciada | PRI-381; PRI-82 relacionada |
 | F1.6 | Push dos repos irmãos: pulado não vira sucesso | 2 | Alto | A confirmar | — | — | não iniciada | PRI-179 |

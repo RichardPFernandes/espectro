@@ -22,7 +22,7 @@ o gargalo.
 | ID | Fatia e demonstração | Dias | Nível | AUTORIZO | Depende de | Premissa / decisão | Status | Issue no Linear |
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
 | F4.1 | Coortes por configuração no comparador, só para flags do registro; refaz o quadro do portão de build e da decomposição | 5 | Médio | Não | F1.1, F1.5 | — | não iniciada | sem issue |
-| F4.2 | Modelo por fase: tabela fase → modelo atrás de flag; primeiro nos tickets de ouro, depois piloto no consumidor | 4 | Alto ao ligar | Sim (consumidor) | F4.1, F3.3 | D1: em "dinheiro" sobe para a Fase 2 | não iniciada | PRI-352 e filhas |
+| F4.2 | Modelo por fase: tabela fase → modelo atrás de flag; primeiro nos tickets de ouro, depois piloto no consumidor | 4 | Alto ao ligar | Sim (consumidor) | F4.1, F3.3 | D1: em "dinheiro" sobe para a Fase 2. Dado de 16/11: implement é 43 % do custo e roda no modelo mais caro | não iniciada | PRI-352 e filhas |
 | F4.3 | Dashboard preso a loopback e proteção contra requisição forjada conferida | 3 | Médio | Não | — | D7 | não iniciada | sem issue |
 | F4.4 | Fila "Aguardando você": todo estado que espera humano, só leitura | 5 | Alto ao ligar | Sim | F4.3 | D7, D9 | não iniciada | PRI-253, PRI-173, PRI-129 |
 | F4.5 | Idade, motivo e link direto em cada item; a fila vira a tela inicial | 3 | Médio | Não | F4.4 | Tela nova só com dado | não iniciada | sem issue |
