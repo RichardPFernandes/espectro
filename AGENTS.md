@@ -1,7 +1,7 @@
 # Instruções do repositório Prisma
 
-1. Leia README.md, docs/bootstrap.md, docs/extraction-entry.md e
-   provenance/source-baseline.json antes de alterar este bootstrap.
+1. Leia README.md. Se a mudança tocar transporte ou extração de código, leia
+   também docs/extraction-handoff.md e docs/extraction-paths.md.
 2. Recupere a issue (bloco de Estado no topo e Agent notes) e as baselines
    pertinentes no Linear. A arquitetura congelada governa contratos, owners,
    bindings, gates e responsabilidades.
@@ -33,13 +33,13 @@
 Fonte: [Prisma — Acordo de desenvolvimento](https://linear.app/prisma-app/document/prisma-acordo-de-desenvolvimento-62a84790f75a)
 (v2, aprovada pelo Richard em 13/11/2026; substitui a v1). Vale para o
 desenvolvimento do Prisma; não muda a governança que o Prisma aplica aos
-consumidores (G0–G3, PRI-145). As 10 regras curtas estão no topo do `CLAUDE.md`.
+consumidores (G0–G3, PRI-145). As regras curtas estão no topo do `CLAUDE.md`.
 
 | Nível | Critério (pelo efeito) | Exige no mínimo |
 | -- | -- | -- |
-| Leve | Não muda código executado numa Run: docs, avaliações, ferramentas offline, testes | Issue + PR. Uma revisão. Aceite do Richard |
-| Médio (padrão para código) | Muda runtime ou dashboard atrás de flag desligada ou sem efeito no consumidor | Issue com ACs + PR com evidência + uma revisão G3. Vale o AUTORIZO do milestone. SPEC de até 1 página só se for preciso |
-| Alto | Muda o que já roda no consumidor: ligar flag, bump do checkout, religar polling, operação protegida, autorização humana, credencial | SPEC de 1 a 2 páginas + AUTORIZO próprio + uma rodada G3 com dois revisores + readback depois do bump. Segunda rodada só com decisão do Richard |
+| Leve | Não muda código executado numa Run: docs, avaliações, ferramentas offline, testes | Issue + PR. Uma revisão. Mesclar é aceitar |
+| Médio (padrão para código) | Muda runtime ou dashboard atrás de flag desligada ou sem efeito no consumidor; piloto no launcher do próprio Espectro | Issue com ACs + PR com evidência + uma revisão G3. Mesclar é aceitar. Vale o AUTORIZO do milestone. SPEC de até 1 página só se for preciso |
+| Alto | Muda o que já roda no consumidor corporativo: ligar flag, bump do checkout, religar polling, operação protegida, autorização humana, credencial | SPEC de 1 a 2 páginas + AUTORIZO próprio + uma rodada G3 com dois revisores + readback depois do bump. Segunda rodada só com decisão do Richard |
 
 - Na dúvida, o nível maior, com o motivo numa linha. Subir de nível exige o
   Richard; se o trabalho passar do nível, peça reclassificação, sem adendo.
@@ -56,7 +56,8 @@ O que nunca muda, em qualquer nível:
 - PR sempre em draft; o merge é do Richard. Use "Refs", nunca "Fixes".
 - AUTORIZO explícito antes de qualquer coisa que afete o consumidor: bump do
   checkout vivo, religar o polling, ligar flag, operação protegida.
-- Done só com evidência (no PR) e aceite dos ACs pelo Richard. Pai não fecha
+- Done só com evidência (no PR). Leve e Médio: a issue fecha quando o último
+  PR dela é mesclado. Alto: só com aceite dos ACs pelo Richard. Pai não fecha
   com filha aberta.
 - Nenhum dado corporativo da M&O no Linear.
 - Issue não se apaga: cancela ou arquiva. Antes de qualquer limpeza, conferir

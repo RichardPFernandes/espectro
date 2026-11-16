@@ -1,6 +1,6 @@
 # Tarefas: PRI-205 S3b (núcleo 2 do Jev em sombra)
 
-> Fonte: [SPEC.md](../../SPEC.md) (aprovado em 2026-11-06) e [plan.md](plan.md)
+> Fonte: [SPEC.md](../../docs/historico/SPEC-pri-205-s3b.md) (aprovado em 2026-11-06) e [plan.md](plan.md)
 > (proposta). Cada tarefa segue TDD: o teste nasce falhando. Comando focado:
 > `node --require ./harness/loopback-only.cjs --test scripts/lib/<arquivo>.test.js`.
 > Nenhum teste usa rede externa, o Keychain real ou texto real de ticket.
