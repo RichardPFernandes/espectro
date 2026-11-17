@@ -1,7 +1,8 @@
 # Instruções do repositório Prisma
 
-1. Comece por docs/capacidades/README.md (mapa de capacidades) e leia README.md. Se a mudança tocar transporte ou extração de código, leia
-   também docs/extraction-handoff.md e docs/extraction-paths.md.
+1. Comece por docs/capacidades/README.md (mapa de capacidades) e leia README.md. Se a
+   mudança tocar transporte ou extração de código, leia também
+   docs/extraction-handoff.md e docs/extraction-paths.md.
 2. Recupere a issue (bloco de Estado no topo e Agent notes) e as baselines
    pertinentes no Linear. A arquitetura congelada governa contratos, owners,
    bindings, gates e responsabilidades.

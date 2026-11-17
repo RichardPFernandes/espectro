@@ -87,7 +87,7 @@ Um sentido por termo. Nesta pasta, "gate" só nomeia nível de revisão (G0–G3
 | -- | -- | -- | -- | -- |
 | [autorizacao](autorizacao.md) | capacidade | ligada | sem-spec | Pedidos de autorização humana, aprovadores e a admissão do Attempt que autoriza efeito externo. |
 | [ciclo-da-run](ciclo-da-run.md) | fluxo | ligada | sem-spec | O watcher, que a cada tick descobre os tickets, aplica os portões e despacha o próximo nó. |
-| [config](config.md) | base | parcial | sem-spec | Confere a configuração do fluxo contra o contrato; o registro de flags ainda não existe. |
+| [config](config.md) | base | ligada | sem-spec | Confere a configuração do fluxo contra o contrato e o registro de flags contra o código. |
 | [dashboard](dashboard.md) | fluxo | ligada | sem-spec | Painel local do Espectro, com Runs, custo, PRs, tickets, roteamento e pedidos de autorização, mais preview e checkout local. |
 | [db-effect](db-effect.md) | capacidade | ligada | sem-spec | Executa, com aprovador humano, um SQL de migração num banco da allowlist e detecta mudança de schema. |
 | [estado](estado.md) | base | ligada | sem-spec | Guarda o state.json de cada Run, com um só escritor, versão e lease de nó. |
