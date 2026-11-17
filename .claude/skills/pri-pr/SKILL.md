@@ -33,7 +33,8 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    - **Evidência:** uma linha por AC, com o resultado (PASS, FAIL ou UNKNOWN) e a prova.
      A prova de testes é o run da CI no SHA final (link); o pré-voo local entra só
      como apoio. A revisão independente entra como linha própria, com o veredito.
-   - **Alto:** antes de criar o PR, rode a parte "Pedido" do `/pri-autorizo` e cite a
+   - **Alto:** antes de criar o PR, rode a parte "Pedido" do `/pri-autorizo`, copie o
+     `pedido.md` dele para o corpo e cite a
      SPEC (`tasks/<pasta>/SPEC.md`). Sem `## Rollback`, `## Readback` e a SPEC citada,
      o `processo-check` falha.
    - **Fica ligado?** Comportamento novo nasce atrás de flag desligada. Diga qual flag e
@@ -55,7 +56,9 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    comentário. Comentário é só para decisão ou bloqueio, em 3 linhas.
    - Leve e Médio: a issue vai para In Review só se precisar de decisão ou aceite do
      Richard. Mesclar é aceitar.
-   - Alto: In Review, esperando o aceite do Richard. O próximo passo é o `/pri-autorizo`.
+   - Alto: In Review, esperando o AUTORIZO do Richard. Deixe na issue o comentário de 3
+     linhas do `pedido.md`, com o link do PR. Depois do AUTORIZO e do bump, o próximo
+     passo é `/pri-autorizo PRI-NNN readback`.
    - A fila In Review tem limite de 3 itens.
 7. **Nunca** marque o PR como ready, nunca mescle, nunca use `Fixes` e nunca mova a
    issue para Done.
