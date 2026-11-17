@@ -24,6 +24,9 @@ que nunca sai do projeto consumidor.
 > as variáveis (`PRISMA_ROOT`), as issues (`PRI-*`) e os documentos históricos
 > mantêm o nome `prisma`.
 
+> **Ponto de partida.** Para saber o que o Espectro faz, o que está ligado e onde
+> mora cada coisa, comece pelo [mapa de capacidades](docs/capacidades/README.md).
+
 ## Sumário
 
 - [O que é](#o-que-é)
