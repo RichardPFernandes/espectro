@@ -14,15 +14,15 @@ flowchart TD
     Q -->|sim| SM["/pri-spec<br/>SPEC ≤ 1 página na pasta da fatia"]
     Q -->|não| PM
     SM --> PM["/pri-plan<br/>plan.md + todo.md"]
-    PM -->|"segue sem parar (D-a)"| B
+    PM --> R2
 
     N -->|Alto| SA["/pri-spec<br/>SPEC de 1–2 páginas"]
     SA --> R1{{"Richard aprova a SPEC"}}
     R1 --> PA["/pri-plan"]
-    PA --> R2{{"Richard aprova o plano"}}
-    R2 --> B
+    PA --> R2{{"Richard aprova o plano<br/>(Médio e Alto, D-FLX-01)"}}
+    R2 -->|"/clear"| B
 
-    B["/pri-build<br/>por tarefa: RED → GREEN → test:changed<br/>→ commit (Refs PRI-NNN)"]
+    B["/pri-build<br/>um subagente novo por tarefa, em sequência<br/>(sonnet no Leve, opus no Médio e Alto):<br/>RED → GREEN → test:changed → commit (Refs PRI-NNN)"]
     B --> C["/pri-check<br/>código: npm test + npm run check<br/>testes novos falham na main<br/>revisor em contexto limpo (Alto: dois)"]
     C --> V{Veredito}
     V -->|FAIL| FX["corrige; o mesmo revisor confere<br/>e os testes rodam no SHA novo"]
@@ -44,5 +44,6 @@ flowchart TD
 ```
 
 Os hexágonos são portões: decisão do Richard, hook ou CI. O hook só age numa sessão
-de dev (com `.prisma/level`); a barreira real é a CI. No Médio, nada
-para até o PR; no Alto, a SPEC e o plano param para aprovação antes do código.
+de dev (com `.prisma/level`); a barreira real é a CI. No Médio e no Alto,
+o plano para para aprovação antes do código; no Alto, a SPEC também. O Leve não para
+até o PR. No build, cada tarefa roda num subagente novo, em contexto limpo.
