@@ -49,7 +49,8 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
    vale a issue e corrige-se o `FASE.md`.
 9. **`tasks/` antigo fica onde está.** As pastas `tasks/pri-*` e `tasks/evidence.md` são de trabalhos
    anteriores e seguem como estão. O `plan.md` e o `todo.md` da PRI-233 foram para
-   `docs/historico/pri-233/` em 16/11, porque travavam os comandos do agent-skills. Só as pastas
+   `docs/historico/pri-233/` em 16/11, porque travavam os comandos do agent-skills. A F0.14 leva
+   para `docs/historico/` as demais pastas de issue fechada. Só as pastas
    `tasks/fN-M-<nome>/` pertencem a este roadmap.
 
 ## O que vale para toda fatia

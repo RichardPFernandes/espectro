@@ -2,12 +2,15 @@
 
 > Ao lado da Fase 1 · Status: em andamento. Itens aprovados pelo Richard em 16/11/2026 a partir
 > do estudo "O que falta e como acelerar". Frente A: engenharia do repo. Frente B: fluxo e
-> exposição. Frente C, aberta em 17/11 (D5): spec viva do Espectro amarrada ao fluxo `/pri-*`
-> (F0.11 a F0.14). Nenhuma fatia toca o consumidor corporativo.
+> exposição; desde 17/11 (D5), inclui a spec viva do Espectro amarrada ao fluxo `/pri-*` (F0.11 a
+> F0.14). Nenhuma fatia toca o consumidor corporativo.
 
 **Objetivo.** Tirar o que freia todo o resto: CI que falha sem dizer por quê, repo público
 com exposição desnecessária, falta de um comando para ver o Espectro rodar e regras de fluxo
 que seguram trabalho pronto.
+
+**Capacidade.** A fase soma cerca de 26 dias de fatias sem data. Elas usam o que sobra da
+semana e nunca passam na frente da F1.2 e da F1.3; na frente B, a ordem é F0.11, F0.12, F0.13.
 
 **Por que roda em paralelo.** São fatias de nível Leve, de um a três dias, que não dependem
 da Fase 1 e encurtam cada fatia seguinte. A medição que as motivou: PR leva 13 minutos de
@@ -41,7 +44,7 @@ execuções.
 | F0.11 | Mapa de capacidades: uma página de entrada, um arquivo por capacidade e todo arquivo de código com dono (C1 da spec viva) | 2 | Leve | Não | — | D5 | em andamento | PRI-396 |
 | F0.12 | Três specs vivas completas (`spec`, `grafo`, `estado`), seção "Delta de capacidade" no modelo de SPEC e aviso no `processo-check` (C2) | 3 | Leve | Não | F0.11 | D5 | não iniciada | sem issue |
 | F0.13 | Fluxo `/pri-*` amarrado à spec viva: a fatia abre pela capacidade, a mudança traz o delta e o PR só sai com a spec viva conferida | 2 | Leve | Não | F0.4, F0.12 | D5 | não iniciada | sem issue |
-| F0.14 | Arrumar a casa: `tasks/` de issue fechada para o arquivo, `docs/prisma/` marcado como histórico e uma só descrição do fluxo de desenvolvimento (C3) | 1 | Leve | Não | F0.11 | D5 | não iniciada | sem issue |
+| F0.14 | Arrumar a casa: `tasks/` de issue fechada para `docs/historico/`, `docs/prisma/` marcado como histórico e uma só descrição do fluxo de desenvolvimento (C3) | 1 | Leve | Não | F0.11 | D5 | não iniciada | sem issue |
 
 ## Sementes das fatias ainda não iniciadas
 
@@ -89,5 +92,5 @@ execuções.
 
 - **Intenção.** `tasks/` só com o que está em curso e uma só descrição do fluxo de desenvolvimento.
 - **Não inclui.** Mover código; apagar histórico.
-- AC-01: pastas de `tasks/` de issue fechada estão no arquivo; `docs/prisma/` está marcado como histórico.
+- AC-01: pastas de `tasks/` de issue fechada estão em `docs/historico/`, como já foi feito com a PRI-233; `docs/prisma/` está marcado como histórico.
 - AC-02: `AGENTS.md`, `README.md` e as skills descrevem o mesmo fluxo de desenvolvimento, sem contradição.

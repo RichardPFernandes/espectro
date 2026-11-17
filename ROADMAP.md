@@ -46,7 +46,7 @@
 | `WATCHER_PLAN_DENY_SETTINGS` | Remover na F2.5: medido sem ganho | Nova medição, por decisão do Richard |
 | Writer de Self-SDD (PRI-349 e filhas) | Manter o código; tirar as issues do cycle até a Fase 2 fechar | D5 |
 | Classificador Jev | Congelar com data no registro de flags | Dado que justifique |
-| Exportação para Obsidian, verificação de UI, investigação dos UNKNOWN | Fechar o PR aberto de cada uma e parar (D5) | Revisão em 15/01/2027; F6.13 a F6.16 |
+| Exportação para Obsidian, verificação de UI, investigação dos UNKNOWN | Fechar o PR aberto de cada uma e parar (D5) | Revisão em 15/01/2027; F6.14 a F6.16 |
 | Recusas de QA, cadeia plan+implement (a decomposição não se congela: pilota na F2.2) | Congelar; só a análise de causa é feita agora (F1.7) | F6.10, conforme a F1.7; F6.4 |
 | Migração TypeScript, reescrita do watcher | Estacionar; extrair só o trecho tocado em cada fatia | Gargalo de manutenção medido |
 | Discovery, porta de tracker e forge, abertura | Não começar | D2; D4 |
