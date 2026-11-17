@@ -453,3 +453,72 @@ describe('tabela gerada do README (AC-04)', () => {
         assert.equal(map.checkTable(REPO), null);
     });
 });
+
+// Links relativos (AC-05): só arquivo local; externo e âncora não são conferidos.
+describe('links relativos de docs/capacidades (AC-05)', () => {
+    const page = (...links) => `${doc()}\n${links.join('\n')}\n`;
+    const check = files => withFiles(files, dir => map.checkLinks(dir));
+
+    it('link para arquivo que não existe falha citando o arquivo e o link', () => {
+        const problems = check({
+            'docs/capacidades/spec.md': page('Veja [o módulo](../../scripts/nao-existe.js).'),
+        });
+        assert.equal(problems.length, 1);
+        assert.match(problems[0], /docs\/capacidades\/spec\.md/);
+        assert.match(problems[0], /\.\.\/\.\.\/scripts\/nao-existe\.js/);
+    });
+
+    it('link para arquivo que existe passa, de arquivo, de pasta e de página irmã', () => {
+        assert.deepEqual(check({
+            'docs/capacidades/spec.md': page('[a](../../scripts/a.js) [b](../../scripts/) [c](estado.md) [d](./estado.md)'),
+            'docs/capacidades/estado.md': doc({ id: 'estado' }),
+            'scripts/a.js': '',
+        }), []);
+    });
+
+    it('âncora, link externo e mailto não são conferidos', () => {
+        assert.deepEqual(check({
+            'docs/capacidades/spec.md': page('[a](#secao) [b](https://exemplo.org/x) [c](http://exemplo.org/y) [d](mailto:a@b.c)'),
+        }), []);
+    });
+
+    it('a âncora e a query de um link local não contam, mas o arquivo precisa existir', () => {
+        const files = { 'docs/capacidades/spec.md': page('[a](estado.md#secao) [b](estado.md?x=1) [c](falta.md#secao)'), 'docs/capacidades/estado.md': doc({ id: 'estado' }) };
+        const problems = check(files);
+        assert.equal(problems.length, 1);
+        assert.match(problems[0], /falta\.md#secao/);
+    });
+
+    it('confere imagem, link com título e link entre < >', () => {
+        const problems = check({
+            'docs/capacidades/spec.md': page('![fig](img/falta.png)', '[t](falta-titulo.md "um título")', '[u](<falta angulo.md>)'),
+        });
+        assert.equal(problems.length, 3);
+    });
+
+    it('ignora o que está em bloco de código e em código em linha', () => {
+        assert.deepEqual(check({
+            'docs/capacidades/spec.md': page('```md', '[x](falta.md)', '```', 'Escreva `[x](falta.md)` assim.'),
+        }), []);
+    });
+
+    it('confere todos os arquivos .md da pasta, README inclusive', () => {
+        const problems = check({
+            'docs/capacidades/spec.md': doc(),
+            'docs/capacidades/README.md': '# Mapa\n\n[x](falta.md)\n',
+        });
+        assert.equal(problems.length, 1);
+        assert.match(problems[0], /README\.md/);
+    });
+
+    it('link com / inicial parte da raiz do repo', () => {
+        const files = { 'docs/capacidades/spec.md': page('[a](/scripts/a.js) [b](/scripts/falta.js)'), 'scripts/a.js': '' };
+        const problems = check(files);
+        assert.equal(problems.length, 1);
+        assert.match(problems[0], /\/scripts\/falta\.js/);
+    });
+
+    it('os links do mapa real apontam para arquivos que existem', () => {
+        assert.deepEqual(map.checkLinks(REPO), []);
+    });
+});

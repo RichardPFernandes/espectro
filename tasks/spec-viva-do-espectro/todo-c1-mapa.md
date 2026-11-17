@@ -79,11 +79,12 @@ Evidência do PR.
   - Depende de: T6
   - Em 17/11: teste vermelho antes (sem `renderTable`, `applyTable`, `checkTable`, `writeTable`), verde depois: 8 casos novos (linha por capacidade, `|` protegido, só o trecho entre marcadores, duas rodadas iguais, marcador ausente ou fora de ordem, defasada falha com `--write` e passa depois, cabeçalho alterado, README real em dia). `--check` também reprova tabela defasada. `--write` duas vezes: `cmp` idêntico; README com 104 linhas. `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde.
 
-- [ ] **T8: links relativos (AC-05)** · S
+- [x] **T8: links relativos (AC-05)** · S
   - Aceite: link relativo para arquivo que não existe, em qualquer arquivo de `docs/capacidades/`, faz o teste falhar citando arquivo e link; links externos e âncoras não são conferidos.
   - Verificar: teste focado verde, com caso sintético de link quebrado.
   - Arquivos: `scripts/capability-map.js`, `scripts/capability-map.test.js`
   - Depende de: T1. Fica aqui porque só tem o que conferir depois da T6.
+  - Em 17/11: teste vermelho antes (sem `checkLinks`, 10 falhas), verde depois: 9 casos novos (link quebrado cita arquivo e link; arquivo, pasta e página irmã passam; âncora, `http(s)` e `mailto` não são conferidos; `#âncora` e `?query` saem antes de olhar o arquivo; imagem, título e `<...>`; bloco de código e código em linha ignorados; README também; `/` inicial parte da raiz; links do mapa real em dia). `--check` também lista link quebrado e sai 1 (conferido à mão com um link falso, depois desfeito). `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde. Link de referência (`[t][ref]`) não é conferido: o mapa não usa.
 
 - [ ] **T9: ponteiros de entrada (AC-08)** · XS
   - Aceite: o `README.md` da raiz, antes do sumário, e o passo 1 do `AGENTS.md` apontam para `docs/capacidades/README.md`; nenhuma outra linha desses arquivos muda.

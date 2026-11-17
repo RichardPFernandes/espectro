@@ -4,7 +4,7 @@
 // índice separado. Página de entrada: docs/capacidades/README.md.
 //
 //   node scripts/capability-map.js --of scripts/cas.js    → imprime "estado" e sai 0
-//   node scripts/capability-map.js --check                → confere o mapa inteiro e a tabela
+//   node scripts/capability-map.js --check                → confere o mapa, a tabela e os links
 //   node scripts/capability-map.js --write                → regenera a tabela do README
 //
 // --of sai 1 quando o arquivo não tem exatamente uma capacidade dona. --check lista cada
@@ -261,13 +261,53 @@ function writeTable(root) {
     return true;
 }
 
+// Links relativos das páginas de docs/capacidades. Confere inline `[t](alvo)` e `![t](alvo)`,
+// fora de bloco de código e de código em linha. Externo (esquema:), mailto e âncora pura não
+// são conferidos; #âncora e ?query de link local são tirados antes de olhar o arquivo. Link
+// com "/" inicial parte da raiz do repo. Devolve uma mensagem por link quebrado.
+const LINK = /!?\[[^\]]*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
+
+function linksIn(text) {
+    let fenced = false;
+    const found = [];
+    for (const line of text.split('\n')) {
+        if (/^\s*(```|~~~)/.test(line)) {
+            fenced = !fenced;
+            continue;
+        }
+        if (fenced) continue;
+        for (const match of line.replace(/`[^`]*`/g, '').matchAll(LINK)) {
+            found.push(match[1].replace(/^<|>$/g, ''));
+        }
+    }
+    return found;
+}
+
+function checkLinks(root) {
+    const dir = path.join(root, CAPABILITIES_PATH);
+    const problems = [];
+    for (const name of fs.readdirSync(dir).filter(file => file.endsWith('.md')).sort()) {
+        const doc = `${CAPABILITIES_PATH}/${name}`;
+        for (const link of linksIn(fs.readFileSync(path.join(dir, name), 'utf8'))) {
+            if (link.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(link)) continue;
+            const target = link.replace(/[#?].*$/, '');
+            const file = target.startsWith('/') ? path.join(root, target) : path.resolve(dir, target);
+            if (!target || fs.existsSync(file)) continue;
+            problems.push(`${doc}: o link "${link}" não aponta para um arquivo que existe. Corrija o caminho ou tire o link`);
+        }
+    }
+    return problems;
+}
+
 function runCheck() {
     const report = checkMap(ROOT);
     for (const { message } of report.problems) console.error(message);
     const stale = checkTable(ROOT);
     if (stale) console.error(stale);
+    const broken = checkLinks(ROOT);
+    for (const message of broken) console.error(message);
     console.log(summary(report));
-    return report.problems.length || stale ? 1 : 0;
+    return report.problems.length || stale || broken.length ? 1 : 0;
 }
 
 function runWrite() {
@@ -300,6 +340,6 @@ function main([command, target]) {
 }
 
 module.exports = {
-    parseHeader, readCapabilities, matches, ownersOf, isCovered, checkMap, summary, renderTable, applyTable, checkTable, writeTable,
+    parseHeader, readCapabilities, matches, ownersOf, isCovered, checkMap, summary, renderTable, applyTable, checkTable, writeTable, checkLinks,
 };
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
