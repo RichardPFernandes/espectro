@@ -33,7 +33,7 @@ execuções.
 | F0.6 | Sonda de fumaça da CLI contra mudança no modo `-p` | 2 | Leve | Não | — | — | em andamento | PRI-376 |
 | F0.7 | ESLint só de erros no JavaScript de produção e teto de linhas nos três arquivos grandes | 2 | Leve | Não | F0.2 | — | não iniciada | sem issue |
 | F0.8 | Merge automático do Leve com CI verde e lista de caminhos | 2 | Alto | Sim | F0.2, F0.4 | D12 | não iniciada | sem issue |
-| F0.9 | Bloco de Estado e relatório semanal automáticos | 3 | Médio | Não | F0.4 | — | não iniciada | sem issue |
+| F0.9 | Bloco de Estado e relatório semanal automáticos | 3 | Médio | Não | F0.4 | — | em andamento | PRI-399 |
 
 ## Sementes das fatias ainda não iniciadas
 
