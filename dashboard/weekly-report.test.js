@@ -482,6 +482,15 @@ test('qaRefusalsOf e ticketCosts: ticket com recusa de QA cai em "refused", os d
     assert.strictEqual(W.qaRefusalsOf({ qaRetryCount: 1, state: { qa_retry_count: 4, qa_rejections: [{}] } }), 4);
 });
 
+test('ticketCosts: nó sem leitura (só runs_without_tokens) deixa o USD desconhecido; recusa de QA não soma em dobro', () => {
+    const blind = run(1, IN, { ticket: 'A', usd: 2, ms: 60000, nodes: { plan: { input_tokens: 900, output_tokens: 100, cost_usd: 2, runs: 1 }, implement: { input_tokens: null, output_tokens: null, cost_usd: null, runs: 1, runs_without_tokens: 1 } } });
+    const refused = run(2, IN, { ticket: 'B', usd: 10, ms: 60000 });
+    refused.state.qa_rejections = [{ retry_requested_at: IN, cost_baseline_usd: 6 }]; // custo da recusa já está no cost_tracking cumulativo
+    const T = cur([blind, refused]);
+    assert.deepStrictEqual(rowOf(T, 'all').usd, { median: 10, mean: 10, known: 1, unknown: 1 });
+    assert.deepStrictEqual(rowOf(T, 'refused').usd, { median: 10, mean: 10, known: 1, unknown: 0 });
+});
+
 test('ticketCosts: só entra ticket com run concluído na janela', () => {
     const T = cur([
         run(1, IN, { ticket: 'X', done: false }), // só run não concluído na janela
@@ -506,7 +515,7 @@ test('ticketCosts: medida ausente em qualquer run deixa a medida do ticket desco
     ]);
     const a = rowOf(T, 'all');
     assert.strictEqual(a.n, 7);
-    assert.deepStrictEqual(a.usd, { median: 1, mean: 1, known: 3, unknown: 4 }); // K, RT, M
+    assert.deepStrictEqual(a.usd, { median: 1, mean: 1, known: 2, unknown: 5 }); // K, M (RT tem nó sem leitura: USD parcial)
     assert.deepStrictEqual(a.tokens, { median: 1000, mean: 1000, known: 4, unknown: 3 }); // K, C, RW, M
     assert.deepStrictEqual(a.ms, { median: 60000, mean: 60000, known: 4, unknown: 3 }); // K, C, RW, RT
 });

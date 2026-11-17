@@ -378,7 +378,8 @@
   }
   const noneWith = (c, k) => !Object.values(c.nodes).some(n => n?.[k] > 0);
   const TICKET_METRICS = {
-    usd: r => (usdOf(r) != null && noneWith(costOf(r), 'runs_without_cost') ? usdOf(r) : null),
+    // Nó sem leitura nenhuma sobe só runs_without_tokens e deixa totals.cost_usd parcial: os dois contadores barram.
+    usd: r => (usdOf(r) != null && noneWith(costOf(r), 'runs_without_cost') && noneWith(costOf(r), 'runs_without_tokens') ? usdOf(r) : null),
     tokens: r => (tokensOf(r) != null && noneWith(costOf(r), 'runs_without_tokens') ? tokensOf(r) : null),
     ms: r => { const v = costOf(r)?.totals.duration_ms; return finite(v) && v > 0 ? v : null; },
   };
@@ -753,7 +754,7 @@
         ${secHead('wr-tk-h', 'Custo por ticket entregue', `${M.range} · n = ${plural(N, 'ticket entregue', 'tickets entregues')} em ${plural(T.runs, 'run somado', 'runs somados')} · sem meta definida (D6 em aberto)`)}
         <div class="wr-box wr-box-foot">
           ${N ? `<div class="wr-lb-row wr-tk-row wr-lb-head" aria-hidden="true">${cols.map(l => `<span>${l}</span>`).join('')}</div>${rows}` : '<p class="wr-empty">Nenhum ticket entregue na janela.</p>'}
-          <span class="wr-foot"><span class="wr-foot-main">Ticket entregue = ticket com run concluído na janela. O custo soma todos os runs do ticket, de qualquer semana, e os ciclos de recusa de QA (o cost_tracking do run é cumulativo). Mediana e média só dos tickets com a medida completa; +N desconhecido são tickets com algum run sem a medida, nunca zero. USD imputado é preço de tabela, não desembolso.</span><span>Fonte: state.json · cost_tracking</span></span>
+          <span class="wr-foot"><span class="wr-foot-main">Ticket entregue = ticket com run concluído na janela. O custo soma todos os runs do ticket, de qualquer semana, e os ciclos de recusa de QA (o cost_tracking do run é cumulativo). Mediana e média só dos tickets com a medida completa; +N desconhecido são tickets com algum run sem a medida, nunca zero. USD imputado é preço de tabela, não desembolso. Concluído inclui run com PR aberto. Tempo = soma dos despachos dos nós, sem espera humana. Um ticket com run concluído em duas semanas aparece nas duas, com o custo acumulado.</span><span>Fonte: state.json · cost_tracking</span></span>
         </div>
         <dl class="wr-lb-meta">${[['Modelo por nó (observado nos runs da janela)', nodeModelsText(M.nodeModels)], ['Versão da CLI e hash dos prompts por run', CONFIG_UNKNOWN], ['Fonte do custo', COST_SOURCE]]
           .map(([dt, dd]) => `<div><dt>${dt}</dt><dd${dd.startsWith('desconhecido') ? ' class="wr-none"' : ''}>${esc(dd)}</dd></div>`).join('')}</dl>
