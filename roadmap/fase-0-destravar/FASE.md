@@ -34,6 +34,7 @@ execuções.
 | F0.7 | ESLint só de erros no JavaScript de produção e teto de linhas nos três arquivos grandes | 2 | Leve | Não | F0.2 | — | não iniciada | sem issue |
 | F0.8 | Merge automático do Leve com CI verde e lista de caminhos | 2 | Alto | Sim | F0.2, F0.4 | D12 | não iniciada | sem issue |
 | F0.9 | Bloco de Estado e relatório semanal automáticos | 3 | Médio | Não | F0.4 | — | em andamento | PRI-399 |
+| F0.10 | Tabela-ponte: uma linha por página do canvas de design e por macrofase do roadmap de arquitetura, dizendo se está numa fatia, na Fase 6 com gatilho ou é só visão | 1 | Leve | Não | — | D13 | não iniciada | sem issue |
 
 ## Sementes das fatias ainda não iniciadas
 

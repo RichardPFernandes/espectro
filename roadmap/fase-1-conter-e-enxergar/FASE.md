@@ -1,7 +1,7 @@
 # Fase 1 — Conter e enxergar
 
-> 4 cycles · 17 dias · Status: em andamento. Frente A: contenção (F1.1 a F1.3 e F1.6). Frente B:
-> linha de base (F1.4 e F1.5).
+> 6 semanas · 21 dias · 23/11/2026 a 15/01/2027 (D14) · Status: em andamento. Frente A: contenção
+> (F1.1 a F1.3, F1.6 e F1.8). Frente B: linha de base (F1.4, F1.5 e F1.7).
 
 **Objetivo.** Ter as três barreiras que faltam (lista de flags, ponto de retorno, teto por
 run) e a régua de custo.
@@ -26,14 +26,17 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 | ID | Fatia | Dias | Nível | AUTORIZO | Depende de | Decisão | Status | Issue no Linear |
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
 | F1.1 | Registro de flags | 3 | Leve | Não | — | — | concluída | PRI-377 |
-| F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | não iniciada | PRI-379; inclui a PRI-372; PRI-371 é a alternativa de D3 |
-| F1.3 | Teto de turnos por run; inclui parar depois de N falhas seguidas do mesmo nó ([`DADOS.md`](../DADOS.md), item 6) | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | PRI-380 |
+| F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | não iniciada | PRI-379; inclui a PRI-372 |
+| F1.3 | Teto de turnos por run; inclui parar depois de N falhas seguidas do mesmo nó ([`DADOS.md`](../DADOS.md), item 6) | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | PRI-380; a PRI-392 (defeito do state-writer) é feita junto |
 | F1.4 | Linha de base: retrabalho | 2 | Leve | Não | — | D1 | concluída | PRI-378; base é a PRI-327 (Done) |
 | F1.5 | Linha de base: custo por ticket | 3 | Leve | Não | F1.4 | D1, D6 | não iniciada | PRI-381; PRI-82 relacionada |
 | F1.6 | Push dos repos irmãos: pulado não vira sucesso | 2 | Alto | A confirmar | — | — | não iniciada | PRI-179 |
+| F1.7 | Causa das recusas de QA: as recusas repetem causa? É a metade da F5.3 que não espera a Fase 5 | 2 | Leve | Não | — | D13 | não iniciada | sem issue; PRI-86 relacionada |
+| F1.8 | Causa das falhas de despacho em rajada ([`DADOS.md`](../DADOS.md), item 6), só leitura | 2 | Leve | Não | — | D13 | não iniciada | sem issue |
 
-Com a F1.6, a fase passa de 15 para 17 dias e de 3 para 4 cycles; sobram 3 dias de folga.
-Se estourar, a F1.5 escorrega para o primeiro cycle da Fase 2: ela não bloqueia a F2.1, só
+Com a F1.6, a F1.7 e a F1.8, a fase soma 21 dias. Cada semana conta 4 dias de fatia (D14), o
+que dá 6 semanas, com 3 dias de folga. Se estourar, a F1.5 escorrega para a primeira semana
+da Fase 2: ela não bloqueia a F2.1, só
 a ligação dos pilotos no consumidor corporativo.
 
 ## Sementes das specs
@@ -84,6 +87,8 @@ desenho fica para a spec.
 - AC-01: O weekly mostra custo por ticket entregue somando recusas de QA, com n e período, nas três réguas.
 - AC-02: Ausência de dado aparece como desconhecido, nunca como zero.
 - AC-03: A série semanal tem pelo menos um ponto registrado.
+- AC-04: O custo vem do JSON que a CLI devolve; o leitor de transcript fica como reserva, e a diferença entre os dois aparece no relatório.
+- AC-05: Cada run registra a versão da CLI, o modelo de cada nó e o hash dos prompts dos nós, para o antes e depois não misturar configurações.
 
 ### F1.6 — Push dos repos irmãos (PRI-179)
 
@@ -93,3 +98,17 @@ desenho fica para a spec.
 - AC-02: Repetição idêntica no mesmo repo continua deduplicada.
 - AC-03: Push que falha não é reportado como entrega bem-sucedida.
 - AC-04: Os testes usam repositórios temporários ou transporte falso, sem push real.
+
+### F1.7 — Causa das recusas de QA
+
+- **Intenção.** Saber se as recusas de QA repetem causa, antes de decidir a F6.10. Dado de 16/11: run com recusa custa quase cinco vezes a mediana.
+- **Não inclui.** Mudar o ciclo de recusas; publicar diagnóstico; copiar texto do consumidor.
+- AC-01: Um quadro agregado mostra as recusas por causa, com n e período, sem ticket, nome ou texto do consumidor.
+- AC-02: O quadro diz se a F6.10 sai da fila condicional. Amostra insuficiente aparece como desconhecido.
+
+### F1.8 — Causa das falhas de despacho
+
+- **Intenção.** Saber por que houve centenas de saídas com código 1 em poucos segundos e se a queda nas semanas 44 a 46 veio de correção.
+- **Não inclui.** Corrigir; o limite de falhas seguidas é da F1.3.
+- AC-01: A causa de cada rajada está identificada ou marcada como desconhecida, com a evidência lida.
+- AC-02: O resultado diz se a F1.3 basta ou se falta uma fatia de correção.

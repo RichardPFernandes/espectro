@@ -1,8 +1,8 @@
 # Fase 2 — Primeira economia ligada, primeira poda
 
-> 4 cycles · 21 dias · Status: não iniciada · Abre com a Fase 1 fechada, menos o piloto
+> 7 semanas · 25 dias mais a F2.7 · 18/01 a 05/03/2027 (D14) · Status: não iniciada · Abre com a Fase 1 fechada, menos o piloto
 > F2.2, em andamento em paralelo (D11). Frente A: custo, ligar e decidir (F2.1, F2.2 e a
-> F3.1, trazida para cá). Frente B: reduzir superfície (F2.4 a F2.6).
+> F3.1, trazida para cá). Frente B: reduzir superfície (F2.4 a F2.7). A F2.8 entra na frente A depois da F2.1.
 
 **Objetivo.** Ligar a primeira mudança que reduz custo de uma run comum, decidir os dois
 pilotos mais próximos e tirar do repo o que não tem chamador nem ganho.
@@ -32,9 +32,11 @@ de base. Cada piloto tem teto de runs e data; no vencimento, liga de vez ou remo
 
 | ID | Fatia e demonstração | Dias | Nível | AUTORIZO | Depende de | Premissa / decisão | Status | Issue no Linear |
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
-| F2.1 | Portão de build antes do review: compilar, lint e teste dirigido depois do implement; falhou, volta ao implement sem abrir review. Termina ligado | 4 | Alto ao ligar | Sim | Fase 1 | Tamanho do ganho é hipótese; a F1.4 dá o antes | não iniciada | sem issue; PRI-208 vizinha |
+| F2.1 | Portão de build antes do review: compilar, lint e teste dirigido depois do implement; falhou, volta ao implement sem abrir review. Termina ligado. Mede também quanto do nó test o portão torna redundante, para decidir a PRI-208 (D13) | 4 | Alto ao ligar | Sim | Fase 1 | Tamanho do ganho é hipótese; a F1.4 dá o antes | não iniciada | sem issue; PRI-208 decidida com a medição |
 | F2.2 | Piloto de decomposição: PR que liga, 3 a 5 runs, quadro antes/depois, decisão ligar ou remover | 3 | Alto | Sim | PRI-335, PRI-374. Para ligar no consumidor corporativo: F1.3, F1.5, F2.1 estabilizada | D11: roda no launcher do piloto, em paralelo com a Fase 1. Teto: 5 runs ou 2 semanas (D6) | em andamento | PRI-341 (em andamento, AUTORIZO dado); pré-requisitos: PRI-335 (Alto, Ready) e PRI-374 (Médio, Ready) |
 | F2.3 | Piloto de esforço por fase (PRI-354): ligar com data, medir custo, tempo e reprovação tardia, decidir | 2 | Alto | Sim | F2.2 decidida | Só liga sabendo o esforço padrão da conta; pode gastar mais. D11: no launcher do piloto; a flag só liga com a F2.2 decidida. Teto: 10 pares de runs (PRI-354) ou 3 semanas. D6, 16/11: fora da ordem da Fase 2; decide com os tickets de ouro da F3.3 | em andamento | PRI-354 (em andamento, AUTORIZO dado em 15/11) |
 | F2.4 | dependency-cruiser em PR, com as 77 violações como base; falha só nas novas | 2 | Leve | Não | PRI-359 | Conferido em 16/11: já estava entregue antes do roadmap, em `scripts/architecture-boundaries.test.js` | concluída | sem issue; PRI-359 (Leve) é pré-requisito |
 | F2.5 | Poda: remover a flag de `permissions.deny`, a rota `coordination`, `scripts/src` e a casca de TypeScript que só o cobre; Jev e writer de Self-SDD ficam, com data no registro | 3 | Médio | Não | F2.4 | D5: o writer de Self-SDD não sai; PRI-349 e filhas dão a ele um chamador. Remover só por decisão do Richard | não iniciada | PRI-315 (Done); conflita com PRI-349 e filhas |
-| F2.6 | Credenciais fora do shell do agente, por lista de permissão; teste + um ciclo ticket → PR completo | 4 | Alto | Sim | Fase 1 | Solução e esforço são hipótese | não iniciada | sem issue; PRI-316 vizinha |
+| F2.6 | Credenciais fora do shell do agente, por lista de permissão; teste + um ciclo ticket → PR completo. Inclui um modelo de ameaça de uma página: o que texto de ticket e anexo conseguem fazer num agente com shell (D13) | 4 | Alto | Sim | Fase 1 | Solução e esforço são hipótese | não iniciada | sem issue; PRI-316 vizinha |
+| F2.7 | `graph.yaml` como única fonte de nós e arestas; transição fora do grafo é recusada | a definir | Médio | Não | — | D13: a fatia já existia como issue, sem linha no mapa | não iniciada | PRI-394 |
+| F2.8 | Recibo da run no PR: um relatório legível por run, com gates, decisões humanas e custo | 4 | Médio | Não | F1.5 | D13. Vizinha da F6.9 | não iniciada | sem issue |

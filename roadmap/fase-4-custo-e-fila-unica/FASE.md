@@ -1,6 +1,6 @@
 # Fase 4 — Segunda rodada de custo e fila única
 
-> 5 cycles · 19 dias · Status: não iniciada · Abre com a Fase 3 fechada. Frente A: custo
+> 5 semanas · 19 dias · 26/04 a 28/05/2027 (D14) · Status: não iniciada · Abre com a Fase 3 fechada. Frente A: custo
 > (F4.1; a F4.2 é feita na Fase 3). Frente B: decisão humana (F4.3 a F4.6).
 
 **Objetivo.** Dar a cada flag ligada um antes/depois automático, levar o modelo por fase ao

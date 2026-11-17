@@ -1,6 +1,6 @@
 # Fase 3 — Lugar seguro para medir
 
-> 5 cycles · 22 dias · Status: não iniciada · Abre com a Fase 2 fechada. Frente A:
+> 7 semanas · 25 dias · 08/03 a 23/04/2027 (D14) · Status: não iniciada · Abre com a Fase 2 fechada. Frente A:
 > projeto-amostra e modelo por fase (F3.2, F3.3 e a F4.2, trazida para cá; a F3.1 é feita
 > na Fase 2). Frente B: contenção fina e medição de gate (F3.4 a F3.6).
 
@@ -30,6 +30,7 @@ então precisa do teto da Fase 1.
 | F3.5 | Encerrar agente vivo por tempo, com motivo registrado (sem alarme) | 5 | Alto | Sim | F1.3 | Estimativa cortada para caber | não iniciada | sem issue |
 | F3.6 | Métricas de gate no weekly: gates respondidos, espera mediana, escalations, tempo humano × máquina × espera | 2 | Leve | Não | — | Conferir a PRI-327 | não iniciada | PRI-151 |
 | F3.7 | Experimento: prova de valor antecipada com três tickets de ouro tirados de issues fechadas, Espectro contra o agente direto. Antecipa a F5.4 | 3 | Leve | Não | F3.1 | Aprovado em 16/11; resultado pode reordenar as Fases 4 e 5 | não iniciada | PRI-81 relacionada |
+| F3.8 | Cancelar uma run pelo operador e ver o diff dela; reaproveita o encerramento da F3.5 | 3 | Alto ao ligar | Sim | F3.5 | D13 | não iniciada | sem issue |
 
 ## Semente
 
