@@ -82,6 +82,9 @@ const REMOVED_MARK = /\((removid[oa]|cancelad[oa]|descontinuad[oa])\s+em\b/i;
 // ("AC-02: texto", "- **AC-02**: texto", "AC-02 — texto"). O mapeamento HOW do Plan
 // usa seta ("AC-02 → passos 1 e 3: ...") e não conta como reescrita.
 const RESTATEMENT = /^\s*(?:[-*+]|\d+[.)])?\s*(?:\[[ xX]\]\s*)?[*_`]*(AC-\d+)[*_`]*\s*(?::|—|–|\s-\s)[*_`]*\s*(.+?)\s*$/;
+// Seções de HOW (nível ≥ 2, inclusive subseções): ali "AC-NN:" rotula diagnóstico, passo
+// ou decisão sobre o AC, não reescreve o critério. Fora delas a regra acima vale inteira.
+const HOW_HEADINGS = [PLAN_HEADING, COVERAGE_HEADING, /^(diagnostico|analise|causas?)\b/, /^decis(oes|ao)\b/];
 const SPEC_REF = /\bSpec[*_`]*\s*:\s*[*_`]*\s*`?([^\s`*]+\.md)`?/i;
 const AC_LIST = /^\s*[-*]?\s*[*_`]*ACs?[*_`]*\s*:\s*(.+)$/im;
 // Runs iniciados antes disso podem ter só o ac-evidence.md de linhas "AC-01 | PASS | ..."
@@ -418,7 +421,15 @@ function idsIn(text) {
 /** Linhas que reescrevem o texto de um AC: [{id, text, line}]. */
 function restatements(content) {
     const out = [];
+    const stack = []; // cabeçalhos abertos (nível ≥ 2) acima da linha atual
     stripComments(normalizeText(content)).split('\n').forEach((line, i) => {
+        const h = parseHeading(line);
+        if (h) {
+            while (stack.length && stack[stack.length - 1].level >= h.level) stack.pop();
+            if (h.level >= 2) stack.push({ level: h.level, how: HOW_HEADINGS.some(re => re.test(normalizeHeading(h.text))) });
+            return;
+        }
+        if (stack.some(s => s.how)) return;
         const m = RESTATEMENT.exec(line);
         if (m) out.push({ id: acIds.canonicalId(acIds.idNumber(m[1])), text: m[2], line: i + 1 });
     });
