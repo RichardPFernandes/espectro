@@ -273,6 +273,21 @@ describe('mapa do repo', () => {
         const capabilities = map.readCapabilities(path.join(REPO, 'docs', 'capacidades'));
         assert.deepEqual(map.ownersOf(capabilities, 'scripts/cas.js'), ['estado']);
     });
+
+    // AC-03 contra o repo real: arquivo novo sem dona, com duas donas, padrão morto ou flag
+    // que sumiu do código reprova aqui, com a mensagem que diz o arquivo e o comando.
+    it('todo arquivo de código tem exatamente uma capacidade dona (AC-03)', () => {
+        const { problems } = map.checkMap(REPO);
+        assert.deepEqual(problems.map(problem => problem.message), []);
+    });
+
+    it('as 16 capacidades da SPEC existem, sem "outros" nem "misc"', () => {
+        const ids = map.readCapabilities(path.join(REPO, 'docs', 'capacidades')).map(capability => capability.id);
+        assert.deepEqual(ids, [
+            'autorizacao', 'ciclo-da-run', 'config', 'dashboard', 'db-effect', 'estado', 'execucao', 'ferramentas',
+            'grafo', 'integracoes', 'medicao', 'portoes', 'qa', 'roteamento', 'sdd-writer', 'spec',
+        ]);
+    });
 });
 
 describe('capability-map.js --of (AC-06)', () => {

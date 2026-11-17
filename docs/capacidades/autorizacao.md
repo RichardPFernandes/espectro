@@ -8,6 +8,7 @@ flags: []
 modulos:
   - scripts/lib/authorization.js
   - scripts/lib/approvers.js
+  - scripts/lib/prisma-config.js
   - scripts/lib/dom06-attempt.js
   - scripts/lib/human-input-intent.js
   - scripts/git-push-effect.sh
