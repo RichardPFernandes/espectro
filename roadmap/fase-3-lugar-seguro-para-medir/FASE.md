@@ -1,6 +1,6 @@
 # Fase 3 — Lugar seguro para medir
 
-> 7 semanas · 25 dias · 08/03 a 23/04/2027 (D14) · Status: não iniciada · Abre com a Fase 2 fechada. Frente A:
+> 7 semanas · 28 dias, sem folga · 08/03 a 23/04/2027 (D14) · Status: não iniciada · Abre com a Fase 2 fechada. Frente A:
 > projeto-amostra e modelo por fase (F3.2, F3.3 e a F4.2, trazida para cá; a F3.1 é feita
 > na Fase 2). Frente B: contenção fina e medição de gate (F3.4 a F3.6).
 
@@ -17,6 +17,7 @@ então precisa do teto da Fase 1.
 - [ ] Modelo por fase (F4.2): decisão registrada com n, medida nos tickets de ouro (custo por fase × primeira passada).
 - [ ] Regra em uso: mudança de prompt, skill ou policy roda os três tickets antes do merge.
 - [ ] Alerta de run acima de N vezes a mediana funcionando; agente encerrado por tempo em ensaio, com motivo registrado.
+- [ ] Uma run de ensaio cancelada pelo operador, com o diff visível (F3.8).
 - [ ] Weekly mostra gates por run, espera mediana e contagem de escalations.
 
 ## Fatias

@@ -20,6 +20,7 @@ execuções.
 - [ ] `npm run demo` na raiz roda um ciclo simulado; README com "Veja funcionando".
 - [ ] Regras de fluxo aprovadas no `CLAUDE.md` e no `AGENTS.md`.
 - [ ] Sonda da CLI rodada uma vez com a CLI real.
+- [ ] Tabela-ponte publicada: cada página do canvas de design e cada macrofase da arquitetura tem um destino (F0.10).
 
 ## Fatias
 

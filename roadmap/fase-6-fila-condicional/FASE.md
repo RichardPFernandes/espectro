@@ -15,7 +15,7 @@
 | F6.7 | Aprovador identificado em toda rota de decisão; botões de aceite de spec e plano | 5 + 5 | Alto | Sim | F4.4 | D7 = dashboard vira o canal | não iniciada | sem issue |
 | F6.8 | Gate de verificação manual com preview, screenshot e log | 5 | Alto | Sim | F4.4 | PRI-295 aprovada | não iniciada | PRI-295 |
 | F6.9 | Dossiê de escalation | 4 | Médio | Não | F3.6, F4.4 | F3.6 mostrar escalations frequentes | não iniciada | sem issue |
-| F6.10 | Ciclo de recusas de QA | a definir | Alto | Sim | F1.5 | Linha de base mostrar recusas repetidas pela mesma causa. Dado de 16/11: run com recusa custa quase 5 vezes a mediana; causa ainda não medida (F5.3) | não iniciada | PRI-275 a 280, PRI-86 |
+| F6.10 | Ciclo de recusas de QA | a definir | Alto | Sim | F1.5 | Linha de base mostrar recusas repetidas pela mesma causa. Dado de 16/11: run com recusa custa quase 5 vezes a mediana; a causa é medida na F1.7 | não iniciada | PRI-275 a 280, PRI-86 |
 | F6.11 | Porta de tracker e forge; preparação da abertura | a definir | Alto | Sim | F3.1, F2.4, F2.5 | D4 nomear um usuário externo | não iniciada | PRI-96, PRI-133 |
 | F6.12 | Skills por nó e benchmark | a definir | Alto | Sim | F3.3, F4.1 | PRI-299 e PRI-344 autorizadas | não iniciada | PRI-299, PRI-300 e filhas, PRI-344, PRI-346 |
 | F6.13 | Spec viva por capacidade, fatias C2 a C4 (a C1 fecha na PRI-396) | a definir | Leve | Não | — | D5: revisão em 15/01/2027 | não iniciada | PRI-396 |

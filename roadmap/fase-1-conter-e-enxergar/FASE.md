@@ -19,6 +19,8 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 - [ ] Uma run de ensaio bate no teto de turnos e para com status de bloqueio.
 - [ ] Push de repo irmão pulado não é mais reportado como sucesso (PRI-179).
 - [ ] Capa do weekly mostra custo por ticket entregue, custo do retrabalho por nó e primeira passada por nó, com n e período.
+- [ ] Custo lido do JSON da CLI, com versão da CLI, modelo e hash dos prompts por run (F1.5).
+- [ ] Causa das recusas de QA e das rajadas de despacho identificada ou marcada como desconhecida (F1.7, F1.8).
 - [ ] Meta de custo por ticket registrada (D6), ou a frase "sem meta até a semana X".
 
 ## Fatias

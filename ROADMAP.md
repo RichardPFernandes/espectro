@@ -21,7 +21,7 @@
 
 | Fase | Objetivo | Semanas | Datas | Depende de | Status |
 | -- | -- | -- | -- | -- | -- |
-| [0. Destravar](roadmap/fase-0-destravar/FASE.md) | CI legível, exposição do repo tratada, um comando para ver rodar, regras de fluxo | ao lado | 23/11 a 11/12/2026 | — | em andamento |
+| [0. Destravar](roadmap/fase-0-destravar/FASE.md) | CI legível, exposição do repo tratada, um comando para ver rodar, regras de fluxo | ao lado | sem data | — | em andamento |
 | [1. Conter e enxergar](roadmap/fase-1-conter-e-enxergar/FASE.md) | Registro de flags, ponto de retorno, teto por run, push dos repos irmãos, linha de base, causa das recusas de QA e das falhas de despacho | 6 | 23/11/2026 a 15/01/2027 | — | em andamento |
 | [2. Primeira economia ligada, primeira poda](roadmap/fase-2-economia-e-poda/FASE.md) | Portão de build ligado, piloto de decomposição decidido, run sem Redmine (F3.1), código morto fora, credenciais reduzidas, recibo da run | 7 | 18/01 a 05/03/2027 | Fase 1; o piloto F2.2 segue em paralelo (D11) | não iniciada; F2.2 em andamento |
 | [3. Lugar seguro para medir](roadmap/fase-3-lugar-seguro-para-medir/FASE.md) | Projeto-amostra com três tickets de ouro, modelo por fase decidido neles (F4.2), limite de tempo | 7 | 08/03 a 23/04/2027 | Fase 2 | não iniciada |
@@ -36,7 +36,7 @@
 - [ ] Conferir qual pasta o launcher do consumidor usa e devolvê-la para a `main` limpa.
 - [ ] Registrar três números: modelo e esforço padrão da conta, runs concluídas por semana, assinatura ou API paga.
 - [ ] Triar o cycle corrente para duas frentes.
-- [x] Responder D1, D3, D5 e D8 em [`DECISOES.md`](roadmap/DECISOES.md), ou aceitar as premissas.
+- [x] Responder D1, D3, D5 e D8 (a meta da D1 segue em aberto; a D8 está decidida e não executada) em [`DECISOES.md`](roadmap/DECISOES.md), ou aceitar as premissas.
 
 ## Fora do roadmap agora
 

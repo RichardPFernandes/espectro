@@ -26,6 +26,9 @@ de base. Cada piloto tem teto de runs e data; no vencimento, liga de vez ou remo
 - [ ] Removidos: `WATCHER_PLAN_DENY_SETTINGS`, rota `coordination`, esqueleto `scripts/src`. Writer de Self-SDD mantido, com data no registro de flags (D5).
 - [x] dependency-cruiser roda em PR; a contagem de violações não sobe de 77 (já entregue: `scripts/architecture-boundaries.test.js`).
 - [ ] Teste prova que chave do Redmine e token do Bitbucket não chegam ao processo do agente, e o ciclo ticket → PR segue funcionando.
+- [ ] Transição fora do `graph.yaml` é recusada (F2.7).
+- [ ] Um PR real traz o recibo da run (F2.8).
+- [ ] Modelo de ameaça de uma página publicado (F2.6); PRI-208 decidida com a medição da F2.1.
 - [ ] Itens desligados: de 9 para no máximo 6.
 
 ## Fatias
@@ -39,4 +42,4 @@ de base. Cada piloto tem teto de runs e data; no vencimento, liga de vez ou remo
 | F2.5 | Poda: remover a flag de `permissions.deny`, a rota `coordination`, `scripts/src` e a casca de TypeScript que só o cobre; Jev e writer de Self-SDD ficam, com data no registro | 3 | Médio | Não | F2.4 | D5: o writer de Self-SDD não sai; PRI-349 e filhas dão a ele um chamador. Remover só por decisão do Richard | não iniciada | PRI-315 (Done); conflita com PRI-349 e filhas |
 | F2.6 | Credenciais fora do shell do agente, por lista de permissão; teste + um ciclo ticket → PR completo. Inclui um modelo de ameaça de uma página: o que texto de ticket e anexo conseguem fazer num agente com shell (D13) | 4 | Alto | Sim | Fase 1 | Solução e esforço são hipótese | não iniciada | sem issue; PRI-316 vizinha |
 | F2.7 | `graph.yaml` como única fonte de nós e arestas; transição fora do grafo é recusada | a definir | Médio | Não | — | D13: a fatia já existia como issue, sem linha no mapa | não iniciada | PRI-394 |
-| F2.8 | Recibo da run no PR: um relatório legível por run, com gates, decisões humanas e custo | 4 | Médio | Não | F1.5 | D13. Vizinha da F6.9 | não iniciada | sem issue |
+| F2.8 | Recibo da run no PR: um relatório legível por run, com gates, decisões humanas e custo | 4 | Médio | Não | F1.5, F2.1 | D13. Vizinha da F6.9 | não iniciada | sem issue |
