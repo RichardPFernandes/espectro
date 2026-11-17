@@ -34,7 +34,7 @@ Atualize a linha no mesmo PR que cria, fecha ou remove a fatia citada.
 | Suporte e atendimento | visão, sem agenda | PRI-259 | — |
 | Operação e ação humana | na fatia F4.4 e F4.5 | PRI-252, PRI-253, PRI-173, PRI-129 | Recorte: fila "Aguardando você", só leitura (D7), com idade, motivo e link. Vizinhas: F3.8 (cancelar run), F6.7 a F6.9. O resto da página não tem fatia |
 | Painel de projetos | visão, sem agenda | PRI-257 | Vizinha: F6.11 (PRI-133), que espera a D4 |
-| Providers, modelos e plataforma | visão, sem agenda | PRI-256 | Vizinhas: F4.2 e F5.1 entregam modelo por fase e roteamento, sem tela |
+| Providers, modelos e plataforma | visão, sem agenda | PRI-256 | Vizinhas: F4.2 (modelo por fase), F5.1 e F5.2 (roteamento em sombra e ligado), sem tela |
 | Infraestrutura e DevOps | visão, sem agenda | PRI-260 | — |
 | Governança e segurança | visão, sem agenda | PRI-254 | Vizinhas: F4.3 (dashboard preso a loopback) e F6.7 (aprovador identificado) |
 | Specs, SDD e conhecimento | visão, sem agenda | PRI-255 | Vizinhas: F6.13 e F6.14 levam o conhecimento para o Obsidian, não para uma tela |
