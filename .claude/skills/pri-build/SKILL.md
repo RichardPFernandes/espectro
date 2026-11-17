@@ -15,8 +15,9 @@ subagente novo (decisão D-FLX-01 de 17/11/2026).
 - **Lista de tarefas.** Médio e Alto: `<pasta>/todo.md`. Leve: os ACs da issue,
   um por vez. Nunca `tasks/todo.md`.
 - **Gate do plano (Médio e Alto).** Pare se `.prisma/context.json` não tiver
-  `plano_aprovado`, ou se ele divergir de `shasum -a 256 <pasta>/todo.md`. Diga que o
-  plano precisa passar (de novo) pelo `/pri-plan` e pela aprovação do Richard.
+  `plano_aprovado`, ou se ele divergir de `sed 's/- \[x\]/- [ ]/' <pasta>/todo.md | shasum -a 256`
+  (o mesmo comando do `/pri-plan`; marcar caixa não muda o hash, mudar tarefa muda).
+  Diga que o plano precisa passar (de novo) pelo `/pri-plan` e pela aprovação do Richard.
 - **Subagente por tarefa.** Uma tarefa por vez, em ordem, sem parar entre elas. Nunca
   duas ao mesmo tempo, nunca em segundo plano. Para cada uma, chame o Agent tool com
   `subagent_type: "general-purpose"` e o modelo pelo nível:
@@ -43,7 +44,7 @@ subagente novo (decisão D-FLX-01 de 17/11/2026).
      commit e dúvidas.
 - **Depois de cada tarefa,** na sessão principal: confira `git log -1` e
   `git status --porcelain` vazio, rode `npm run test:changed`, marque a tarefa no
-  `todo.md` e faça commit dele. Guarde só o resumo do subagente; o próximo começa do
+  `todo.md` e faça commit dele (no Leve, não há `todo.md`: pule a marcação). Guarde só o resumo do subagente; o próximo começa do
   zero. Se ele devolveu dúvida ou falha, resolva com uma correção óbvia num subagente
   novo ou pare e pergunte.
 - **Pare e pergunte** quando:

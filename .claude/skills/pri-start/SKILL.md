@@ -27,6 +27,8 @@ Primeiro passo do fluxo de desenvolvimento (seção "Fluxo de desenvolvimento" d
 6. **Grave o contexto** (o diretório `.prisma/` é ignorado pelo git):
    - `.prisma/level`: `leve`, `medio` ou `alto` (é o que o hook lê);
    - `.prisma/context.json`: `{"issue": "PRI-NNN", "fatia": "F1.2" | null, "nivel": "...", "branch": "<git branch --show-current>", "pasta": "..." | null}`.
+     O `/pri-plan` acrescenta `plano_aprovado` no Médio e no Alto; rodar o `/pri-start`
+     de novo apaga o campo e o plano volta ao gate.
 7. **Responda em até 8 linhas:** issue, nível, ACs, pasta e o próximo comando.
 
 | Nível | Fluxo |
