@@ -25,7 +25,7 @@ critérios de aceite ficam no `FASE.md` e no PR.
 
 PRI-373 (exportar para Obsidian), PRI-363 e filhas PRI-364, 365, 366 (investigação dos
 UNKNOWN), PRI-369 (design de UNKNOWN). Decidido em 17/11 (D5): PRI-373 e PRI-366 fecham o PR
-aberto; o resto vai para a F6.14 e a F6.16. PRI-396 (spec viva, C1) fecha e o resto vai para a F6.13.
+aberto; o resto vai para a F6.14 e a F6.16. PRI-396 (spec viva, C1) é a F0.11; a spec viva segue na Fase 0.
 
 ## Issues que o roadmap não tinha e deveria considerar
 
@@ -41,7 +41,7 @@ aberto; o resto vai para a F6.14 e a F6.16. PRI-396 (spec viva, C1) fecha e o re
 
 F1.3 ↔ PRI-392 · F2.7 ↔ PRI-394 · F3.6 ↔ PRI-151 · F4.2 ↔ PRI-352 e filhas · F4.4 ↔ PRI-253, PRI-173, PRI-129 ·
 F5.1 ↔ PRI-318 · F5.4 ↔ PRI-81, PRI-76 · F6.8 ↔ PRI-295 · F6.10 ↔ PRI-275 a 280, PRI-86 ·
-F6.11 ↔ PRI-96, PRI-133 · F6.12 ↔ PRI-299, PRI-300 e filhas, PRI-344, PRI-346 · F6.13 ↔ PRI-396 · F6.14 ↔ PRI-373, PRI-73 ·
+F6.11 ↔ PRI-96, PRI-133 · F6.12 ↔ PRI-299, PRI-300 e filhas, PRI-344, PRI-346 · F0.11 ↔ PRI-396 · F6.14 ↔ PRI-373, PRI-73 ·
 F6.15 ↔ PRI-370, PRI-390, PRI-362 · F6.16 ↔ PRI-367, PRI-368, PRI-369.
 
 ## Sem lugar no roadmap (estacionar)
