@@ -23,7 +23,7 @@
 
 - [x] **Checagem B:** `(cd dashboard && npm test)` verde (577/577), `check:js` limpo, e o teste novo provadamente sensível.
 
-- [ ] **T4: `/verify-ui` real e PR** (AC-4) — depende de T3
+- [x] **T4: `/verify-ui` real e PR** (AC-4) — feita: PASSOU (71 requisições 200, 0 erro de console, fontes locais) e FALHOU forçado (`ELEMENT_MISSING`); vereditos em `~/Workspace/prisma-evidence/pri-390/`; fontes conferidas a olho no screenshot
   - Aceite: com AC de texto visível, a tela inicial dá PASSOU; com AC de texto inexistente, dá FALHOU. Os dois `verdict.json` ficam em `~/Workspace/prisma-evidence/pri-390/` e são citados no PR. `docs/ui-verify.md` ganhou uma linha. PR em draft com `processo:medio` e "Refs PRI-390". Revisão G3 feita, sem MAJOR aberto.
   - Verificar: `PRISMA_UI_VERIFY=on` → `/verify-ui pri-390` (duas vezes); `processo-check` verde no PR.
   - Arquivos: `docs/ui-verify.md`, descrição do PR
