@@ -44,6 +44,7 @@ jobs:
             /.github/
             /docs/capacidades/
             /scripts/capability-map.js
+            /.claude/settings.json
             /.claude/hooks/
             /.claude/skills/
             /.claude/commands/

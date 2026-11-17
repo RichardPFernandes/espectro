@@ -648,7 +648,8 @@ describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
         assert.deepEqual(problems, []);
     });
 
-    // Spec viva (F0.12) cabe numa página; as outras são só cabeçalho e resumo.
+    // Spec viva (F0.12) cabe numa página, definida em docs/capacidades/README.md como até 80
+    // linhas de arquivo; as outras são só cabeçalho e resumo.
     it('cada capacidade tem até 40 linhas (80 com spec viva) e até cinco arquivos por onde começar (AC-02)', () => {
         const problems = [];
         for (const capability of map.readCapabilities(DIR)) {

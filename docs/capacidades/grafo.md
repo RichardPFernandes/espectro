@@ -49,7 +49,7 @@ custa mais que parar e chamar o humano.
 | GRAFO-R08 | O replay reentra em qualquer nó de `plan` a `commit` numa Run nova, reaproveitando os nós anteriores do ciclo parado. | Refazer só o trecho que falhou. |
 | GRAFO-R09 | Cada nó tem um comando em `.claude/commands/`, que é o prompt do agente. `implement-step`, `implement-integrate`, `verify-ui` e `init-project` são comandos sem nó: não mudam o nó da Run. | Subtarefa e verificação auxiliar não são etapas do ciclo. |
 | GRAFO-R10 | A validação de configuração (capacidade `config`) reprova nó sem comando ou com comando vazio, aresta para nó inexistente, volta sem limite, ciclo nas arestas de avanço e nó sem saída que não seja terminal. | Edição manual do grafo quebrava em silêncio e só aparecia numa Run. |
-| GRAFO-R11 | `plan` escolhe o contexto da tarefa pelo índice de specs; os nós seguintes trabalham sobre essa seleção. Só `commit` escreve de forma permanente na memória do consumidor. | Nenhum nó lê a memória inteira. |
+| GRAFO-R11 | `plan` escolhe o contexto da tarefa pelo índice de specs; os nós seguintes trabalham sobre essa seleção. Só `commit` escreve de forma permanente na memória do consumidor; a exceção é o `implement`, que pode acrescentar em "Decisões de Implementação" da spec da task. | Nenhum nó lê a memória inteira. |
 
 ## Invariantes
 
