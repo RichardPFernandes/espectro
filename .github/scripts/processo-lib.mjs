@@ -2,6 +2,7 @@
 // Funções puras, sem rede nem dependências: usadas pelo check de CI
 // (processo-check.mjs) e pelo hook do Claude Code (.claude/hooks/processo-level.mjs).
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -74,12 +75,24 @@ export function evidenceLines(body, heading, templateBody = '') {
         && !emptyRow(l) && !markers.some((m) => l.includes(m)));
 }
 
+// Mapa de capacidades (scripts/capability-map.js, cabeçalhos de docs/capacidades). O aviso é
+// só um sinal: se o mapa não carrega (checkout parcial, cabeçalho inválido), o check segue sem ele.
+export function loadCapabilityMap({ script = path.join(HERE, '..', '..', 'scripts', 'capability-map.js'), dir = path.join(HERE, '..', '..', 'docs', 'capacidades') } = {}) {
+    try {
+        const { readCapabilities, ownersOf, isCovered } = createRequire(import.meta.url)(script);
+        return { capabilities: readCapabilities(dir), ownersOf, isCovered };
+    } catch (e) {
+        return { unavailable: String(e.message).split('\n')[0].slice(0, 160) };
+    }
+}
+
 const FIX_LEVEL = 'Para reclassificar, troque o rótulo (subir de nível exige o Richard).';
 
 // files: [{ filename, status, additions, deletions, previous_filename? }] (formato da API do GitHub).
-export function evaluate({ labels = [], body = '', files = [], templateBody = '', config }) {
+export function evaluate({ labels = [], body = '', files = [], templateBody = '', config, capabilityMap }) {
     const errors = [];
     const info = [];
+    const warnings = [];
     const levelLabels = Object.keys(config.levels);
     // Rótulos do GitHub não diferenciam maiúsculas.
     const found = [...new Set(labels.map((l) => String(l).toLowerCase()).filter((l) => levelLabels.includes(l)))];
@@ -124,5 +137,24 @@ export function evaluate({ labels = [], body = '', files = [], templateBody = ''
             errors.push('Nível alto: o corpo do PR precisa citar a SPEC da issue (tasks/<pasta>/SPEC.md).');
         }
     }
-    return { ok: errors.length === 0, level, errors, info };
+    if (capabilityMap?.unavailable) {
+        info.push(`aviso de capacidade indisponível: ${capabilityMap.unavailable}`);
+    } else if (capabilityMap) {
+        // Renomear ou remover também é mudar o código (ou a spec): vale o nome antigo e o novo.
+        const names = files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean));
+        const code = new Map();
+        for (const name of names.filter(capabilityMap.isCovered)) {
+            for (const id of capabilityMap.ownersOf(capabilityMap.capabilities, name)) code.set(id, [...(code.get(id) ?? []), name]);
+        }
+        const states = capabilityMap.capabilities.filter((c) => code.has(c.id));
+        if (states.length) info.push(`capacidades com código alterado: ${states.map((c) => `${c.id} (${c.spec})`).join(', ')}`);
+        for (const c of states.filter((c) => c.spec !== 'sem-spec')) {
+            const spec = `docs/capacidades/${c.id}.md`;
+            if (names.includes(spec)) continue;
+            const changed = [...new Set(code.get(c.id))];
+            const shown = changed.slice(0, 3).join(', ') + (changed.length > 3 ? ` +${changed.length - 3}` : '');
+            warnings.push(`Capacidade "${c.id}": o PR muda código dela (${shown}) e não toca a spec viva (${spec}). Se o comportamento mudou, atualize a spec no mesmo PR; se não mudou, diga isso na Evidência. Aviso, não reprova.`);
+        }
+    }
+    return { ok: errors.length === 0, level, errors, warnings, info };
 }
