@@ -97,6 +97,8 @@
     "ignore": {
       "PATH": "variável do sistema",
       "HOME": "variável do sistema",
+      "LANG": "variável do sistema (locale herdado e repassado ao navegador em scripts/ui-verify.js)",
+      "TMPDIR": "variável do sistema (diretório temporário; scripts/lib/sdd-writer-git.js)",
       "SISTEMA": "escrita, não leitura: scripts/preview-manager.js monta extraEnv para o processo filho do Maven do app-back",
       "JAVA_HOME": "variável do sistema (JDK herdado da shell)",
       "NO_COLOR": "convenção de terminal (no-color.org)",

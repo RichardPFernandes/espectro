@@ -146,6 +146,28 @@ function sourceExistsIn(root) {
 
 const contextOf = (root, contractPath = path.join(root, '.claude', 'config-contract.json')) => ({ root, contract: loadContract(contractPath) });
 
+// Variáveis que o scanner do config-validator vê sendo lidas no código.
+const readsOf = root => new Set(envReadsInCode(contextOf(root)).keys());
+
+// Variáveis do .env.example (inclusive as comentadas) que o scanner não vê lidas. Cada uma
+// sai do exemplo ou traz, no comentário logo acima, "Leitura fora do scanner: <onde>".
+function unreadExampleVars(text, reads) {
+    const out = [];
+    let block = [];
+    for (const line of String(text).split('\n')) {
+        const m = /^[ \t]*#?[ \t]*([A-Z][A-Z0-9_]+)=/.exec(line);
+        if (m) {
+            if (!reads.has(m[1])) {
+                const j = block.map(l => /Leitura fora do scanner:\s*(\S.*)$/.exec(l)).find(Boolean);
+                out.push({ name: m[1], justification: j ? j[1].trim() : null });
+            }
+            block = [];
+        } else if (/^\s*#/.test(line)) block.push(line.replace(/^\s*#\s?/, ''));
+        else block = [];
+    }
+    return out;
+}
+
 function inspectRepo(root, { today = todayUtc(), contractPath } = {}) {
     let markdown;
     try { markdown = fs.readFileSync(path.join(root, REGISTRY_REL), 'utf8'); } catch {
@@ -160,4 +182,5 @@ function inspectRepo(root, { today = todayUtc(), contractPath } = {}) {
 
 module.exports = {
     REGISTRY_REL, COLUMNS, parseFlagRegistry, flagShapedReads, checkFlagRegistry, inspectRepo, todayUtc,
+    readsOf, unreadExampleVars,
 };

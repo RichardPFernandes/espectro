@@ -6,8 +6,8 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { ENV_READ_RES } = require('./config-validator');
-const { parseFlagRegistry, checkFlagRegistry, flagShapedReads, inspectRepo, COLUMNS } = require('./flag-registry');
+const { validateAll, ENV_READ_RES } = require('./config-validator');
+const { parseFlagRegistry, checkFlagRegistry, flagShapedReads, inspectRepo, unreadExampleVars, readsOf, COLUMNS } = require('./flag-registry');
 
 const REAL_ROOT = path.resolve(__dirname, '..', '..');
 const HEADER = `| ${COLUMNS.join(' | ')} |\n|${COLUMNS.map(() => ' -- ').join('|')}|\n`;
@@ -131,6 +131,32 @@ test('scanner de ambiente enxerga leitura por objeto *Env (consumerEnv), não s�
     assert.deepStrictEqual(lidas("const id = (consumerEnv.BITBUCKET_ACCOUNT_ID || '').trim();"), ['BITBUCKET_ACCOUNT_ID']);
     assert.deepStrictEqual(lidas('if (process.env.A_FLAG && env.B_FLAG) {}'), ['A_FLAG', 'B_FLAG']);
     assert.deepStrictEqual(lidas('const porta = config.PORTA_X;'), []);
+});
+
+test('unreadExampleVars: variável do exemplo fora das leituras exige "Leitura fora do scanner:" no comentário dela', () => {
+    const exemplo = [
+        '# lida normalmente', 'LIDA=', '',
+        '# Leitura fora do scanner: preview-manager.js, configuredRepo().', 'INDIRETA=', '',
+        '# Leitura fora do scanner:', 'VAZIA=', '',
+        '# comentário sem a justificativa', 'SOBRA=', '',
+        '# DRY_RUN_X=', '',
+    ].join('\n');
+    const r = unreadExampleVars(exemplo, new Set(['LIDA']));
+    assert.deepStrictEqual(r.map(x => [x.name, x.justification]), [
+        ['INDIRETA', 'preview-manager.js, configuredRepo().'], ['VAZIA', null], ['SOBRA', null], ['DRY_RUN_X', null],
+    ]);
+});
+
+test('AC-03: toda variável lida pelo código está no .env.example ou ignorada com motivo no contrato', () => {
+    const contract = path.join(REAL_ROOT, '.claude', 'config-contract.json');
+    const report = validateAll(contract, { root: REAL_ROOT, rules: ['env-documented'] });
+    const falhas = report.results.filter(r => !r.passed && r.severity !== 'info');
+    assert.deepStrictEqual(falhas.map(r => `${r.message}: ${(r.details || []).join(', ')}`), []);
+});
+
+test('AC-03: variável do .env.example sem leitura no código tem justificativa (sai ou explica)', () => {
+    const sem = unreadExampleVars(fs.readFileSync(path.join(REAL_ROOT, '.env.example'), 'utf8'), readsOf(REAL_ROOT)).filter(x => !x.justification);
+    assert.deepStrictEqual(sem.map(x => x.name), [], 'adicione "# Leitura fora do scanner: <onde>" ao comentário, ou remova a variável');
 });
 
 test('repositório real (AC-01, AC-02, AC-04): docs/flags.md confere com o código e nenhuma data venceu', () => {
