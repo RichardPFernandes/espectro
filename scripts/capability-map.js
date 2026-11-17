@@ -9,10 +9,11 @@
 //
 // --of sai 1 quando o arquivo não tem exatamente uma capacidade dona. --check lista cada
 // problema com o arquivo e o comando que confere a correção, fecha com a contagem e sai 1
-// se houver problema. Os dois saem 2 em erro de uso ou de cabeçalho. O cabeçalho é um subconjunto de YAML lido aqui mesmo (o repo não tem
-// biblioteca de YAML): texto simples, lista em linha ([a, b]) ou lista em bloco ("- a").
-// Qualquer outra forma é erro. Um padrão de `modulos` é um caminho exato ou um prefixo
-// terminado em "*"; não há precedência entre padrões.
+// se houver problema. Os três comandos saem 2 em erro de uso ou de cabeçalho. O cabeçalho é
+// um subconjunto de YAML lido aqui mesmo (o repo não tem biblioteca de YAML): texto simples,
+// lista em linha ([a, b]) ou lista em bloco ("- a"). Qualquer outra forma é erro. Um padrão
+// de `modulos` é um caminho exato ou um prefixo terminado em "*"; não há precedência entre
+// padrões.
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -26,7 +27,8 @@ const TABLE_END = '<!-- capacidades:fim -->';
 const USAGE = `uso: ${CLI} --check | --write | --of <caminho>`;
 
 // O que precisa de capacidade dona: o código dos dois pacotes e tudo o que define os nós e
-// o grafo. Teste segue o vizinho; fixture e .gitkeep não são código.
+// o grafo. Teste segue o vizinho; fixture e .gitkeep não são código. Só `*.test.js` é teste,
+// como na receita (harness/run-tests.js): um `*.test.mjs` novo precisaria de dona.
 const CODE_ROOTS = ['scripts/', 'dashboard/'];
 const CODE_EXTENSIONS = ['.js', '.mjs', '.cjs', '.sh'];
 const WHOLE_ROOTS = ['.claude/commands/', '.graph/'];
@@ -157,7 +159,8 @@ function walk(root, rel = '') {
 }
 
 // Mesma listagem da receita de testes (harness/run-tests.js): com git, os versionados mais
-// os novos não ignorados; sem git (export), o disco.
+// os novos não ignorados; sem git (export), o disco, pulando SKIP_DIRS. Só o disco pula
+// essas pastas: com git, vale o que o git lista, igual à receita.
 function listFiles(root) {
     if (!fs.existsSync(path.join(root, '.git'))) return walk(root).sort();
     const args = ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'];
@@ -264,7 +267,8 @@ function writeTable(root) {
 // Links relativos das páginas de docs/capacidades. Confere inline `[t](alvo)` e `![t](alvo)`,
 // fora de bloco de código e de código em linha. Externo (esquema:), mailto e âncora pura não
 // são conferidos; #âncora e ?query de link local são tirados antes de olhar o arquivo. Link
-// com "/" inicial parte da raiz do repo. Devolve uma mensagem por link quebrado.
+// com "/" inicial parte da raiz do repo; "%20" e afins são decodificados. Devolve uma mensagem
+// por link quebrado.
 const LINK = /!?\[[^\]]*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
 
 function linksIn(text) {
@@ -283,6 +287,16 @@ function linksIn(text) {
     return found;
 }
 
+// "%20" no link é o espaço do nome do arquivo. Escape malformado fica como está e, sem arquivo
+// com esse nome, vira link quebrado.
+function decodeLink(target) {
+    try {
+        return decodeURI(target);
+    } catch {
+        return target;
+    }
+}
+
 function checkLinks(root) {
     const dir = path.join(root, CAPABILITIES_PATH);
     const problems = [];
@@ -290,7 +304,7 @@ function checkLinks(root) {
         const doc = `${CAPABILITIES_PATH}/${name}`;
         for (const link of linksIn(fs.readFileSync(path.join(dir, name), 'utf8'))) {
             if (link.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(link)) continue;
-            const target = link.replace(/[#?].*$/, '');
+            const target = decodeLink(link.replace(/[#?].*$/, ''));
             const file = target.startsWith('/') ? path.join(root, target) : path.resolve(dir, target);
             if (!target || fs.existsSync(file)) continue;
             problems.push(`${doc}: o link "${link}" não aponta para um arquivo que existe. Corrija o caminho ou tire o link`);

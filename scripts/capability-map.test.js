@@ -317,6 +317,104 @@ describe('capability-map.js --of (AC-06)', () => {
     });
 });
 
+// --check e --write de ponta a ponta (AC-03 a AC-05): o script é copiado para um repo mínimo,
+// onde a raiz é a pasta acima de scripts/, e roda como processo, para valer o código de saída.
+describe('capability-map.js --check e --write', () => {
+    const MARKERS = '<!-- capacidades:inicio -->\n<!-- capacidades:fim -->';
+    const FERRAMENTAS = doc({ id: 'ferramentas', flags: '[]', modulos: '\n  - scripts/capability-map.js' });
+    const MINIMAL = {
+        'scripts/capability-map.js': fs.readFileSync(CLI, 'utf8'),
+        'docs/capacidades/ferramentas.md': FERRAMENTAS,
+        'docs/capacidades/README.md': `# Mapa\n\n## Capacidades\n\n${MARKERS}\n`,
+    };
+
+    // Monta o repo mínimo com `changes`, gera a tabela com --write e entrega `run` ao teste.
+    function inRepo(changes, fn) {
+        return withFiles({ ...MINIMAL, ...changes }, dir => {
+            const run = (...args) => spawnSync(process.execPath, [path.join(dir, 'scripts', 'capability-map.js'), ...args], { encoding: 'utf8' });
+            return fn(run, dir);
+        });
+    }
+
+    it('--write cria a tabela e, na segunda rodada, diz que já estava em dia', () => {
+        inRepo({}, run => {
+            const first = run('--write');
+            assert.equal(first.status, 0);
+            assert.match(first.stdout, /tabela atualizada/);
+            assert.match(run('--write').stdout, /tabela já estava em dia/);
+        });
+    });
+
+    it('--check num mapa fechado sai 0, sem nada em stderr', () => {
+        inRepo({}, run => {
+            run('--write');
+            const result = run('--check');
+            assert.equal(result.status, 0);
+            assert.equal(result.stderr, '');
+            assert.match(result.stdout, /1 arquivos, cada um com uma capacidade dona/);
+        });
+    });
+
+    it('--check no repo real sai 0', () => {
+        const result = spawnSync(process.execPath, [CLI, '--check'], { cwd: REPO, encoding: 'utf8' });
+        assert.equal(result.stderr, '');
+        assert.equal(result.status, 0);
+    });
+
+    it('--check com arquivo sem dona sai 1, cita o arquivo e conta no resumo', () => {
+        inRepo({ 'scripts/novo.js': '' }, run => {
+            run('--write');
+            const result = run('--check');
+            assert.equal(result.status, 1);
+            assert.match(result.stderr, /^scripts\/novo\.js: sem capacidade dona/);
+            assert.match(result.stdout, /faltam 1 de 2 arquivos/);
+        });
+    });
+
+    it('--check com tabela defasada sai 1 e manda rodar --write', () => {
+        inRepo({}, (run, dir) => {
+            run('--write');
+            fs.writeFileSync(path.join(dir, 'docs/capacidades/ferramentas.md'), doc({ id: 'ferramentas', flags: '[]', situacao: 'desligada', modulos: '\n  - scripts/capability-map.js' }));
+            const result = run('--check');
+            assert.equal(result.status, 1);
+            assert.match(result.stderr, /README\.md: a tabela de capacidades está defasada.*--write/);
+        });
+    });
+
+    it('--check com link relativo quebrado sai 1 e cita o link', () => {
+        inRepo({ 'docs/capacidades/ferramentas.md': `${FERRAMENTAS}\n[x](falta.md)\n` }, run => {
+            run('--write');
+            const result = run('--check');
+            assert.equal(result.status, 1);
+            assert.match(result.stderr, /ferramentas\.md: o link "falta\.md"/);
+        });
+    });
+
+    it('--check com cabeçalho inválido sai 2 e cita o arquivo', () => {
+        inRepo({ 'docs/capacidades/ferramentas.md': doc({ id: 'ferramentas', tipo: 'talvez', modulos: '\n  - scripts/capability-map.js' }) }, run => {
+            const result = run('--check');
+            assert.equal(result.status, 2);
+            assert.match(result.stderr, /ferramentas\.md.*tipo/);
+        });
+    });
+
+    it('--write sem marcadores no README sai 2', () => {
+        inRepo({ 'docs/capacidades/README.md': '# Mapa\n' }, run => {
+            const result = run('--write');
+            assert.equal(result.status, 2);
+            assert.match(result.stderr, /marcadores/);
+        });
+    });
+
+    it('argumento sobrando em --check sai 2 e mostra o uso', () => {
+        inRepo({}, run => {
+            const result = run('--check', 'extra');
+            assert.equal(result.status, 2);
+            assert.match(result.stderr, /uso:/);
+        });
+    });
+});
+
 // Página de entrada e forma de cada capacidade (AC-01, AC-02, AC-07). Lê o repo real: o texto
 // só passa se a página tiver as quatro seções, os 18 termos e os tetos de linhas.
 describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
@@ -487,6 +585,17 @@ describe('links relativos de docs/capacidades (AC-05)', () => {
         const problems = check(files);
         assert.equal(problems.length, 1);
         assert.match(problems[0], /falta\.md#secao/);
+    });
+
+    it('%20 e outros escapes de URL valem pelo nome do arquivo; escape malformado não derruba', () => {
+        const files = {
+            'docs/capacidades/spec.md': page('[a](com%20espaco.md) [b](falta%20mesmo.md) [c](quebrado%E0%A4%A.md)'),
+            'docs/capacidades/com espaco.md': '# x\n',
+        };
+        const problems = check(files);
+        assert.equal(problems.length, 2);
+        assert.match(problems[0], /falta%20mesmo\.md/);
+        assert.match(problems[1], /quebrado%E0%A4%A\.md/);
     });
 
     it('confere imagem, link com título e link entre < >', () => {
