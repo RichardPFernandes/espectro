@@ -31,3 +31,12 @@ test('model: no cabeçalho de skill usa um apelido válido', () => {
         if (model) assert.match(model, /^(sonnet|opus|haiku|fable|inherit)$/, d);
     }
 });
+
+test('modelo por passo da D-FLX-01', () => {
+    const esperado = { 'pri-start': 'sonnet', 'pri-pr': 'sonnet', 'pri-spec': 'opus', 'pri-plan': 'opus' };
+    for (const [d, m] of Object.entries(esperado)) {
+        const md = fs.readFileSync(path.join(SKILLS, d, 'SKILL.md'), 'utf8');
+        const front = md.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+        assert.equal(front.match(/^model:\s*(\S+)\s*$/m)?.[1], m, d);
+    }
+});
