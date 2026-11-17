@@ -85,13 +85,21 @@ test('PRI-390 T2: o dashboard no somente leitura serve fonts.css e as fontes com
 });
 
 // ---- T3 (AC-1, AC-3): varredura genérica de origem externa e 200 em todo recurso local ----
-// Referência em atributo href/src e em CSS (url(), @import). `${...}` é link montado em runtime
-// com dado da Run (PR, ticket) e não é carregado pela tela; data: e âncoras (#) são locais.
+// Referência em atributo (href, src, srcset, xlink:href, com ou sem aspas) e em CSS (url(), @import),
+// varrido no HTML inteiro: blocos <style> e style="" inline. `${...}` no início é link montado em
+// runtime com dado da Run (PR, ticket) e não é carregado pela tela; data: e âncoras (#) são locais.
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 function attrRefs(html) {
-    return [...html.matchAll(/<([a-z]+)\b[^>]*?\s(href|src)\s*=\s*(["'])(.*?)\3/gis)]
-        .map(([, tag, attr, , ref]) => ({ tag: tag.toLowerCase(), attr, ref, rel: '' }))
-        .filter(r => !r.ref.includes('${'));
+    const out = [];
+    for (const [tagSrc, tag] of html.matchAll(/<([a-z][a-z0-9-]*)\b[^>]*>/gi)) {
+        for (const m of tagSrc.matchAll(/\s(href|src|srcset|xlink:href)\s*=\s*(?:(["'])(.*?)\2|([^\s"'>]+))/gis)) {
+            const attr = m[1].toLowerCase();
+            const value = m[3] ?? m[4];
+            const refs = attr === 'srcset' ? value.split(',').map(c => c.trim().split(/\s+/)[0]).filter(Boolean) : [value];
+            for (const ref of refs) out.push({ tag: tag.toLowerCase(), attr, ref });
+        }
+    }
+    return out;
 }
 function cssRefs(css) {
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -100,25 +108,27 @@ function cssRefs(css) {
         ...[...noComments.matchAll(/@import\s+(["'])([^"']+)\1/g)].map(m => m[2].trim()),
     ];
 }
-function styleBlocks(html) {
-    return [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map(m => m[1]).join('\n');
-}
-// Externa: tem esquema (ou é //host) e não é data: nem http(s) de localhost/127.0.0.1.
+const htmlRefs = html => [...attrRefs(html).map(r => r.ref), ...cssRefs(html)];
+// Classifica pelo host resolvido como o navegador faria (espaço inicial, //host e /\host incluídos):
+// local só http(s) de localhost/127.0.0.1; qualquer outro esquema ou host é externo.
 function isExternal(ref) {
-    if (/^data:/i.test(ref)) return false;
-    if (!/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(ref)) return false;
+    const r = ref.trim();
+    if (!r || r.startsWith('${') || r.startsWith('#') || /^data:/i.test(r)) return false;
     let u;
-    try { u = new URL(ref, 'http://127.0.0.1/'); } catch { return true; }
+    try { u = new URL(r, 'http://127.0.0.1/'); } catch { return true; }
     return !(/^https?:$/.test(u.protocol) && LOCAL_HOSTS.has(u.hostname));
 }
-const isLocalResource = ref => ref && !ref.startsWith('#') && !/^data:/i.test(ref) && !isExternal(ref);
+const isLocalResource = ref => {
+    const r = ref.trim();
+    return Boolean(r) && !r.startsWith('#') && !/^data:/i.test(r) && !r.includes('${') && !isExternal(r);
+};
 
 // Arquivo HTML → externas no HTML e em toda folha CSS local que ele alcança (lidas do disco).
 function externalRefsFromDisk(htmlFile, publicDir) {
     const html = read(htmlFile);
     const found = [];
     for (const r of attrRefs(html)) if (isExternal(r.ref)) found.push(`index.html ${r.attr}=${r.ref}`);
-    for (const ref of cssRefs(styleBlocks(html))) if (isExternal(ref)) found.push(`index.html <style> ${ref}`);
+    for (const ref of cssRefs(html)) if (isExternal(ref)) found.push(`index.html css ${ref}`);
     const seen = new Set();
     const queue = attrRefs(html).filter(r => r.tag === 'link' && isLocalResource(r.ref) && /\.css(\?|$)/.test(r.ref))
         .map(r => path.join(publicDir, r.ref.replace(/^\//, '').split('?')[0]));
@@ -144,13 +154,13 @@ test('PRI-390 T3: a varredura reprova origem externa em href, src, url() e @impo
         '<script src="//cdn.example.com/x.js"></script>',
         '<style>@import "https://cdn.example.com/a.css"; .x{background:url(https://cdn.example.com/b.png)}</style>',
     ].join('\n');
-    const refs = [...attrRefs(html).map(r => r.ref), ...cssRefs(styleBlocks(html))];
+    const refs = htmlRefs(html);
     assert.deepEqual(refs.filter(isExternal), refs);
     assert.equal(refs.length, 6);
     for (const ok of ['fonts/fonts.css', '/api/export', '#runs', 'data:image/svg+xml,%3Csvg%3E', 'http://127.0.0.1:4317/x.css', 'http://localhost/y.js']) {
         assert.equal(isExternal(ok), false, ok);
     }
-    assert.deepEqual(attrRefs('<a href="${esc(p.url)}">'), [], 'link montado em runtime não é recurso da tela');
+    assert.deepEqual(attrRefs('<a href="${esc(p.url)}">').filter(r => isLocalResource(r.ref)), [], 'link montado em runtime não é recurso da tela');
 });
 
 test('PRI-390 T3 (AC-1): index.html e as folhas CSS locais não referenciam origem fora de localhost', () => {
@@ -182,8 +192,8 @@ test('PRI-390 T3 (AC-1): no somente leitura, todo recurso local da tela inicial 
         const html = await page.text();
         // Recurso que a tela carrega: <link>, <script>, <img> etc.; <a href> é navegação, não carga.
         const pending = attrRefs(html).filter(r => r.tag !== 'a' && isLocalResource(r.ref))
-            .map(r => new URL(r.ref, `${base}/`).href);
-        for (const ref of cssRefs(styleBlocks(html))) if (isLocalResource(ref)) pending.push(new URL(ref, `${base}/`).href);
+            .map(r => new URL(r.ref.trim(), `${base}/`).href);
+        for (const ref of cssRefs(html)) if (isLocalResource(ref)) pending.push(new URL(ref.trim(), `${base}/`).href);
         assert.ok(pending.length > 10, `só ${pending.length} recursos locais`);
         const checked = new Map();
         while (pending.length) {
@@ -218,10 +228,48 @@ test('PRI-390 T3 (AC-2): no somente leitura, /api/obsidian é neutra com PRISMA_
             const r = await fetch(`${base}/api/obsidian`);
             assert.equal(r.status, 200, `flag ${flag}`);
             assert.deepEqual(await r.json(), { enabled: false, vault: null, ready: false, uri: null });
-            assert.ok(!fs.existsSync(prefsFile), 'não lê nem cria prefs');
+            assert.ok(!fs.existsSync(prefsFile), 'não cria prefs (a leitura fica provada pelo corpo neutro e pelo teste do vault nas prefs)');
         } finally {
             delete process.env.PRISMA_DASHBOARD_READONLY;
             await dash.close();
         }
     }
+});
+
+test('PRI-390 G3: no somente leitura, a neutra vale para barra final, maiúsculas e HEAD, e não vaza o vault das prefs', async () => {
+    const { dash, prefsFile, base } = await bootReadonly('on');
+    const vault = path.join(tmp, 'vault-que-nao-pode-vazar');
+    fs.writeFileSync(prefsFile, JSON.stringify({ obsidian_vault: vault }));
+    process.env.PRISMA_DASHBOARD_READONLY = '1';
+    const neutral = { enabled: false, vault: null, ready: false, uri: null };
+    try {
+        for (const p of ['/api/obsidian', '/api/obsidian/', '/API/Obsidian']) {
+            const r = await fetch(base + p);
+            assert.equal(r.status, 200, p);
+            assert.deepEqual(await r.json(), neutral, `${p}: prefs lidas`);
+        }
+        for (const [p, body] of [['/api/obsidian', neutral], ['/api/fx', { rate: null, source: 'somente leitura', date: null }]]) {
+            const r = await fetch(base + p, { method: 'HEAD' });
+            assert.equal(r.status, 200, `HEAD ${p}`);
+            assert.equal(r.headers.get('content-length'), String(Buffer.byteLength(JSON.stringify(body))), `HEAD ${p} não é a neutra`);
+        }
+    } finally {
+        delete process.env.PRISMA_DASHBOARD_READONLY;
+        await dash.close();
+    }
+});
+
+test('PRI-390 G3: a varredura pega atributo sem aspas, style inline, srcset, xlink:href, ${} depois do host e espaço inicial', () => {
+    const html = [
+        '<script src=//cdn.example.com/a.js></script>',
+        '<div style="background:url(https://cdn.example.com/b.png)"></div>',
+        '<img srcset="img/local.png 1x, https://cdn.example.com/c.png 2x">',
+        '<svg><use xlink:href="https://cdn.example.com/d.svg#i"></use></svg>',
+        '<script src="https://cdn.example.com/${v}/e.js"></script>',
+        '<link href=" https://cdn.example.com/f.css" rel="stylesheet">',
+        '<img src="/\\cdn.example.com/g.png">',
+    ].join('\n');
+    const ext = htmlRefs(html).filter(isExternal);
+    assert.equal(ext.length, 7, `pegou só: ${ext.join(' | ')}`);
+    assert.deepEqual(htmlRefs('<a href="${esc(p.url)}">').filter(isExternal), [], 'link montado em runtime não é origem externa');
 });

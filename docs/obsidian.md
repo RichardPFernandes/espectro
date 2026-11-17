@@ -16,7 +16,7 @@ Com `PRISMA_OBSIDIAN=on` no ambiente do dashboard (padrão: desligado, e valor f
 
 - **Sem vault ainda:** o botão vira **Criar vault e abrir no Obsidian**; o caminho que ele vai criar aparece ao passar o mouse (padrão `~/Vaults/espectro`). O clique roda o exportador e guarda a pasta em `dashboard/dashboard-prefs.json` (`obsidian_vault`, ignorado pelo git).
 - **Com vault:** abre `obsidian://open?path=<pasta>` no Obsidian. Só abre; não regera.
-- O dashboard não grava no vault: quem grava é o exportador, com as mesmas recusas de sempre (pasta alheia, dentro do repositório). O modo `PRISMA_DASHBOARD_READONLY=1` bloqueia a criação.
+- O dashboard não grava no vault: quem grava é o exportador, com as mesmas recusas de sempre (pasta alheia, dentro do repositório). O modo `PRISMA_DASHBOARD_READONLY=1` bloqueia a criação. Nesse modo, `GET`/`HEAD /api/obsidian` responde 200 `{enabled:false, vault:null, ready:false, uri:null}` sem ler as prefs, com a flag ligada ou não, e o botão some (PRI-390: a tela da verificação de UI não pode depender do 404).
 - Só funciona na máquina onde o dashboard roda (`obsidian://` abre o app local).
 - Não verificado no app: se o Obsidian abre uma pasta que ainda não é um vault registrado, ou se pede para você escolher. Se pedir, use uma vez "Abrir pasta como cofre".
 
