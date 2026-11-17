@@ -287,9 +287,13 @@
   const finite = v => Number.isFinite(v);
   const attUsd = a => (finite(a?.cost?.usd) ? a.cost.usd : null);
   const attMs = a => (finite(a?.duration_ms) && a.duration_ms >= 0 ? a.duration_ms : null);
+  // Mesma régua dos "Tokens por etapa" (input + cache lido + cache escrito + output). Uma linha de uso com
+  // contador nulo não é zero: a tentativa inteira fica desconhecida, e uma tentativa sem linha de uso também.
+  const USAGE_COUNTERS = ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_5m_tokens', 'cache_write_1h_tokens', 'cache_write_ttl_unknown_tokens'];
   function attTokens(a) {
-    const rows = (Array.isArray(a?.observed?.usage) ? a.observed.usage : []).filter(u => u && (finite(u.input_tokens) || finite(u.output_tokens)));
-    return rows.length ? sum(rows.map(u => (finite(u.input_tokens) ? u.input_tokens : 0) + (finite(u.output_tokens) ? u.output_tokens : 0))) : null;
+    const rows = Array.isArray(a?.observed?.usage) ? a.observed.usage : [];
+    if (!rows.length || rows.some(u => !u || USAGE_COUNTERS.some(k => !finite(u[k])))) return null;
+    return sum(rows.map(u => sum(USAGE_COUNTERS.map(k => u[k]))));
   }
   const RUN_METRICS = { usd: attUsd, tokens: attTokens, ms: attMs };
   // n = runs da janela com cost_tracking que passaram pelo nó (run sem cost_tracking não afirma nada).
@@ -304,7 +308,9 @@
         const a = acc.get(k) || { n: 0, passed: 0, reworked: 0, extraAttempts: 0, usd: { s: 0, known: 0, unknown: 0 }, tokens: { s: 0, known: 0, unknown: 0 }, ms: { s: 0, known: 0, unknown: 0 } };
         const attempts = Array.isArray(n.attempts) ? n.attempts : null;
         const extras = attempts && attempts.length > 1 ? attempts.slice(1) : [];
-        const reworked = extras.length > 0 || Number(r.state?.retries?.[k]) > 0 || Number(n.retries) > 0;
+        // Retries declarados (state.retries, node.retries) sem tentativa detalhada correspondente: custo desconhecido.
+        const declared = Math.max(Number(r.state?.retries?.[k]) || 0, Number(n.retries) || 0);
+        const reworked = extras.length > 0 || declared > 0;
         a.n += 1;
         if (!reworked) a.passed += 1;
         else {
@@ -313,7 +319,7 @@
           for (const [m, f] of Object.entries(RUN_METRICS)) {
             // Sem detalhe de tentativa (só contador) ou com tentativa sem a medida: desconhecido.
             const vals = extras.map(f);
-            if (!extras.length || vals.some(v => v == null)) a[m].unknown += 1;
+            if (extras.length < declared || vals.some(v => v == null)) a[m].unknown += 1;
             else { a[m].s += sum(vals); a[m].known += 1; }
           }
         }
@@ -341,7 +347,7 @@
     const uses = new Map(), efforts = new Set();
     for (const r of list) {
       for (const n of Object.values(costOf(r)?.nodes || {})) {
-        for (const m of n.models || []) uses.set(m, (uses.get(m) || 0) + 1);
+        for (const m of n.models || []) if (m && m !== 'UNKNOWN') uses.set(m, (uses.get(m) || 0) + 1);
         for (const a of n.attempts || []) { const e = a?.requested?.effort; if (e && e !== 'UNAVAILABLE' && e !== 'UNKNOWN') efforts.add(e); }
       }
     }
@@ -452,7 +458,7 @@
     L.push(`Custo: ${money(M.cur.cost)}; média por run ${money(M.cur.avg)}${!M.isAll && M.prev?.avg != null ? ` contra ${money(M.prev.avg)} na semana anterior` : ''}.`);
     L.push(`Retrabalho: ${M.cur.loops == null ? 'sem medição' : `${M.cur.loops} loops`}${M.retries.length ? ` (${M.retries.map(x => `${x.name} ${x.loops}`).join(', ')})` : ''}.`);
     const B = M.baseline;
-    L.push(`Linha de base do retrabalho (${M.range}, n = ${B.runs ? plural(B.runs, 'run', 'runs') : '0 runs'} com cost_tracking): retrabalho = tentativas além da primeira; USD imputado = preço de tabela, não desembolso.`);
+    L.push(`Linha de base do retrabalho (${M.range}, n = ${plural(B.runs, 'run', 'runs')} com cost_tracking): retrabalho = tentativas além da primeira; USD imputado = preço de tabela, não desembolso.`);
     if (!B.rows.length) L.push('  sem run com cost_tracking na janela.');
     for (const x of B.rows) { const c = reworkCells(x); L.push(`  ${x.name}: primeira passada ${c.pass}; retrabalho ${c.usd} · ${c.tokens} · ${c.ms}`); }
     L.push(`Modelo padrão da conta (observado nos runs): ${modelLine(B.meta)}.`);
@@ -639,7 +645,7 @@
   // F1.4: a capa mostra o retrabalho por nó nas três réguas (D1 aberta). Sem dado = "desconhecido".
   function baselineSection(M) {
     const B = M.baseline, m = B.meta;
-    const none = t => (t === 'desconhecido' || t.startsWith('desconhecido') ? ' wr-none' : '');
+    const none = t => (t.startsWith('desconhecido') ? ' wr-none' : '');
     const cols = [['Nó', ''], ['Passou de primeira', ''], ['Retrabalho (USD imputado)', ''], ['Tokens do retrabalho', ''], ['Tempo de parede do retrabalho', '']];
     const rows = B.rows.map(x => {
       const c = reworkCells(x);
@@ -651,16 +657,16 @@
         <span class="wr-num${none(c.ms)}" data-l="${cols[4][0]}">${esc(c.ms)}</span></div>`;
     }).join('');
     return `<section class="wr-sec wr-sec-rule" aria-labelledby="wr-lb-h">
-        ${secHead('wr-lb-h', 'Linha de base do retrabalho', `${M.range} · n = ${B.runs ? plural(B.runs, 'run', 'runs') : '0 runs'} com cost_tracking`)}
+        ${secHead('wr-lb-h', 'Linha de base do retrabalho', `${M.range} · n = ${plural(B.runs, 'run', 'runs')} com cost_tracking`)}
         <div class="wr-box wr-box-foot">
           ${B.rows.length ? `<div class="wr-lb-row wr-lb-head" aria-hidden="true">${cols.map(([l]) => `<span>${l}</span>`).join('')}</div>${rows}`
             : '<p class="wr-empty">Nenhum run da janela tem cost_tracking.</p>'}
-          <span class="wr-foot"><span class="wr-foot-main">Retrabalho = tentativas além da primeira de cada nó: é um teto, inclui retomada legítima. USD imputado é preço de tabela, não desembolso; o que não foi medido aparece como desconhecido, nunca como zero. n por nó = runs que passaram por ele.</span><span>Fonte: state.json · cost_tracking</span></span>
+          <span class="wr-foot"><span class="wr-foot-main">Retrabalho = tentativas além da primeira de cada nó: é um teto, inclui retomada legítima, e +N desconhecido são N runs refeitos sem medida (a soma mostrada é um piso). Tokens: entrada, cache e saída, como em Tokens por etapa. USD imputado é preço de tabela, não desembolso; o que não foi medido aparece como desconhecido, nunca como zero. n por nó = runs que passaram por ele.</span><span>Fonte: state.json · cost_tracking</span></span>
         </div>
         <dl class="wr-lb-meta">
           <div><dt>Modelo padrão da conta (observado nos runs)</dt><dd class="${none(modelLine(m)).trim()}">${esc(modelLine(m))}</dd></div>
           <div><dt>Esforço padrão da conta</dt><dd class="${none(effortLine(m)).trim()}">${esc(effortLine(m))}</dd></div>
-          <div><dt>Runs concluídos por semana</dt><dd>${m.weeklyDone.length ? m.weeklyDone.map(x => `<span class="wr-mono" title="${esc(x.range)}">${esc(x.label)} ${x.done}</span>`).join(' · ') : '<span class="wr-none">desconhecido (sem runs registrados)</span>'}</dd></div>
+          <div><dt>Runs concluídos por semana (até 8 semanas, a atual incompleta)</dt><dd>${m.weeklyDone.length ? m.weeklyDone.map(x => `<span class="wr-mono" title="${esc(x.range)}">${esc(x.label)} ${x.done}</span>`).join(' · ') : '<span class="wr-none">desconhecido (sem runs registrados)</span>'}</dd></div>
         </dl>
       </section>
       `;
@@ -708,7 +714,8 @@
           </div>
         </div>
       </section>
-      ${baselineSection(M)}      <section class="wr-sec wr-sec-rule" aria-labelledby="wr-gt-h">
+      ${baselineSection(M)}
+      <section class="wr-sec wr-sec-rule" aria-labelledby="wr-gt-h">
         ${secHead('wr-gt-h', 'Gates e decisões da semana', 'quanto tempo os runs esperaram por uma pessoa')}
         <div class="wr-grid wr-grid-thirds">
           <div class="wr-card"><span class="wr-k">Gates abertos agora</span><span class="wr-gv">${M.gates.length}</span><span class="wr-gd">${plural(over24, 'passou', 'passaram')} de 24 h</span></div>

@@ -325,9 +325,9 @@ test('captureLabel e sinceLabel: hora de Brasília e "há N s/min/h"', () => {
 
 // ---------------------------------------------------------------- F1.4 · linha de base do retrabalho
 // Attempt público (cost-projection.js) com só o que o relatório lê. cost null = tentativa sem preço.
-const att = (usd, { tokens = [100, 20], ms = 1000, cause = 'dispatch', effort = 'UNAVAILABLE', model = 'claude-opus-5-5' } = {}) => ({
+const att = (usd, { tokens = [100, 20], cache = {}, ms = 1000, cause = 'dispatch', effort = 'UNAVAILABLE', model = 'claude-opus-5-5' } = {}) => ({
     cause, duration_ms: ms, requested: { model: 'UNAVAILABLE', effort }, result: 'COMPLETED',
-    observed: { usage: tokens ? [{ model, input_tokens: tokens[0], output_tokens: tokens[1] }] : [], effort: 'UNKNOWN' },
+    observed: { usage: tokens ? [{ model, input_tokens: tokens[0], output_tokens: tokens[1], cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_write_ttl_unknown_tokens: 0, ...cache }] : [], effort: 'UNKNOWN' },
     cost: { usd },
 });
 const nd = (attempts, extra = {}) => ({ runs: attempts?.length || 1, models: ['claude-opus-5-5'], duration_ms: 1000, cost_usd: 1, ...(attempts ? { attempts } : {}), ...extra });
@@ -415,4 +415,39 @@ test('buildReport e copyText: a linha de base entra no modelo e no texto copiado
     const baselineLines = text.split('\n').filter(l => /^  \w+: primeira passada|^Linha de base/.test(l));
     assert.ok(baselineLines.length >= 2);
     for (const l of baselineLines) for (const m of l.matchAll(/US\$ [\d.,]+/g)) assert.match(l.slice(m.index + m[0].length), /^ imputado/);
+});
+
+test('reworkBaseline: tokens na régua da capa (entrada + cache + saída); contador nulo é desconhecido, não zero', () => {
+    const withCache = att(1, { tokens: [100, 20], cache: { cache_read_tokens: 500, cache_write_5m_tokens: 30, cache_write_1h_tokens: 20, cache_write_ttl_unknown_tokens: 10 } });
+    const nullCounter = att(1, { tokens: [100, 20], cache: { cache_read_tokens: null } });
+    const list = [
+        run(1, '2026-11-10T12:00:00Z', { nodes: { review: nd([att(1), withCache]) } }),
+        run(2, '2026-11-10T12:00:00Z', { nodes: { review: nd([att(1), nullCounter]) } }),
+    ];
+    const r = NODE_ROWS(W.reworkBaseline(list, NODES).rows, 'review');
+    assert.deepStrictEqual(r.tokens, { v: 680, unknown: 1 }); // 100 + 20 + 500 + 30 + 20 + 10
+    assert.deepStrictEqual(r.usd, { v: 2, unknown: 0 });
+});
+
+test('reworkBaseline: retry declarado além das tentativas detalhadas deixa a medida desconhecida', () => {
+    const r1 = run(1, '2026-11-10T12:00:00Z', { nodes: { test: nd([att(1), att(2)], { retries: 3 }) } });
+    const t = NODE_ROWS(W.reworkBaseline([r1], NODES).rows, 'test');
+    assert.deepStrictEqual([t.reworked, t.extraAttempts], [1, 1]);
+    assert.deepStrictEqual(t.usd, { v: null, unknown: 1 }); // 3 retries, só 1 tentativa extra detalhada
+});
+
+test('reworkCells: "+N desconhecido" quando parte do retrabalho não tem medida; modelo UNKNOWN não vira padrão', () => {
+    const row = { firstPass: 0.5, passed: 1, n: 2, usd: { v: 6, unknown: 1 }, tokens: { v: 360, unknown: 2 }, ms: { v: null, unknown: 1 } };
+    assert.deepStrictEqual(W.reworkCells(row), { pass: '50% (1 de 2)', usd: 'US$ 6,00 imputado +1 desconhecido', tokens: '360 tokens +2 desconhecidos', ms: 'desconhecido' });
+    assert.strictEqual(W.reworkCells({ ...row, firstPass: null }).pass, 'desconhecido');
+    const r = run(1, '2026-11-10T12:00:00Z', { nodes: { plan: nd([att(1)], { models: ['UNKNOWN'] }) } });
+    assert.strictEqual(W.baselineMeta([r], env(), NOW).models.length, 0);
+});
+
+test('copyText: sem run com cost_tracking na janela, a linha de base diz isso e não inventa número', () => {
+    const M = W.buildReport([run(1, '2026-11-10T12:00:00Z', { usd: null })], env(), { win: 'cur', now: NOW });
+    const t = W.copyText(M, '');
+    assert.match(t, /n = 0 runs com cost_tracking\)/);
+    assert.match(t, /sem run com cost_tracking na janela/);
+    assert.match(t, /Modelo padrão da conta \(observado nos runs\): desconhecido/);
 });
