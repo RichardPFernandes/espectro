@@ -145,6 +145,10 @@ Login não é suportado nesta fatia (`browser_type`/`browser_fill_form` não est
 - `server stop` confere PID, grupo de processos, horário de início e um token de posse gravado nos diretórios
   temporários; só apaga o que ele criou e só mantém o registro até o processo morrer de fato. Registro adulterado,
   `ps` indisponível ou PID reaproveitado não encerram nada (e o registro é mantido quando há dúvida).
+- A tela verificada não pode depender de rede nem de 404: o navegador só alcança a origem da verificação, então
+  fonte, script ou CSS de CDN dá `REQUEST_FAILED`, e rota de flag desligada dá `HTTP_ERROR`. O dashboard serve
+  as fontes de `public/fonts/` e responde `/api/obsidian` neutra no somente leitura (PRI-390); o teste
+  `dashboard/ui-fixture-offline.test.js` reprova origem externa no `index.html` e nas folhas CSS.
 - Screenshots ficam locais. No PR vai só o veredito em texto.
 - O veredito é uma **atestação do agente**: ele escreve o `findings.json`. O script garante dado completo, novo e
   bem formado, não impede mentira deliberada; o humano revisa o veredito. O código do branch sob verificação roda

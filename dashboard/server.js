@@ -959,10 +959,15 @@ function createDashboard(options = {}) {
     // PRI-355 (somente leitura): GETs com efeito colateral viram respostas neutras. Sem isto a tela
     // dispararia `claude -p`, `git fetch` e uma consulta externa a cada verificação.
     app.use((req, res, next) => {
-        if (!readOnlyMode() || req.method !== 'GET') return next();
-        if (req.path === '/api/claude/usage') return res.json({ ok: false, error: 'somente leitura', cached: false });
-        if (req.path === '/api/fx') return res.json({ rate: null, source: 'somente leitura', date: null });
-        if (req.path === '/api/version' && req.query.refresh) req.query = { ...req.query, refresh: undefined };
+        // HEAD também passa pelas rotas GET do Express; o roteador ignora maiúsculas e barra final.
+        if (!readOnlyMode() || (req.method !== 'GET' && req.method !== 'HEAD')) return next();
+        const route = req.path.toLowerCase().replace(/\/+$/, '');
+        if (route === '/api/claude/usage') return res.json({ ok: false, error: 'somente leitura', cached: false });
+        if (route === '/api/fx') return res.json({ rate: null, source: 'somente leitura', date: null });
+        // PRI-390: a tela inicial não pode depender do 404 de flag desligada, e a verificação não lê
+        // vault nem prefs reais. Vale com PRISMA_OBSIDIAN ligada ou não.
+        if (route === '/api/obsidian') return res.json({ enabled: false, vault: null, ready: false, uri: null });
+        if (route === '/api/version' && req.query.refresh) req.query = { ...req.query, refresh: undefined };
         next();
     });
     app.use(express.json({ limit: '100kb' }));
