@@ -37,12 +37,14 @@ jobs:
           sparse-checkout: |
             .github
             .claude/hooks
+            .claude/skills
+            .claude/commands
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
       - name: Testes do check e do hook (código do PR)
         working-directory: head
-        run: node --test .github/scripts/processo-check.test.mjs .claude/hooks/processo-level.test.mjs .claude/hooks/playwright-fs-guard.test.mjs scripts/lib/ui-verify-verdict.test.js scripts/lib/ui-verify-cli.test.js
+        run: node --test .github/scripts/*.test.mjs .claude/hooks/*.test.mjs
       - name: Conferir o PR (regras da base)
         env:
           GITHUB_TOKEN: ${{ github.token }}

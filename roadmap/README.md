@@ -47,9 +47,10 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
    `FASE.md` guarda só o estado da fatia (`não iniciada`, `em spec`, `em andamento`, `ligada`,
    `concluída`, `removida`) e é atualizado no PR que muda esse estado. Se os dois divergirem,
    vale a issue e corrige-se o `FASE.md`.
-9. **`tasks/` antigo não muda.** `tasks/plan.md`, `tasks/todo.md` e as pastas `tasks/pri-*`
-   são de trabalhos anteriores e seguem como estão. Só as pastas `tasks/fN-M-<nome>/`
-   pertencem a este roadmap.
+9. **`tasks/` antigo fica onde está.** As pastas `tasks/pri-*` e `tasks/evidence.md` são de trabalhos
+   anteriores e seguem como estão. O `plan.md` e o `todo.md` da PRI-233 foram para
+   `docs/historico/pri-233/` em 16/11, porque travavam os comandos do agent-skills. Só as pastas
+   `tasks/fN-M-<nome>/` pertencem a este roadmap.
 
 ## O que vale para toda fatia
 
@@ -57,9 +58,13 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
   Não repetir aqui.
 - Testes: receita oficial do [`README.md`](../README.md#primeiros-passos). Checagens
   estáticas: `npm --prefix scripts run check:js && npm --prefix scripts run arch:check`.
-- Comportamento novo nasce atrás de flag desligada e entra no registro de flags (F1.1) no
-  mesmo PR.
+- Comportamento novo nasce atrás de flag desligada e entra no registro de flags
+  ([`docs/flags.md`](../docs/flags.md), F1.1) no mesmo PR, com data de decisão; o CI falha sem ela.
 - No máximo duas frentes por fase e um piloto de custo por vez.
+- Validar o mapa (IDs, dependências, status, links, decisões): `node scripts/lib/roadmap-lint.js`
+  (exit 1 se houver erro; também roda no `npm test` de `scripts`).
+- Modelo da SPEC de fatia: [`templates/fatia-spec.md.template`](../templates/fatia-spec.md.template),
+  copiado para `tasks/fN-M-<nome>/SPEC.md` quando a fatia entra no cycle.
 - Nunca: ligar flag no consumidor corporativo antes de F1.1, F1.2 e F1.3 (o launcher do
   piloto no próprio Espectro segue D11); afirmar ganho de custo sem a linha de base (F1.5);
   copiar dado do consumidor para este repo ou para o Linear.

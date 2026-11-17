@@ -1,6 +1,6 @@
 # Plano de implementação: PRI-233 (PRI-205 S4), roteamento com flag
 
-> Deriva do [SPEC.md](../docs/historico/SPEC-pri-205-s3b.md), aprovado em 2026-11-06. Este é o **COMO**; em
+> Deriva do [SPEC.md](../SPEC-pri-205-s3b.md), aprovado em 2026-11-06. Este é o **COMO**; em
 > divergência, o SPEC vence. Status: **APROVADO pelo Richard em 2026-11-06, com as
 > recomendações de P-1 a P-4.** P-1: a SP-1 continua valendo e o achado do
 > `--effort` vai para o U1 da PRI-205. P-2: opção (a), que ainda depende da

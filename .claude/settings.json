@@ -47,7 +47,47 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/playwright-fs-guard.mjs\""
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(gh pr create *)",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "^(plan|implement|implement-step|implement-integrate|review|test|verify|verify-ui|commit|fetch-ticket|init-project)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          }
+        ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "threejs-webgl@claude-design-skillstack": false,
+    "react-three-fiber@claude-design-skillstack": false,
+    "gsap-scrolltrigger@claude-design-skillstack": false,
+    "core-3d-animation@claude-design-skillstack": false,
+    "animation-components@claude-design-skillstack": false,
+    "extended-3d-scroll@claude-design-skillstack": false,
+    "authoring-motion@claude-design-skillstack": false,
+    "meta-skills@claude-design-skillstack": false
   }
 }

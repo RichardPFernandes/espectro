@@ -322,3 +322,132 @@ test('captureLabel e sinceLabel: hora de Brasília e "há N s/min/h"', () => {
     assert.strictEqual(W.sinceLabel(125000), '2 min');
     assert.strictEqual(W.sinceLabel(7300000), '2 h');
 });
+
+// ---------------------------------------------------------------- F1.4 · linha de base do retrabalho
+// Attempt público (cost-projection.js) com só o que o relatório lê. cost null = tentativa sem preço.
+const att = (usd, { tokens = [100, 20], cache = {}, ms = 1000, cause = 'dispatch', effort = 'UNAVAILABLE', model = 'claude-opus-5-5' } = {}) => ({
+    cause, duration_ms: ms, requested: { model: 'UNAVAILABLE', effort }, result: 'COMPLETED',
+    observed: { usage: tokens ? [{ model, input_tokens: tokens[0], output_tokens: tokens[1], cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_write_ttl_unknown_tokens: 0, ...cache }] : [], effort: 'UNKNOWN' },
+    cost: { usd },
+});
+const nd = (attempts, extra = {}) => ({ runs: attempts?.length || 1, models: ['claude-opus-5-5'], duration_ms: 1000, cost_usd: 1, ...(attempts ? { attempts } : {}), ...extra });
+const NODE_ROWS = (rows, k) => rows.find(x => x.key === k);
+
+test('reworkBaseline: custo, tokens e tempo das tentativas além da primeira, e primeira passada, por nó', () => {
+    const list = [
+        run(1, '2026-11-10T12:00:00Z', { nodes: { implement: nd([att(10), att(4, { tokens: [200, 50], ms: 3000 }), att(2, { tokens: [100, 10], ms: 1000 })]) } }),
+        run(2, '2026-11-10T12:00:00Z', { nodes: { implement: nd([att(8)]), review: nd([att(1)]) } }),
+        run(3, '2026-11-10T12:00:00Z', { nodes: { implement: nd(null) }, retries: { implement: 1 } }),
+        run(4, '2026-11-10T12:00:00Z', { usd: null }), // sem cost_tracking: não entra em n
+    ];
+    const B = W.reworkBaseline(list, NODES);
+    assert.strictEqual(B.runs, 3);
+    const impl = NODE_ROWS(B.rows, 'implement');
+    assert.deepStrictEqual([impl.n, impl.passed, impl.reworked, impl.extraAttempts], [3, 1, 2, 2]);
+    assert.ok(Math.abs(impl.firstPass - 1 / 3) < 1e-9);
+    assert.deepStrictEqual(impl.usd, { v: 6, unknown: 1 });
+    assert.deepStrictEqual(impl.tokens, { v: 360, unknown: 1 });
+    assert.deepStrictEqual(impl.ms, { v: 4000, unknown: 1 });
+    const rev = NODE_ROWS(B.rows, 'review');
+    assert.deepStrictEqual([rev.n, rev.passed, rev.reworked, rev.firstPass], [1, 1, 0, 1]);
+    assert.deepStrictEqual(rev.usd, { v: 0, unknown: 0 }); // nada refeito: zero medido, não ausência
+    assert.deepStrictEqual(B.rows.map(x => x.key), ['implement', 'review']); // ordem do grafo; nó sem dado não vira linha
+});
+
+test('reworkBaseline: retrabalho sem detalhe de tentativa ou sem preço é desconhecido, nunca zero', () => {
+    const onlyCounter = run(1, '2026-11-10T12:00:00Z', { nodes: { test: nd(null) }, retries: { test: 2 } });
+    const unpriced = run(2, '2026-11-10T12:00:00Z', { nodes: { test: nd([att(3), att(null, { tokens: null, ms: 500 })]) } });
+    const B = W.reworkBaseline([onlyCounter, unpriced], NODES);
+    const t = NODE_ROWS(B.rows, 'test');
+    assert.deepStrictEqual([t.n, t.passed, t.reworked], [2, 0, 2]);
+    assert.deepStrictEqual(t.usd, { v: null, unknown: 2 });
+    assert.deepStrictEqual(t.tokens, { v: null, unknown: 2 });
+    assert.deepStrictEqual(t.ms, { v: 500, unknown: 1 }); // a tentativa sem preço tem tempo medido
+    assert.strictEqual(W.reworkBaseline([], NODES).rows.length, 0);
+    assert.strictEqual(W.reworkBaseline([], NODES).runs, 0);
+});
+
+test('reworkBaseline: contador node.retries e state.retries também contam como retrabalho', () => {
+    const a = run(1, '2026-11-10T12:00:00Z', { nodes: { plan: nd([att(1)], { retries: 1 }) } });
+    const b = run(2, '2026-11-10T12:00:00Z', { nodes: { plan: nd([att(1)]) }, retries: { plan: 0 } });
+    const p = NODE_ROWS(W.reworkBaseline([a, b], NODES).rows, 'plan');
+    assert.deepStrictEqual([p.n, p.passed, p.reworked], [2, 1, 1]);
+    assert.deepStrictEqual(p.usd, { v: null, unknown: 1 }); // retry contado, sem tentativa detalhada
+});
+
+test('imputed: todo USD leva o rótulo "imputado"; ausência vira "desconhecido"', () => {
+    assert.strictEqual(W.imputed(6), 'US$ 6,00 imputado');
+    assert.strictEqual(W.imputed(0), 'US$ 0,00 imputado');
+    assert.strictEqual(W.imputed(0.001), '< US$ 0,01 imputado');
+    assert.strictEqual(W.imputed(null), 'desconhecido');
+    assert.strictEqual(W.imputed(undefined), 'desconhecido');
+});
+
+test('baselineMeta: modelo mais usado, esforço só quando gravado e runs concluídas por semana', () => {
+    const opus = nd([att(1)]), sonnet = nd([att(1)], { models: ['claude-sonnet-5-5'] });
+    const list = [
+        run(1, '2026-11-10T12:00:00Z', { nodes: { plan: opus, implement: opus, review: sonnet } }),
+        run(2, '2026-11-03T12:00:00Z', { nodes: { plan: opus } }),
+        run(3, '2026-11-04T12:00:00Z', { nodes: { plan: opus }, done: false }),
+    ];
+    const M = W.baselineMeta(list, env(), NOW);
+    assert.deepStrictEqual(M.models.map(x => [x.id, x.uses]), [['claude-opus-5-5', 4], ['claude-sonnet-5-5', 1]]);
+    assert.strictEqual(M.modelUses, 5);
+    assert.strictEqual(M.effort, null); // requested.effort UNAVAILABLE em todos: desconhecido
+    // Semanas de calendário (seg–dom), da primeira com run até a atual; só run concluído conta.
+    assert.deepStrictEqual(M.weeklyDone.map(x => [x.range, x.done]), [['02–08/11/2026', 1], ['09–15/11/2026', 1]]);
+    const routed = run(4, '2026-11-10T12:00:00Z', { nodes: { plan: nd([att(1, { effort: 'high' }), att(1, { effort: 'high' })]) } });
+    assert.deepStrictEqual(W.baselineMeta([routed], env(), NOW).effort, ['high']);
+    assert.strictEqual(W.baselineMeta([], env(), NOW).models.length, 0);
+    assert.strictEqual(W.baselineMeta([], env(), NOW).weeklyDone.length, 0);
+});
+
+test('buildReport e copyText: a linha de base entra no modelo e no texto copiado, com período e n', () => {
+    const list = [run(1, '2026-11-10T12:00:00Z', { nodes: { implement: nd([att(10), att(4)]) } })];
+    const M = W.buildReport(list, env(), { win: 'cur', now: NOW });
+    assert.strictEqual(M.baseline.runs, 1);
+    assert.strictEqual(NODE_ROWS(M.baseline.rows, 'implement').usd.v, 4);
+    const text = W.copyText(M, M.scopeLabel);
+    assert.match(text, /Linha de base do retrabalho \(09–15\/11\/2026, n = 1 run com cost_tracking\)/);
+    assert.match(text, /implement: primeira passada 0% \(0 de 1\); retrabalho US\$ 4,00 imputado · 120 tokens · 0:01 de parede/);
+    assert.match(text, /Esforço padrão da conta: desconhecido/);
+    // AC-02: nenhum USD da seção nova sem o rótulo "imputado" logo depois.
+    const baselineLines = text.split('\n').filter(l => /^  \w+: primeira passada|^Linha de base/.test(l));
+    assert.ok(baselineLines.length >= 2);
+    for (const l of baselineLines) for (const m of l.matchAll(/US\$ [\d.,]+/g)) assert.match(l.slice(m.index + m[0].length), /^ imputado/);
+});
+
+test('reworkBaseline: tokens na régua da capa (entrada + cache + saída); contador nulo é desconhecido, não zero', () => {
+    const withCache = att(1, { tokens: [100, 20], cache: { cache_read_tokens: 500, cache_write_5m_tokens: 30, cache_write_1h_tokens: 20, cache_write_ttl_unknown_tokens: 10 } });
+    const nullCounter = att(1, { tokens: [100, 20], cache: { cache_read_tokens: null } });
+    const list = [
+        run(1, '2026-11-10T12:00:00Z', { nodes: { review: nd([att(1), withCache]) } }),
+        run(2, '2026-11-10T12:00:00Z', { nodes: { review: nd([att(1), nullCounter]) } }),
+    ];
+    const r = NODE_ROWS(W.reworkBaseline(list, NODES).rows, 'review');
+    assert.deepStrictEqual(r.tokens, { v: 680, unknown: 1 }); // 100 + 20 + 500 + 30 + 20 + 10
+    assert.deepStrictEqual(r.usd, { v: 2, unknown: 0 });
+});
+
+test('reworkBaseline: retry declarado além das tentativas detalhadas deixa a medida desconhecida', () => {
+    const r1 = run(1, '2026-11-10T12:00:00Z', { nodes: { test: nd([att(1), att(2)], { retries: 3 }) } });
+    const t = NODE_ROWS(W.reworkBaseline([r1], NODES).rows, 'test');
+    assert.deepStrictEqual([t.reworked, t.extraAttempts], [1, 1]);
+    assert.deepStrictEqual(t.usd, { v: null, unknown: 1 }); // 3 retries, só 1 tentativa extra detalhada
+});
+
+test('reworkCells: "+N desconhecido" quando parte do retrabalho não tem medida; modelo UNKNOWN não vira padrão', () => {
+    const row = { firstPass: 0.5, passed: 1, n: 2, usd: { v: 6, unknown: 1 }, tokens: { v: 360, unknown: 2 }, ms: { v: null, unknown: 1 } };
+    assert.deepStrictEqual(W.reworkCells(row), { pass: '50% (1 de 2)', usd: 'US$ 6,00 imputado +1 desconhecido', tokens: '360 tokens +2 desconhecidos', ms: 'desconhecido' });
+    assert.strictEqual(W.reworkCells({ ...row, firstPass: null }).pass, 'desconhecido');
+    const r = run(1, '2026-11-10T12:00:00Z', { nodes: { plan: nd([att(1)], { models: ['UNKNOWN'] }) } });
+    assert.strictEqual(W.baselineMeta([r], env(), NOW).models.length, 0);
+});
+
+test('copyText: sem run com cost_tracking na janela, a linha de base diz isso e não inventa número', () => {
+    const M = W.buildReport([run(1, '2026-11-10T12:00:00Z', { usd: null })], env(), { win: 'cur', now: NOW });
+    const t = W.copyText(M, '');
+    assert.match(t, /n = 0 runs com cost_tracking\)/);
+    assert.match(t, /sem run com cost_tracking na janela/);
+    assert.match(t, /Modelo padrão da conta \(observado nos runs\): desconhecido/);
+});

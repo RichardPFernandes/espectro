@@ -114,5 +114,15 @@ export function evaluate({ labels = [], body = '', files = [], templateBody = ''
             errors.push(`Nível leve: ${lines} linhas alteradas, acima do limite de ${maxChangedLines} (adições + remoções, sem lockfiles, snapshots e fixtures gerados). Divida o PR. ${FIX_LEVEL}`);
         }
     }
+    if (level === 'alto' && config.alto) {
+        const { requiredSections = [], specPathPattern } = config.alto;
+        for (const s of requiredSections) {
+            const lines = evidenceLines(body, s, templateBody);
+            if (!lines?.length) errors.push(`Nível alto: falta a seção "## ${s}" preenchida no corpo do PR. O /pri-autorizo monta Rollback e Readback.`);
+        }
+        if (specPathPattern && !new RegExp(specPathPattern).test(String(body ?? ''))) {
+            errors.push('Nível alto: o corpo do PR precisa citar a SPEC da issue (tasks/<pasta>/SPEC.md).');
+        }
+    }
     return { ok: errors.length === 0, level, errors, info };
 }

@@ -5,7 +5,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
-const { resolveRoots, childEnv } = require('./run-tests');
+const { resolveRoots, childEnv, SUITES, findTestFiles, listTestFiles, readExclusions, discover, requiredNode, assertNodeVersion } = require('./run-tests');
 const root = path.resolve(__dirname, '..');
 const ASSETS = ['.claude/spec-hash-config.json', '.claude/config-contract.json', 'scripts/fixtures/ticket-example.json'];
 
@@ -105,4 +105,142 @@ test('runner: teste que falha → TAP com not ok e exit 1', t => {
     assert.match(r.stdout, /^TAP version 13$/m);
     assert.match(r.stdout, /^not ok 1 - falha$/m);
     assert.match(r.stdout, /^# fail 1$/m);
+});
+
+test('descoberta: acha *.test.js em qualquer nível; pula node_modules, build e checkout aninhado', t => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'f02-descoberta-'));
+    t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+    for (const rel of ['scripts/a.test.js', 'scripts/lib/deep/b.test.js', 'dashboard/c.test.js', 'provenance/d.test.js',
+        'scripts/a.js', 'scripts/e.test.mjs', 'scripts/node_modules/x/f.test.js', 'dashboard/dist/g.test.js',
+        'worktrees/outro/.git', 'worktrees/outro/scripts/h.test.js']) {
+        fs.mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true });
+        fs.writeFileSync(path.join(tmp, rel), '');
+    }
+    assert.deepStrictEqual(findTestFiles(tmp), ['dashboard/c.test.js', 'provenance/d.test.js', 'scripts/a.test.js', 'scripts/lib/deep/b.test.js']);
+    const excl = new Map([['provenance/d.test.js', 'motivo']]);
+    assert.deepStrictEqual(discover(tmp, 'scripts', excl), { files: ['scripts/a.test.js', 'scripts/lib/deep/b.test.js'], excluded: ['provenance/d.test.js'] });
+    assert.deepStrictEqual(discover(tmp, 'dashboard', excl), { files: ['dashboard/c.test.js'], excluded: [] });
+});
+
+test('receita: todo *.test.js versionado roda em uma suíte ou está na lista de exclusões com motivo', t => {
+    if (!fs.existsSync(path.join(root, '.git'))) return t.skip('export sem .git: comparação com os arquivos versionados não feita');
+    const git = spawnSync('git', ['-C', root, 'ls-files', '-z', '--', '*.test.js'], { encoding: 'utf8' });
+    assert.equal(git.status, 0, `há .git e o git falhou: ${git.stderr || git.error}`);
+    const tracked = git.stdout.split('\0').filter(rel => rel && fs.existsSync(path.join(root, rel)));
+    assert.ok(tracked.length > 0, 'git ls-files não devolveu nenhum *.test.js');
+    const exclusions = readExclusions();
+    const ran = SUITES.flatMap(suite => discover(root, suite, exclusions).files);
+    assert.equal(new Set(ran).size, ran.length, 'arquivo em mais de uma suíte');
+    assert.deepStrictEqual(tracked.filter(rel => !ran.includes(rel) && !exclusions.has(rel)), [], 'arquivo de teste que a receita não roda');
+    // Exclusão é exceção visível: aponta para arquivo que existe; se sumiu, sai da lista.
+    assert.deepStrictEqual([...exclusions.keys()].filter(rel => !tracked.includes(rel)), [], 'exclusão sem arquivo versionado');
+    // Os dois pacotes entregam a descoberta ao harness: nenhuma lista à mão no npm test.
+    for (const suite of SUITES) {
+        const pkg = JSON.parse(fs.readFileSync(path.join(root, suite, 'package.json'), 'utf8'));
+        assert.equal(pkg.scripts.test, `node ../harness/run-tests.js ${suite}`);
+    }
+});
+
+test('receita: validate-handoff.test.js roda na suíte scripts e não usa caminho fixo fora do TMPDIR', () => {
+    const rel = 'scripts/validate-handoff.test.js';
+    assert.equal(readExclusions().has(rel), false, `${rel} ainda está em harness/test-exclusions.json`);
+    assert.ok(discover(root, 'scripts').files.includes(rel), `${rel} não foi descoberto para a suíte scripts`);
+    assert.doesNotMatch(fs.readFileSync(path.join(root, rel), 'utf8'), /['"`]\/workspace['"`/]/, 'o teste ainda cria diretório em /workspace');
+});
+
+test('versão de Node: o mínimo sai de engines.node da raiz; abaixo dele é recusado com a versão exigida', () => {
+    assert.equal(requiredNode(), JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).engines.node);
+    for (const ok of ['22.0.0', '22.23.2', '24.22.1', '26.0.0']) assert.doesNotThrow(() => assertNodeVersion(ok, '>=22'));
+    assert.doesNotThrow(() => assertNodeVersion('22.12.0', '>=22.12'));
+    for (const old of ['20.20.2', '18.19.1', '21.99.99']) {
+        assert.throws(() => assertNodeVersion(old, '>=22'), new RegExp(`Node ${old.replaceAll('.', '\\.')}.*exige Node >=22`));
+    }
+    assert.throws(() => assertNodeVersion('22.11.9', '>=22.12'), /exige Node >=22\.12/);
+    // Faixa que o harness não sabe ler não vira "qualquer versão serve".
+    for (const range of [undefined, '', '^22', '22 || 24', '>=22 <25']) {
+        assert.throws(() => assertNodeVersion('24.22.1', range), /engines\.node/);
+    }
+});
+
+test('versão de Node: runner e receita recusam antes de rodar teste, com exit 2 e a versão exigida', t => {
+    // Cópia do harness ao lado de um package.json que exige um Node que não existe:
+    // prova o caminho real (leitura de engines, mensagem, exit) sem trocar de Node.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pri393-node-'));
+    t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(tmp, 'harness'));
+    for (const name of ['run-tests.js', 'recipe.js']) fs.copyFileSync(path.join(__dirname, name), path.join(tmp, 'harness', name));
+    fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ engines: { node: '>=999' } }));
+    for (const args of [['run-tests.js', 'scripts'], ['recipe.js']]) {
+        const r = spawnSync(process.execPath, [path.join(tmp, 'harness', args[0]), ...args.slice(1)], {
+            cwd: tmp, encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH, HOME: tmp, TMPDIR: tmp },
+        });
+        assert.equal(r.status, 2, `${args[0]}: ${r.stderr}`);
+        assert.match(r.stderr, new RegExp(`Node ${process.versions.node.replaceAll('.', '\\.')}.*exige Node >=999`), args[0]);
+        assert.doesNotMatch(r.stdout, /TAP version/, args[0]);
+    }
+});
+
+test('versão de Node: .nvmrc, os três package.json, README e runbook dizem a mesma coisa', () => {
+    const required = requiredNode();
+    const min = Number(/^>=(\d+)/.exec(required)[1]);
+    for (const rel of ['scripts/package.json', 'dashboard/package.json']) {
+        assert.equal(JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8')).engines?.node, required, rel);
+    }
+    const nvmrc = fs.readFileSync(path.join(root, '.nvmrc'), 'utf8').trim();
+    assert.match(nvmrc, /^\d+$/, '.nvmrc declara só o major');
+    assert.doesNotThrow(() => assertNodeVersion(`${nvmrc}.0.0`, required), '.nvmrc fora de engines.node');
+    for (const rel of ['README.md', 'docs/runbook.md']) {
+        const cited = [...fs.readFileSync(path.join(root, rel), 'utf8').matchAll(/\bNode (\d+)/g)].map(m => Number(m[1]));
+        assert.ok(cited.includes(min), `${rel} não cita o mínimo, Node ${min}`);
+        assert.ok(cited.includes(Number(nvmrc)), `${rel} não cita o Node do .nvmrc, ${nvmrc}`);
+        assert.deepStrictEqual(cited.filter(major => major < min), [], `${rel} cita Node abaixo do mínimo`);
+    }
+});
+
+// Bloco de um job do workflow, cortado pelo recuo: o harness não tem parser de YAML.
+function workflowJob(rel, job) {
+    const lines = fs.readFileSync(path.join(root, rel), 'utf8').split('\n');
+    const start = lines.indexOf(`  ${job}:`);
+    if (start === -1) return null;
+    const end = lines.findIndex((line, i) => i > start && /^ {0,2}\S/.test(line));
+    return lines.slice(start, end === -1 ? undefined : end).join('\n');
+}
+
+test('CI: o job static roda em Node 24 o check:js dos dois pacotes e o lint:src, um passo cada, sem engolir falha', () => {
+    const job = workflowJob('.github/workflows/tests.yml', 'static');
+    assert.ok(job, 'tests.yml não tem o job static');
+    assert.match(job, /^ +node-version: '24'$/m, 'o job static não fixa Node 24');
+    // Um comando por passo: o passo que falha derruba o job e aparece pelo nome.
+    const runs = [...job.matchAll(/^ +(?:- )?run: (.+)$/gm)].map(m => m[1].trim());
+    for (const [pkg, script] of [['scripts', 'check:js'], ['dashboard', 'check:js'], ['scripts', 'lint:src']]) {
+        const cmd = `npm --prefix ${pkg} run ${script}`;
+        assert.ok(runs.includes(cmd), `o job static não tem um passo só com "${cmd}"`);
+        const scripts = JSON.parse(fs.readFileSync(path.join(root, pkg, 'package.json'), 'utf8')).scripts;
+        assert.ok(scripts[script], `${pkg}/package.json não tem o script ${script}`);
+    }
+    assert.doesNotMatch(job, /continue-on-error|\|\| *true|set \+e/, 'o job static não pode engolir falha');
+});
+
+test('exclusões: entrada sem motivo é recusada', t => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'f02-exclusoes-'));
+    t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+    const file = path.join(tmp, 'x.json');
+    const read = excluir => { fs.writeFileSync(file, JSON.stringify({ excluir })); return readExclusions(file); };
+    assert.throws(() => read([{ arquivo: 'a.test.js', motivo: ' ' }]), /sem arquivo ou motivo/);
+    assert.throws(() => read([{ arquivo: 'a.test.js', motivo: 'x' }, { arquivo: 'a.test.js', motivo: 'y' }]), /duplicada/);
+    assert.throws(() => read([{ arquivo: 'harness/run-tests.test.js', motivo: 'x' }]), /harness não pode/);
+});
+
+test('descoberta com git: versionados e novos não ignorados; ignorado não roda; git quebrado é erro', t => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'f02-git-'));
+    t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+    for (const [rel, body] of [['.gitignore', 'memory/runs/\n'], ['scripts/a.test.js', ''], ['scripts/novo.test.js', ''], ['memory/runs/1/c.test.js', '']]) {
+        fs.mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true });
+        fs.writeFileSync(path.join(tmp, rel), body);
+    }
+    const git = (...args) => assert.equal(spawnSync('git', ['-C', tmp, ...args], { encoding: 'utf8' }).status, 0, args.join(' '));
+    git('init', '-q'); git('add', '.gitignore', 'scripts/a.test.js');
+    assert.deepStrictEqual(listTestFiles(tmp), ['scripts/a.test.js', 'scripts/novo.test.js']);
+    fs.writeFileSync(path.join(tmp, '.git', 'HEAD'), 'quebrado');
+    assert.throws(() => listTestFiles(tmp), /git ls-files falhou/);
 });

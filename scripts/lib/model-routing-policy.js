@@ -206,6 +206,10 @@ function validateDecompositionSections(raw) {
                 if (!nonEmptyString(spec.effort_ref)) return fail(`subagent_role_effort_ref_missing:${role}`);
             } else if (!efforts.has(spec.effort)) {
                 return fail(`subagent_role_effort_invalid:${role}`);
+            } else if (!CLI_EFFORTS.has(raw.effort_map[spec.effort])) {
+                // PRI-374: parte 2 da pré-condição para aplicar esforço de subagente (parte 1: PRI-336).
+                // Opção A: só o valor usado pelo papel é conferido; chave extra sem uso segue aceita.
+                return fail(`subagent_role_effort_value_invalid:${role}`);
             }
         }
         // PRI-341 (T1, AC-4): o subagente `default` é igual ao default_route (v9 §5.1, D6), para os
