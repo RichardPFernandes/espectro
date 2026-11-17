@@ -83,7 +83,7 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    Próximo passo, Decisão pendente, Ligado ao fechar, Nível) com o link do PR. Não poste
    status em comentário. Comentário é só para decisão ou bloqueio, em 3 linhas.
    - **Estado:** `PR #<n> aberto em draft em AAAA-MM-DD` mais o que ele entrega (os
-     ACs). Se for o último da fatia, diga que o `FASE.md` vai como `concluída` no PR.
+     ACs). Se o PR marca a fatia `concluída`, diga que o `FASE.md` vai no PR.
    - **Próximo passo:** o que falta depois dele. Leve e Médio: "Richard mescla o PR #<n>".
      Se há ACs de outro PR, nomeie o próximo AC. Alto: o AUTORIZO e o `readback`.
    - **Decisão pendente** não muda: continua manual. Ajuste só "Ligado ao fechar" se o
