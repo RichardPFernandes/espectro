@@ -208,6 +208,23 @@ test('2. Handoff diverge da Spec → Verify FAIL com motivo', () => {
     assert.ok(codes(noRef).includes('HANDOFF_AC_LIST_MISSING'));
 });
 
+test('2c. "AC-NN:" como rótulo em seção de HOW (diagnóstico, passos, decisões) não é reescrita', () => {
+    const plan = PLAN
+        .replace('## Plano de execução\n', '## Diagnóstico (HOW)\n- **AC-02**: o filtro de operação é montado uma vez no `init()` do controller.\n\n## Plano de execução\n')
+        .replace('2. Criar filtro de operação dinâmico.', '2. AC-02: recalcular o filtro de operação a cada busca em `TorreService`.')
+        .replace('## Cobertura dos ACs\n', '### Detalhe do passo 2\n- AC-02: reaproveita o mesmo método do passo 1.\n\n## Cobertura dos ACs\n');
+    const handoff = HANDOFF + '\n## Decisões relevantes (conferir no Review)\n- AC-02: filtro recalculado no service, não no front (SPEC_CLARIFICATION).\n';
+    const r = conformance({ planContent: plan, handoffContent: handoff });
+    assert.strictEqual(r.verdict, 'PASS', JSON.stringify(r.failures));
+    assert.ok(!codes(r).some(c => /_AC_TEXT_/.test(c)), codes(r).join(','));
+
+    // Fora de seção de HOW a reescrita continua barrada, inclusive com "# Plano" de nível 1 acima.
+    const loose = conformance({ planContent: plan + '\n## Observações\n- AC-02: Filtro de operação estático, carregado uma vez.\n' });
+    assert.ok(loose.failures.some(f => f.code === 'PLAN_AC_TEXT_DIVERGES' && /AC-02/.test(f.message)), JSON.stringify(loose.failures));
+    const top = conformance({ handoffContent: '- AC-02: Filtro de operação estático, carregado uma vez.\n' + HANDOFF });
+    assert.ok(top.failures.some(f => f.code === 'HANDOFF_AC_TEXT_DIVERGES'), JSON.stringify(top.failures));
+});
+
 test('2b. Cópia literal de AC no handoff é aviso (duplicação), não falha', () => {
     const r = conformance({ handoffContent: HANDOFF + '\n- AC-01: Filtro de transportadora lista somente transportadoras presentes no resultado da tela.\n' });
     assert.strictEqual(r.verdict, 'PASS', JSON.stringify(r.failures));
