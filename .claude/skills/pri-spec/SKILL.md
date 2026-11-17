@@ -2,6 +2,7 @@
 name: pri-spec
 description: Escreve a SPEC de uma issue PRI Médio ou Alto com a skill spec-driven-development do agent-skills, no caminho e no tamanho do Acordo v2.
 disable-model-invocation: true
+model: opus
 argument-hint: "<pasta>  (ex.: tasks/f1-2-teto-por-run)"
 ---
 

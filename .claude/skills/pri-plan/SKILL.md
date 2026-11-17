@@ -2,6 +2,7 @@
 name: pri-plan
 description: Quebra uma issue PRI em tarefas com a skill planning-and-task-breakdown do agent-skills, gravando plan.md e todo.md na pasta da issue.
 disable-model-invocation: true
+model: opus
 argument-hint: "<pasta>"
 ---
 
@@ -17,6 +18,23 @@ de `$ARGUMENTS`; o contexto vem de `.prisma/context.json`.
   issues, e tarefa não vira issue (regra 13).
 - **Tarefas.** Cada tarefa cita os ACs que atende (`AC-2`) e tem um teste que falha
   antes dela. Ordene pelas dependências.
-- **Aprovação.** No Médio, não pare para pedir aprovação (regra 8; decisão D-a de
-  16/11/2026). Mostre o plano em até 10 linhas e siga para o `/pri-build`. No Alto,
-  pare e peça a aprovação do Richard.
+- **Tamanho da tarefa.** Cada tarefa vai para um subagente novo no `/pri-build`, sem
+  o histórico da sessão. Escreva cada uma para caber sozinha: o que fazer, os ACs, os
+  arquivos prováveis e o teste que prova.
+- **Gate do plano (Médio e Alto; decisão D-FLX-01 de 17/11/2026, que substitui a D-a
+  no plano).** Depois de gravar `plan.md` e `todo.md`, pare:
+  1. Mostre o plano em até 10 linhas: tarefas, AC de cada uma e arquivos.
+  2. Marque o card do Orca, se houver (`orca worktree set --worktree active
+     --workspace-status in-review --unread --comment "Aguardando Richard: plano" --json`;
+     falha do `orca` não bloqueia).
+  3. Espere a resposta do Richard nesta sessão. Ajuste o que ele pedir e mostre de novo.
+  4. Com o OK dele: escreva no topo do `todo.md` a linha
+     `> Plano aprovado pelo Richard em AAAA-MM-DD.`, faça commit de `plan.md` e
+     `todo.md`, grave `"plano_aprovado": "<sha256 do todo.md>"` em
+     `.prisma/context.json` (`shasum -a 256 <pasta>/todo.md`) e volte o card para
+     `in-progress`.
+  5. Termine com: "Plano aprovado. Dê `/clear` e rode `/pri-build <pasta>`." O build
+     parte só dos arquivos; o histórico do plano não precisa ir junto.
+
+  Esse gate não passa pela fila In Review do Linear: a fila é para decisão, aceite e
+  AUTORIZO (regra 12). O Leve não tem plano nem gate.

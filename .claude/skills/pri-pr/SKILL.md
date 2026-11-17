@@ -2,6 +2,7 @@
 name: pri-pr
 description: Abre o PR draft de uma issue PRI no formato do Acordo v2 (template, rótulo processo, Evidência AC × prova, Refs) e atualiza o bloco de Estado da issue.
 disable-model-invocation: true
+model: sonnet
 argument-hint: "PRI-NNN"
 ---
 
