@@ -22,7 +22,7 @@
 | Fase | Objetivo | Cycles | Semanas | Depende de | Status |
 | -- | -- | -- | -- | -- | -- |
 | [0. Destravar](roadmap/fase-0-destravar/FASE.md) | CI legível, exposição do repo tratada, um comando para ver rodar, regras de fluxo | ao lado | S1–S3 | — | em andamento |
-| [1. Conter e enxergar](roadmap/fase-1-conter-e-enxergar/FASE.md) | Registro de flags, ponto de retorno, teto por run, push dos repos irmãos, linha de base | 4 | S1–S4 | — | não iniciada |
+| [1. Conter e enxergar](roadmap/fase-1-conter-e-enxergar/FASE.md) | Registro de flags, ponto de retorno, teto por run, push dos repos irmãos, linha de base | 4 | S1–S4 | — | em andamento |
 | [2. Primeira economia ligada, primeira poda](roadmap/fase-2-economia-e-poda/FASE.md) | Portão de build ligado, piloto de decomposição decidido, run sem Redmine (F3.1), código morto fora, credenciais reduzidas | 4 | S5–S8 | Fase 1; o piloto F2.2 segue em paralelo (D11) | não iniciada; F2.2 em andamento |
 | [3. Lugar seguro para medir](roadmap/fase-3-lugar-seguro-para-medir/FASE.md) | Projeto-amostra com três tickets de ouro, modelo por fase decidido neles (F4.2), limite de tempo | 5 | S9–S13 | Fase 2 | não iniciada |
 | [4. Segunda rodada de custo e fila única](roadmap/fase-4-custo-e-fila-unica/FASE.md) | Antes/depois por flag, modelo por fase no consumidor se aprovado, fila "Aguardando você" com aviso | 5 | S14–S18 | Fase 3 | não iniciada |
