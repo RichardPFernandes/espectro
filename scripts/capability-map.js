@@ -11,9 +11,11 @@
 // problema com o arquivo e o comando que confere a correção, fecha com a contagem e sai 1
 // se houver problema. Os três comandos saem 2 em erro de uso ou de cabeçalho. O cabeçalho é
 // um subconjunto de YAML lido aqui mesmo (o repo não tem biblioteca de YAML): texto simples,
-// lista em linha ([a, b]) ou lista em bloco ("- a"). Qualquer outra forma é erro. Um padrão
-// de `modulos` é um caminho exato ou um prefixo terminado em "*"; não há precedência entre
-// padrões.
+// lista em linha ([a, b]) ou lista em bloco ("- a"). Qualquer outra forma é erro, e campo
+// fora dos sete conhecidos também. Como em YAML, " #" começa um comentário: o texto depois
+// dele some. Um padrão de `modulos` é um caminho exato ou um prefixo terminado em "*"; não há
+// precedência entre padrões. Os links conferidos são os inline, [t](alvo): link por
+// referência ([t]: alvo) e HTML (<a href>) não são conferidos.
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -71,7 +73,7 @@ function readFields(text) {
     let block = null;
     for (let index = 1; index < end; index += 1) {
         const where = `linha ${index + 1}`;
-        const line = lines[index].replace(/(^|\s+)#.*$/, '');
+        const line = lines[index].replace(/(?:^|\s)#.*$/, '');
         if (!line.trim()) continue;
 
         const item = /^\s+-\s+(.+)$/.exec(line);
@@ -94,6 +96,9 @@ function readFields(text) {
 
 function parseHeader(text) {
     const fields = readFields(text);
+    for (const field of Object.keys(fields)) {
+        if (![...TEXT_FIELDS, ...LIST_FIELDS].includes(field)) fail(`campo desconhecido: ${field}`);
+    }
     for (const field of [...TEXT_FIELDS, ...LIST_FIELDS]) {
         if (!(field in fields)) fail(`campo ausente: ${field}`);
         if (fields[field] === null) fail(`campo vazio: ${field}`);
@@ -269,7 +274,7 @@ function writeTable(root) {
 // são conferidos; #âncora e ?query de link local são tirados antes de olhar o arquivo. Link
 // com "/" inicial parte da raiz do repo; "%20" e afins são decodificados. Devolve uma mensagem
 // por link quebrado.
-const LINK = /!?\[[^\]]*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
+const LINK = /!?\[[^[\]]*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
 
 function linksIn(text) {
     let fenced = false;
@@ -306,6 +311,11 @@ function checkLinks(root) {
             if (link.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(link)) continue;
             const target = decodeLink(link.replace(/[#?].*$/, ''));
             const file = target.startsWith('/') ? path.join(root, target) : path.resolve(dir, target);
+            const inside = path.relative(root, file);
+            if (inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
+                problems.push(`${doc}: o link "${link}" aponta para fora do repositório. Use um caminho dentro dele ou tire o link`);
+                continue;
+            }
             if (!target || fs.existsSync(file)) continue;
             problems.push(`${doc}: o link "${link}" não aponta para um arquivo que existe. Corrija o caminho ou tire o link`);
         }
@@ -340,11 +350,12 @@ function runOf(target) {
     return 1;
 }
 
-function main([command, target]) {
+function main(args) {
+    const [command, target] = args;
     try {
-        if (command === '--check' && !target) return runCheck();
-        if (command === '--write' && !target) return runWrite();
-        if (command === '--of' && target) return runOf(target);
+        if (command === '--check' && args.length === 1) return runCheck();
+        if (command === '--write' && args.length === 1) return runWrite();
+        if (command === '--of' && args.length === 2 && target) return runOf(target);
     } catch (error) {
         console.error(error.message);
         return 2;

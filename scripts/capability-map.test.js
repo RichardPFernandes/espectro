@@ -1,6 +1,6 @@
 'use strict';
 // Mapa de capacidades (docs/capacidades/): um teste por regra, em caso sintético e no repo.
-const { describe, it } = require('node:test');
+const { describe, it, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -78,27 +78,66 @@ describe('cabeçalho de uma capacidade', () => {
         });
     }
 
+    // Cada caso diz o motivo: o teste só passa se a recusa for pelo motivo certo.
+    const NO_BLOCK = /não começa com um bloco entre duas linhas "---"/;
+    const PLAIN = /linha \d+: forma não suportada \(use texto simples, \[a, b\] ou lista com "- "\)/;
+    const PAIR = /linha \d+: forma não suportada \(use "campo: valor"\)/;
+    const BAD_ID = /deve ter só minúsculas, dígitos e hífen/;
     const unsupported = {
-        'arquivo sem cabeçalho': 'Só o corpo.\n',
-        'cabeçalho sem linha de fechamento': '---\nid: spec\n',
-        'escalar entre aspas': doc({ resumo: '"Gera a spec."' }),
-        'escalar com dois-pontos no meio': doc({ resumo: 'Gera: valida.' }),
-        'escalar em bloco': doc({ resumo: '|\n  Gera a spec.' }),
-        'mapa aninhado': doc({ flags: '\n  nome: SPEC_DRAFT_AUTOGEN' }),
-        'mapa em linha': doc({ flags: '{ nome: SPEC_DRAFT_AUTOGEN }' }),
-        'campo vazio': doc({ resumo: '' }),
-        'campo repetido': doc().replace('tipo: capacidade', 'tipo: capacidade\ntipo: base'),
-        'item vazio em lista': doc({ flags: '[SPEC_DRAFT_AUTOGEN, ]' }),
-        'lista onde cabe escalar': doc({ id: '[spec]' }),
-        'escalar onde cabe lista': doc({ modulos: 'scripts/invalidate.js' }),
-        'curinga no meio do padrão': doc({ modulos: '\n  - scripts/*/spec.js' }),
-        'id que não serve de nome de arquivo': doc({ id: 'Spec Viva' }),
+        'arquivo sem cabeçalho': ['Só o corpo.\n', NO_BLOCK],
+        'cabeçalho sem linha de fechamento': ['---\nid: spec\n', NO_BLOCK],
+        'texto antes do primeiro "---"': [`Antes.\n${doc()}`, NO_BLOCK],
+        'escalar entre aspas': [doc({ resumo: '"Gera a spec."' }), PLAIN],
+        'escalar com dois-pontos no meio': [doc({ resumo: 'Gera: valida.' }), PLAIN],
+        'escalar terminando em dois-pontos': [doc({ resumo: 'Gera:' }), PLAIN],
+        'escalar em bloco': [doc({ resumo: '|\n  Gera a spec.' }), PLAIN],
+        'mapa aninhado': [doc({ flags: '\n  nome: SPEC_DRAFT_AUTOGEN' }), PAIR],
+        'mapa em linha': [doc({ flags: '{ nome: SPEC_DRAFT_AUTOGEN }' }), PLAIN],
+        'campo vazio': [doc({ resumo: '' }), /campo vazio: resumo/],
+        'campo repetido': [doc().replace('tipo: capacidade', 'tipo: capacidade\ntipo: base'), /linha \d+: campo repetido: tipo/],
+        'campo desconhecido (erro de digitação em flags)': [doc({ flag: '[SPEC_DRAFT_AUTOGEN]' }), /campo desconhecido: flag/],
+        'item vazio em lista': [doc({ flags: '[SPEC_DRAFT_AUTOGEN, ]' }), PLAIN],
+        'lista em linha sem "]"': [doc({ flags: '[SPEC_DRAFT_AUTOGEN, SPEC_AUTO_REPAIR' }), /lista em linha sem "\]"/],
+        'lista dentro de item de lista em bloco': [doc({ flags: '\n  - [a, b]' }), PLAIN],
+        'item de lista sem chave antes': ['---\n- a\nid: spec\n---\n', PAIR],
+        'item de lista depois de escalar': [doc().replace('tipo: capacidade', 'tipo: capacidade\n  - x'), /item de lista fora de uma lista/],
+        'lista onde cabe escalar': [doc({ id: '[spec]' }), /id deve ser um texto, não uma lista/],
+        'escalar onde cabe lista': [doc({ modulos: 'scripts/invalidate.js' }), /modulos deve ser uma lista/],
+        'curinga no meio do padrão': [doc({ modulos: '\n  - scripts/*/spec.js' }), /só aceita "\*" no fim/],
+        'id com espaço e maiúscula': [doc({ id: 'Spec Viva' }), BAD_ID],
+        'id com sublinhado': [doc({ id: 'spec_viva' }), BAD_ID],
+        'id começando por dígito': [doc({ id: '1spec' }), BAD_ID],
     };
-    for (const [name, text] of Object.entries(unsupported)) {
+    for (const [name, [text, reason]] of Object.entries(unsupported)) {
         it(`recusa forma não suportada: ${name}`, () => {
-            assert.throws(() => map.parseHeader(text), /cabeçalho/);
+            assert.throws(() => map.parseHeader(text), error => error.message.startsWith('cabeçalho: ') && reason.test(error.message));
         });
     }
+
+    it('aceita fim de linha CRLF e espaço depois do "---"', () => {
+        assert.deepEqual(map.parseHeader(doc().replace(/\n/g, '\r\n')), map.parseHeader(doc()));
+        assert.deepEqual(map.parseHeader(doc().replace('---\n', '--- \n')), map.parseHeader(doc()));
+    });
+
+    it('linha inteira de comentário é ignorada', () => {
+        assert.deepEqual(map.parseHeader(doc().replace('tipo:', '# nota\ntipo:')), map.parseHeader(doc()));
+    });
+
+    it('linha enorme de espaços antes de um "#" não trava o parser (tempo linear)', () => {
+        const started = Date.now();
+        map.parseHeader(doc({ resumo: `Gera${' '.repeat(80000)}a spec.` }));
+        assert.ok(Date.now() - started < 1000, 'o parser levou mais de 1 s numa linha de 80 mil espaços');
+    });
+
+    it('"#" colado em texto não é comentário; " #" é, como em YAML', () => {
+        assert.equal(map.parseHeader(doc({ resumo: 'Lê C# e Java.' })).resumo, 'Lê C# e Java.');
+        // Limite aceito: o texto depois de " #" é cortado, como em YAML. Quem precisar do "#" reescreve.
+        assert.equal(map.parseHeader(doc({ resumo: 'Trata o ticket #12 hoje.' })).resumo, 'Trata o ticket');
+    });
+
+    it('lista em bloco sem indentação não é aceita (limite do subconjunto)', () => {
+        assert.throws(() => map.parseHeader(doc({ flags: '\n- A' })), /forma não suportada/);
+    });
 });
 
 describe('dono de um arquivo', () => {
@@ -117,6 +156,13 @@ describe('dono de um arquivo', () => {
         assert.deepEqual(map.ownersOf(capabilities, 'scripts/lib/ac-registry.js'), []);
     });
 
+    it('prefixo ancora no início do caminho e respeita o começo do nome', () => {
+        assert.deepEqual(map.ownersOf(capabilities, 'scripts/lib/spec-x.js'), ['spec']);
+        assert.deepEqual(map.ownersOf(capabilities, 'dashboard/scripts/lib/spec-x.js'), []);
+        assert.deepEqual(map.ownersOf(capabilities, 'scripts/lib/spec.js'), []);
+        assert.deepEqual(map.ownersOf(capabilities, 'scripts/lib/specimen.js'), []);
+    });
+
     it('devolve todos os donos quando dois padrões casam', () => {
         const overlapping = [...capabilities, { id: 'medicao', modulos: ['scripts/c*'] }];
         assert.deepEqual(map.ownersOf(overlapping, 'scripts/cas.js'), ['estado', 'medicao']);
@@ -128,6 +174,24 @@ describe('leitura de docs/capacidades', () => {
         const files = { 'spec.md': doc(), 'estado.md': doc({ id: 'estado' }), 'README.md': '# Mapa\n' };
         const ids = withFiles(files, dir => map.readCapabilities(dir).map(c => c.id));
         assert.deepEqual(ids, ['estado', 'spec']);
+    });
+
+    it('ordena por id mesmo quando o sistema de arquivos devolve fora de ordem', () => {
+        const files = { 'b.md': doc({ id: 'b' }), 'a.md': doc({ id: 'a' }), 'c.md': doc({ id: 'c' }) };
+        withFiles(files, dir => {
+            const real = fs.readdirSync;
+            const reversed = mock.method(fs, 'readdirSync', (...args) => real(...args).reverse());
+            try {
+                assert.deepEqual(map.readCapabilities(dir).map(c => c.id), ['a', 'b', 'c']);
+            } finally {
+                reversed.mock.restore();
+            }
+        });
+    });
+
+    it('ignora o que não é .md (.DS_Store, notas em .txt)', () => {
+        const files = { 'spec.md': doc(), '.DS_Store': 'binário', 'notas.txt': 'não é cabeçalho' };
+        assert.deepEqual(withFiles(files, dir => map.readCapabilities(dir).map(c => c.id)), ['spec']);
     });
 
     it('recusa id diferente do nome do arquivo, citando o arquivo', () => {
@@ -161,6 +225,8 @@ describe('o que entra na cobertura (AC-03)', () => {
         'scripts/hooks/guard.mjs',
         'scripts/fixtures.cjs',
         'scripts/install.sh',
+        'scripts/.eslintrc.cjs',
+        'scripts/novo.test.mjs', // só *.test.js é teste, como na receita: este precisa de dona
         'dashboard/server.js',
         '.claude/commands/plan.md',
         '.graph/schemas/state.schema.json',
@@ -169,6 +235,8 @@ describe('o que entra na cobertura (AC-03)', () => {
         'scripts/cas.test.js',
         'scripts/fixtures/spec-heading/v1-normal.md',
         'scripts/fixtures/qa-rejection/sentinel-tree.cjs',
+        'scripts/lib/fixtures/seed.js',
+        'dashboard/fixtures/seed.js',
         'scripts/package.json',
         'dashboard/public/style.css',
         '.graph/.gitkeep',
@@ -194,9 +262,11 @@ describe('cobertura do mapa (AC-03)', () => {
         assert.deepEqual(check(extras), { total: 3, problems: [] });
     });
 
-    it('dependência instalada (node_modules) não entra na cobertura', () => {
-        assert.deepEqual(check({ 'scripts/node_modules/lib/index.js': '' }), { total: 3, problems: [] });
-    });
+    for (const skipped of ['node_modules', 'dist', 'build', 'coverage']) {
+        it(`pasta ${skipped} não entra na cobertura quando não há git`, () => {
+            assert.deepEqual(check({ [`scripts/${skipped}/lib/index.js`]: '' }), { total: 3, problems: [] });
+        });
+    }
 
     it('arquivo sem dona: cita o arquivo e o comando que confere a correção', () => {
         const { total, problems } = check({ 'scripts/novo.js': '' });
@@ -227,6 +297,54 @@ describe('cobertura do mapa (AC-03)', () => {
         const stale = doc({ modulos: '\n  - scripts/lib/spec-*\n  - scripts/invalidate.js\n  - scripts/lib/ac-*' });
         const { problems } = check({ 'docs/capacidades/spec.md': stale, 'scripts/novo.js': '', 'dashboard/server.js': '' });
         assert.deepEqual(problems.map(p => p.rule).sort(), ['padrao-sem-arquivo', 'sem-dona', 'sem-dona']);
+    });
+});
+
+// A CI lista os arquivos com `git ls-files`: o ramo com git precisa de teste próprio, num repo
+// de verdade (git init), porque os outros testes rodam em pastas sem .git.
+describe('listagem de arquivos com git (AC-03)', () => {
+    const git = (dir, ...args) => {
+        const result = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
+        assert.equal(result.status, 0, result.stderr);
+    };
+    const inGit = (files, fn) => withFiles(files, dir => {
+        git(dir, 'init', '-q');
+        return fn(dir);
+    });
+
+    it('conta o rastreado e o novo não ignorado; o ignorado fica de fora', () => {
+        const files = { ...TREE, '.gitignore': 'scripts/gerado.js\n', 'scripts/gerado.js': '' };
+        inGit(files, dir => {
+            git(dir, 'add', '--', 'scripts/invalidate.js'); // rastreado; o resto é novo, sem add
+            assert.deepEqual(map.checkMap(dir), { total: 3, problems: [] });
+        });
+    });
+
+    it('arquivo rastreado e apagado do disco não conta e não quebra', () => {
+        inGit({ ...TREE, 'scripts/velho.js': '' }, dir => {
+            git(dir, 'add', '-A');
+            fs.rmSync(path.join(dir, 'scripts/velho.js'));
+            assert.deepEqual(map.checkMap(dir), { total: 3, problems: [] });
+        });
+    });
+
+    it('nome com espaço e acento chega inteiro, sem aspas do git', () => {
+        inGit({ ...TREE, 'scripts/lib/spec-ação x.js': '' }, dir => {
+            assert.deepEqual(map.checkMap(dir), { total: 4, problems: [] });
+        });
+    });
+
+    it('pasta do tipo build entra quando o git a lista (como na receita)', () => {
+        inGit({ ...TREE, 'scripts/build/novo.js': '' }, dir => {
+            const { problems } = map.checkMap(dir);
+            assert.deepEqual(problems.map(problem => problem.rule), ['sem-dona']);
+        });
+    });
+
+    it('falha do git vira erro com a causa, não lista vazia', () => {
+        withFiles({ ...TREE, '.git/placeholder': '' }, dir => {
+            assert.throws(() => map.checkMap(dir), /git ls-files falhou/);
+        });
     });
 });
 
@@ -281,6 +399,10 @@ describe('mapa do repo', () => {
         assert.deepEqual(problems.map(problem => problem.message), []);
     });
 
+    it('a cobertura enxerga os arquivos do repo, não uma lista vazia', () => {
+        assert.ok(map.checkMap(REPO).total > 200, 'a cobertura contou menos de 200 arquivos de código');
+    });
+
     it('as 16 capacidades da SPEC existem, sem "outros" nem "misc"', () => {
         const ids = map.readCapabilities(path.join(REPO, 'docs', 'capacidades')).map(capability => capability.id);
         assert.deepEqual(ids, [
@@ -315,6 +437,27 @@ describe('capability-map.js --of (AC-06)', () => {
         assert.equal(result.status, 2);
         assert.match(result.stderr, /uso:/);
     });
+
+    it('resolve o caminho a partir da pasta em que roda, não da raiz', () => {
+        const result = spawnSync(process.execPath, [CLI, '--of', 'cas.js'], { cwd: path.join(REPO, 'scripts'), encoding: 'utf8' });
+        assert.equal(result.stdout, 'estado\n');
+        assert.equal(run('--of', './scripts/cas.js').stdout, 'estado\n');
+    });
+
+    it('caminho fora do repo sai 1', () => {
+        const result = run('--of', path.join(os.tmpdir(), 'qualquer.js'));
+        assert.equal(result.status, 1);
+        assert.equal(result.stdout, '');
+    });
+
+    for (const args of [[], ['--desconhecido'], ['--write', 'x'], ['--check', 'x'], ['--of', 'a.js', 'b.js']]) {
+        it(`sai 2 e mostra o uso com os argumentos: ${args.join(' ') || '(nenhum)'}`, () => {
+            const result = run(...args);
+            assert.equal(result.status, 2);
+            assert.match(result.stderr, /uso:/);
+            assert.equal(result.stdout, '');
+        });
+    }
 });
 
 // --check e --write de ponta a ponta (AC-03 a AC-05): o script é copiado para um repo mínimo,
@@ -331,7 +474,8 @@ describe('capability-map.js --check e --write', () => {
     // Monta o repo mínimo com `changes`, gera a tabela com --write e entrega `run` ao teste.
     function inRepo(changes, fn) {
         return withFiles({ ...MINIMAL, ...changes }, dir => {
-            const run = (...args) => spawnSync(process.execPath, [path.join(dir, 'scripts', 'capability-map.js'), ...args], { encoding: 'utf8' });
+            const script = path.join(dir, 'scripts', 'capability-map.js');
+            const run = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: dir, encoding: 'utf8' });
             return fn(run, dir);
         });
     }
@@ -395,6 +539,16 @@ describe('capability-map.js --check e --write', () => {
             const result = run('--check');
             assert.equal(result.status, 2);
             assert.match(result.stderr, /ferramentas\.md.*tipo/);
+        });
+    });
+
+    it('--of com duas donas sai 1, cita as duas e não imprime id', () => {
+        const other = doc({ id: 'outra', flags: '[]', modulos: '\n  - scripts/capability-map.js' });
+        inRepo({ 'docs/capacidades/outra.md': other }, run => {
+            const result = run('--of', 'scripts/capability-map.js');
+            assert.equal(result.status, 1);
+            assert.equal(result.stdout, '');
+            assert.match(result.stderr, /mais de uma capacidade dona \(ferramentas, outra\)/);
         });
     });
 
@@ -491,6 +645,28 @@ describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
     });
 });
 
+// Ponteiros para o mapa (AC-08): o README.md da raiz, antes do sumário, e o passo 1 do AGENTS.md.
+describe('ponteiros para o mapa (AC-08)', () => {
+    const read = name => fs.readFileSync(path.join(REPO, name), 'utf8');
+
+    it('o README.md da raiz aponta para o mapa antes do sumário', () => {
+        const text = read('README.md');
+        const pointer = text.indexOf('](docs/capacidades/README.md)');
+        assert.notEqual(pointer, -1, 'o README.md da raiz não linka docs/capacidades/README.md');
+        assert.ok(pointer < text.indexOf('## Sumário'), 'o ponteiro precisa vir antes do sumário');
+    });
+
+    it('o passo 1 do AGENTS.md manda começar pelo mapa', () => {
+        const step = /^1\. [\s\S]*?(?=^2\. )/m.exec(read('AGENTS.md'));
+        assert.ok(step, 'o AGENTS.md não tem o passo 1');
+        assert.match(step[0], /docs\/capacidades\/README\.md/);
+    });
+
+    it('a página de entrada existe onde os dois ponteiros dizem', () => {
+        assert.ok(fs.existsSync(path.join(REPO, 'docs', 'capacidades', 'README.md')));
+    });
+});
+
 // Tabela de capacidades do README (AC-04): gerada dos cabeçalhos, entre marcadores.
 describe('tabela gerada do README (AC-04)', () => {
     const BEGIN = '<!-- capacidades:inicio -->';
@@ -528,6 +704,7 @@ describe('tabela gerada do README (AC-04)', () => {
         assert.throws(() => map.applyTable('# Mapa\n', 'x'), /marcador/);
         assert.throws(() => map.applyTable(`${BEGIN}\n`, 'x'), /marcador/);
         assert.throws(() => map.applyTable(`${END}\n${BEGIN}\n`, 'x'), /marcador/);
+        assert.throws(() => map.applyTable(`${END}\n`, 'x'), /marcador/);
     });
 
     it('tabela defasada falha com a instrução de rodar --write; depois do --write, passa', () => {
@@ -585,6 +762,50 @@ describe('links relativos de docs/capacidades (AC-05)', () => {
         const problems = check(files);
         assert.equal(problems.length, 1);
         assert.match(problems[0], /falta\.md#secao/);
+    });
+
+    it('link quebrado depois de um bloco de código fechado ainda é detectado', () => {
+        const problems = check({
+            'docs/capacidades/spec.md': page('```md', '[x](falta.md)', '```', '[y](falta-depois.md)'),
+        });
+        assert.equal(problems.length, 1);
+        assert.match(problems[0], /falta-depois\.md/);
+    });
+
+    it('cerca com ~~~ e cerca indentada também escondem o conteúdo', () => {
+        assert.deepEqual(check({
+            'docs/capacidades/spec.md': page('~~~', '[x](falta.md)', '~~~', '  ```', '[y](falta2.md)', '  ```'),
+        }), []);
+    });
+
+    it('link entre < > para arquivo existente com espaço passa', () => {
+        assert.deepEqual(check({
+            'docs/capacidades/spec.md': page('[a](<com espaco.md>)'),
+            'docs/capacidades/com espaco.md': '# x\n',
+        }), []);
+    });
+
+    it('link que sai da raiz do repo falha, mesmo que o arquivo exista', () => {
+        const outside = `fora-${process.pid}-${Date.now()}.md`;
+        const outsideFile = path.join(os.tmpdir(), outside);
+        fs.writeFileSync(outsideFile, '# fora\n');
+        try {
+            // A raiz do repo mínimo é uma pasta direta de os.tmpdir(): "../../../x" e "/../x" chegam ao mesmo arquivo.
+            const problems = check({
+                'docs/capacidades/spec.md': page(`[a](../../../${outside})`, `[b](/../${outside})`, '[c](../../scripts/a.js)', '[d](/..)'),
+                'scripts/a.js': '',
+            });
+            assert.equal(problems.length, 3);
+            for (const problem of problems) assert.match(problem, /fora do repositório/);
+        } finally {
+            fs.rmSync(outsideFile, { force: true });
+        }
+    });
+
+    it('linha enorme de "[" não trava a conferência (tempo linear)', () => {
+        const started = Date.now();
+        assert.deepEqual(check({ 'docs/capacidades/spec.md': page('['.repeat(80000)) }), []);
+        assert.ok(Date.now() - started < 1000, 'a conferência levou mais de 1 s numa linha de 80 mil "["');
     });
 
     it('%20 e outros escapes de URL valem pelo nome do arquivo; escape malformado não derruba', () => {
