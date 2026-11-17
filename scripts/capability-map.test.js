@@ -648,11 +648,13 @@ describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
         assert.deepEqual(problems, []);
     });
 
-    it('cada capacidade tem até 40 linhas e até cinco arquivos por onde começar (AC-02)', () => {
+    // Spec viva (F0.12) cabe numa página; as outras são só cabeçalho e resumo.
+    it('cada capacidade tem até 40 linhas (80 com spec viva) e até cinco arquivos por onde começar (AC-02)', () => {
         const problems = [];
         for (const capability of map.readCapabilities(DIR)) {
             const text = fs.readFileSync(path.join(DIR, `${capability.id}.md`), 'utf8');
-            if (lines(text).length > 40) problems.push(`${capability.id}.md tem ${lines(text).length} linhas; o teto é 40`);
+            const max = capability.spec === 'viva' ? 80 : 40;
+            if (lines(text).length > max) problems.push(`${capability.id}.md tem ${lines(text).length} linhas; o teto é ${max}`);
             const start = section(text, 'Por onde começar');
             const items = (start || []).filter(line => /^\d+\. /.test(line));
             if (!start || items.length < 1 || items.length > 5) problems.push(`${capability.id}.md: "Por onde começar" precisa de 1 a 5 itens numerados`);

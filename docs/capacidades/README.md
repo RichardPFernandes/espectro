@@ -69,7 +69,7 @@ Um sentido por termo. Nesta pasta, "gate" só nomeia nível de revisão (G0–G3
 - **portão**: a conferência que o watcher faz entre dois nós, como a nota do plano, o build e a evidência dos ACs.
 - **gate (G0–G3)**: o nível de revisão de uma mudança no desenvolvimento do Espectro; G3 é a revisão por outro agente em contexto limpo.
 - **spec de ticket**: o que entregar num ticket (`memory/spec/<ticket>-spec.md`, no consumidor); o plano diz como.
-- **spec viva**: a página de uma capacidade que descreve o que ela faz hoje e é atualizada com a mudança; ainda não existe, é a fatia C2.
+- **spec viva**: a página de uma capacidade que descreve o que ela faz hoje e é atualizada com a mudança; `spec`, `grafo` e `estado` já têm a sua, e as outras nascem quando uma mudança as toca.
 - **SPEC de fatia**: o documento de até duas páginas que descreve uma fatia do roadmap antes de ela começar; vale até o merge.
 - **SDD**: desenvolvimento guiado por spec, o método em que a spec vem antes do código e é a fonte do que se entrega.
 - **writer de SDD**: o módulo que controla versão e ativação de uma SDD por projeto; está congelado e nenhum código de produção o chama.
@@ -81,6 +81,13 @@ Um sentido por termo. Nesta pasta, "gate" só nomeia nível de revisão (G0–G3
 
 ## Capacidades
 
+Na coluna Spec, `viva` quer dizer que a página traz o comportamento em requisitos com ID estável
+(`<CAPACIDADE>-Rnn`) e invariantes (`<CAPACIDADE>-Inn`). ID não muda nem é reaproveitado: requisito
+cortado fica como "(removido em AAAA-MM-DD: motivo)". Mudança de comportamento chega como delta (seção
+"Delta de capacidade" de [`templates/fatia-spec.md.template`](../../templates/fatia-spec.md.template))
+e atualiza a página no mesmo PR; o `processo-check` avisa, sem reprovar, quando o código de uma
+capacidade com spec muda e a página dela não.
+
 <!-- capacidades:inicio -->
 | Capacidade | Tipo | Situação | Spec | O que faz |
 | -- | -- | -- | -- | -- |
@@ -89,15 +96,15 @@ Um sentido por termo. Nesta pasta, "gate" só nomeia nível de revisão (G0–G3
 | [config](config.md) | base | ligada | sem-spec | Confere a configuração do fluxo contra o contrato e o registro de flags contra o código. |
 | [dashboard](dashboard.md) | fluxo | ligada | sem-spec | Painel local do Espectro, com Runs, custo, PRs, tickets, roteamento e pedidos de autorização, mais preview e checkout local. |
 | [db-effect](db-effect.md) | capacidade | ligada | sem-spec | Executa, com aprovador humano, um SQL de migração num banco da allowlist e detecta mudança de schema. |
-| [estado](estado.md) | base | ligada | sem-spec | Guarda o state.json de cada Run, com um só escritor, versão e lease de nó. |
+| [estado](estado.md) | base | ligada | viva | Guarda o state.json de cada Run, com um só escritor, versão e lease de nó. |
 | [execucao](execucao.md) | capacidade | ligada | sem-spec | Monta o contexto e a linha de comando do agente de cada nó e lê os sinais de saída dele. |
 | [ferramentas](ferramentas.md) | capacidade | ligada | sem-spec | Scripts offline fora do caminho da Run, como demo, sondas, limpeza, exportadores, validadores de processo e o próprio mapa. |
-| [grafo](grafo.md) | base | ligada | sem-spec | Define o ciclo da Run como grafo de nós, com o comando de cada nó e o limite de retry. |
+| [grafo](grafo.md) | base | ligada | viva | Define o ciclo da Run como grafo de nós, com o comando de cada nó e o limite de retry. |
 | [integracoes](integracoes.md) | capacidade | ligada | sem-spec | Fala com o Redmine e o Bitbucket e avisa o dev por webhook, cobrindo ticket, anexos, PRs, horas e notificações. |
 | [medicao](medicao.md) | capacidade | ligada | sem-spec | Mede e guarda o que as Runs deixam, como custo por nó, transcrições, comparação de Runs, padrões de falha e rastreio ticket → PR. |
 | [portoes](portoes.md) | capacidade | ligada | sem-spec | Conferências entre nós do fluxo, como plano, build, churn, revisão, evidência dos ACs e UI. |
 | [qa](qa.md) | capacidade | parcial | sem-spec | Trata a recusa de QA do Redmine, com ciclo próprio, devolução sem código e diagnóstico atrás de flag. |
 | [roteamento](roteamento.md) | capacidade | parcial | sem-spec | Escolhe modelo e esforço por Attempt e decompõe o Implement em subtarefas, com política versionada. |
 | [sdd-writer](sdd-writer.md) | capacidade | sem-chamador | sem-spec | Writer de SDD por projeto, que executa a consequência de uma Decision; congelado e sem chamador. |
-| [spec](spec.md) | capacidade | ligada | sem-spec | Gera, valida, versiona e invalida a spec de cada ticket, que é a fonte dos critérios de aceite. |
+| [spec](spec.md) | capacidade | ligada | viva | Gera, valida, versiona e invalida a spec de cada ticket, que é a fonte dos critérios de aceite. |
 <!-- capacidades:fim -->
