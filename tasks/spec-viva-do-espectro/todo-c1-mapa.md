@@ -86,11 +86,12 @@ Evidência do PR.
   - Depende de: T1. Fica aqui porque só tem o que conferir depois da T6.
   - Em 17/11: teste vermelho antes (sem `checkLinks`, 10 falhas), verde depois: 9 casos novos (link quebrado cita arquivo e link; arquivo, pasta e página irmã passam; âncora, `http(s)` e `mailto` não são conferidos; `#âncora` e `?query` saem antes de olhar o arquivo; imagem, título e `<...>`; bloco de código e código em linha ignorados; README também; `/` inicial parte da raiz; links do mapa real em dia). `--check` também lista link quebrado e sai 1 (conferido à mão com um link falso, depois desfeito). `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde. Link de referência (`[t][ref]`) não é conferido: o mapa não usa.
 
-- [ ] **T9: ponteiros de entrada (AC-08)** · XS
+- [x] **T9: ponteiros de entrada (AC-08)** · XS
   - Aceite: o `README.md` da raiz, antes do sumário, e o passo 1 do `AGENTS.md` apontam para `docs/capacidades/README.md`; nenhuma outra linha desses arquivos muda.
   - Verificar: `git diff --stat` mostra só as linhas dos ponteiros.
   - Arquivos: `README.md`, `AGENTS.md`
   - Depende de: T6
+  - Em 17/11: `git diff --stat` mostra só os ponteiros (`README.md` +3, `AGENTS.md` ±1: aviso antes do sumário e passo 1). `--check` sai 0 (232 de 232). `npm test` (Node 24): 2494 passam, as mesmas 2 falhas da `main` (`/var` e `/private/var`, PRI-393); `npm run check` verde.
 
 ### Conferência C
 
