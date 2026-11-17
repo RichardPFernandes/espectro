@@ -1,7 +1,7 @@
 # Fase 1 — Conter e enxergar
 
-> 6 semanas · 21 dias · 23/11/2026 a 15/01/2027 (D14) · Status: em andamento. Frente A: contenção
-> (F1.1 a F1.3, F1.6 e F1.8). Frente B: linha de base (F1.4, F1.5 e F1.7).
+> 6 semanas · 23 dias · 23/11/2026 a 15/01/2027 (D14) · Status: em andamento. Frente A: contenção
+> (F1.1 a F1.3, F1.6, F1.8 e F1.9). Frente B: linha de base (F1.4, F1.5 e F1.7).
 
 **Objetivo.** Ter as três barreiras que faltam (lista de flags, ponto de retorno, teto por
 run) e a régua de custo.
@@ -19,6 +19,7 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 - [ ] Uma run de ensaio bate no teto de turnos e para com status de bloqueio.
 - [ ] Push de repo irmão pulado não é mais reportado como sucesso (PRI-179).
 - [ ] Capa do weekly mostra custo por ticket entregue, custo do retrabalho por nó e primeira passada por nó, com n e período.
+- [ ] Varredura do repo público feita, com destino para cada achado (F1.9).
 - [ ] Custo lido do JSON da CLI, com versão da CLI, modelo e hash dos prompts por run (F1.5).
 - [ ] Causa das recusas de QA e das rajadas de despacho identificada ou marcada como desconhecida (F1.7, F1.8).
 - [ ] Meta de custo por ticket registrada (D6), ou a frase "sem meta até a semana X".
@@ -35,9 +36,10 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 | F1.6 | Push dos repos irmãos: pulado não vira sucesso | 2 | Alto | A confirmar | — | — | não iniciada | PRI-179 |
 | F1.7 | Causa das recusas de QA: as recusas repetem causa? É a metade da F5.3 que não espera a Fase 5 | 2 | Leve | Não | — | D13 | não iniciada | sem issue; PRI-86 relacionada |
 | F1.8 | Causa das falhas de despacho em rajada ([`DADOS.md`](../DADOS.md), item 6), só leitura | 2 | Leve | Não | — | D13 | não iniciada | sem issue |
+| F1.9 | Varredura de dado do consumidor no repo público: estado atual e histórico do Git | 2 | Leve | Não | — | D8 | não iniciada | sem issue |
 
-Com a F1.6, a F1.7 e a F1.8, a fase soma 21 dias. Cada semana conta 4 dias de fatia (D14), o
-que dá 6 semanas, com 3 dias de folga. Se estourar, a F1.5 escorrega para a primeira semana
+Com a F1.6 e as fatias F1.7 a F1.9, a fase soma 23 dias. Cada semana conta 4 dias de fatia
+(D14), o que dá 6 semanas, com 1 dia de folga. A F1.9 é feita primeiro (D8). Se estourar, a F1.5 escorrega para a primeira semana
 da Fase 2: ela não bloqueia a F2.1, só
 a ligação dos pilotos no consumidor corporativo.
 
@@ -114,3 +116,11 @@ desenho fica para a spec.
 - **Não inclui.** Corrigir; o limite de falhas seguidas é da F1.3.
 - AC-01: A causa de cada rajada está identificada ou marcada como desconhecida, com a evidência lida.
 - AC-02: O resultado diz se a F1.3 basta ou se falta uma fatia de correção.
+
+### F1.9 — Varredura do repo público
+
+- **Intenção.** O repo é público de propósito (D8). Saber o que do consumidor está exposto, no estado atual e no histórico, e decidir o que fazer com cada achado.
+- **Não inclui.** Reescrever o histórico do Git: se a varredura achar algo que peça isso, vira decisão do Richard.
+- AC-01: a varredura cobre a `main`, todos os commits alcançáveis e o texto dos PRs, procurando credencial, dado de ticket e nome ou caminho interno do consumidor.
+- AC-02: cada achado tem destino: removido do estado atual, aceito com motivo ou levado ao Richard. Credencial achada é tratada como vazada e trocada.
+- AC-03: o relatório no PR traz só contagens e caminhos, sem repetir o dado exposto.
