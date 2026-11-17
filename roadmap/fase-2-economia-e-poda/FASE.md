@@ -1,8 +1,8 @@
 # Fase 2 — Primeira economia ligada, primeira poda
 
 > 4 cycles · 21 dias · Status: não iniciada · Abre com a Fase 1 fechada, menos o piloto
-> F2.2, em andamento em paralelo (D11). Frente A: custo, ligar e decidir (F2.1, F2.2 e a
-> F3.1, trazida para cá). Frente B: reduzir superfície (F2.4 a F2.6).
+> F2.2, em andamento em paralelo (D11). Frente A: custo, ligar e decidir (F2.1, F2.2, a
+> F2.7, que serve ao piloto, e a F3.1, trazida para cá). Frente B: reduzir superfície (F2.4 a F2.6).
 
 **Objetivo.** Ligar a primeira mudança que reduz custo de uma run comum, decidir os dois
 pilotos mais próximos e tirar do repo o que não tem chamador nem ganho.
@@ -38,3 +38,13 @@ de base. Cada piloto tem teto de runs e data; no vencimento, liga de vez ou remo
 | F2.4 | dependency-cruiser em PR, com as 77 violações como base; falha só nas novas | 2 | Leve | Não | PRI-359 | Conferido em 16/11: já estava entregue antes do roadmap, em `scripts/architecture-boundaries.test.js` | concluída | sem issue; PRI-359 (Leve) é pré-requisito |
 | F2.5 | Poda: remover a flag de `permissions.deny`, a rota `coordination`, `scripts/src` e a casca de TypeScript que só o cobre; Jev e writer de Self-SDD ficam, com data no registro | 3 | Médio | Não | F2.4 | D5: o writer de Self-SDD não sai; PRI-349 e filhas dão a ele um chamador. Remover só por decisão do Richard | não iniciada | PRI-315 (Done); conflita com PRI-349 e filhas |
 | F2.6 | Credenciais fora do shell do agente, por lista de permissão; teste + um ciclo ticket → PR completo | 4 | Alto | Sim | Fase 1 | Solução e esforço são hipótese | não iniciada | sem issue; PRI-316 vizinha |
+| F2.7 | Subtarefas legíveis: cada subtarefa da run decomposta ganha apelido (S1, S2…) e título; o watcher regenera `subtasks.md` na pasta da run a cada transição, com o status derivado dos Attempts, e o dashboard mostra o mesmo status. Demonstração: o arquivo de uma run do piloto da F2.2 | 2 | Médio | Não | — | Pedido do Richard em 17/11. Só lê o `state.json` e escreve um arquivo: não muda despacho nem Attempt e só existe com a decomposição ligada. O agente nunca edita o arquivo: status não é autodeclarado. Roda ao lado da F2.2 e ajuda a ler as runs do piloto | não iniciada | sem issue (limite do Linear); registrada em comentário na PRI-341 |
+
+### Critérios de aceite da F2.7
+
+- [ ] **AC-1 Nome.** Cada subtarefa ganha apelido S1…Sn na ordem do primeiro passo, por versão do plano, e título tirado da primeira linha do primeiro passo do grupo, sem a linha `Arquivo:`, com até 80 caracteres. O `subtask_key` segue como ID estável e aparece no arquivo.
+- [ ] **AC-2 Status.** O status de cada subtarefa vem do Attempt mais recente da chave: pendente, em andamento, aguardando você, bloqueada (com o motivo), aceita ou substituída no replan. A integração entra como último item. Um teste por estado.
+- [ ] **AC-3 Arquivo.** `subtasks.md` é reescrito a cada transição gravada no `state.json`, com horário e o aviso "gerado, não editar". Edição manual é sobrescrita. Falha ao escrever é registrada e não para a run.
+- [ ] **AC-4 Sem efeito no despacho.** Com a decomposição desligada, nenhum arquivo nasce. O golden de argv/env e os testes da decomposição passam sem mudança.
+- [ ] **AC-5 Dashboard.** A tabela de subtarefas da run mostra apelido, título e status, vindos da mesma projeção do arquivo.
+- [ ] **AC-6 Demonstração.** O PR traz o `subtasks.md` de uma run real do piloto da F2.2.
