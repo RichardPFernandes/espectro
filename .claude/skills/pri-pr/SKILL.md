@@ -39,7 +39,7 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    - **Não é o último:** o `Status` fica `em andamento`; corrija-o se estiver
      `não iniciada`. Se o `FASE.md` já estiver certo, não commite nada.
    - **O commit muda o HEAD**, e o hook exige `check.json` no HEAD. Rode o `/pri-check`
-     de novo antes do passo 3 (o diff novo é só do `FASE.md`; o revisor anterior confere
+     de novo antes do push, passo 3 (o diff novo é só do `FASE.md`; o revisor anterior confere
      só ele, como na seção 2 do `/pri-check`).
    - Nunca marque `concluída` uma fatia com AC pendente nem altere outra linha do
      `FASE.md`.
