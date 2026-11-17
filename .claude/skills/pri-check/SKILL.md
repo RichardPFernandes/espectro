@@ -35,8 +35,8 @@ Lance o revisor com o Agent tool, em contexto limpo e numa só mensagem:
 | Nível | Revisor |
 | -- | -- |
 | Leve | `agent-skills:code-reviewer` com `model: "sonnet"` (decisão D-b de 16/11/2026) |
-| Médio | `agent-skills:code-reviewer` (G3) |
-| Alto | `agent-skills:code-reviewer` e mais um: `agent-skills:security-auditor` (credencial, superfície externa) ou `agent-skills:test-engineer` |
+| Médio | `agent-skills:code-reviewer` com `model: "opus"` (G3) |
+| Alto | `agent-skills:code-reviewer` e mais um, `agent-skills:security-auditor` (credencial, superfície externa) ou `agent-skills:test-engineer`, ambos com `model: "opus"` |
 
 O brief leva o comando do diff (`git diff -M origin/main...HEAD`), a SPEC ou os ACs
 da issue e as regras do `CLAUDE.md` e do `AGENTS.md`. O pedido é focado:

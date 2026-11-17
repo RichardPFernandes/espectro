@@ -484,6 +484,10 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
 - **Relatório semanal** (antiga Métricas; chave `metricas`): contadores por status, runs ativos por etapa, mediana do tempo por etapa
   (estimada pelo `agent_log`), retrabalho (`state.retries`) e PRs por estado (real do
   Bitbucket onde já foi consultado; senão, o do `state.json`).
+  A capa traz a **linha de base do retrabalho** (F1.4): por nó, quanto passa de primeira e o que
+  as tentativas além da primeira custam em USD (sempre "imputado", preço de tabela), tokens e
+  tempo de parede, com n e período; ao lado, o modelo observado nos runs, o esforço (só quando o
+  run o grava) e os runs concluídos por semana. Sem dado, "desconhecido", nunca zero.
 - **Tickets e PRs:** um cartão por ticket do Redmine, com status, responsável, % e
   estimativa; os PRs do Bitbucket por repositório, com estado real e aprovações; e os runs
   do agente. Ao abrir a aba (ou em **↻ Atualizar**), busca Redmine e Bitbucket em lote,
