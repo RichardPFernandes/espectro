@@ -12,8 +12,8 @@ nó de um grafo fixo: plan, implement, review, test, verify e commit. Entre os n
 conferem o que o nó anterior deixou. O estado de cada Run fica num `state.json` com um só
 escritor, e o consumidor é quem guarda dados, credenciais e histórico. O SQL de migração
 num banco compartilhado só corre depois de uma aprovação humana no dashboard; o push e o PR
-correm sob a autoridade do Attempt. O que está ligado hoje: o ciclo inteiro, o dashboard e o roteamento de
-modelo como piloto; o diagnóstico de QA e o esforço por fase seguem desligados.
+correm sob a autoridade do Attempt. O que está ligado hoje: o ciclo inteiro, o dashboard e o
+roteamento de modelo como piloto; o diagnóstico de QA e o esforço por fase seguem desligados.
 
 ## Ciclo de uma Run
 
