@@ -16,8 +16,8 @@ modulos:
 # Efeito de banco
 
 O `db-effect` executa um artefato SQL (`pending_authorization` do tipo `db_migration`) num banco
-compartilhado, e só a partir da cópia congelada na aprovação pelo dashboard. Quem chama é o
-`authorization.js`; não há CLI de execução. A allowlist de bancos fica só em
+compartilhado, e só a partir da cópia congelada na aprovação pelo dashboard; quem chama é o
+`authorization.js`, e não há CLI de execução. A allowlist de bancos fica só em
 `~/.config/prisma/db-targets.json` e a senha só no Keychain, lida pelo processo filho
 (`db-exec-child.js`). O `sql-lexer.js` confere o SQL por tokens, não por regex, e um desfecho
 incerto fica `UNCERTAIN` e nunca é repetido sozinho. O `schema-watcher.js` é outra coisa: detecta

@@ -11,8 +11,8 @@ modulos:
 
 # Writer de SDD
 
-O writer de SDD (PRI-266) controla a versão e a ativação de uma SDD por projeto. A autoridade é a
-Decision; o writer só executa a consequência. Ele lê o Git por objeto, nunca o working tree, guarda
+O writer de SDD (PRI-266) controla a versão e a ativação de uma SDD por projeto; a autoridade
+é a Decision, e ele só executa a consequência. Ele lê o Git por objeto, nunca o working tree, guarda
 um `log.json` canônico (JCS, RFC 8785) e deriva dele o `catalog.yaml`. A checagem de
 integração (`sdd-writer-check.js`) é o único ponto de commit, e a auditoria roda depois. Ele não controla conteúdo nem navegação.
 

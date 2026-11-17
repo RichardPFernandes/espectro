@@ -19,10 +19,10 @@ modulos:
 O ciclo de uma Run é o grafo de `.graph/graph.yaml`: `plan`, `implement`, `review`, `test`,
 `verify` e `commit`, mais `fetch_ticket` como entrada alternativa para ticket do Redmine. Cada
 nó tem um comando em `.claude/commands/`, que é o prompt do agente daquele nó. As arestas de
-falha (`on_fail`) voltam para `implement` ou `test` e têm `max_retries`; passou do limite, a
+falha (`on_fail`) voltam para `implement` ou `test` e têm `max_retries`, e passou do limite a
 Run escala para o humano. O watcher também despacha `implement-step` e `implement-integrate`
 (subtarefas do `implement`), e o `verify` chama o `verify-ui`; nenhum dos três é nó do arquivo
-do grafo. O `init-project` roda uma vez por projeto, fora do ciclo.
+do grafo, e o `init-project` roda uma vez por projeto, fora do ciclo.
 
 Os schemas de artefato (`acceptance-evidence`, `memory-index`, `spec-changelog`) moram em
 `.graph/` e têm esta capacidade como dona. Quem os lê está em outras capacidades; o

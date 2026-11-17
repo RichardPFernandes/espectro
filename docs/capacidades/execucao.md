@@ -21,7 +21,7 @@ Execução é o que acontece entre decidir despachar um nó e o agente sair. O `
 pré-monta o que entra no prompt dos nós `plan` e `review` (descrição truncada, nomes de
 arquivos, diff real), para não reler arquivos inteiros a cada turno. O `claude-account.js`
 escolhe a conta do Claude Code e o `subagent-block.js` monta o bloqueio de subagente no argv do
-`claude -p`. O `sanitize-log.js` apaga segredos de tudo o que o agente imprime. Quando o agente
+`claude -p`. O `sanitize-log.js` apaga segredos de tudo o que o agente imprime e, quando o agente
 sai, o `agent-exit-signals.js` separa "Claude indisponível" de "sessão estourou o contexto".
 
 `WATCHER_PLAN_IMPLEMENT_CHAIN` (desligada por padrão) troca `plan` e `implement` por um segmento

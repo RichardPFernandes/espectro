@@ -632,6 +632,22 @@ describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
         assert.deepEqual(offenders, [], 'use "portão" para a conferência do produto; "gate" só junto de G0–G3');
     });
 
+    // "O que a capacidade faz em duas a quatro frases": o primeiro parágrafo depois do título.
+    // Código em linha não conta como fim de frase (`modelo.js` tem ponto, mas não termina nada).
+    it('o primeiro parágrafo de cada capacidade tem de 2 a 4 frases (AC-02)', () => {
+        const problems = [];
+        for (const capability of map.readCapabilities(DIR)) {
+            const body = lines(fs.readFileSync(path.join(DIR, `${capability.id}.md`), 'utf8'));
+            const title = body.findIndex(line => line.startsWith('# '));
+            const rest = body.slice(title + 1).filter((line, index, all) => index >= all.findIndex(text => text.trim()));
+            const end = rest.findIndex(line => !line.trim());
+            const paragraph = rest.slice(0, end === -1 ? undefined : end).join(' ').replace(/`[^`]*`/g, 'X');
+            const sentences = (paragraph.match(/[.!?](\s|$)/g) || []).length;
+            if (sentences < 2 || sentences > 4) problems.push(`${capability.id}.md: o primeiro parágrafo tem ${sentences} frases; o certo é de 2 a 4`);
+        }
+        assert.deepEqual(problems, []);
+    });
+
     it('cada capacidade tem até 40 linhas e até cinco arquivos por onde começar (AC-02)', () => {
         const problems = [];
         for (const capability of map.readCapabilities(DIR)) {

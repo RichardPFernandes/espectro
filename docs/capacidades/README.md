@@ -10,9 +10,9 @@ O Espectro transforma um ticket do Redmine em um pull request, com agentes de c�
 um humano nos pontos que contam. Um watcher busca os tickets e, a cada tick, despacha o próximo
 nó de um grafo fixo: plan, implement, review, test, verify e commit. Entre os nós, portões
 conferem o que o nó anterior deixou. O estado de cada Run fica num `state.json` com um só
-escritor, e o consumidor é quem guarda dados, credenciais e histórico. Ações com efeito fora do
-repositório, como um push ou um SQL num banco compartilhado, só correm depois de uma aprovação
-humana no dashboard. O que está ligado hoje: o ciclo inteiro, o dashboard e o roteamento de
+escritor, e o consumidor é quem guarda dados, credenciais e histórico. O SQL de migração
+num banco compartilhado só corre depois de uma aprovação humana no dashboard; o push e o PR
+correm sob a autoridade do Attempt. O que está ligado hoje: o ciclo inteiro, o dashboard e o roteamento de
 modelo como piloto; o diagnóstico de QA e o esforço por fase seguem desligados.
 
 ## Ciclo de uma Run
@@ -25,7 +25,7 @@ modelo como piloto; o diagnóstico de QA e o esforço por fase seguem desligados
 6. O nó `review` revisa o diff em duas dimensões. Se reprova, volta ao `implement`, até 3 vezes.
 7. O nó `test` roda os testes e grava a evidência de cada AC. Se falha, volta ao `implement`.
 8. O nó `verify` confere a evidência contra a spec e, se a flag estiver ligada, a interface.
-9. O nó `commit` abre o PR, sob uma autorização quando há efeito externo. O merge é humano.
+9. O nó `commit` abre o PR, em draft quando o risco é alto. O merge é humano.
 10. Se o QA recusa o ticket, a recusa vira um ciclo próprio, que o dashboard reabre sobre a mesma Run.
 
 Nó e portão são coisas diferentes: o nó é uma etapa do grafo, com agente; o portão é a conferência
@@ -47,8 +47,7 @@ flowchart TD
     TE --> V[verify]
     V -->|falhou| TE
     V --> C[commit]
-    C --> A([humano autoriza o efeito]):::humano
-    A --> PR[PR aberto]
+    C --> PR[PR aberto]
     PR --> M([humano revisa e mescla]):::humano
     M -->|QA recusa| T
     R -->|3 falhas| H2

@@ -29,7 +29,7 @@ modulos:
 O roteamento escolhe o modelo de cada Attempt na admissão da Run e grava a decisão com a política
 e o hash que a sustentam. A política é `.claude/model-routing-policy.json` e a ligação por projeto
 é `.claude/model-routing.json`, lida só na admissão: `mode` ausente ou `OFF` não muda nada. Aqui o
-`mode` está `ON`, como piloto no launcher do próprio Espectro, com `decomposition: off`. O Jev
+`mode` está `ON`, como piloto no launcher do próprio Espectro, com `decomposition: off`, e o Jev
 classifica em sombra e só registra a opinião. `WATCHER_PHASE_EFFORT` (desligada) fixa o esforço
 por fase em `.claude/phase-effort.json`.
 

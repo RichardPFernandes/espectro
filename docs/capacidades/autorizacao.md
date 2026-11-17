@@ -16,12 +16,14 @@ modulos:
 
 # Autorização
 
-Ação externa privilegiada só corre com um humano no meio. O `authorization.js` abre o pedido
-(`pending_authorization`) e o `approvers.js` diz quem pode aprovar no dashboard, que não tem login.
-O `dom06-attempt.js` admite cada Attempt com dono e snapshot presos e só deixa o efeito correr com
-autoridade válida: a mesma chave de idempotência não repete o efeito e resultado incerto nunca é
-repetido sozinho. O `git-push-effect.sh` é o push do `/commit` sob essa autoridade. O
-`human-input-intent.js` lê a mensagem humana antes de destravar uma task `blocked`.
+Hoje só o SQL de banco espera um humano: o `authorization.js` abre o pedido
+(`pending_authorization`, tipo `db_migration`) e o `approvers.js` diz quem pode aprová-lo no
+dashboard, que não tem login. O `dom06-attempt.js` admite cada Attempt com dono e snapshot presos
+e só deixa um efeito correr com autoridade válida, que vem da admissão e não de uma pessoa: a
+mesma chave de idempotência não repete o efeito e resultado incerto nunca é repetido sozinho. O
+`git-push-effect.sh` é o push do `/commit` sob essa autoridade, sem aprovação humana própria; a
+autorização humana do Attempt (`escalation`) ainda é só reservada. O `human-input-intent.js` lê a
+mensagem humana antes de destravar uma task `blocked`.
 
 O efeito de banco, que usa esse pedido, está em `db-effect`. O AUTORIZO do Richard no processo
 de desenvolvimento é outra coisa e não passa por aqui.
