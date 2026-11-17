@@ -36,7 +36,7 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 | F1.6 | Push dos repos irmãos: pulado não vira sucesso | 2 | Alto | A confirmar | — | — | não iniciada | PRI-179 |
 | F1.7 | Causa das recusas de QA: as recusas repetem causa? É a metade da F5.3 que não espera a Fase 5 | 2 | Leve | Não | — | D13 | não iniciada | sem issue; PRI-86 relacionada |
 | F1.8 | Causa das falhas de despacho em rajada ([`DADOS.md`](../DADOS.md), item 6), só leitura | 2 | Leve | Não | — | D13 | não iniciada | sem issue |
-| F1.9 | Varredura de dado do consumidor no repo público: estado atual e histórico do Git | 2 | Leve | Não | — | D8 | não iniciada | sem issue |
+| F1.9 | Varredura de dado do consumidor no repo público: estado atual e histórico do Git | 2 | Leve | Não | — | D8 | concluída | sem issue |
 
 Com a F1.6 e as fatias F1.7 a F1.9, a fase soma 23 dias. Cada semana conta 4 dias de fatia
 (D14), o que dá 6 semanas, com 1 dia de folga. A F1.9 é feita primeiro (D8). Se estourar, a F1.5 escorrega para a primeira semana
