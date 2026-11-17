@@ -368,6 +368,43 @@
   const modelLine = m => (m.models.length ? `${m.models[0].label} em ${m.models[0].uses} de ${plural(m.modelUses, 'uso por nó', 'usos por nó')}` : 'desconhecido');
   const effortLine = m => (m.effort ? m.effort.join(', ') : 'desconhecido (runs sem roteamento não gravam o esforço)');
 
+  // ---------------------------------------------------------------- custo por ticket entregue (F1.5, PRI-381)
+  // Ticket entregue na janela = ticket com run concluído dentro dela. O custo soma todos os runs do ticket, de
+  // qualquer semana (o cost_tracking de um run já acumula os ciclos de recusa de QA). Medida de um ticket só é
+  // conhecida se todos os runs a têm; senão é null (desconhecida), nunca soma parcial e nunca zero.
+  function qaRefusalsOf(r) {
+    const rej = r?.state?.qa_rejections;
+    return Math.max(Number(r?.qaRetryCount) || 0, Number(r?.state?.qa_retry_count) || 0, Array.isArray(rej) ? rej.length : 0);
+  }
+  const noneWith = (c, k) => !Object.values(c.nodes).some(n => n?.[k] > 0);
+  const TICKET_METRICS = {
+    usd: r => (usdOf(r) != null && noneWith(costOf(r), 'runs_without_cost') ? usdOf(r) : null),
+    tokens: r => (tokensOf(r) != null && noneWith(costOf(r), 'runs_without_tokens') ? tokensOf(r) : null),
+    ms: r => { const v = costOf(r)?.totals.duration_ms; return finite(v) && v > 0 ? v : null; },
+  };
+  function ticketCosts(all, list, env) {
+    const keyOf = env.ticketKey || (r => r?.ticketId ?? r?.ticket?.id ?? null);
+    const groups = new Map();
+    for (const r of all) { const k = keyOf(r) ?? r.taskId; groups.set(k, [...(groups.get(k) || []), r]); }
+    const inList = new Set(list);
+    const tickets = [...groups.values()].filter(g => g.some(r => inList.has(r) && env.isDone(r)))
+      .map(g => ({ refused: sum(g.map(qaRefusalsOf)) > 0, runs: g.length, ...Object.fromEntries(Object.entries(TICKET_METRICS).map(([m, f]) => {
+        const vals = g.map(f); return [m, vals.some(v => v == null) ? null : sum(vals)]; })) }));
+    const stat = (ts, m) => {
+      const v = ts.map(t => t[m]).filter(x => x != null);
+      return { median: median(v), mean: v.length ? sum(v) / v.length : null, known: v.length, unknown: ts.length - v.length };
+    };
+    const row = (key, label, ts) => ({ key, label, n: ts.length, usd: stat(ts, 'usd'), tokens: stat(ts, 'tokens'), ms: stat(ts, 'ms') });
+    return { runs: sum(tickets.map(t => t.runs)), rows: [row('all', 'Todos os entregues', tickets),
+      row('refused', 'Com recusa de QA', tickets.filter(t => t.refused)), row('clean', 'Sem recusa de QA', tickets.filter(t => !t.refused))] };
+  }
+  // Células de uma linha (tela e texto copiado): mediana e média só dos tickets com a medida, mais "+N desconhecido".
+  function ticketCostCells(row) {
+    const cell = (m, fmt) => (row.n === 0 ? 'nenhum ticket' : m.median == null ? 'desconhecido'
+      : `mediana ${fmt(m.median)} · média ${fmt(m.mean)}${m.unknown ? ` +${plural(m.unknown, 'desconhecido', 'desconhecidos')}` : ''}`);
+    return { usd: cell(row.usd, imputed), tokens: cell(row.tokens, v => `${tok(v)} tokens`), ms: cell(row.ms, v => `${msLabel(v)} de parede`) };
+  }
+
   // ---------------------------------------------------------------- gates e destaques
   function openGates(all, env, now) {
     return all.filter(r => !env.isDone(r) && env.needsYou(r)).map(r => {
@@ -418,6 +455,7 @@
       nodes: nodeCosts(list, env.nodes), stages: stageTokens(list, env.nodes), types: trackerCosts(list), projects: projectCosts(list, env),
       retries: retryRows(list, env.nodes), highlights: highlights(list, env), gates: openGates(all, env, now),
       baseline: { ...reworkBaseline(list, env.nodes), meta: baselineMeta(list, env, now, all) },
+      perTicket: ticketCosts(all, list, env),
       summary: summaryText({ isAll, range, cur, prev, scopeLabel, weeks }),
     };
   }
@@ -559,7 +597,7 @@
   }
 
   const pub = { DAY, TZ, money, tok, pct1, modelName, msLabel, weekStart, rangeLabel, isoWeek, windowOf, inWindow, aggregate, delta, series, ticks,
-    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
+    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
   if (typeof module !== 'undefined' && module.exports) { module.exports = pub; return; }
 
   // ================================================================ navegador
