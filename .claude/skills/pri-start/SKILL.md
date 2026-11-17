@@ -32,7 +32,7 @@ Primeiro passo do fluxo de desenvolvimento (seção "Fluxo de desenvolvimento" d
 | -- | -- |
 | Leve | `/pri-build PRI-NNN` → `/pri-check` → `/pri-pr` |
 | Médio | `/pri-spec <pasta>` (só se precisar) → `/pri-plan <pasta>` → `/pri-build <pasta>` → `/pri-check` → `/pri-pr` |
-| Alto | igual ao Médio, com SPEC obrigatória e aprovada pelo Richard, dois revisores no `/pri-check` → `/pri-pr` → `/pri-autorizo` → AUTORIZO e bump → `/pri-autorizo PRI-NNN readback` |
+| Alto | igual ao Médio, com SPEC obrigatória e aprovada pelo Richard, dois revisores no `/pri-check` → pedido do `/pri-autorizo` → `/pri-pr` → AUTORIZO e bump → `/pri-autorizo PRI-NNN readback` |
 
 Não use os comandos do plugin diretamente (`/agent-skills:spec`, `:plan`, `:build`,
 `:ship`). Eles gravam na raiz, param para aprovação e abrem revisores extras, o que

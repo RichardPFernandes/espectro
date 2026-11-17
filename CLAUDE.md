@@ -17,7 +17,7 @@
 
 O Prisma se desenvolve com as skills do plugin agent-skills (requisito: plugin `agent-skills` instalado), carregadas pelos comandos do repo em `.claude/skills/pri-*`, que trazem os ajustes do Acordo. Não use direto `/agent-skills:spec`, `:plan`, `:build` ou `:ship`: eles gravam na raiz, param para aprovação e abrem revisores extras. O grafo de `.claude/commands/` (`/plan`, `/implement`, `/review`, `/test`, `/verify`, `/commit`, `/fetch-ticket`) e os subagentes de `.claude/agents/` são templates da plataforma para o fluxo do consumidor, lidos pelo watcher, e não se usam aqui.
 
-`/pri-start PRI-NNN` → `/pri-spec` (Médio só se precisar; Alto sempre, aprovada pelo Richard) → `/pri-plan` → `/pri-build` → `/pri-check` → `/pri-pr` → (Alto) `/pri-autorizo` → AUTORIZO e bump → `/pri-autorizo PRI-NNN readback`.
+`/pri-start PRI-NNN` → `/pri-spec` (Médio só se precisar; Alto sempre, aprovada pelo Richard) → `/pri-plan` → `/pri-build` → `/pri-check` → (Alto) pedido do `/pri-autorizo` → `/pri-pr` → (Alto) AUTORIZO e bump → `/pri-autorizo PRI-NNN readback`. Diagrama: [`docs/fluxo-dev.md`](docs/fluxo-dev.md).
 
 - Spec, plano e todo ficam em `tasks/fN-M-<nome>/` ou `tasks/pri-NNN/`. Nada de `SPEC.md` na raiz.
 - Médio segue sem parar para aprovar spec e plano (regra 8; D-a, 16/11/2026).
