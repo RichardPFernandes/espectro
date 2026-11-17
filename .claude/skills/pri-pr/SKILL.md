@@ -57,7 +57,7 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    - Leve e Médio: a issue vai para In Review só se precisar de decisão ou aceite do
      Richard. Mesclar é aceitar.
    - Alto: In Review, esperando o AUTORIZO do Richard. Deixe na issue o comentário de 3
-     linhas do `pedido.md`, com o link do PR. Depois do AUTORIZO e do bump, o próximo
+     linhas do `/pri-autorizo` (Bloqueio / AUTORIZO / Efeito), com o link do PR. Depois do AUTORIZO e do bump, o próximo
      passo é `/pri-autorizo PRI-NNN readback`.
    - A fila In Review tem limite de 3 itens.
 7. **Nunca** marque o PR como ready, nunca mescle, nunca use `Fixes` e nunca mova a

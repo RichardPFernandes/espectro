@@ -37,7 +37,7 @@ flowchart TD
 
     CI --> NB{Nível}
     NB -->|Leve / Médio| M{{"Richard mescla = aceite → Done"}}
-    NB -->|Alto| AZ{{"Richard mescla, dá AUTORIZO<br/>e o bump é feito"}}
+    NB -->|Alto| AZ{{"merge e AUTORIZO do Richard,<br/>depois o bump"}}
     AZ --> RB["/pri-autorizo PRI-NNN readback"]
     RB -->|PASS| AC{{"Aceite do Richard → Done"}}
     RB -->|FAIL| BL["comentário de bloqueio<br/>rollback só com AUTORIZO,<br/>salvo se o pedido já o incluía"]
