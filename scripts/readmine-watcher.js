@@ -3564,7 +3564,7 @@ function cleanAgentEnv() {
 // aqui é logar e deixar o próximo tick tentar de novo.
 // `\b429\b` isolado foi removido depois de um falso positivo real: bateu com
 // "14:19:15,429" (milissegundos de timestamp) num log de build do Quarkus durante o
-// /test do ticket #43425. Todo padrão aqui precisa de contexto textual específico o
+// /test do ticket #10006. Todo padrão aqui precisa de contexto textual específico o
 // bastante pra não colidir com números soltos em log de build/teste normal.
 const { looksUnavailable, looksLikeSessionLimit } = require('./lib/agent-exit-signals');
 

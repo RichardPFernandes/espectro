@@ -53,7 +53,7 @@ function resolveSections(missingSections) {
 
 // Seção ("## X" + corpo) que é SÓ placeholder: resposta vazia/ilegível, ou o Claude achou
 // o ticket vago demais. Placeholder num item de uma seção preenchida é ponto pra revisão,
-// não seção vazia — descartar a seção inteira por isso perdia a Solução do #43746.
+// não seção vazia — descartar a seção inteira por isso perdia a Solução do #10013.
 function isPlaceholderOnly(sectionMd) {
     const lines = String(sectionMd || '')
         .replace(/<!--[\s\S]*?-->/g, '')

@@ -5,17 +5,17 @@ const { parsePathsLine, declaredPaths, isAnnotation, UNKNOWN } = require('./plan
 
 test('isAnnotation: só o que é claramente anotação sai; qualquer item com "." ou "/" continua candidato', () => {
     const ann = x => isAnnotation(x, x);
-    for (const x of ['@Path', '44042', 'exportar-dados', 'InsightsIAService', 'extends Foo', 'GET status', 'GET /api/x', '#btn']) assert.ok(ann(x), x);
+    for (const x of ['@Path', '10008', 'exportar-dados', 'InsightsIAService', 'extends Foo', 'GET status', 'GET /api/x', '#btn']) assert.ok(ann(x), x);
     for (const x of ['a/b', 'Foo.java', '.env', '.env.local', 'Dockerfile.prod', '.gitignore', 'build.gradle.kts', 'schema.prisma', 'Dockerfile', 'gradlew', 'a.js, b.js']) assert.ok(!ann(x), x);
 });
 
-test('parsePathsLine: caso real do plano 44042 (passo 1 e 5)', () => {
+test('parsePathsLine: caso real do plano 10008 (passo 1 e 5)', () => {
     assert.deepStrictEqual(
         parsePathsLine('   - Arquivo: `src/main/java/br/InsightsIAService.java` (novo, `@ApplicationScoped`) e `src/main/java/br/Res.java` (passa a delegar).'),
         ['src/main/java/br/InsightsIAService.java', 'src/main/java/br/Res.java'],
     );
     assert.deepStrictEqual(
-        parsePathsLine('   - Arquivo: `app-front/app/x/insights-ia.component.js`, `insights-ia.html` (novos, no worktree `/Users/x/app-front/.claude/worktrees/44042`, branch `44042`); registro em `app/index.html`'),
+        parsePathsLine('   - Arquivo: `app-front/app/x/insights-ia.component.js`, `insights-ia.html` (novos, no worktree `/Users/x/app-front/.claude/worktrees/10008`, branch `10008`); registro em `app/index.html`'),
         ['app-front/app/x/insights-ia.component.js', 'insights-ia.html', 'app/index.html'],
     );
 });
@@ -40,7 +40,7 @@ test('irmão forte + item real fora da lista de extensões não é descartado (M
 
 test('anotação ao lado de lista numa crase só continua UNKNOWN; caminho absoluto e verbo+rota saem', () => {
     assert.strictEqual(parsePathsLine('Arquivo: `@Path`, `a.js, b.js`'), null);
-    assert.deepStrictEqual(parsePathsLine('Arquivo: `GET /api/x`, `/Users/x/wt/44042`, `src/A.java`'), ['src/A.java']);
+    assert.deepStrictEqual(parsePathsLine('Arquivo: `GET /api/x`, `/Users/x/wt/10008`, `src/A.java`'), ['src/A.java']);
 });
 
 // --- PRI-320: "Arquivo:" inline na prosa do passo ---
