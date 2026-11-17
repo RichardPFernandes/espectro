@@ -404,6 +404,11 @@
       : `mediana ${fmt(m.median)} · média ${fmt(m.mean)}${m.unknown ? ` +${plural(m.unknown, 'desconhecido', 'desconhecidos')}` : ''}`);
     return { usd: cell(row.usd, imputed), tokens: cell(row.tokens, v => `${tok(v)} tokens`), ms: cell(row.ms, v => `${msLabel(v)} de parede`) };
   }
+  // Linha para a série semanal do ACOMPANHAMENTO: mediana de USD imputado e de tokens; sem mediana, "sem medição".
+  function seriesLine(T) {
+    const a = T.rows[0];
+    return `${a.usd.median == null ? 'USD sem medição' : `${money(a.usd.median)} imputado, mediana`} · ${a.tokens.median == null ? 'tokens sem medição' : `${tok(a.tokens.median)} tokens, mediana`} (n = ${a.n})`;
+  }
 
   // ---------------------------------------------------------------- gates e destaques
   function openGates(all, env, now) {
@@ -502,6 +507,10 @@
     L.push(`Modelo padrão da conta (observado nos runs): ${modelLine(B.meta)}.`);
     L.push(`Esforço padrão da conta: ${effortLine(B.meta)}.`);
     L.push(`Runs concluídos por semana: ${B.meta.weeklyDone.length ? B.meta.weeklyDone.map(x => `${x.label} ${x.done}`).join(', ') : 'desconhecido (sem runs registrados)'}.`);
+    const T = M.perTicket;
+    L.push(`Custo por ticket entregue (${M.range}, n = ${plural(T.rows[0].n, 'ticket', 'tickets')} em ${plural(T.runs, 'run somado', 'runs somados')}): soma todos os runs do ticket e os ciclos de recusa de QA; sem meta definida (D6 em aberto).`);
+    for (const x of T.rows) { const c = ticketCostCells(x); L.push(`  ${x.label} (n = ${x.n}): ${c.usd} · ${c.tokens} · ${c.ms}`); }
+    L.push(`Linha para a série semanal (roadmap/ACOMPANHAMENTO.md): ${seriesLine(T)}`);
     L.push(`PRs por estado: ${PR_ORDER.map(s => `${s || 'desconhecido'} ${M.cur.prCounts[s]}`).join(', ')}.`);
     L.push('', 'Fonte: state.json dos runs (cost_tracking, retries, human_inputs), Bitbucket e Redmine. Números são sinal, não verdade contábil.');
     return L.join('\n');
@@ -597,7 +606,7 @@
   }
 
   const pub = { DAY, TZ, money, tok, pct1, modelName, msLabel, weekStart, rangeLabel, isoWeek, windowOf, inWindow, aggregate, delta, series, ticks,
-    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
+    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
   if (typeof module !== 'undefined' && module.exports) { module.exports = pub; return; }
 
   // ================================================================ navegador
@@ -710,6 +719,26 @@
       `;
   }
 
+  // F1.5: custo por ticket entregue na capa, nas três réguas. Sem dado = "desconhecido", nunca zero.
+  function ticketSection(M) {
+    const T = M.perTicket, N = T.rows[0].n;
+    const none = t => (/^(desconhecido|nenhum ticket)/.test(t) ? ' wr-none' : '');
+    const cols = ['Tickets', 'n', 'USD imputado', 'Tokens', 'Tempo de parede'];
+    const rows = T.rows.map(x => {
+      const c = ticketCostCells(x);
+      return `<div class="wr-lb-row wr-tk-row"><span class="wr-mono" data-l="${cols[0]}">${esc(x.label)}</span><span class="wr-num" data-l="${cols[1]}">${x.n}</span>`
+        + [c.usd, c.tokens, c.ms].map((t, i) => `<span class="wr-num${none(t)}" data-l="${cols[i + 2]}">${esc(t)}</span>`).join('') + '</div>';
+    }).join('');
+    return `<section class="wr-sec wr-sec-rule" aria-labelledby="wr-tk-h">
+        ${secHead('wr-tk-h', 'Custo por ticket entregue', `${M.range} · n = ${plural(N, 'ticket entregue', 'tickets entregues')} em ${plural(T.runs, 'run somado', 'runs somados')} · sem meta definida (D6 em aberto)`)}
+        <div class="wr-box wr-box-foot">
+          ${N ? `<div class="wr-lb-row wr-tk-row wr-lb-head" aria-hidden="true">${cols.map(l => `<span>${l}</span>`).join('')}</div>${rows}` : '<p class="wr-empty">Nenhum ticket entregue na janela.</p>'}
+          <span class="wr-foot"><span class="wr-foot-main">Ticket entregue = ticket com run concluído na janela. O custo soma todos os runs do ticket, de qualquer semana, e os ciclos de recusa de QA (o cost_tracking do run é cumulativo). Mediana e média só dos tickets com a medida completa; +N desconhecido são tickets com algum run sem a medida, nunca zero. USD imputado é preço de tabela, não desembolso.</span><span>Fonte: state.json · cost_tracking</span></span>
+        </div>
+      </section>
+      `;
+  }
+
   function panelSummary(M, q) {
     const c = M.cur;
     const hl = M.highlights.filter(h => matches(q, h.ticket, h.title, h.proj, h.pr));
@@ -753,6 +782,7 @@
         </div>
       </section>
       ${baselineSection(M)}
+      ${ticketSection(M)}
       <section class="wr-sec wr-sec-rule" aria-labelledby="wr-gt-h">
         ${secHead('wr-gt-h', 'Gates e decisões da semana', 'quanto tempo os runs esperaram por uma pessoa')}
         <div class="wr-grid wr-grid-thirds">

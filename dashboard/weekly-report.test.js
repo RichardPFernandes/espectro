@@ -539,3 +539,29 @@ test('buildReport: perTicket respeita a janela do relatório', () => {
     assert.strictEqual(rowOf(W.buildReport(all, env(), { win: 'cur', now: NOW }).perTicket, 'all').n, 1);
     assert.strictEqual(rowOf(W.buildReport(all, env(), { win: 'all', now: NOW }).perTicket, 'all').n, 2);
 });
+
+test('copyText: custo por ticket entregue com período, n, runs somados, três linhas e USD sempre imputado', () => {
+    const M = W.buildReport([run(1, OLD, { ticket: 'A', usd: 4 }), run(2, IN, { ticket: 'A', usd: 2 }), run(3, IN, { ticket: 'B', usd: 8 })], env(), { win: 'cur', now: NOW });
+    const t = W.copyText(M, '');
+    assert.match(t, new RegExp(`Custo por ticket entregue \\(${M.range}, n = 2 tickets em 3 runs somados\\): .*sem meta definida \\(D6 em aberto\\)\\.`));
+    for (const l of ['Todos os entregues (n = 2)', 'Com recusa de QA (n = 0)', 'Sem recusa de QA (n = 2)']) assert.ok(t.includes(`  ${l}: `), l);
+    const lines = t.split('\n').filter(l => /^  (Todos os entregues|Com recusa|Sem recusa)/.test(l));
+    assert.ok(lines.length === 3 && lines.every(l => (l.match(/US\$/g) || []).length === (l.match(/ imputado/g) || []).length));
+    assert.match(t, /Linha para a série semanal \(roadmap\/ACOMPANHAMENTO\.md\): US\$ 7,00 imputado, mediana · .* tokens, mediana \(n = 2\)/);
+    assert.ok(t.indexOf('Runs concluídos por semana') < t.indexOf('Custo por ticket entregue') && t.indexOf('Custo por ticket entregue') < t.indexOf('PRs por estado'));
+});
+
+test('copyText e seriesLine: janela sem ticket entregue diz "nenhum ticket" e "sem medição", sem número inventado', () => {
+    const M = W.buildReport([run(1, IN, { ticket: 'X', done: false })], env(), { win: 'cur', now: NOW });
+    const t = W.copyText(M, '');
+    assert.match(t, /n = 0 tickets em 0 runs somados/);
+    assert.match(t, /Todos os entregues \(n = 0\): nenhum ticket · nenhum ticket · nenhum ticket/);
+    assert.match(t, /\(roadmap\/ACOMPANHAMENTO\.md\): USD sem medição · tokens sem medição \(n = 0\)/);
+});
+
+test('seriesLine: com medida usa a mediana; sem medida vira "sem medição", nunca zero', () => {
+    const m = (median) => ({ median, mean: median, known: 1, unknown: 0 });
+    assert.strictEqual(W.seriesLine({ runs: 2, rows: [{ n: 2, usd: m(6), tokens: m(1500), ms: m(1) }] }), 'US$ 6,00 imputado, mediana · 2 mil tokens, mediana (n = 2)');
+    assert.strictEqual(W.seriesLine({ runs: 2, rows: [{ n: 2, usd: m(null), tokens: m(1500), ms: m(1) }] }), 'USD sem medição · 2 mil tokens, mediana (n = 2)');
+    assert.strictEqual(W.seriesLine({ runs: 2, rows: [{ n: 2, usd: m(6), tokens: m(null), ms: m(1) }] }), 'US$ 6,00 imputado, mediana · tokens sem medição (n = 2)');
+});
