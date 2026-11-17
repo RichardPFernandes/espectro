@@ -10,13 +10,14 @@ const DAY = 86400000;
 const NOW = Date.parse('2026-11-11T15:00:00Z');
 const NODES = [['fetch_ticket', 'Ticket'], ['plan', 'Plano'], ['implement', 'Implementação'], ['review', 'Revisão'], ['test', 'Testes'], ['verify', 'Verificação'], ['commit', 'Commit']];
 
-function run(id, iso, { done = true, usd = 1, tokens = [900, 100], loops = 0, retries = {}, msgs = 0, pr = null, tracker = 'Defeito', ticket = id, nodes = null, status } = {}) {
+function run(id, iso, { done = true, usd = 1, tokens = [900, 100], loops = 0, retries = {}, msgs = 0, pr = null, tracker = 'Defeito', ticket = id, nodes = null, status, ms = null } = {}) {
     const state = { retries, human_inputs: Array.from({ length: msgs }, () => ({ content: 'x' })) };
     if (usd !== null) { // usd: null = run sem cost_tracking
         state.cost_tracking = {
             nodes: nodes || { plan: { input_tokens: tokens[0], output_tokens: tokens[1], duration_ms: 60000, runs: 1, cost_usd: usd, models: ['claude-sonnet-5-5'], also_covers: ['fetch_ticket'] } },
             totals: { input_tokens: tokens[0], output_tokens: tokens[1], loop_count: loops, cost_usd: usd },
         };
+        if (ms != null) state.cost_tracking.totals.duration_ms = ms;
     }
     if (pr) state.pull_request = { id: pr.id, state: pr.state, url: `https://example.test/pr/${pr.id}` };
     return { taskId: `t${id}`, ticketId: ticket, updatedAt: iso, kind: done ? 'completed' : 'active', status: status || (done ? 'committed' : 'running'), location: 'main', ticket: { tracker }, state };
@@ -450,4 +451,157 @@ test('copyText: sem run com cost_tracking na janela, a linha de base diz isso e 
     assert.match(t, /n = 0 runs com cost_tracking\)/);
     assert.match(t, /sem run com cost_tracking na janela/);
     assert.match(t, /Modelo padrão da conta \(observado nos runs\): desconhecido/);
+});
+
+// ---------------------------------------------------------------- F1.5 · custo por ticket entregue
+const IN = '2026-11-10T12:00:00Z', OLD = '2026-11-03T12:00:00Z'; // semana atual e semana anterior (NOW = 11/11)
+const cur = all => W.ticketCosts(all, all.filter(r => W.inWindow(r, W.windowOf('cur', NOW))), env());
+const rowOf = (T, k) => T.rows.find(x => x.key === k);
+
+test('ticketCosts: runs do mesmo ticket, de qualquer semana, somam num ticket só nas três réguas', () => {
+    const T = cur([
+        run(1, OLD, { ticket: 'A', usd: 4, tokens: [900, 100], ms: 120000 }), // fora da janela, entra na soma
+        run(2, IN, { ticket: 'A', usd: 2, tokens: [400, 100], ms: 60000 }),
+        run(3, IN, { ticket: 'B', usd: 8, tokens: [1800, 200], ms: 240000 }),
+    ]);
+    assert.deepStrictEqual(T.rows.map(x => [x.key, x.label]), [['all', 'Todos os entregues'], ['refused', 'Com recusa de QA'], ['clean', 'Sem recusa de QA']]);
+    assert.strictEqual(T.runs, 3);
+    const a = rowOf(T, 'all');
+    assert.strictEqual(a.n, 2);
+    assert.deepStrictEqual(a.usd, { median: 7, mean: 7, known: 2, unknown: 0 }); // A = 6, B = 8
+    assert.deepStrictEqual(a.tokens, { median: 1750, mean: 1750, known: 2, unknown: 0 }); // A = 1500, B = 2000
+    assert.deepStrictEqual(a.ms, { median: 210000, mean: 210000, known: 2, unknown: 0 }); // A = 180000, B = 240000
+});
+
+test('qaRefusalsOf e ticketCosts: ticket com recusa de QA cai em "refused", os demais em "clean"', () => {
+    const q = (id, t, patch) => { const r = run(id, IN, { ticket: t }); Object.assign(r, patch.top); Object.assign(r.state, patch.state); return r; };
+    const all = [q(1, 'A', { top: { qaRetryCount: 1 } }), q(2, 'B', { state: { qa_retry_count: 2 } }), q(3, 'C', { state: { qa_rejections: [{}, {}, {}] } }), q(4, 'D', {}), q(5, 'E', {})];
+    assert.deepStrictEqual(all.map(W.qaRefusalsOf), [1, 2, 3, 0, 0]);
+    const T = cur(all);
+    assert.deepStrictEqual(['all', 'refused', 'clean'].map(k => rowOf(T, k).n), [5, 3, 2]);
+    assert.strictEqual(W.qaRefusalsOf({ qaRetryCount: 1, state: { qa_retry_count: 4, qa_rejections: [{}] } }), 4);
+});
+
+test('ticketCosts: nó sem leitura (só runs_without_tokens) deixa o USD desconhecido; recusa de QA não soma em dobro', () => {
+    const blind = run(1, IN, { ticket: 'A', usd: 2, ms: 60000, nodes: { plan: { input_tokens: 900, output_tokens: 100, cost_usd: 2, runs: 1 }, implement: { input_tokens: null, output_tokens: null, cost_usd: null, runs: 1, runs_without_tokens: 1 } } });
+    const refused = run(2, IN, { ticket: 'B', usd: 10, ms: 60000 });
+    refused.state.qa_rejections = [{ retry_requested_at: IN, cost_baseline_usd: 6 }]; // custo da recusa já está no cost_tracking cumulativo
+    const T = cur([blind, refused]);
+    assert.deepStrictEqual(rowOf(T, 'all').usd, { median: 10, mean: 10, known: 1, unknown: 1 });
+    assert.deepStrictEqual(rowOf(T, 'refused').usd, { median: 10, mean: 10, known: 1, unknown: 0 });
+});
+
+test('ticketCosts: só entra ticket com run concluído na janela', () => {
+    const T = cur([
+        run(1, IN, { ticket: 'X', done: false }), // só run não concluído na janela
+        run(2, OLD, { ticket: 'Y' }), // concluído, mas fora da janela
+        run(3, IN, { ticket: 'Z' }),
+    ]);
+    assert.strictEqual(rowOf(T, 'all').n, 1);
+    assert.strictEqual(T.runs, 1);
+});
+
+test('ticketCosts: medida ausente em qualquer run deixa a medida do ticket desconhecida, nunca zero (AC-02)', () => {
+    const withNodes = (id, t, extra) => run(id, IN, { ticket: t, ms: 60000, nodes: { plan: { input_tokens: 900, output_tokens: 100, duration_ms: 1, runs: 1, cost_usd: 1, ...extra } } });
+    const C = run(3, IN, { ticket: 'C', ms: 60000 }); C.state.cost_tracking.totals.cost_usd = null;
+    const T = cur([
+        run(1, IN, { ticket: 'K', ms: 60000 }), // tudo conhecido
+        run(2, IN, { ticket: 'N', usd: null }), // sem cost_tracking
+        C, // cost_usd nulo
+        withNodes(4, 'RW', { runs_without_cost: 1 }),
+        withNodes(5, 'RT', { runs_without_tokens: 1 }),
+        run(6, IN, { ticket: 'M' }), // sem duration_ms
+        run(7, OLD, { ticket: 'P', ms: 60000 }), run(8, IN, { ticket: 'P', usd: null, ms: 60000 }), // um run sem medida contamina o ticket
+    ]);
+    const a = rowOf(T, 'all');
+    assert.strictEqual(a.n, 7);
+    assert.deepStrictEqual(a.usd, { median: 1, mean: 1, known: 2, unknown: 5 }); // K, M (RT tem nó sem leitura: USD parcial)
+    assert.deepStrictEqual(a.tokens, { median: 1000, mean: 1000, known: 4, unknown: 3 }); // K, C, RW, M
+    assert.deepStrictEqual(a.ms, { median: 60000, mean: 60000, known: 4, unknown: 3 }); // K, C, RW, RT
+});
+
+test('ticketCosts: todos desconhecidos, mediana null e célula "desconhecido"; ticket sem id conta pelo taskId', () => {
+    const T = cur([run(1, IN, { ticket: null, usd: null }), run(2, IN, { ticket: null, usd: null })]);
+    const a = rowOf(T, 'all');
+    assert.strictEqual(a.n, 2); // dois runs sem ticket = dois tickets
+    assert.deepStrictEqual(a.usd, { median: null, mean: null, known: 0, unknown: 2 });
+    assert.deepStrictEqual(W.ticketCostCells(a), { usd: 'desconhecido', tokens: 'desconhecido', ms: 'desconhecido' });
+    assert.strictEqual(rowOf(T, 'refused').usd.median, null);
+});
+
+test('ticketCostCells: mediana e média, "+N desconhecido(s)", "nenhum ticket" e todo US$ com "imputado"', () => {
+    const m = (median, mean, known, unknown) => ({ median, mean, known, unknown });
+    const c = W.ticketCostCells({ n: 3, usd: m(6, 7, 2, 1), tokens: m(500, 700, 2, 1), ms: m(120000, 150000, 1, 2) });
+    assert.deepStrictEqual(c, {
+        usd: 'mediana US$ 6,00 imputado · média US$ 7,00 imputado +1 desconhecido',
+        tokens: 'mediana 500 tokens · média 700 tokens +1 desconhecido',
+        ms: 'mediana 2:00 de parede · média 2:30 de parede +2 desconhecidos',
+    });
+    assert.strictEqual(c.usd.match(/US\$/g).length, c.usd.match(/ imputado/g).length);
+    const k = W.ticketCostCells({ n: 1, usd: m(1, 1, 1, 0), tokens: m(1, 1, 1, 0), ms: m(1000, 1000, 1, 0) });
+    assert.strictEqual(k.usd, 'mediana US$ 1,00 imputado · média US$ 1,00 imputado');
+    assert.deepStrictEqual(W.ticketCostCells({ n: 0 }), { usd: 'nenhum ticket', tokens: 'nenhum ticket', ms: 'nenhum ticket' });
+});
+
+test('buildReport: perTicket respeita a janela do relatório', () => {
+    const all = [run(1, OLD, { ticket: 'A' }), run(2, IN, { ticket: 'B' })];
+    assert.strictEqual(rowOf(W.buildReport(all, env(), { win: 'cur', now: NOW }).perTicket, 'all').n, 1);
+    assert.strictEqual(rowOf(W.buildReport(all, env(), { win: 'all', now: NOW }).perTicket, 'all').n, 2);
+});
+
+test('copyText: custo por ticket entregue com período, n, runs somados, três linhas e USD sempre imputado', () => {
+    const M = W.buildReport([run(1, OLD, { ticket: 'A', usd: 4 }), run(2, IN, { ticket: 'A', usd: 2 }), run(3, IN, { ticket: 'B', usd: 8 })], env(), { win: 'cur', now: NOW });
+    const t = W.copyText(M, '');
+    assert.match(t, new RegExp(`Custo por ticket entregue \\(${M.range}, n = 2 tickets em 3 runs somados\\): .*sem meta definida \\(D6 em aberto\\)\\.`));
+    for (const l of ['Todos os entregues (n = 2)', 'Com recusa de QA (n = 0)', 'Sem recusa de QA (n = 2)']) assert.ok(t.includes(`  ${l}: `), l);
+    const lines = t.split('\n').filter(l => /^  (Todos os entregues|Com recusa|Sem recusa)/.test(l));
+    assert.ok(lines.length === 3 && lines.every(l => (l.match(/US\$/g) || []).length === (l.match(/ imputado/g) || []).length));
+    assert.match(t, /Linha para a série semanal \(roadmap\/ACOMPANHAMENTO\.md\): US\$ 7,00 imputado, mediana · .* tokens, mediana \(n = 2\)/);
+    assert.ok(t.indexOf('Runs concluídos por semana') < t.indexOf('Custo por ticket entregue') && t.indexOf('Custo por ticket entregue') < t.indexOf('PRs por estado'));
+});
+
+test('copyText e seriesLine: janela sem ticket entregue diz "nenhum ticket" e "sem medição", sem número inventado', () => {
+    const M = W.buildReport([run(1, IN, { ticket: 'X', done: false })], env(), { win: 'cur', now: NOW });
+    const t = W.copyText(M, '');
+    assert.match(t, /n = 0 tickets em 0 runs somados/);
+    assert.match(t, /Todos os entregues \(n = 0\): nenhum ticket · nenhum ticket · nenhum ticket/);
+    assert.match(t, /\(roadmap\/ACOMPANHAMENTO\.md\): USD sem medição · tokens sem medição \(n = 0\)/);
+});
+
+test('seriesLine: com medida usa a mediana; sem medida vira "sem medição", nunca zero', () => {
+    const m = (median) => ({ median, mean: median, known: 1, unknown: 0 });
+    assert.strictEqual(W.seriesLine({ runs: 2, rows: [{ n: 2, usd: m(6), tokens: m(1500), ms: m(1) }] }), 'US$ 6,00 imputado, mediana · 2 mil tokens, mediana (n = 2)');
+    assert.strictEqual(W.seriesLine({ runs: 2, rows: [{ n: 2, usd: m(null), tokens: m(1500), ms: m(1) }] }), 'USD sem medição · 2 mil tokens, mediana (n = 2)');
+    assert.strictEqual(W.seriesLine({ runs: 2, rows: [{ n: 2, usd: m(6), tokens: m(null), ms: m(1) }] }), 'US$ 6,00 imputado, mediana · tokens sem medição (n = 2)');
+});
+
+// F1.5 AC-05 (leitura): modelo por nó vem do que o run grava; versão da CLI e hash dos prompts não existem e ficam "desconhecido".
+const withModels = (id, nodes) => run(id, IN, { nodes: Object.fromEntries(Object.entries(nodes).map(([k, ms]) => [k, nd(null, { models: ms })])) });
+test('nodeModels: ordem do grafo, uma contagem por run, empate por id, UNKNOWN e run sem cost_tracking ignorados', () => {
+    const list = [withModels(1, { implement: ['claude-sonnet-5-5', 'claude-opus-5-5'], plan: ['claude-opus-5-5'], extra: ['claude-haiku-5'] }),
+        withModels(2, { plan: ['claude-opus-5-5', 'UNKNOWN', ''], implement: ['claude-opus-5-5'], review: ['UNKNOWN'] }), run(3, IN, { usd: null })];
+    const rows = W.nodeModels(list, NODES);
+    assert.deepStrictEqual(rows.map(x => x.key), ['plan', 'implement', 'extra']);
+    assert.deepStrictEqual(rows[0].models, [{ id: 'claude-opus-5-5', label: 'Opus 5.5', uses: 2 }]);
+    assert.deepStrictEqual(rows[1].models.map(m => [m.id, m.uses]), [['claude-opus-5-5', 2], ['claude-sonnet-5-5', 1]]);
+    assert.deepStrictEqual(W.nodeModels([withModels(4, { plan: ['claude-sonnet-5-5', 'claude-opus-5-5'] })], NODES)[0].models.map(m => m.id), ['claude-opus-5-5', 'claude-sonnet-5-5']);
+    assert.deepStrictEqual(W.nodeModels([], NODES), []);
+});
+
+test('nodeModelsText: "nó Modelo (n)" separado por " · " e "desconhecido" quando vazio', () => {
+    const rows = W.nodeModels([withModels(1, { plan: ['claude-opus-5-5'], implement: ['claude-opus-5-5'] }), withModels(2, { implement: ['claude-sonnet-5-5'] })], NODES);
+    assert.strictEqual(W.nodeModelsText(rows), 'plan Opus 5.5 (1) · implement Opus 5.5 (1), Sonnet 5.5 (1)');
+    assert.strictEqual(W.nodeModelsText([]), 'desconhecido');
+});
+
+test('buildReport e copyText: nodeModels respeita a janela e o texto diz que versão da CLI, hash e JSON da CLI são desconhecidos', () => {
+    const all = [withModels(1, { plan: ['claude-opus-5-5'] }), { ...withModels(2, { plan: ['claude-sonnet-5-5'] }), updatedAt: OLD }];
+    const M = W.buildReport(all, env(), { win: 'cur', now: NOW });
+    assert.deepStrictEqual(M.nodeModels.map(x => [x.key, x.models.map(m => m.id)]), [['plan', ['claude-opus-5-5']]]);
+    const t = W.copyText(M, '');
+    assert.match(t, /^Modelo por nó \(observado nos runs da janela\): plan Opus 5\.5 \(1\)\.$/m);
+    assert.match(t, /^Versão da CLI e hash dos prompts por run: desconhecido \(o run ainda não grava; F1\.5 AC-05\)\.$/m);
+    assert.match(t, /^Fonte do custo: leitor de transcript; o JSON da CLI ainda não é gravado, então não há diferença a mostrar \(F1\.5 AC-04\)\.$/m);
+    assert.ok(t.indexOf('Linha para a série semanal') < t.indexOf('Modelo por nó') && t.indexOf('Fonte do custo') < t.indexOf('PRs por estado'));
+    assert.match(W.copyText(W.buildReport([], env(), { win: 'cur', now: NOW }), ''), /^Modelo por nó \(observado nos runs da janela\): desconhecido\.$/m);
 });

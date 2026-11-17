@@ -271,6 +271,8 @@ span.wr-mono-link { color: var(--text-secondary); }
 .wr-lb-meta dt { font-size: 12px; line-height: 16px; color: var(--muted); }
 .wr-lb-meta dd { margin: 0; font-size: 14px; line-height: 20px; }
 
+.wr-tk-row { grid-template-columns: 150px 48px repeat(3, minmax(120px, 1fr)); }
+
 @media (max-width: 760px) {
   .wr-screen { padding: 0 0 24px; }
   .wr-status { display: none; }
