@@ -4,7 +4,7 @@ tipo: capacidade
 resumo: Conferências entre nós do fluxo, como plano, build, churn, revisão, evidência dos ACs e UI.
 situacao: ligada
 spec: sem-spec
-flags: [PRISMA_UI_VERIFY]
+flags: [PRISMA_UI_VERIFY, SKIP_PRE_BUILD_VALIDATION]
 modulos:
   - scripts/lib/plan-scorer.js
   - scripts/lib/build-validator.js
@@ -26,8 +26,9 @@ humano. O `build-validator.js` roda `mvn compile` antes do `implement`, e o `chu
 conta quantas rodadas mexeram no mesmo arquivo. O `review-result.js` guarda o veredito da revisão
 em duas dimensões, e o `acceptance-evidence.js` mostra, por AC, como ele foi implementado e testado.
 
-Plano, build e churn não têm flag. A verificação de UI é opcional: `PRISMA_UI_VERIFY` vem
-desligada e, sem ela, o veredito é `SKIPPED`. O portão de spec está em `spec`.
+Plano e churn não têm flag. O build roda por padrão e `SKIP_PRE_BUILD_VALIDATION=true` o pula.
+A verificação de UI é opcional: `PRISMA_UI_VERIFY` vem desligada e, sem ela, o veredito é
+`SKIPPED`. O portão de spec está em `spec`.
 
 ## Por onde começar
 

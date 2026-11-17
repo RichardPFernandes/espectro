@@ -25,7 +25,8 @@ um arquivo, quais tickets o tocaram. O `memory-consolidator.js` resume as falhas
 em `memory/patterns.md`, e o `run-comparator.js` compara duas Runs.
 
 As transcrições têm conteúdo sensível e ficam só em disco local. `TRANSCRIPTS_DISABLED=true`
-desliga a gravação; essa flag é lida no `readmine-watcher.js`, por isso não entra em `flags`.
+desliga a gravação; essa flag é lida no `readmine-watcher.js`, da capacidade `ciclo-da-run`.
+Todas as flags estão em [`docs/flags.md`](../flags.md).
 
 ## Por onde começar
 

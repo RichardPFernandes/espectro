@@ -21,7 +21,8 @@ O diagnóstico da recusa (`qa-diagnosis-*`: modelo, store, protocolo, predicados
 taxonomia) está atrás de `WATCHER_QA_DIAGNOSTICO`, desligada por padrão. Por padrão uma recusa com
 run anterior espera o botão "Corrigir recusa QA" do dashboard e reaproveita o task-id;
 `WATCHER_RECUSA_QA_NOVO_CICLO=1` volta a abrir ciclo novo sozinho. As duas flags são lidas no
-`readmine-watcher.js`, por isso não entram em `flags`.
+`readmine-watcher.js`, da capacidade `ciclo-da-run`; todas as flags estão em
+[`docs/flags.md`](../flags.md).
 
 ## Por onde começar
 

@@ -22,7 +22,8 @@ versão e o hash do contrato; uma mudança aprovada passa por `spec-change.js` e
 marca como velho tudo o que foi produzido antes. Os IDs de AC ficam em `ac-ids.js` e no registro.
 
 `SPEC_DRAFT_AUTOGEN` e `SPEC_AUTO_REPAIR` (ligadas por padrão, `0` desliga) são lidas no
-`readmine-watcher.js`, por isso não entram em `flags`.
+`readmine-watcher.js`, da capacidade `ciclo-da-run`; todas as flags estão em
+[`docs/flags.md`](../flags.md).
 
 ## Por onde começar
 
