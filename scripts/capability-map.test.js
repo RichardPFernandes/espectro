@@ -316,3 +316,79 @@ describe('capability-map.js --of (AC-06)', () => {
         assert.match(result.stderr, /uso:/);
     });
 });
+
+// Página de entrada e forma de cada capacidade (AC-01, AC-02, AC-07). Lê o repo real: o texto
+// só passa se a página tiver as quatro seções, os 18 termos e os tetos de linhas.
+describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
+    const DIR = path.join(REPO, 'docs', 'capacidades');
+    const readme = fs.readFileSync(path.join(DIR, 'README.md'), 'utf8');
+    const lines = text => text.replace(/\n$/, '').split('\n');
+    // Corpo de uma seção "## título", sem a linha do título.
+    const section = (text, title) => {
+        const all = lines(text);
+        const start = all.findIndex(line => line === `## ${title}`);
+        if (start === -1) return null;
+        const end = all.findIndex((line, index) => index > start && line.startsWith('## '));
+        return all.slice(start + 1, end === -1 ? undefined : end);
+    };
+    const GLOSSARY = [
+        'Espectro e Prisma', 'consumidor', 'Run', 'watcher', 'tick', 'nó', 'portão', 'gate (G0–G3)', 'spec de ticket',
+        'spec viva', 'SPEC de fatia', 'SDD', 'writer de SDD', 'flag', 'fatia', 'AUTORIZO', 'lease', 'Attempt',
+    ];
+
+    it('README tem até 150 linhas', () => {
+        assert.ok(lines(readme).length <= 150, `README.md tem ${lines(readme).length} linhas; o teto é 150`);
+    });
+
+    it('README traz as quatro seções, nesta ordem', () => {
+        const titles = lines(readme).filter(line => line.startsWith('## ')).map(line => line.slice(3));
+        assert.deepEqual(titles, ['O que o Espectro faz', 'Ciclo de uma Run', 'Glossário', 'Capacidades']);
+    });
+
+    it('a visão cabe em dez linhas', () => {
+        const body = section(readme, 'O que o Espectro faz').filter(line => line.trim());
+        assert.ok(body.length >= 1 && body.length <= 10, `a visão tem ${body.length} linhas; o teto é 10`);
+    });
+
+    it('o ciclo tem lista numerada e diagrama Mermaid com nós, portões e decisão humana', () => {
+        const body = section(readme, 'Ciclo de uma Run').join('\n');
+        assert.ok(/^1\. /m.test(body) && /^2\. /m.test(body), 'falta a lista numerada');
+        const diagram = /```mermaid\n([\s\S]*?)```/.exec(body);
+        assert.ok(diagram, 'falta o bloco ```mermaid');
+        for (const node of ['plan', 'implement', 'review', 'test', 'verify', 'commit']) {
+            assert.match(diagram[1], new RegExp(`\\b${node}\\b`), `o diagrama não tem o nó ${node}`);
+        }
+        assert.match(diagram[1], /classDef portao/, 'o diagrama não marca portões (classDef portao)');
+        assert.ok((diagram[1].match(/:::portao/g) || []).length >= 3, 'o diagrama tem menos de 3 portões');
+        assert.match(diagram[1], /classDef humano/, 'o diagrama não marca decisão humana (classDef humano)');
+        assert.ok((diagram[1].match(/:::humano/g) || []).length >= 3, 'o diagrama tem menos de 3 pontos de decisão humana');
+    });
+
+    it('o glossário tem os 18 termos, um por item, uma vez cada', () => {
+        const items = section(readme, 'Glossário').filter(line => line.startsWith('- '));
+        const terms = items.map(line => /^- \*\*(.+?)\*\*: \S/.exec(line)?.[1]);
+        assert.deepEqual(terms, GLOSSARY);
+    });
+
+    it('"gate" só nomeia nível de revisão em docs/capacidades (AC-07)', () => {
+        const offenders = [];
+        for (const name of fs.readdirSync(DIR).filter(file => file.endsWith('.md'))) {
+            lines(fs.readFileSync(path.join(DIR, name), 'utf8')).forEach((line, index) => {
+                if (/\bgates?\b/i.test(line) && !/\bG[0-3]\b/.test(line)) offenders.push(`${name}:${index + 1}: ${line.trim()}`);
+            });
+        }
+        assert.deepEqual(offenders, [], 'use "portão" para a conferência do produto; "gate" só junto de G0–G3');
+    });
+
+    it('cada capacidade tem até 40 linhas e até cinco arquivos por onde começar (AC-02)', () => {
+        const problems = [];
+        for (const capability of map.readCapabilities(DIR)) {
+            const text = fs.readFileSync(path.join(DIR, `${capability.id}.md`), 'utf8');
+            if (lines(text).length > 40) problems.push(`${capability.id}.md tem ${lines(text).length} linhas; o teto é 40`);
+            const start = section(text, 'Por onde começar');
+            const items = (start || []).filter(line => /^\d+\. /.test(line));
+            if (!start || items.length < 1 || items.length > 5) problems.push(`${capability.id}.md: "Por onde começar" precisa de 1 a 5 itens numerados`);
+        }
+        assert.deepEqual(problems, []);
+    });
+});

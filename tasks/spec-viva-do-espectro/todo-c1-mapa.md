@@ -65,11 +65,12 @@ Evidência do PR.
 
 ## Fase 3 — Página de entrada
 
-- [ ] **T6: `README.md` do mapa — visão, ciclo da Run e glossário (AC-01, AC-07)** · S
+- [x] **T6: `README.md` do mapa — visão, ciclo da Run e glossário (AC-01, AC-07)** · S
   - Aceite: as quatro seções na ordem da SPEC; diagrama Mermaid com nós, portões e pontos de decisão humana; os 18 termos do glossário presentes; até 150 linhas; "gate" só como nível de revisão. O teste confere seções, termos e teto de linhas, do README e de cada capacidade.
   - Verificar: teste focado verde; ver o diagrama renderizado no GitHub depois do push.
   - Arquivos: `docs/capacidades/README.md`, `scripts/capability-map.test.js`
   - Depende de: T5
+  - Em 17/11: teste vermelho antes (sem README), verde depois: 7 casos novos (150 linhas, quatro seções na ordem, visão ≤10 linhas, Mermaid com nós, portões e decisão humana, 18 termos, "gate" só com G0–G3, cada capacidade ≤40 linhas e ≤5 arquivos). README com 86 linhas. `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde. Falta ver o diagrama renderizado no GitHub depois do push; a tabela entre os marcadores fica para a T7.
 
 - [ ] **T7: tabela gerada (AC-04)** · S
   - Aceite: `--write` reescreve só o trecho entre os marcadores; rodar duas vezes não muda nada; tabela defasada faz o teste falhar com a instrução de rodar `--write`.
