@@ -19,3 +19,24 @@ test('toda skill em .claude/skills tem disable-model-invocation: true', () => {
         assert.match(front, /^disable-model-invocation:\s*true\s*$/m, d);
     }
 });
+
+// O cabeçalho `model:` (D-FLX-01) só aceita os apelidos do /model; valor errado
+// seria ignorado em silêncio e o passo rodaria no modelo da sessão.
+test('model: no cabeçalho de skill usa um apelido válido', () => {
+    const dirs = fs.existsSync(SKILLS) ? fs.readdirSync(SKILLS) : [];
+    for (const d of dirs) {
+        const md = fs.readFileSync(path.join(SKILLS, d, 'SKILL.md'), 'utf8');
+        const front = md.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+        const model = front.match(/^model:\s*(\S+)\s*$/m)?.[1];
+        if (model) assert.match(model, /^(sonnet|opus|haiku|fable|inherit)$/, d);
+    }
+});
+
+test('modelo por passo da D-FLX-01', () => {
+    const esperado = { 'pri-start': 'sonnet', 'pri-pr': 'sonnet', 'pri-spec': 'opus', 'pri-plan': 'opus' };
+    for (const [d, m] of Object.entries(esperado)) {
+        const md = fs.readFileSync(path.join(SKILLS, d, 'SKILL.md'), 'utf8');
+        const front = md.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+        assert.equal(front.match(/^model:\s*(\S+)\s*$/m)?.[1], m, d);
+    }
+});

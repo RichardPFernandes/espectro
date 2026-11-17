@@ -2,6 +2,7 @@
 name: pri-spec
 description: Escreve a SPEC de uma issue PRI Médio ou Alto com a skill spec-driven-development do agent-skills, no caminho e no tamanho do Acordo v2.
 disable-model-invocation: true
+model: opus
 argument-hint: "<pasta>  (ex.: tasks/f1-2-teto-por-run)"
 ---
 
@@ -24,5 +25,5 @@ arquivo, rode `/pri-start` antes.
     `AGENTS.md` e no `README.md`: não repita.
   - Decisões do Richard: cite o ID (`D5`, `D-GER-02`), não copie o texto.
 - **Aprovação.** No Médio, não pare para pedir aprovação (regra 8; decisão D-a de
-  16/11/2026). Liste as perguntas abertas e siga para o `/pri-plan`. No Alto, pare o
+  16/11/2026, que segue valendo para a spec; no plano, vale a D-FLX-01). Liste as perguntas abertas e siga para o `/pri-plan`. No Alto, pare o
   turno e peça a aprovação do Richard, como a skill manda.
