@@ -30,6 +30,17 @@
 - AC-01: <condição observável>
 - AC-02: <condição observável>
 
+## Delta de capacidade
+
+<!-- O que a fatia muda no comportamento descrito na spec viva (docs/capacidades/<id>.md). Uma linha por
+     requisito ou invariante, com o ID dele; a capacidade dona de um arquivo sai de
+     `node scripts/capability-map.js --of <caminho>`. O PR aplica este delta na spec viva: depois do merge
+     vale a spec viva, não esta SPEC. Apague o grupo vazio. Sem mudança de comportamento descrito, escreva
+     "Nenhum" e o motivo em uma linha. No Leve, que não tem SPEC, o delta vai no corpo do PR. -->
+- **Adicionado** · `<capacidade>` `<ID novo>`: <o requisito como vai ficar na spec viva>
+- **Modificado** · `<capacidade>` `<ID>`: <o que valia> → <o que passa a valer>
+- **Removido** · `<capacidade>` `<ID>`: <motivo; o ID não é reaproveitado>
+
 ## Como se demonstra
 
 <!-- O comando, o teste ou a tela que prova cada AC, e o que vai na seção Evidência do PR. Não crie evidence.md. -->
