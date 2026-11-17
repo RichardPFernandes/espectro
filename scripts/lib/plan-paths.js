@@ -25,7 +25,7 @@ function cleanToken(t) {
 
 /**
  * Item entre crases que é CLARAMENTE anotação, não arquivo: annotation (`@Path`), número
- * (branch `44042`), identificador sem "." nem "/" (classe, método, flag), texto com
+ * (branch `10008`), identificador sem "." nem "/" (classe, método, flag), texto com
  * espaço sem "/" (`extends X`, `GET status`), verbo + rota (`GET /api/x`) e caminho
  * absoluto (worktree/checkout fora do repo). Só estes saem da lista. Qualquer item com
  * "." ou "/" que não seja isso continua candidato e, se incompleto, derruba a linha
@@ -51,7 +51,7 @@ function parsePathsLine(line) {
     const ticked = [...body.matchAll(/`([^`]+)`/g)].map(m => m[1]);
     let raw;
     if (ticked.length) {
-        // Crase também serve a anotação (`@ApplicationScoped`, `extends X`, `44042`). Saem da
+        // Crase também serve a anotação (`@ApplicationScoped`, `extends X`, `10008`). Saem da
         // lista só os itens claramente anotação (isAnnotation); sobrando algum candidato, vale
         // ele. Sem nenhum candidato, vale o critério antigo (todos precisam ser caminho,
         // senão null). Candidato incompleto (`.../`, curinga, diretório, lista numa crase

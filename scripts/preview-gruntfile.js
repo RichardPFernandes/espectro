@@ -79,7 +79,7 @@ module.exports = function (grunt) {
     if (grunt.config.get('connect.livereload.options')) {
         grunt.config.set('connect.livereload.options.open', false);
         // O `watch` (grunt-contrib-watch/gaze antigos) estoura "Maximum call stack size
-        // exceeded" no Node 20 e o grunt encerra junto com o connect (#43646). Com
+        // exceeded" no Node 20 e o grunt encerra junto com o connect (#10005). Com
         // keepalive o connect segura o processo e o watch nunca roda — igual ao
         // `connect:livereload:keepalive` local do checkout principal. Sem live reload.
         // PREVIEW_GRUNT_WATCH=true mantém o watch.
@@ -102,7 +102,7 @@ if (require.main === module) {
     const tasks = process.argv.slice(2).filter(a => !a.startsWith('-'));
     // Sem cor: a saída vai pro log do painel, não pra um terminal. force: o serve roda
     // htmlhint antes de subir e aborta no primeiro warning — lint que já está no master
-    // (#43646: <br> sem fechar) derrubava o preview. O warning segue no log.
+    // (#10005: <br> sem fechar) derrubava o preview. O warning segue no log.
     // PREVIEW_GRUNT_FORCE=false volta ao comportamento do grunt serve do repo.
     const force = !/^(0|false|nao|não|no)$/i.test(process.env.PREVIEW_GRUNT_FORCE || '');
     grunt.tasks(tasks.length ? tasks : ['serve'], { gruntfile: __filename, base: frontDir, color: false, force });

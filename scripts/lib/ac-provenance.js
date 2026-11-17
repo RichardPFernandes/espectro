@@ -11,7 +11,7 @@
 // Identidade de um AC = (ticket_id, ac_id): todo ticket tem o seu AC-01.
 //
 // Formato do log:
-//   { version: 1, ticket_id: "43666", events: [
+//   { version: 1, ticket_id: "10001", events: [
 //       { event_id, ac_id, type, role, recorded_at, reference } ] }
 // `recorded_at` = quando ESTE sistema registrou o evento, não quando o AC nasceu.
 // `event_id` = "<ticket>:<ac>:<type>:<role>:<chave natural da evidência>" — append de um

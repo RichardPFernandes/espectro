@@ -21,7 +21,7 @@ const { withClaudeAccount } = require('./claude-account');
 const sanitizeLog = require('../sanitize-log');
 
 // Ticket grande (dezenas de regras + cenários Gherkin) passa de 30s fácil — com 30s o
-// rascunho do #43746 saiu sem Solução/Critérios por timeout (32s).
+// rascunho do #10013 saiu sem Solução/Critérios por timeout (32s).
 const DEFAULT_TIMEOUT_MS = 120 * 1000;
 const PLACEHOLDER = 'A definir — revisar com o responsável pelo ticket.';
 const DRAFT_MARKER = '<!-- spec-repairer:';

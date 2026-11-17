@@ -827,7 +827,7 @@ consumidor ou de variável de ambiente: um agente escreve no worktree, no `state
 #    (nunca em argv, na tela ou em arquivo temporário):
 cd ~/Workspace/app-back
 node "$PRISMA_ROOT/scripts/lib/db-targets.js" add qa-app \
-     --from-properties=src/main/resources/application.properties --env=qa --label="QA – embarc_db_stage"
+     --from-properties=src/main/resources/application.properties --env=qa --label="QA – app_db_stage"
 #    (datasource nomeado: --datasource=portal). Sem o .properties: add qa-app --host= --db= --user= --env=qa
 #    e o macOS pede a senha.
 node "$PRISMA_ROOT/scripts/lib/db-targets.js" check qa-app     # item existe no Keychain (não lê a senha)
@@ -835,8 +835,8 @@ node "$PRISMA_ROOT/scripts/lib/db-targets.js" list             # alias, rótulo,
 # trocar a senha: db-targets.js secret qa-app · tirar: db-targets.js remove qa-app
 ```
 
-- **Atenção (app-back):** use o `application.properties` (`192.168.10.234/embarc_db_stage`). O
-  `application-qa.properties` aponta para `embarc_db_production` nesse mesmo host, um banco que **não
+- **Atenção (app-back):** use o `application.properties` (`192.0.2.24/app_db_stage`). O
+  `application-qa.properties` aponta para `app_db_production` nesse mesmo host, um banco que **não
   existe** lá: o cadastro passaria, mas a execução falharia na conexão.
 - **Keychain com ACL vazia:** o item é criado com `-T ''`, então **cada** leitura (cada execução
   aprovada) mostra o diálogo do macOS "security quer usar a informação confidencial prisma-db-qa-app".

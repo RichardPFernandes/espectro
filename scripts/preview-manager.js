@@ -174,7 +174,7 @@ function createPreviewManager(options = {}) {
         .filter(o => o.key && /^[A-Za-z0-9._-]+$/.test(o.profile));
     const defaultProfile = options.profile || env.PREVIEW_PROFILE || dbOptions[0]?.profile || null;
     // Sem PREVIEW_JAVA_HOME, o JAVA_HOME herdado só vale se atender o release do pom;
-    // senão `java_home -v <release>` (mesma regra do portão de build). Achado no #43646:
+    // senão `java_home -v <release>` (mesma regra do portão de build). Achado no #10005:
     // dashboard subido de shell com JDK 17 → "release version 25 not supported".
     // JDK discovery happens only after an explicitly configured start.
     let javaHome = options.javaHome ?? env.PREVIEW_JAVA_HOME ?? '';
@@ -194,7 +194,7 @@ function createPreviewManager(options = {}) {
     // Lib sem worktree do ticket: builda do repo irmão (../mo-entity, ../app-core) na
     // primeira branch remota cuja versão bate com a do back — origin/<ticket>, depois
     // PREVIEW_LIB_REFS — em vez de confiar no ~/.m2 (que um install local de checkout
-    // velho sobrescreve sem aviso: #43646). PREVIEW_LIBS_FROM_BRANCH=false desliga.
+    // velho sobrescreve sem aviso: #10005). PREVIEW_LIBS_FROM_BRANCH=false desliga.
     const configuredRepo = key => env[key] ? path.resolve(repoRoot, env[key]) : null;
     const libRepos = options.libRepos || {
         moEntity: configuredRepo('PREVIEW_MO_ENTITY_REPO'),
@@ -228,7 +228,7 @@ function createPreviewManager(options = {}) {
             cmd: javaHome ? path.join(javaHome, 'bin', 'java') : 'java',
             args: [
                 // Sem -Dquarkus.config.locations: com ele o Quarkus ignora o -Dquarkus.http.port
-                // e sobe na 8080 do application.properties (#43646). O profile já carrega o
+                // e sobe na 8080 do application.properties (#10005). O profile já carrega o
                 // application-<profile>.properties de dentro do jar.
                 `-Dquarkus.profile=${profile}`,
                 `-Dquarkus.http.port=${ports.back}`,

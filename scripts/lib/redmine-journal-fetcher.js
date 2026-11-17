@@ -69,7 +69,7 @@ function noteFromJournals(journals) {
             return { note: own, journal_id: rejection.id ?? null, created_on: rejection.created_on || null, author: rejection.user?.name || null, rejected_at: rejection.created_on || null };
         }
         // QA devolveu direto pra Em Desenvolvimento comentando, e alguém levou o
-        // ticket pra Recusa QA depois, em saltos sem nota (#43819: 8→2 com a nota,
+        // ticket pra Recusa QA depois, em saltos sem nota (#10029: 8→2 com a nota,
         // depois 2→8→19→13). Volta pelos saltos até o primeiro journal com nota; se
         // for essa devolução, a nota é a da recusa. Para em qualquer entrada/saída de
         // Recusa QA, pra não herdar a nota de uma recusa anterior.

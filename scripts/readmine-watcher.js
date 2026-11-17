@@ -350,7 +350,7 @@ async function fetchTicketById(id) {
 // ticket cuja task já está em andamento deixa de aparecer em
 // fetchAssignedTickets() (que só pega Aprovada/Recusa QA) — sem isto, o watcher
 // nunca mais re-descobriria esse ticket pra continuar o grafo depois do primeiro
-// segmento. Achado ao vivo (ticket #43387: "0 tickets" depois do fetch_ticket).
+// segmento. Achado ao vivo (ticket #10020: "0 tickets" depois do fetch_ticket).
 function findLocallyActiveTicketIds() {
     // DRY-RUN: os tickets do fixture já vêm todo tick; reidratar tickets reais dos
     // worktrees faria o agente simulado andar com tasks de verdade.
@@ -1073,7 +1073,7 @@ function mostRecentArchivedCommit(ticketId) {
 // despachado sem supervisão (cron, ou --follow sem ninguém olhando o terminal). O
 // grafo já modela isso com status "blocked"/"escalated" em state.json
 // (dispatchTicket já para de redespachar esses), mas até aqui isso era silencioso
-// — achado ao vivo: o ticket #43293 ficou blocked 6 dias sem ninguém notar, só
+// — achado ao vivo: o ticket #10017 ficou blocked 6 dias sem ninguém notar, só
 // descoberto vasculhando o worktree manualmente. Isto não reabre interatividade
 // (impossível sem mudar como o agente é invocado) — só avisa que HÁ uma
 // pergunta/bloqueio esperando resposta assíncrona (editando context.md/handoff.md
@@ -1435,7 +1435,7 @@ async function notifyBlocked(ticket, taskId, node, status, dir, state, noteOverr
 // redespachava fetch_ticket do zero a cada tick, com uma sessão nova (sem memória da
 // anterior) fazendo a MESMA pergunta de novo pra sempre — a pergunta anterior e
 // qualquer resposta digitada só no log (memory/runs/<ticket>.log, que é write-only,
-// nunca relido) se perdiam. Achado ao vivo no ticket #42359: ~15 rodadas da mesma
+// nunca relido) se perdiam. Achado ao vivo no ticket #10007: ~15 rodadas da mesma
 // pergunta sobre working tree sujo, com respostas do usuário no meio que nenhum
 // despacho seguinte via.
 //
@@ -2083,7 +2083,7 @@ async function notifySpecClarification(ticket, result, signature, specLocation) 
 // Ao achar um aceite novo, grava accepted_at/accepted_by no gate file (fora de dry-run).
 // Comentários (não do watcher) feitos no ticket DEPOIS do último pedido de spec do
 // watcher — é onde chega a resposta: um "aceito", ou a própria spec complementada
-// (achado ao vivo no #43584, Recusa QA: Problema/Solução/Critérios vieram num
+// (achado ao vivo no #10003, Recusa QA: Problema/Solução/Critérios vieram num
 // comentário, não na descrição). [] se o watcher nunca pediu ou se o Redmine falhar.
 async function fetchSpecReplies(ticketId) {
     // Pedido = comentário de pendência do portão OU comentário do auto-repair (draft).
@@ -3320,7 +3320,7 @@ async function runPreBuildGate(ticket, active, worktreePath, { validate = buildV
             return { proceed: true, note: preBuildAcceptedNote(state) };
         }
         // Mesmo worktree E mesmo JDK => o resultado seria o mesmo. JDK diferente (ou não
-        // registrado: falha anterior à resolução de JDK, ex #43646) recompila.
+        // registrado: falha anterior à resolução de JDK, ex #10005) recompila.
         const fp = worktreeFingerprint(worktreePath);
         const javaHome = buildValidator.resolveJavaHome(worktreePath, env).javaHome || null;
         if (fp && fp === state.preBuildFingerprint && 'preBuildJavaHome' in state && state.preBuildJavaHome === javaHome) {
@@ -3521,7 +3521,7 @@ function sessionNameFor(ticketId, isRecusaQA, label) {
 // CLAUDE_CODE_CHILD_SESSION=1 do pai e passa a resolver caminhos relativos
 // (memory/runs/...) contra o projeto REGISTRADO do pai (o checkout principal) em vez
 // do seu próprio cwd (o worktree do ticket) — bug real observado disparando o
-// ticket #43425 de dentro desta própria sessão: os arquivos foram escritos de
+// ticket #10006 de dentro desta própria sessão: os arquivos foram escritos de
 // verdade, só que no checkout principal, não no worktree. Um watcher disparado por
 // cron/terminal comum (uso normal em produção) não teria essas variáveis pra
 // começo de conversa, mas remover explicitamente é defesa em profundidade — nunca
@@ -3530,7 +3530,7 @@ function sessionNameFor(ticketId, isRecusaQA, label) {
 // padrão desta máquina aponta pro JDK 17 (usado por outros projetos) — sem isso, todo
 // `mvnw compile`/`test` que os agentes tentam rodar falha com "release version 25 not
 // supported", mascarando resultado real de build atrás de um problema de ambiente
-// (visto 2x ao vivo: implement do ticket #43425, nas duas rodadas). Só sobrescreve
+// (visto 2x ao vivo: implement do ticket #10006, nas duas rodadas). Só sobrescreve
 // pro PROCESSO FILHO — não mexe no JAVA_HOME/perfil de shell do usuário, que pode
 // ter outros projetos em JDK diferente.
 const JDK25_HOME = process.env.WATCHER_JAVA_HOME;
@@ -3558,7 +3558,7 @@ function cleanAgentEnv() {
 // modo --follow (o único em que dá pra inspecionar a saída antes do processo sair;
 // modo normal é fire-and-forget por design, detecção fica pro próximo tick perceber
 // que state.json não avançou). Encontrado ao vivo validando o orquestrador: Claude
-// bateu "session limit" no meio do teste com o ticket #43425 — motivo real da
+// bateu "session limit" no meio do teste com o ticket #10006 — motivo real da
 // lista, não hipotético. Sem um segundo agente pra assumir no mesmo tick (ver
 // memory/decisions/2026-09-18-remocao-codex-workflow.md), a única ação possível
 // aqui é logar e deixar o próximo tick tentar de novo.
@@ -4241,9 +4241,9 @@ function siblingAddDirArgs(ticketId) {
         // Convenção legada: worktree do repo irmão aninhado dentro do PRÓPRIO
         // app-back (REPO_PATH/.claude/worktrees/<ticket>-<repo>), em vez de
         // <repo>/.claude/worktrees/<ticket> (a convenção atual, acima). Achado ao
-        // vivo no ticket #42359: o WIP real de retrabalho (branch
-        // fix/42359-recusas-qa) só existia aqui — o caminho padrão apontava pra uma
-        // branch obsoleta (`42359`, 1652 commits defasada de origin/development).
+        // vivo no ticket #10007: o WIP real de retrabalho (branch
+        // fix/10007-recusas-qa) só existia aqui — o caminho padrão apontava pra uma
+        // branch obsoleta (`10007`, 1652 commits defasada de origin/development).
         // Implement ficou "blocked" com acesso de leitura à raiz errada e nenhum
         // acesso à raiz certa. Inclui as duas se ambas existirem (não são
         // conflitantes — são worktrees em branches diferentes do mesmo repo); cabe
@@ -5902,7 +5902,7 @@ async function previewRunningViaDashboard(ticketId, base = dashboardBase()) {
 // de uma branch que ainda versiona memory/runs (ex.: development) carrega runs
 // legados de OUTROS tickets, committed e com URL de PR — sem esse filtro eles faziam
 // o worktree de um ticket recém-criado parecer "PR aberto" e ser apagado no meio do
-// /fetch-ticket (#43746, 2026-10-02).
+// /fetch-ticket (#10013, 2026-10-02).
 function worktreeTaskDirs(wtRuns, ticketId) {
     const ours = name => name === String(ticketId) || name.startsWith(`${ticketId}-`);
     return [wtRuns, `${wtRuns}/_archive`].flatMap(base => (fs.existsSync(base)
