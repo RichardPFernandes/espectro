@@ -49,7 +49,7 @@
    o `--follow` da F6.3.
 4. **Recusa de QA é o retrabalho mais caro que se enxerga:** quase cinco vezes o custo
    mediano. A F6.10 tem o gatilho de custo; falta saber se as causas se repetem. Essa
-   pergunta entra na F5.3.
+   pergunta entra na F1.7 (antecipada da F5.3 em 17/11, D13).
 5. **O plano não é o problema:** nota 100, zero replano. E a nota não separa run cara de
    barata, então a metade "plan-score prevê retrabalho" da F5.3 tem pouca chance.
 6. **Falha de despacho em rajada:** centenas de saídas com código 1 em cinco segundos, sem
@@ -65,5 +65,5 @@
 - F3.1 é feita na Fase 2 no lugar da F2.3 (D6).
 - F4.2 é feita na Fase 3, logo depois da F3.3, sem esperar a F4.1 (D1): com volume baixo,
   as coortes da F4.1 não juntam amostra no consumidor.
-- F6.1 removida (medida). F6.10 sai da fila condicional se a F5.3 achar causa repetida.
+- F6.1 removida (medida). F6.10 sai da fila condicional se a F1.7 achar causa repetida.
 - Os IDs não mudam: a fatia fica na linha do `FASE.md` de origem, com a nota de onde é feita.

@@ -14,7 +14,7 @@ quando a fatia vai começar.
 ROADMAP.md             mapa raso: fases, ordem, status
 roadmap/
 ├── README.md          este arquivo: estrutura e regras
-├── DECISOES.md        D1–D12: premissa assumida, alternativa, efeito na ordem
+├── DECISOES.md        D1–D14: premissa assumida, alternativa, efeito na ordem
 ├── LINEAR.md          reconciliação com as issues abertas: vínculos e conflitos
 ├── BASE.md            por que o roadmap é este: diagnóstico, evidências, riscos
 ├── DADOS.md           números reais de runs (só agregados) e o que mudam na ordem
@@ -49,7 +49,8 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
    vale a issue e corrige-se o `FASE.md`.
 9. **`tasks/` antigo fica onde está.** As pastas `tasks/pri-*` e `tasks/evidence.md` são de trabalhos
    anteriores e seguem como estão. O `plan.md` e o `todo.md` da PRI-233 foram para
-   `docs/historico/pri-233/` em 16/11, porque travavam os comandos do agent-skills. Só as pastas
+   `docs/historico/pri-233/` em 16/11, porque travavam os comandos do agent-skills. A F0.14 leva
+   para `docs/historico/` as demais pastas de issue fechada. Só as pastas
    `tasks/fN-M-<nome>/` pertencem a este roadmap.
 
 ## O que vale para toda fatia
