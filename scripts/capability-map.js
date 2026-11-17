@@ -4,7 +4,8 @@
 // índice separado. Página de entrada: docs/capacidades/README.md.
 //
 //   node scripts/capability-map.js --of scripts/cas.js    → imprime "estado" e sai 0
-//   node scripts/capability-map.js --check                → confere o mapa inteiro
+//   node scripts/capability-map.js --check                → confere o mapa inteiro e a tabela
+//   node scripts/capability-map.js --write                → regenera a tabela do README
 //
 // --of sai 1 quando o arquivo não tem exatamente uma capacidade dona. --check lista cada
 // problema com o arquivo e o comando que confere a correção, fecha com a contagem e sai 1
@@ -19,7 +20,10 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const CAPABILITIES_PATH = 'docs/capacidades';
 const CLI = 'node scripts/capability-map.js';
-const USAGE = `uso: ${CLI} --check | --of <caminho>`;
+const README_PATH = `${CAPABILITIES_PATH}/README.md`;
+const TABLE_BEGIN = '<!-- capacidades:inicio -->';
+const TABLE_END = '<!-- capacidades:fim -->';
+const USAGE = `uso: ${CLI} --check | --write | --of <caminho>`;
 
 // O que precisa de capacidade dona: o código dos dois pacotes e tudo o que define os nós e
 // o grafo. Teste segue o vizinho; fixture e .gitkeep não são código.
@@ -215,11 +219,60 @@ function summary({ total, problems }) {
     ].join('; ');
 }
 
+// Tabela do README: uma linha por capacidade, montada só do cabeçalho.
+function renderTable(capabilities) {
+    const cell = text => text.replace(/\|/g, '\\|');
+    return [
+        '| Capacidade | Tipo | Situação | Spec | O que faz |',
+        '| -- | -- | -- | -- | -- |',
+        ...capabilities.map(c => `| [${c.id}](${c.id}.md) | ${c.tipo} | ${c.situacao} | ${c.spec} | ${cell(c.resumo)} |`),
+    ].join('\n');
+}
+
+// Troca só o que está entre os marcadores; o resto do README fica byte a byte.
+function applyTable(text, table) {
+    const begin = text.indexOf(TABLE_BEGIN);
+    const end = text.indexOf(TABLE_END);
+    if (begin === -1 || end === -1 || end < begin) {
+        throw new Error(`${README_PATH}: faltam os marcadores ${TABLE_BEGIN} e ${TABLE_END}, nesta ordem`);
+    }
+    return `${text.slice(0, begin + TABLE_BEGIN.length)}\n${table}\n${text.slice(end)}`;
+}
+
+function expectedReadme(root) {
+    const capabilities = readCapabilities(path.join(root, CAPABILITIES_PATH));
+    const file = path.join(root, README_PATH);
+    const current = fs.readFileSync(file, 'utf8');
+    return { file, current, next: applyTable(current, renderTable(capabilities)) };
+}
+
+// Devolve a mensagem de tabela defasada, ou null quando o README está em dia.
+function checkTable(root) {
+    const { current, next } = expectedReadme(root);
+    if (current === next) return null;
+    return `${README_PATH}: a tabela de capacidades está defasada dos cabeçalhos. Rode ${CLI} --write e inclua o README no commit`;
+}
+
+// Reescreve a tabela; devolve true se o README mudou.
+function writeTable(root) {
+    const { file, current, next } = expectedReadme(root);
+    if (current === next) return false;
+    fs.writeFileSync(file, next);
+    return true;
+}
+
 function runCheck() {
     const report = checkMap(ROOT);
     for (const { message } of report.problems) console.error(message);
+    const stale = checkTable(ROOT);
+    if (stale) console.error(stale);
     console.log(summary(report));
-    return report.problems.length ? 1 : 0;
+    return report.problems.length || stale ? 1 : 0;
+}
+
+function runWrite() {
+    console.log(writeTable(ROOT) ? `${README_PATH}: tabela atualizada` : `${README_PATH}: tabela já estava em dia`);
+    return 0;
 }
 
 function runOf(target) {
@@ -236,6 +289,7 @@ function runOf(target) {
 function main([command, target]) {
     try {
         if (command === '--check' && !target) return runCheck();
+        if (command === '--write' && !target) return runWrite();
         if (command === '--of' && target) return runOf(target);
     } catch (error) {
         console.error(error.message);
@@ -245,5 +299,7 @@ function main([command, target]) {
     return 2;
 }
 
-module.exports = { parseHeader, readCapabilities, matches, ownersOf, isCovered, checkMap, summary };
+module.exports = {
+    parseHeader, readCapabilities, matches, ownersOf, isCovered, checkMap, summary, renderTable, applyTable, checkTable, writeTable,
+};
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

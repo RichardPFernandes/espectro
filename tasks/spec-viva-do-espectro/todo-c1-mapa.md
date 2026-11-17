@@ -70,13 +70,14 @@ Evidência do PR.
   - Verificar: teste focado verde; ver o diagrama renderizado no GitHub depois do push.
   - Arquivos: `docs/capacidades/README.md`, `scripts/capability-map.test.js`
   - Depende de: T5
-  - Em 17/11: teste vermelho antes (sem README), verde depois: 7 casos novos (150 linhas, quatro seções na ordem, visão ≤10 linhas, Mermaid com nós, portões e decisão humana, 18 termos, "gate" só com G0–G3, cada capacidade ≤40 linhas e ≤5 arquivos). README com 86 linhas. `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde. Falta ver o diagrama renderizado no GitHub depois do push; a tabela entre os marcadores fica para a T7.
+  - Em 17/11: teste vermelho antes (sem README), verde depois: 7 casos novos (150 linhas, quatro seções na ordem, visão ≤10 linhas, Mermaid com nós, portões e decisão humana, 18 termos, "gate" só com G0–G3, cada capacidade ≤40 linhas e ≤5 arquivos). README com 86 linhas. `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde. Falta ver o diagrama renderizado no GitHub depois do push.
 
-- [ ] **T7: tabela gerada (AC-04)** · S
+- [x] **T7: tabela gerada (AC-04)** · S
   - Aceite: `--write` reescreve só o trecho entre os marcadores; rodar duas vezes não muda nada; tabela defasada faz o teste falhar com a instrução de rodar `--write`.
   - Verificar: teste focado verde, com caso sintético de tabela defasada.
   - Arquivos: `scripts/capability-map.js`, `scripts/capability-map.test.js`, `docs/capacidades/README.md`
   - Depende de: T6
+  - Em 17/11: teste vermelho antes (sem `renderTable`, `applyTable`, `checkTable`, `writeTable`), verde depois: 8 casos novos (linha por capacidade, `|` protegido, só o trecho entre marcadores, duas rodadas iguais, marcador ausente ou fora de ordem, defasada falha com `--write` e passa depois, cabeçalho alterado, README real em dia). `--check` também reprova tabela defasada. `--write` duas vezes: `cmp` idêntico; README com 104 linhas. `npm test` (Node 24): as mesmas 2 falhas da `main`; `npm run check` verde.
 
 - [ ] **T8: links relativos (AC-05)** · S
   - Aceite: link relativo para arquivo que não existe, em qualquer arquivo de `docs/capacidades/`, faz o teste falhar citando arquivo e link; links externos e âncoras não são conferidos.

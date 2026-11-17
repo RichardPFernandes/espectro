@@ -83,4 +83,22 @@ Um sentido por termo. Nesta pasta, "gate" só nomeia nível de revisão (G0–G3
 ## Capacidades
 
 <!-- capacidades:inicio -->
+| Capacidade | Tipo | Situação | Spec | O que faz |
+| -- | -- | -- | -- | -- |
+| [autorizacao](autorizacao.md) | capacidade | ligada | sem-spec | Pedidos de autorização humana, aprovadores e a admissão do Attempt que autoriza efeito externo. |
+| [ciclo-da-run](ciclo-da-run.md) | fluxo | ligada | sem-spec | O watcher, que a cada tick descobre os tickets, aplica os portões e despacha o próximo nó. |
+| [config](config.md) | base | parcial | sem-spec | Confere a configuração do fluxo contra o contrato; o registro de flags ainda não existe. |
+| [dashboard](dashboard.md) | fluxo | ligada | sem-spec | Painel local do Espectro, com Runs, custo, PRs, tickets, roteamento e pedidos de autorização, mais preview e checkout local. |
+| [db-effect](db-effect.md) | capacidade | ligada | sem-spec | Executa, com aprovador humano, um SQL de migração num banco da allowlist e detecta mudança de schema. |
+| [estado](estado.md) | base | ligada | sem-spec | Guarda o state.json de cada Run, com um só escritor, versão e lease de nó. |
+| [execucao](execucao.md) | capacidade | ligada | sem-spec | Monta o contexto e a linha de comando do agente de cada nó e lê os sinais de saída dele. |
+| [ferramentas](ferramentas.md) | capacidade | ligada | sem-spec | Scripts offline fora do caminho da Run, como demo, sondas, limpeza, exportadores, validadores de processo e o próprio mapa. |
+| [grafo](grafo.md) | base | ligada | sem-spec | Define o ciclo da Run como grafo de nós, com o comando de cada nó e o limite de retry. |
+| [integracoes](integracoes.md) | capacidade | ligada | sem-spec | Fala com o Redmine e o Bitbucket e avisa o dev por webhook, cobrindo ticket, anexos, PRs, horas e notificações. |
+| [medicao](medicao.md) | capacidade | ligada | sem-spec | Mede e guarda o que as Runs deixam, como custo por nó, transcrições, comparação de Runs, padrões de falha e rastreio ticket → PR. |
+| [portoes](portoes.md) | capacidade | ligada | sem-spec | Conferências entre nós do fluxo, como plano, build, churn, revisão, evidência dos ACs e UI. |
+| [qa](qa.md) | capacidade | parcial | sem-spec | Trata a recusa de QA do Redmine, com ciclo próprio, devolução sem código e diagnóstico atrás de flag. |
+| [roteamento](roteamento.md) | capacidade | parcial | sem-spec | Escolhe modelo e esforço por Attempt e decompõe o Implement em subtarefas, com política versionada. |
+| [sdd-writer](sdd-writer.md) | capacidade | sem-chamador | sem-spec | Writer de SDD por projeto, que executa a consequência de uma Decision; congelado e sem chamador. |
+| [spec](spec.md) | capacidade | ligada | sem-spec | Gera, valida, versiona e invalida a spec de cada ticket, que é a fonte dos critérios de aceite. |
 <!-- capacidades:fim -->

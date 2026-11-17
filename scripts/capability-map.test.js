@@ -392,3 +392,64 @@ describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
         assert.deepEqual(problems, []);
     });
 });
+
+// Tabela de capacidades do README (AC-04): gerada dos cabeçalhos, entre marcadores.
+describe('tabela gerada do README (AC-04)', () => {
+    const BEGIN = '<!-- capacidades:inicio -->';
+    const END = '<!-- capacidades:fim -->';
+    const readme = table => ['# Mapa', '', 'Antes.', '', '## Capacidades', '', BEGIN, table, END, '', 'Depois.', ''].join('\n');
+    const other = doc({ id: 'estado', tipo: 'base', resumo: 'Guarda o state.json.', situacao: 'parcial', spec: 'rascunho' });
+    const files = extra => ({ 'docs/capacidades/spec.md': doc(), 'docs/capacidades/estado.md': other, ...extra });
+    const capabilities = () => [map.parseHeader(other), map.parseHeader(doc())];
+
+    it('monta uma linha por capacidade, com link para a página dela', () => {
+        assert.deepEqual(map.renderTable(capabilities()).split('\n'), [
+            '| Capacidade | Tipo | Situação | Spec | O que faz |',
+            '| -- | -- | -- | -- | -- |',
+            '| [estado](estado.md) | base | parcial | rascunho | Guarda o state.json. |',
+            '| [spec](spec.md) | capacidade | ligada | sem-spec | Gera, valida, versiona e invalida a spec de um ticket. |',
+        ]);
+    });
+
+    it('protege "|" no resumo para não quebrar a coluna', () => {
+        const [row] = map.renderTable([map.parseHeader(doc({ resumo: 'Lê a | b.' }))]).split('\n').slice(2);
+        assert.match(row, /Lê a \\\| b\./);
+    });
+
+    it('troca só o trecho entre os marcadores', () => {
+        const next = map.applyTable(readme('velha'), 'nova');
+        assert.equal(next, readme('nova'));
+    });
+
+    it('rodar duas vezes não muda nada', () => {
+        const once = map.applyTable(readme('velha'), 'nova');
+        assert.equal(map.applyTable(once, 'nova'), once);
+    });
+
+    it('recusa README sem os dois marcadores, ou fora de ordem', () => {
+        assert.throws(() => map.applyTable('# Mapa\n', 'x'), /marcador/);
+        assert.throws(() => map.applyTable(`${BEGIN}\n`, 'x'), /marcador/);
+        assert.throws(() => map.applyTable(`${END}\n${BEGIN}\n`, 'x'), /marcador/);
+    });
+
+    it('tabela defasada falha com a instrução de rodar --write; depois do --write, passa', () => {
+        withFiles(files({ 'docs/capacidades/README.md': readme('| velha |') }), dir => {
+            assert.match(map.checkTable(dir), /docs\/capacidades\/README\.md.*--write/);
+            assert.equal(map.writeTable(dir), true);
+            assert.equal(map.checkTable(dir), null);
+            assert.equal(map.writeTable(dir), false, 'a segunda rodada não deve mudar nada');
+        });
+    });
+
+    it('tabela de um cabeçalho que mudou fica defasada', () => {
+        withFiles(files({ 'docs/capacidades/README.md': readme('') }), dir => {
+            map.writeTable(dir);
+            fs.writeFileSync(path.join(dir, 'docs/capacidades/spec.md'), doc({ situacao: 'desligada' }));
+            assert.match(map.checkTable(dir), /--write/);
+        });
+    });
+
+    it('a tabela do README real está em dia', () => {
+        assert.equal(map.checkTable(REPO), null);
+    });
+});
