@@ -7,7 +7,8 @@ argument-hint: "PRI-NNN [readback]"
 
 # /pri-autorizo
 
-Só para nível Alto, depois do `/pri-pr` com a revisão PASS. Não abre revisores
+Só para nível Alto. O Pedido roda depois do `/pri-check` PASS e antes de o `/pri-pr`
+criar o PR (o `processo-check` do Alto exige as seções). Não abre revisores
 novos: os relatórios do `/pri-check` já são a rodada G3 (regra 6).
 
 ## Pedido (sem argumento extra)
@@ -21,7 +22,7 @@ Monte, a partir do PR, da SPEC e dos relatórios do `/pri-check`:
 - **Readback:** o que ler depois do bump para provar que entrou e que nada regrediu,
   com comando ou fonte e o resultado esperado.
 
-Grave isso nas seções `## Rollback` e `## Readback` do corpo do PR. Na issue, deixe
+Grave isso nas seções `## Rollback` e `## Readback` do corpo do PR que o `/pri-pr` vai abrir. Na issue, deixe
 um comentário de 3 linhas: Bloqueio / AUTORIZO do Richard para <ação> / Efeito.
 Atualize o bloco de Estado. Não execute nada no consumidor.
 
