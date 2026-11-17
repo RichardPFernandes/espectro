@@ -409,6 +409,23 @@
     const a = T.rows[0];
     return `${a.usd.median == null ? 'USD sem medição' : `${money(a.usd.median)} imputado, mediana`} · ${a.tokens.median == null ? 'tokens sem medição' : `${tok(a.tokens.median)} tokens, mediana`} (n = ${a.n})`;
   }
+  // AC-05 (leitura): o run só grava o modelo de cada nó. Versão da CLI, hash dos prompts e JSON da CLI não são gravados: desconhecidos.
+  const CONFIG_UNKNOWN = 'desconhecido (o run ainda não grava; F1.5 AC-05)';
+  const COST_SOURCE = 'leitor de transcript; o JSON da CLI ainda não é gravado, então não há diferença a mostrar (F1.5 AC-04)';
+  function nodeModels(list, nodes) {
+    const acc = new Map();
+    for (const r of list) for (const [k, n] of Object.entries(costOf(r)?.nodes || {})) {
+      for (const id of new Set(n?.models || [])) {
+        if (!id || id === 'UNKNOWN') continue;
+        const m = acc.get(k) || new Map();
+        acc.set(k, m.set(id, (m.get(id) || 0) + 1));
+      }
+    }
+    const order = [...nodes.map(([k]) => k), ...[...acc.keys()].filter(k => !nodes.some(([n]) => n === k))];
+    return order.filter(k => acc.has(k)).map(k => ({ key: k, models: [...acc.get(k)].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([id, uses]) => ({ id, label: modelName(id), uses })) }));
+  }
+  const nodeModelsText = rows => (rows.length ? rows.map(x => `${x.key} ${x.models.map(m => `${m.label} (${m.uses})`).join(', ')}`).join(' · ') : 'desconhecido');
 
   // ---------------------------------------------------------------- gates e destaques
   function openGates(all, env, now) {
@@ -460,7 +477,7 @@
       nodes: nodeCosts(list, env.nodes), stages: stageTokens(list, env.nodes), types: trackerCosts(list), projects: projectCosts(list, env),
       retries: retryRows(list, env.nodes), highlights: highlights(list, env), gates: openGates(all, env, now),
       baseline: { ...reworkBaseline(list, env.nodes), meta: baselineMeta(list, env, now, all) },
-      perTicket: ticketCosts(all, list, env),
+      perTicket: ticketCosts(all, list, env), nodeModels: nodeModels(list, env.nodes),
       summary: summaryText({ isAll, range, cur, prev, scopeLabel, weeks }),
     };
   }
@@ -511,6 +528,9 @@
     L.push(`Custo por ticket entregue (${M.range}, n = ${plural(T.rows[0].n, 'ticket', 'tickets')} em ${plural(T.runs, 'run somado', 'runs somados')}): soma todos os runs do ticket e os ciclos de recusa de QA; sem meta definida (D6 em aberto).`);
     for (const x of T.rows) { const c = ticketCostCells(x); L.push(`  ${x.label} (n = ${x.n}): ${c.usd} · ${c.tokens} · ${c.ms}`); }
     L.push(`Linha para a série semanal (roadmap/ACOMPANHAMENTO.md): ${seriesLine(T)}`);
+    L.push(`Modelo por nó (observado nos runs da janela): ${nodeModelsText(M.nodeModels)}.`);
+    L.push(`Versão da CLI e hash dos prompts por run: ${CONFIG_UNKNOWN}.`);
+    L.push(`Fonte do custo: ${COST_SOURCE}.`);
     L.push(`PRs por estado: ${PR_ORDER.map(s => `${s || 'desconhecido'} ${M.cur.prCounts[s]}`).join(', ')}.`);
     L.push('', 'Fonte: state.json dos runs (cost_tracking, retries, human_inputs), Bitbucket e Redmine. Números são sinal, não verdade contábil.');
     return L.join('\n');
@@ -606,7 +626,7 @@
   }
 
   const pub = { DAY, TZ, money, tok, pct1, modelName, msLabel, weekStart, rangeLabel, isoWeek, windowOf, inWindow, aggregate, delta, series, ticks,
-    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
+    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, nodeModels, nodeModelsText, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
   if (typeof module !== 'undefined' && module.exports) { module.exports = pub; return; }
 
   // ================================================================ navegador
@@ -735,6 +755,8 @@
           ${N ? `<div class="wr-lb-row wr-tk-row wr-lb-head" aria-hidden="true">${cols.map(l => `<span>${l}</span>`).join('')}</div>${rows}` : '<p class="wr-empty">Nenhum ticket entregue na janela.</p>'}
           <span class="wr-foot"><span class="wr-foot-main">Ticket entregue = ticket com run concluído na janela. O custo soma todos os runs do ticket, de qualquer semana, e os ciclos de recusa de QA (o cost_tracking do run é cumulativo). Mediana e média só dos tickets com a medida completa; +N desconhecido são tickets com algum run sem a medida, nunca zero. USD imputado é preço de tabela, não desembolso.</span><span>Fonte: state.json · cost_tracking</span></span>
         </div>
+        <dl class="wr-lb-meta">${[['Modelo por nó (observado nos runs da janela)', nodeModelsText(M.nodeModels)], ['Versão da CLI e hash dos prompts por run', CONFIG_UNKNOWN], ['Fonte do custo', COST_SOURCE]]
+          .map(([dt, dd]) => `<div><dt>${dt}</dt><dd${dd.startsWith('desconhecido') ? ' class="wr-none"' : ''}>${esc(dd)}</dd></div>`).join('')}</dl>
       </section>
       `;
   }

@@ -565,3 +565,34 @@ test('seriesLine: com medida usa a mediana; sem medida vira "sem medição", nun
     assert.strictEqual(W.seriesLine({ runs: 2, rows: [{ n: 2, usd: m(null), tokens: m(1500), ms: m(1) }] }), 'USD sem medição · 2 mil tokens, mediana (n = 2)');
     assert.strictEqual(W.seriesLine({ runs: 2, rows: [{ n: 2, usd: m(6), tokens: m(null), ms: m(1) }] }), 'US$ 6,00 imputado, mediana · tokens sem medição (n = 2)');
 });
+
+// F1.5 AC-05 (leitura): modelo por nó vem do que o run grava; versão da CLI e hash dos prompts não existem e ficam "desconhecido".
+const withModels = (id, nodes) => run(id, IN, { nodes: Object.fromEntries(Object.entries(nodes).map(([k, ms]) => [k, nd(null, { models: ms })])) });
+test('nodeModels: ordem do grafo, uma contagem por run, empate por id, UNKNOWN e run sem cost_tracking ignorados', () => {
+    const list = [withModels(1, { implement: ['claude-sonnet-5-5', 'claude-opus-5-5'], plan: ['claude-opus-5-5'], extra: ['claude-haiku-5'] }),
+        withModels(2, { plan: ['claude-opus-5-5', 'UNKNOWN', ''], implement: ['claude-opus-5-5'], review: ['UNKNOWN'] }), run(3, IN, { usd: null })];
+    const rows = W.nodeModels(list, NODES);
+    assert.deepStrictEqual(rows.map(x => x.key), ['plan', 'implement', 'extra']);
+    assert.deepStrictEqual(rows[0].models, [{ id: 'claude-opus-5-5', label: 'Opus 5.5', uses: 2 }]);
+    assert.deepStrictEqual(rows[1].models.map(m => [m.id, m.uses]), [['claude-opus-5-5', 2], ['claude-sonnet-5-5', 1]]);
+    assert.deepStrictEqual(W.nodeModels([withModels(4, { plan: ['claude-sonnet-5-5', 'claude-opus-5-5'] })], NODES)[0].models.map(m => m.id), ['claude-opus-5-5', 'claude-sonnet-5-5']);
+    assert.deepStrictEqual(W.nodeModels([], NODES), []);
+});
+
+test('nodeModelsText: "nó Modelo (n)" separado por " · " e "desconhecido" quando vazio', () => {
+    const rows = W.nodeModels([withModels(1, { plan: ['claude-opus-5-5'], implement: ['claude-opus-5-5'] }), withModels(2, { implement: ['claude-sonnet-5-5'] })], NODES);
+    assert.strictEqual(W.nodeModelsText(rows), 'plan Opus 5.5 (1) · implement Opus 5.5 (1), Sonnet 5.5 (1)');
+    assert.strictEqual(W.nodeModelsText([]), 'desconhecido');
+});
+
+test('buildReport e copyText: nodeModels respeita a janela e o texto diz que versão da CLI, hash e JSON da CLI são desconhecidos', () => {
+    const all = [withModels(1, { plan: ['claude-opus-5-5'] }), { ...withModels(2, { plan: ['claude-sonnet-5-5'] }), updatedAt: OLD }];
+    const M = W.buildReport(all, env(), { win: 'cur', now: NOW });
+    assert.deepStrictEqual(M.nodeModels.map(x => [x.key, x.models.map(m => m.id)]), [['plan', ['claude-opus-5-5']]]);
+    const t = W.copyText(M, '');
+    assert.match(t, /^Modelo por nó \(observado nos runs da janela\): plan Opus 5\.5 \(1\)\.$/m);
+    assert.match(t, /^Versão da CLI e hash dos prompts por run: desconhecido \(o run ainda não grava; F1\.5 AC-05\)\.$/m);
+    assert.match(t, /^Fonte do custo: leitor de transcript; o JSON da CLI ainda não é gravado, então não há diferença a mostrar \(F1\.5 AC-04\)\.$/m);
+    assert.ok(t.indexOf('Linha para a série semanal') < t.indexOf('Modelo por nó') && t.indexOf('Fonte do custo') < t.indexOf('PRs por estado'));
+    assert.match(W.copyText(W.buildReport([], env(), { win: 'cur', now: NOW }), ''), /^Modelo por nó \(observado nos runs da janela\): desconhecido\.$/m);
+});
