@@ -58,8 +58,8 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
   Não repetir aqui.
 - Testes: receita oficial do [`README.md`](../README.md#primeiros-passos). Checagens
   estáticas: `npm --prefix scripts run check:js && npm --prefix scripts run arch:check`.
-- Comportamento novo nasce atrás de flag desligada e entra no registro de flags (F1.1) no
-  mesmo PR.
+- Comportamento novo nasce atrás de flag desligada e entra no registro de flags
+  ([`docs/flags.md`](../docs/flags.md), F1.1) no mesmo PR, com data de decisão; o CI falha sem ela.
 - No máximo duas frentes por fase e um piloto de custo por vez.
 - Validar o mapa (IDs, dependências, status, links, decisões): `node scripts/lib/roadmap-lint.js`
   (exit 1 se houver erro; também roda no `npm test` de `scripts`).
