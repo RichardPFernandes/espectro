@@ -426,7 +426,7 @@ function ruleStateSchemaCompat(ctx) {
 
 // ── Regra: env-documented ────────────────────────────────────────────────────────
 const ENV_READ_RES = [
-    /\b(?:process\.env|env|source)\.([A-Z][A-Z0-9_]{2,})\b/g,
+    /\b(?:process\.env|env|source|\w*Env)\.([A-Z][A-Z0-9_]{2,})\b/g,
     /\b(?:process\.env|env)\[\s*['"`]([A-Z][A-Z0-9_]{2,})['"`]\s*\]/g,
     // Helpers do tipo intEnv(env, 'X', ...) / envDays(env, 'X', ...).
     /\b\w*[Ee]nv\w*\(\s*[\w.]+\s*,\s*['"]([A-Z][A-Z0-9_]{2,})['"]/g,
@@ -855,4 +855,6 @@ async function applyFixes(report, opts = {}) {
 module.exports = {
     validateAll, applyFixes, loadContract, parseGraphYaml, parseFrontmatter, findForwardCycle,
     documentedEnv, RULES, SEVERITIES, DEFAULT_CONFIG_PATH,
+    // Scanner de leituras de ambiente, reaproveitado pelo registro de flags (PRI-377).
+    ENV_READ_RES, scanFiles, envReadsInCode,
 };

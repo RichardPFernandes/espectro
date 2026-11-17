@@ -97,6 +97,7 @@
     "ignore": {
       "PATH": "variável do sistema",
       "HOME": "variável do sistema",
+      "SISTEMA": "escrita, não leitura: scripts/preview-manager.js monta extraEnv para o processo filho do Maven do app-back",
       "JAVA_HOME": "variável do sistema (JDK herdado da shell)",
       "NO_COLOR": "convenção de terminal (no-color.org)",
       "FORCE_COLOR": "convenção de terminal",
