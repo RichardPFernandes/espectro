@@ -2,7 +2,7 @@
 // Learning embutido na aba "Aprendizado e fonte". Substitui a antiga tela Métricas (PRI-327).
 //
 // Regra da onda 1: o que o artboard mostra e o app não mede fica FORA da tela (lista "Pendente de
-// implementação" na PRI-327): teto/orçamento, custo do retrabalho,
+// implementação" na PRI-327): teto/orçamento, (custo do retrabalho entrou na F1.4, PRI-378),
 // padrões com custo, gates respondidos/espera, sugestões e envio, Comparar runs embutido. Nada de
 // zero no lugar de "sem medição": valor que não foi medido sai como null e vira "sem medição".
 //
@@ -278,6 +278,96 @@
     return rows.map(x => ({ ...x, w: max ? Math.round((x.loops / max) * 100) : 0 }));
   }
 
+  // ---------------------------------------------------------------- linha de base do retrabalho (F1.4, PRI-378)
+  // Retrabalho de um nó = tentativas além da primeira (cost_tracking.nodes[k].attempts, em ordem de
+  // gravação). É um teto: inclui retomada legítima (roadmap/DADOS.md). A D1 (o que é "custo") segue
+  // aberta, então cada nó traz as três réguas lado a lado: USD, tokens e tempo de parede. USD é sempre
+  // "imputado" (preço de tabela, não desembolso). O que não foi medido é "desconhecido", nunca zero.
+  const imputed = n => (n == null ? 'desconhecido' : `${money(n)} imputado`);
+  const finite = v => Number.isFinite(v);
+  const attUsd = a => (finite(a?.cost?.usd) ? a.cost.usd : null);
+  const attMs = a => (finite(a?.duration_ms) && a.duration_ms >= 0 ? a.duration_ms : null);
+  // Mesma régua dos "Tokens por etapa" (input + cache lido + cache escrito + output). Uma linha de uso com
+  // contador nulo não é zero: a tentativa inteira fica desconhecida, e uma tentativa sem linha de uso também.
+  const USAGE_COUNTERS = ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_5m_tokens', 'cache_write_1h_tokens', 'cache_write_ttl_unknown_tokens'];
+  function attTokens(a) {
+    const rows = Array.isArray(a?.observed?.usage) ? a.observed.usage : [];
+    if (!rows.length || rows.some(u => !u || USAGE_COUNTERS.some(k => !finite(u[k])))) return null;
+    return sum(rows.map(u => sum(USAGE_COUNTERS.map(k => u[k]))));
+  }
+  const RUN_METRICS = { usd: attUsd, tokens: attTokens, ms: attMs };
+  // n = runs da janela com cost_tracking que passaram pelo nó (run sem cost_tracking não afirma nada).
+  function reworkBaseline(list, nodes) {
+    const acc = new Map();
+    let runs = 0;
+    for (const r of list) {
+      const c = costOf(r);
+      if (!c) continue;
+      runs += 1;
+      for (const [k, n] of Object.entries(c.nodes)) {
+        const a = acc.get(k) || { n: 0, passed: 0, reworked: 0, extraAttempts: 0, usd: { s: 0, known: 0, unknown: 0 }, tokens: { s: 0, known: 0, unknown: 0 }, ms: { s: 0, known: 0, unknown: 0 } };
+        const attempts = Array.isArray(n.attempts) ? n.attempts : null;
+        const extras = attempts && attempts.length > 1 ? attempts.slice(1) : [];
+        // Retries declarados (state.retries, node.retries) sem tentativa detalhada correspondente: custo desconhecido.
+        const declared = Math.max(Number(r.state?.retries?.[k]) || 0, Number(n.retries) || 0);
+        const reworked = extras.length > 0 || declared > 0;
+        a.n += 1;
+        if (!reworked) a.passed += 1;
+        else {
+          a.reworked += 1;
+          a.extraAttempts += extras.length;
+          for (const [m, f] of Object.entries(RUN_METRICS)) {
+            // Sem detalhe de tentativa (só contador) ou com tentativa sem a medida: desconhecido.
+            const vals = extras.map(f);
+            if (extras.length < declared || vals.some(v => v == null)) a[m].unknown += 1;
+            else { a[m].s += sum(vals); a[m].known += 1; }
+          }
+        }
+        acc.set(k, a);
+      }
+    }
+    const metric = (m, reworked) => ({ v: reworked === 0 ? 0 : m.known ? m.s : null, unknown: m.unknown });
+    const order = [...nodes.map(([k]) => k), ...[...acc.keys()].filter(k => !nodes.some(([n]) => n === k))];
+    const rows = order.filter(k => acc.has(k)).map(k => {
+      const a = acc.get(k), label = (nodes.find(([n]) => n === k) || [])[1] || k;
+      return { key: k, name: k, label, n: a.n, passed: a.passed, firstPass: a.n ? a.passed / a.n : null, reworked: a.reworked, extraAttempts: a.extraAttempts,
+        usd: metric(a.usd, a.reworked), tokens: metric(a.tokens, a.reworked), ms: metric(a.ms, a.reworked) };
+    });
+    return { runs, rows };
+  }
+  // Células de uma linha (tela e texto copiado): valor, mais "+N desconhecido" quando parte não tem medida.
+  function reworkCells(row) {
+    const cell = (m, fmt) => (m.v == null ? 'desconhecido' : `${fmt(m.v)}${m.unknown ? ` +${plural(m.unknown, 'desconhecido', 'desconhecidos')}` : ''}`);
+    return { usd: cell(row.usd, imputed), tokens: cell(row.tokens, v => `${tok(v)} tokens`), ms: cell(row.ms, v => `${msLabel(v)} de parede`),
+      pass: row.firstPass == null ? 'desconhecido' : `${Math.round(row.firstPass * 100)}% (${row.passed} de ${row.n})` };
+  }
+  // Modelo e esforço como os runs gravaram (não é a configuração da conta), e runs concluídas por semana.
+  // list = janela do relatório; all = todos os runs, para a série semanal (independe da janela).
+  function baselineMeta(list, env, now, all = list) {
+    const uses = new Map(), efforts = new Set();
+    for (const r of list) {
+      for (const n of Object.values(costOf(r)?.nodes || {})) {
+        for (const m of n.models || []) if (m && m !== 'UNKNOWN') uses.set(m, (uses.get(m) || 0) + 1);
+        for (const a of n.attempts || []) { const e = a?.requested?.effort; if (e && e !== 'UNAVAILABLE' && e !== 'UNKNOWN') efforts.add(e); }
+      }
+    }
+    const modelUses = sum([...uses.values()]);
+    const models = [...uses.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([id, n]) => ({ id, label: modelName(id), uses: n, share: modelUses ? n / modelUses : null }));
+    const ts = all.map(tsOf).filter(finite);
+    const weeklyDone = [];
+    if (ts.length) {
+      const last = weekStart(now), first = Math.max(weekStart(Math.min(...ts)), last - 7 * 7 * DAY);
+      for (let from = first; from <= last; from += 7 * DAY) {
+        weeklyDone.push({ label: `s${isoWeek(from)}`, range: rangeLabel(from, from + 7 * DAY),
+          done: all.filter(r => env.isDone(r) && tsOf(r) >= from && tsOf(r) < from + 7 * DAY).length });
+      }
+    }
+    return { models, modelUses, effort: efforts.size ? [...efforts].sort() : null, weeklyDone };
+  }
+  const modelLine = m => (m.models.length ? `${m.models[0].label} em ${m.models[0].uses} de ${plural(m.modelUses, 'uso por nó', 'usos por nó')}` : 'desconhecido');
+  const effortLine = m => (m.effort ? m.effort.join(', ') : 'desconhecido (runs sem roteamento não gravam o esforço)');
+
   // ---------------------------------------------------------------- gates e destaques
   function openGates(all, env, now) {
     return all.filter(r => !env.isDone(r) && env.needsYou(r)).map(r => {
@@ -327,6 +417,7 @@
       win, isAll, w, range, scopeLabel, list, cur, prev, k, series: sr,
       nodes: nodeCosts(list, env.nodes), stages: stageTokens(list, env.nodes), types: trackerCosts(list), projects: projectCosts(list, env),
       retries: retryRows(list, env.nodes), highlights: highlights(list, env), gates: openGates(all, env, now),
+      baseline: { ...reworkBaseline(list, env.nodes), meta: baselineMeta(list, env, now, all) },
       summary: summaryText({ isAll, range, cur, prev, scopeLabel, weeks }),
     };
   }
@@ -366,6 +457,13 @@
     L.push(`Tokens: ${tok(M.cur.tokens)}; mensagens ao agente: ${M.cur.msgs}.`);
     L.push(`Custo: ${money(M.cur.cost)}; média por run ${money(M.cur.avg)}${!M.isAll && M.prev?.avg != null ? ` contra ${money(M.prev.avg)} na semana anterior` : ''}.`);
     L.push(`Retrabalho: ${M.cur.loops == null ? 'sem medição' : `${M.cur.loops} loops`}${M.retries.length ? ` (${M.retries.map(x => `${x.name} ${x.loops}`).join(', ')})` : ''}.`);
+    const B = M.baseline;
+    L.push(`Linha de base do retrabalho (${M.range}, n = ${plural(B.runs, 'run', 'runs')} com cost_tracking): retrabalho = tentativas além da primeira; USD imputado = preço de tabela, não desembolso.`);
+    if (!B.rows.length) L.push('  sem run com cost_tracking na janela.');
+    for (const x of B.rows) { const c = reworkCells(x); L.push(`  ${x.name}: primeira passada ${c.pass}; retrabalho ${c.usd} · ${c.tokens} · ${c.ms}`); }
+    L.push(`Modelo padrão da conta (observado nos runs): ${modelLine(B.meta)}.`);
+    L.push(`Esforço padrão da conta: ${effortLine(B.meta)}.`);
+    L.push(`Runs concluídos por semana: ${B.meta.weeklyDone.length ? B.meta.weeklyDone.map(x => `${x.label} ${x.done}`).join(', ') : 'desconhecido (sem runs registrados)'}.`);
     L.push(`PRs por estado: ${PR_ORDER.map(s => `${s || 'desconhecido'} ${M.cur.prCounts[s]}`).join(', ')}.`);
     L.push('', 'Fonte: state.json dos runs (cost_tracking, retries, human_inputs), Bitbucket e Redmine. Números são sinal, não verdade contábil.');
     return L.join('\n');
@@ -461,7 +559,7 @@
   }
 
   const pub = { DAY, TZ, money, tok, pct1, modelName, msLabel, weekStart, rangeLabel, isoWeek, windowOf, inWindow, aggregate, delta, series, ticks,
-    nodeCosts, stageTokens, trackerCosts, projectCosts, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
+    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
   if (typeof module !== 'undefined' && module.exports) { module.exports = pub; return; }
 
   // ================================================================ navegador
@@ -544,6 +642,36 @@
   const bar = (w, cls = '') => `<span class="wr-track" aria-hidden="true"><span class="wr-fill ${cls}" style="width:${w}%"></span></span>`;
   const usdTip = usd => (usd != null && typeof fx !== 'undefined' && fx?.rate ? ` title="${esc(fmtBrl(usd))}"` : '');
 
+  // F1.4: a capa mostra o retrabalho por nó nas três réguas (D1 aberta). Sem dado = "desconhecido".
+  function baselineSection(M) {
+    const B = M.baseline, m = B.meta;
+    const none = t => (t.startsWith('desconhecido') ? ' wr-none' : '');
+    const cols = [['Nó', ''], ['Passou de primeira', ''], ['Retrabalho (USD imputado)', ''], ['Tokens do retrabalho', ''], ['Tempo de parede do retrabalho', '']];
+    const rows = B.rows.map(x => {
+      const c = reworkCells(x);
+      return `<div class="wr-lb-row" title="${esc(`${x.label}: ${plural(x.reworked, 'run refeito', 'runs refeitos')}, ${plural(x.extraAttempts, 'tentativa extra detalhada', 'tentativas extras detalhadas')}`)}">
+        <span class="wr-mono" data-l="${cols[0][0]}">${esc(x.name)}</span>
+        <span class="wr-num${none(c.pass)}" data-l="${cols[1][0]}">${esc(c.pass)}</span>
+        <span class="wr-num${none(c.usd)}" data-l="${cols[2][0]}">${esc(c.usd)}</span>
+        <span class="wr-num${none(c.tokens)}" data-l="${cols[3][0]}">${esc(c.tokens)}</span>
+        <span class="wr-num${none(c.ms)}" data-l="${cols[4][0]}">${esc(c.ms)}</span></div>`;
+    }).join('');
+    return `<section class="wr-sec wr-sec-rule" aria-labelledby="wr-lb-h">
+        ${secHead('wr-lb-h', 'Linha de base do retrabalho', `${M.range} · n = ${plural(B.runs, 'run', 'runs')} com cost_tracking`)}
+        <div class="wr-box wr-box-foot">
+          ${B.rows.length ? `<div class="wr-lb-row wr-lb-head" aria-hidden="true">${cols.map(([l]) => `<span>${l}</span>`).join('')}</div>${rows}`
+            : '<p class="wr-empty">Nenhum run da janela tem cost_tracking.</p>'}
+          <span class="wr-foot"><span class="wr-foot-main">Retrabalho = tentativas além da primeira de cada nó: é um teto, inclui retomada legítima, e +N desconhecido são N runs refeitos sem medida (a soma mostrada é um piso). Tokens: entrada, cache e saída, como em Tokens por etapa. USD imputado é preço de tabela, não desembolso; o que não foi medido aparece como desconhecido, nunca como zero. n por nó = runs que passaram por ele.</span><span>Fonte: state.json · cost_tracking</span></span>
+        </div>
+        <dl class="wr-lb-meta">
+          <div><dt>Modelo padrão da conta (observado nos runs)</dt><dd class="${none(modelLine(m)).trim()}">${esc(modelLine(m))}</dd></div>
+          <div><dt>Esforço padrão da conta</dt><dd class="${none(effortLine(m)).trim()}">${esc(effortLine(m))}</dd></div>
+          <div><dt>Runs concluídos por semana (até 8 semanas, a atual incompleta)</dt><dd>${m.weeklyDone.length ? m.weeklyDone.map(x => `<span class="wr-mono" title="${esc(x.range)}">${esc(x.label)} ${x.done}</span>`).join(' · ') : '<span class="wr-none">desconhecido (sem runs registrados)</span>'}</dd></div>
+        </dl>
+      </section>
+      `;
+  }
+
   function panelSummary(M, q) {
     const c = M.cur;
     const hl = M.highlights.filter(h => matches(q, h.ticket, h.title, h.proj, h.pr));
@@ -586,6 +714,7 @@
           </div>
         </div>
       </section>
+      ${baselineSection(M)}
       <section class="wr-sec wr-sec-rule" aria-labelledby="wr-gt-h">
         ${secHead('wr-gt-h', 'Gates e decisões da semana', 'quanto tempo os runs esperaram por uma pessoa')}
         <div class="wr-grid wr-grid-thirds">
