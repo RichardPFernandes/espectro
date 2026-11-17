@@ -488,6 +488,11 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
   as tentativas além da primeira custam em USD (sempre "imputado", preço de tabela), tokens e
   tempo de parede, com n e período; ao lado, o modelo observado nos runs, o esforço (só quando o
   run o grava) e os runs concluídos por semana. Sem dado, "desconhecido", nunca zero.
+  Logo abaixo, o **custo por ticket entregue** (F1.5): mediana e média por ticket com run concluído
+  na janela, somando todos os runs do ticket e os ciclos de recusa de QA, nas três réguas, com n,
+  separado em com e sem recusa; mais o modelo por nó. Versão da CLI e hash dos prompts aparecem como
+  desconhecidos até o run gravá-los. O "Copiar resumo" traz a linha pronta para a série de
+  `roadmap/ACOMPANHAMENTO.md`.
 - **Tickets e PRs:** um cartão por ticket do Redmine, com status, responsável, % e
   estimativa; os PRs do Bitbucket por repositório, com estado real e aprovações; e os runs
   do agente. Ao abrir a aba (ou em **↻ Atualizar**), busca Redmine e Bitbucket em lote,
