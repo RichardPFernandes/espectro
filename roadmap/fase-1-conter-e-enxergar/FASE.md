@@ -75,6 +75,14 @@ desenho fica para a spec.
 - AC-02: Com a flag ligada, cada nó é despachado com limite de turnos, e a run tem um teto acumulado entre nós.
 - AC-03: Ao estourar o teto, a run fica bloqueada com um status já existente e o motivo registrado.
 - AC-04: Uma run de ensaio bloqueada pelo teto aparece na evidência do PR.
+- AC-05: Quando o nó falha por limite de uso da conta, o teto não conta essa falha como
+  tentativa, e o despacho espera o reset que a CLI informa (ou um intervalo fixo, se faltar),
+  em vez de parar a run. O release lê a cauda do log, como o DOM-06 já faz, e reconhece as
+  três mensagens de limite ("session", "5 horas", "semanal"); a espera vale para toda a conta,
+  não só para a run. Origem: [`DADOS.md`](../DADOS.md#falhas-de-despacho-em-rajada-causa-f18)
+  (F1.8): 779 das 786 saídas com código 1 eram limite de uso, e as três maiores rajadas (148,
+  103 e 95 erros) terminaram sozinhas no minuto do reset. Mesma região de código e mesma flag
+  da F1.3 (Alto ao ligar).
 
 ### F1.4 — Linha de base: retrabalho
 
