@@ -58,6 +58,18 @@ export async function run({ event, env = process.env, gh, config, log = console.
     if (!wr) throw new Error('o evento não é workflow_run');
     const live = env.MERGE_LEVE === 'on';
     const lines = [`merge-leve: ${live ? 'MERGE_LEVE=on' : 'simulação (MERGE_LEVE não é on)'}`];
+    // Um disparo que falha depois de um merge feito não impede os outros nem os
+    // PRs seguintes: fica no resumo e o primeiro erro sobe no fim da rodada.
+    let dispatchError = null;
+    const dispatch = async (workflow, label) => {
+        try {
+            await gh('POST', `/repos/${repo}/actions/workflows/${workflow}/dispatches`, { ref: 'main' });
+            lines.push(`- ${label}`);
+        } catch (e) {
+            lines.push(`- falha ao disparar o ${label.replace(/ disparado/, '')} (${e.status ?? e.message})`);
+            dispatchError ??= e;
+        }
+    };
     try {
         const numbers = await prsOf(gh, repo, wr);
         if (!numbers.length) lines.push(`- nenhum PR aberto para o commit ${md(wr.head_sha)}`);
@@ -83,15 +95,14 @@ export async function run({ event, env = process.env, gh, config, log = console.
             lines.push(`- mesclado #${n} (${md(sha)})`);
             // Push do GITHUB_TOKEN não dispara o Tests na main e o ruleset não exige
             // branch atualizada: roda a suíte na main depois de cada merge.
-            await gh('POST', `/repos/${repo}/actions/workflows/tests.yml/dispatches`, { ref: 'main' });
-            lines.push(`- Tests disparado na main depois de #${n}`);
+            await dispatch('tests.yml', `Tests disparado na main depois de #${n}`);
             const names = files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean));
             if (names.some((name) => matchesAny(name, ROADMAP_PATHS))) {
                 // Push do GITHUB_TOKEN não dispara outros workflows: publica à mão.
-                await gh('POST', `/repos/${repo}/actions/workflows/roadmap-pages.yml/dispatches`, { ref: 'main' });
-                lines.push(`- roadmap-pages disparado depois de #${n}`);
+                await dispatch('roadmap-pages.yml', `roadmap-pages disparado depois de #${n}`);
             }
         }
+        if (dispatchError) throw dispatchError;
     } finally {
         const text = `${lines.join('\n')}\n`;
         log(text.trimEnd());
