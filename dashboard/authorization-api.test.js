@@ -88,8 +88,8 @@ const executor = {
 };
 const CONFIG = path.join(tmp, 'config-prisma');
 prismaConfig.writeSecureJson('db-targets.json', {
-    'qa-app': { label: 'QA – embarc', host: 'db.qa.interno', database: 'embarc_db_stage', user: DB_USER, env: 'qa', secret: { keychain: 'prisma-db-qa-app', account: 'qa-app' } },
-    'prod-app': { host: 'db.prod', database: 'embarc', user: DB_USER, env: 'production', secret: { keychain: 'prisma-db-prod-app' } },
+    'qa-app': { label: 'QA – app', host: 'db.qa.interno', database: 'app_db_stage', user: DB_USER, env: 'qa', secret: { keychain: 'prisma-db-qa-app', account: 'qa-app' } },
+    'prod-app': { host: 'db.prod', database: 'app_db', user: DB_USER, env: 'production', secret: { keychain: 'prisma-db-prod-app' } },
 }, { dir: CONFIG });
 prismaConfig.writeSecureJson('approvers.json', { richard: approvers.hashPassword(APPROVER_PW), dba: approvers.hashPassword('senha-do-dba-123') }, { dir: CONFIG });
 
@@ -172,7 +172,7 @@ test('targets: acesso local sem aprovador; lista alias/rótulo, host/banco masca
     const ok = await post('/api/authorization/targets', {});
     assert.strictEqual(ok.status, 200, ok.text);
     const qa = ok.body.targets.find(t => t.alias === 'qa-app');
-    assert.deepStrictEqual([qa.label, qa.env, qa.selectable, qa.host], ['QA – embarc', 'qa', true, 'db…o']);
+    assert.deepStrictEqual([qa.label, qa.env, qa.selectable, qa.host], ['QA – app', 'qa', true, 'db…o']);
     assert.strictEqual(ok.body.targets.find(t => t.alias === 'prod-app').selectable, false);
 });
 

@@ -223,7 +223,7 @@ Startup do orquestrador: `readmine-watcher.js main()` roda
 `logs/state-conflicts.jsonl`, um JSON por linha, só append (`O_APPEND`):
 
 ```json
-{"event":"STATE_CONFLICT","timestamp":"2026-10-01T17:35:07.161Z","operation":"spec_change_approval","task_id":"43800-desconto","actor":"spec-change:approve","pid":52425,"expected_state_version":17,"actual_state_version":19,"expected_spec_hash":"ffffffff","actual_spec_hash":"3be4c1d2","operation_id":"SC-001@43800-desconto","conflicting_fields":["state_version","spec_hash"]}
+{"event":"STATE_CONFLICT","timestamp":"2026-10-01T17:35:07.161Z","operation":"spec_change_approval","task_id":"10015-desconto","actor":"spec-change:approve","pid":52425,"expected_state_version":17,"actual_state_version":19,"expected_spec_hash":"ffffffff","actual_spec_hash":"3be4c1d2","operation_id":"SC-001@10015-desconto","conflicting_fields":["state_version","spec_hash"]}
 ```
 
 O log usa uma lista fixa de campos. Nunca entram o estado inteiro, ACs, `human_inputs`,

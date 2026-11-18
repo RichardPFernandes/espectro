@@ -2,7 +2,7 @@
 //
 // Task blocked não é despachada (dispatchTicket), e o human-input.md só era consumido
 // no despacho, então a resposta do dev pelo dashboard ficava parada pra sempre (achado
-// ao vivo no #43703: "liberado espaço, pode seguir" ignorado por tick após tick). Mas
+// ao vivo no #10002: "liberado espaço, pode seguir" ignorado por tick após tick). Mas
 // destravar com qualquer mensagem também é perigoso: "vou liberar o disco depois",
 // "por que travou?" ou "aceita a suíte focada" não querem dizer a mesma coisa. Então,
 // antes de mexer no status, um `claude -p` curto (sem ferramentas, saída validada por

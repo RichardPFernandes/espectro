@@ -28,12 +28,12 @@ nascem em outros pontos (tabela abaixo), quase todos no watcher.
 
 | # | Mecanismo (código) | O que acontece | Tipo proposto | Referência disponível hoje | Gap |
 |---|---|---|---|---|---|
-| 1 | `spec-generator.js` (`runSpecDraftGate` no watcher) | Subseção "Critérios de Aceite" da **descrição** do ticket vira `AC-NN` (texto literal, `numberCriteriaText`). Spec sai `draft: true`, humano libera. Ex.: 43685, 43703 | `REDMINE_DESCRIPTION` | ticket_id; `spec_draft_approved` no `<id>-spec-gate.json` | não marca quais ACs vieram da descrição vs. editados na revisão |
-| 2 | `withSpecReplies` (watcher, portão de spec) | Spec incompleta é **completada por comentário** no Redmine (achado ao vivo no #43584, Recusa QA: Critérios vieram num comentário) | `REDMINE_COMMENT` | `completed_by` = string "Nome (comentário no Redmine, data)" | **journal_id não é persistido** — só nome+data; o objeto `j` tem `j.id` no momento |
-| 3 | `spec-repairer.js` + `handleSpecRepair` (auto-repair) | Claude **gera** os ACs faltantes a partir de título+descrição; draft comentado no Redmine; resposta `aprovado` mescla. **8 dos 12 gate files reais** (43585, 43590, 43644, 43646, 43670, 43672, 43673, 43683) mesclaram `criterios_aceite` por aqui (43666 também passou, sem ACs) — é a origem mais comum de AC hoje | **novo: `AGENT_DRAFT_APPROVED`** | `spec_pending_approval.comment_id` (journal do draft), `spec_repair.approved_by/approved_at/merged_sections` | journal_id da resposta de aprovação não é guardado |
+| 1 | `spec-generator.js` (`runSpecDraftGate` no watcher) | Subseção "Critérios de Aceite" da **descrição** do ticket vira `AC-NN` (texto literal, `numberCriteriaText`). Spec sai `draft: true`, humano libera. Ex.: 10028, 10002 | `REDMINE_DESCRIPTION` | ticket_id; `spec_draft_approved` no `<id>-spec-gate.json` | não marca quais ACs vieram da descrição vs. editados na revisão |
+| 2 | `withSpecReplies` (watcher, portão de spec) | Spec incompleta é **completada por comentário** no Redmine (achado ao vivo no #10003, Recusa QA: Critérios vieram num comentário) | `REDMINE_COMMENT` | `completed_by` = string "Nome (comentário no Redmine, data)" | **journal_id não é persistido** — só nome+data; o objeto `j` tem `j.id` no momento |
+| 3 | `spec-repairer.js` + `handleSpecRepair` (auto-repair) | Claude **gera** os ACs faltantes a partir de título+descrição; draft comentado no Redmine; resposta `aprovado` mescla. **8 dos 12 gate files reais** (10022, 10010, 10024, 10005, 10012, 10025, 10026, 10027) mesclaram `criterios_aceite` por aqui (10001 também passou, sem ACs) — é a origem mais comum de AC hoje | **novo: `AGENT_DRAFT_APPROVED`** | `spec_pending_approval.comment_id` (journal do draft), `spec_repair.approved_by/approved_at/merged_sections` | journal_id da resposta de aprovação não é guardado |
 | 4 | Edição manual da spec (fluxo do template) | Dev escreve os `AC-NN` à mão em `memory/spec/<id>-spec.md` (caminho oficial do fetch-ticket) | **novo: `HUMAN_AUTHORED`** | `spec.sealed_at`/`spec_hash` do `/plan` (spec-version baseline); git do worktree | nenhum registro de autor/momento além do hash selado |
-| 5 | `human-input.md` (dashboard "Responder ao agente") → `human-input-intent.js` | Mensagem do dev chega ao agente; pode pedir comportamento novo. Interpretação fica em `state.human_input_interpretations[]` (timestamp, intent, node). Ex.: `_archive/43666-.../human-input.processed.md` | `HUMAN_CLARIFICATION` | timestamp do bloco `## Human input — <ISO>`; entrada em `human_input_interpretations` | o human-input sozinho **não cria AC**: no caso real ele virou SPEC_CHANGE (linha 6) |
-| 6 | `spec-change.js` `approveSpecChange` | SPEC_CHANGE aprovada adiciona/substitui/remove AC (`ac_added`, `ac_changes`). Ex. real 43666: `SC-001`, aprovado pelo journal **45411**, `ac_added: ["AC-01"]`, rationale cita o human input de 2026-09-30 | `SPEC_CHANGE` | `id` (SC-NNN), índice no audit (`approvalRef = spec-change-audit.json#entry-N`), `comment_id`, `spec_hash_before/after`, `spec-version.js bump` (previous/new version) | — (é a fonte mais bem referenciada) |
+| 5 | `human-input.md` (dashboard "Responder ao agente") → `human-input-intent.js` | Mensagem do dev chega ao agente; pode pedir comportamento novo. Interpretação fica em `state.human_input_interpretations[]` (timestamp, intent, node). Ex.: `_archive/10001-.../human-input.processed.md` | `HUMAN_CLARIFICATION` | timestamp do bloco `## Human input — <ISO>`; entrada em `human_input_interpretations` | o human-input sozinho **não cria AC**: no caso real ele virou SPEC_CHANGE (linha 6) |
+| 6 | `spec-change.js` `approveSpecChange` | SPEC_CHANGE aprovada adiciona/substitui/remove AC (`ac_added`, `ac_changes`). Ex. real 10001: `SC-001`, aprovado pelo journal **20001**, `ac_added: ["AC-01"]`, rationale cita o human input de 2026-09-30 | `SPEC_CHANGE` | `id` (SC-NNN), índice no audit (`approvalRef = spec-change-audit.json#entry-N`), `comment_id`, `spec_hash_before/after`, `spec-version.js bump` (previous/new version) | — (é a fonte mais bem referenciada) |
 | 7 | `ac-ids.js number --write` | Numera spec **legada** sem IDs, sem mudar o texto | não é origem → `UNKNOWN` (`reference: "legacy-numbering"`) | — | origem real do texto perdida |
 | 8 | Recusa QA (ticket volta, mesma spec, task nova) | QA comenta; o dev/portão incorpora como em 2/4/6 | sem tipo próprio; cai em 2, 4 ou 6 | — | — |
 
@@ -59,7 +59,7 @@ SPEC_CLARIFICATION pode virar referência de esclarecimento, não de criação).
   dos critérios**, 2 no formato v1 (`specHash` + `criteria`), 0 com `ac_ids`. Ou seja, o
   Registry atual **já guarda texto de AC** (exceção de compatibilidade documentada em
   `ac-registry.js`), o que conflita com "nenhum texto de AC no Registry".
-- Único `spec-change-audit.json` existente: worktree 43666 (`SC-001`, `spec_version: null`
+- Único `spec-change-audit.json` existente: worktree 10001 (`SC-001`, `spec_version: null`
   — anterior ao Task 73).
 - `scripts/spec-change-audit.js` (citado como Task 65) **não existe**; a auditoria vive em
   `scripts/lib/spec-change.js` (`readAudit`/`appendAudit`, `approvalRef`
@@ -87,12 +87,12 @@ de pessoa/ticket; aprovação humana do draft vai como referência, não muda o 
 (6, append). `fetch-ticket.md` só ganha a instrução de não registrar fonte (não cria AC).
 
 **Registry:** `sources[]` por AC dentro da entrada do ticket
-(`tasks["43666"].ac_sources["AC-01"] = [...]`), só referências. Entradas legadas com
+(`tasks["10001"].ac_sources["AC-01"] = [...]`), só referências. Entradas legadas com
 `criteria[]` ficam como estão (mexer quebraria `getRelatedACs`/`plan-scorer`) e respondem
 `legacy: true, sources: []` no endpoint.
 
-**Endpoint:** `GET /api/provenance/:ticket/:ac_id` (ex.: `/api/provenance/43666/AC-01`),
-mais `GET /api/provenance/:ac_id?ticket=43666`; sem `ticket` e com o ID em mais de um
+**Endpoint:** `GET /api/provenance/:ticket/:ac_id` (ex.: `/api/provenance/10001/AC-01`),
+mais `GET /api/provenance/:ac_id?ticket=10001`; sem `ticket` e com o ID em mais de um
 ticket → 409 com a lista de tickets.
 
 **KG:** Task 71 não implementada → não criar aresta agora; o handoff documenta o schema da
@@ -122,14 +122,14 @@ declaração.
   `completed_by_journal_ids` no `<id>-spec-gate.json` (evidência no nível do ticket) e
   nenhuma entrada em `sources[]` de AC por esse ponto.
 - **EC-3, human-input não tem vínculo estruturado com SPEC_CHANGE ou AC.** A proposta de
-  `spec-change.js` só leva `rationale` em texto livre (43666/SC-001 cita o human input em
+  `spec-change.js` só leva `rationale` em texto livre (10001/SC-001 cita o human input em
   prosa); `human_input_interpretations[]` não referencia AC. O `HUMAN_CLARIFICATION →
-  SPEC_CHANGE` do 43666 não é demonstrável. Alternativa mínima: campo opcional
+  SPEC_CHANGE` do 10001 não é demonstrável. Alternativa mínima: campo opcional
   `human_input_refs[]` (`message_hash`/`at`) no `decision.json` do `record`, validado contra
   `state.human_input_interpretations`/`human-input.processed.md`; na aprovação vira
   `HUMAN_CLARIFICATION/CLARIFICATION` antes do `SPEC_CHANGE/MODIFICATION`. O histórico fica
   só com `SPEC_CHANGE`.
-- **EC-4 (correção, não bloqueia), 45411 é o comentário da proposta, não a aprovação.** O
+- **EC-4 (correção, não bloqueia), 20001 é o comentário da proposta, não a aprovação.** O
   `comment_id` do audit é o journal que o watcher postou com a proposta (`posted_at`
   11:20:22, aprovação às 11:20:38). O journal da resposta `aprovado` existe em
   `reply.journal` (`readmine-watcher.js:2174-2194`), mas não é passado a
