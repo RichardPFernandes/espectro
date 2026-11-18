@@ -8,7 +8,7 @@ própria troca; durações em ms (42000, 45000 nas 6 linhas listadas no plano) n
 só com `npm run test:changed` na raiz (nunca `npm test` dentro de `scripts/` ou `dashboard/`);
 sem pkill/killall por nome; sem force push; commit com "Refs PRI-405".
 
-- [ ] **T0 · Mapa** (base de T1 a T4). Reconstruir o mapa da F0.1/F1.9 a partir de
+- [x] **T0 · Mapa** (base de T1 a T4). Reconstruir o mapa da F0.1/F1.9 a partir de
   `git show --unified=0 dce3118 3f19aa7` (pares ticket → `10001+`, journal → `20001+`) e
   gravar a tabela completa de troca (todos os valores dos testes e prompts → destino pela regra
   do plano) em `~/Workspace/prisma-evidence/PRI-405/mapa.tsv` (fora do repo). Inclui a
