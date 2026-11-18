@@ -212,3 +212,63 @@ test('CLI com --capabilities: exit 0 com AVISO (1 e 2 cabeçalhos sintéticos)',
     assert.equal(two.status, 0, two.stdout + two.stderr);
     assert.equal(two.stdout.match(/- AVISO:/g).length, 2);
 });
+
+const specs = (content, filename = 'tasks/pri-9/SPEC.md') => [{ filename, content }];
+const specWarn = (content, body = BODY_OK) => run({ labels: ['processo:medio'], specs: specs(content), body }).warnings.filter((w) => w.startsWith('SPEC '));
+
+test('aviso de SPEC: AC da SPEC ausente da Evidência → 1 aviso com o ID, sem reprovar', () => {
+    const r = run({ labels: ['processo:medio'], specs: specs('- AC-01: a\n- AC-02: b\n') });
+    assert.equal(r.ok, true);
+    const w = r.warnings.filter((x) => x.startsWith('SPEC '));
+    assert.equal(w.length, 1);
+    assert.match(w[0], /^SPEC "tasks\/pri-9\/SPEC\.md": o AC AC-02 não aparece na Evidência\. .* Aviso, não reprova\.$/);
+    assert.doesNotMatch(w[0], /AC-01/);
+    assert.match(r.info.join('\n'), /SPEC alterada: tasks\/pri-9\/SPEC\.md \(2 ACs, 1 na Evidência\)/);
+});
+
+test('aviso de SPEC: AC-01, AC-1 e AC-001 são o mesmo; lista longa corta em 5 com +N', () => {
+    assert.deepEqual(specWarn('- AC-01: a\n* AC-001: a\nAC-1: a\n**AC-1**\n'), []);
+    const body = BODY_OK.replace('| AC-1 |', '| AC-001 |');
+    assert.deepEqual(specWarn('- AC-1: a\n', body), []);
+    const w = specWarn(Array.from({ length: 7 }, (_, i) => `- AC-${i + 2}: x`).join('\n'));
+    assert.match(w[0], /o AC AC-2, AC-3, AC-4, AC-5, AC-6 \+2 não aparece/);
+});
+
+test('aviso de SPEC: AC "(removido", bloco de código e comentário HTML são ignorados', () => {
+    const content = '- AC-1: a\n- AC-2: b (removido em 2026-11-18: sem efeito)\n```\n- AC-3: x\n```\n<!--\n- AC-4: y\n-->\n';
+    assert.deepEqual(specWarn(content), []);
+});
+
+test('aviso de SPEC: sem specs (ou vazio) nada muda', () => {
+    const base = run({ labels: ['processo:medio'] });
+    assert.deepEqual(run({ labels: ['processo:medio'], specs: [] }), base);
+    assert.equal(base.warnings.length, 0);
+    assert.doesNotMatch(base.info.join('\n'), /SPEC alterada/);
+});
+
+test('aviso de SPEC: Evidência ausente → só o erro de hoje, sem o aviso novo', () => {
+    const r = run({ labels: ['processo:medio'], body: '## O que muda\nx', specs: specs('- AC-9: a\n') });
+    assert.equal(r.ok, false);
+    assert.equal(r.errors.length, 1);
+    assert.equal(r.warnings.filter((w) => w.startsWith('SPEC ')).length, 0);
+});
+
+test('CLI: lê a SPEC de --root e avisa; SPEC com status removed não conta', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'processo-spec-'));
+    fs.mkdirSync(path.join(dir, 'tasks', 'pri-9'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'tasks', 'pri-9', 'SPEC.md'), '- AC-1: a\n- AC-2: b\n');
+    const ev = path.join(dir, 'ev.json');
+    fs.writeFileSync(ev, JSON.stringify({ pull_request: { number: 1, body: BODY_OK, labels: [{ name: 'processo:medio' }] } }));
+    const env = { ...process.env, GITHUB_ACTIONS: '' };
+    const cli = (status) => {
+        const files = path.join(dir, `files-${status}.json`);
+        fs.writeFileSync(files, JSON.stringify([file('tasks/pri-9/SPEC.md', 2, status)]));
+        return spawnSync(process.execPath, [CLI, '--event', ev, '--files', files, '--root', dir], { encoding: 'utf8', env });
+    };
+    const added = cli('added');
+    assert.equal(added.status, 0, added.stdout + added.stderr);
+    assert.match(added.stdout, /- AVISO: SPEC "tasks\/pri-9\/SPEC\.md": o AC AC-2 não aparece/);
+    const removed = cli('removed');
+    assert.equal(removed.status, 0, removed.stdout + removed.stderr);
+    assert.doesNotMatch(removed.stdout, /AVISO: SPEC|SPEC alterada/);
+});
