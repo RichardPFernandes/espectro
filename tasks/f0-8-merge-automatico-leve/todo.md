@@ -13,7 +13,7 @@ Contexto comum para cada subagente: leia `tasks/f0-8-merge-automatico-leve/SPEC.
   - Arquivos: `.github/processo.json`, `.github/scripts/merge-leve-lib.mjs`, `.github/scripts/merge-leve.test.mjs`
   - Depende de: nada
 
-- [ ] **T2: CLI de merge com simulação (AC-04, AC-01, AC-02)** · M
+- [x] **T2: CLI de merge com simulação (AC-04, AC-01, AC-02)** · M
   - Fazer: `.github/scripts/merge-leve.mjs`, exportando `run({ event, env, gh, config, log, summary })`, mais um `main()` que monta `gh` com `fetch` e `GITHUB_TOKEN`.
     - Os PRs vêm de `event.workflow_run.pull_requests`; se a lista vier vazia, de `GET /repos/{r}/commits/{head_sha}/pulls`.
     - Para cada PR aberto: busca o PR atual, os arquivos (paginados, como em `processo-check.mjs`), os check-runs e os status do `head.sha`; avalia com `evaluatePr` usando o `config` do checkout local (a `main`).
