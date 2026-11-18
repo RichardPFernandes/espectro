@@ -38,7 +38,7 @@ sem pkill/killall por nome; sem force push; commit com "Refs PRI-405".
   `dashboard/version-api.test.js`, `scripts/lib/dry-run.test.js`,
   `scripts/lib/spec-generator.test.js`. Mesma prova da T1.
 
-- [ ] **T3 · PR C, testes (AC-01, AC-02).** Branch `RichardPFernandes/pri-405-testes-c`.
+- [x] **T3 · PR C, testes (AC-01, AC-02).** Branch `RichardPFernandes/pri-405-testes-c`.
   Arquivos: `dashboard/authorization-api.test.js`, `dashboard/provenance-api.test.js`,
   `dashboard/redmine-tab-api.test.js`, `scripts/cleanup-runs.test.js`,
   `scripts/lib/qa-handback.test.js`, `scripts/lib/spec-enricher.test.js`,
