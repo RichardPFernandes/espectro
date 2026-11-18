@@ -27,7 +27,7 @@ sem pkill/killall por nome; sem force push; commit com "Refs PRI-405".
   Teste que falha antes: `git grep -cwE "4[0-9]{4}"` nesses arquivos acha ocorrências; depois,
   zero. `npm run test:changed` verde. `git diff --shortstat` ≤ 400 linhas.
 
-- [ ] **T2 · PR B, testes (AC-01, AC-02).** Branch `RichardPFernandes/pri-405-testes-b`.
+- [x] **T2 · PR B, testes (AC-01, AC-02).** Branch `RichardPFernandes/pri-405-testes-b`.
   Arquivos: `scripts/lib/ac-provenance.test.js`, `scripts/lib/spec-version.test.js`,
   `scripts/invalidate-concurrency.test.js`, `scripts/lib/redmine-ticket-list.test.js`,
   `scripts/lib/spec-template.test.js`, `scripts/effect-authority.test.js`,
