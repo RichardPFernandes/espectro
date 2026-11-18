@@ -6,7 +6,7 @@ Cada tarefa roda num subagente novo (opus), com TDD: o teste falha antes, passa 
 Testes: `npm run test:changed -- origin/main` na raiz. Nada de push em remote real; nomes neutros
 (`repo-a`, `repo-b`, `TICKET-X`). Ler `SPEC.md` e `plan.md` desta pasta antes.
 
-- [ ] **T1. Repo na chave, `-C` e fora de repo.** AC-1, AC-2, AC-4, AC-5, AC-8.
+- [x] **T1. Repo na chave, `-C` e fora de repo.** AC-1, AC-2, AC-4, AC-5, AC-8.
   Em `scripts/git-push-effect.sh`: tirar `-C <dir>` dos argumentos, resolver o toplevel real do
   diretório efetivo e pôr na chave. Fora de repo: sai ≠ 0 antes de autorizar.
   Teste novo `scripts/git-push-effect.test.js`: mesmo `push -u origin TICKET-X` em `repo-a` e
