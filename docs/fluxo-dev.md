@@ -32,7 +32,7 @@ flowchart TD
     EV --> NA{Alto?}
     NA -->|sim| AP["/pri-autorizo (Pedido)<br/>go/no-go, Rollback e Readback<br/>em pedido.md"] --> G
     NA -->|não| G{{"hook: gh pr create só com<br/>check.json PASS no HEAD"}}
-    G --> PR["/pri-pr<br/>PR draft + processo:nível<br/>Evidência com o link da CI"]
+    G --> PR["/pri-pr<br/>PR draft, ou pronto no Leve elegível<br/>+ processo:nível<br/>Evidência com o link da CI"]
     PR --> CI{{"CI: Tests + processo-check<br/>Alto também exige Rollback,<br/>Readback e SPEC citada"}}
 
     CI --> NB{Nível}
@@ -47,3 +47,11 @@ Os hexágonos são portões: decisão do Richard, hook ou CI. O hook só age num
 de dev (com `.prisma/level`); a barreira real é a CI. No Médio e no Alto,
 o plano para para aprovação antes do código; no Alto, a SPEC também. O Leve não para
 até o PR. No build, cada tarefa roda num subagente novo, em contexto limpo.
+
+## Merge automático do Leve (F0.8)
+
+Com a variável `MERGE_LEVE` ligada, o bot do GitHub Actions mescla o PR `processo:leve`
+fora de draft que só toca a lista `mergeLeve` de `.github/processo.json` na `main` e tem
+todos os checks verdes (workflow `merge-leve.yml`). Para segurar um Leve elegível,
+converta o PR para draft (`gh pr ready --undo <n>`). Um resumo diário na issue fixa
+"Merge automático do Leve: resumo" lista o que entrou e o que ficou de fora.

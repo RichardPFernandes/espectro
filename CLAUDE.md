@@ -8,7 +8,7 @@
 7. Nível pelo efeito: atrás de flag desligada, ou piloto no launcher do próprio Espectro, é Médio; mudar o que já roda no consumidor corporativo (ligar flag, bump, polling, operação protegida, credencial) é Alto. Se o trabalho passar do nível, peça reclassificação. Não crie adendo.
 8. Pare e peça decisão só quando mudar o escopo, faltar acesso/credencial ou a ação não tiver volta. Sempre com recomendação. Leve/Médio: sem objeção até a janela de segunda ou quinta, vale a recomendação.
 9. Toda fatia termina em algo ligado ou demonstrável; "flag reservada" sem gatilho não é Pronto.
-10. Merge é sempre do Richard. PR em draft. Use "Refs", nunca "Fixes".
+10. Merge é sempre do Richard, com uma exceção: com `MERGE_LEVE` ligado, o bot do GitHub Actions mescla o PR `processo:leve`, fora de draft, que só toca caminhos da lista `mergeLeve` de `.github/processo.json` na `main` e tem todos os checks verdes. O `/pri-pr` abre fora de draft só esse Leve elegível (com a flag desligada, o bot só simula); todo o resto abre em draft. O draft é a trava: para segurar um Leve elegível, converta o PR para draft. Agente nunca mescla. Use "Refs", nunca "Fixes".
 11. Leve/Médio: mesclar é aceitar. A issue vai para Done quando o último PR dela é mesclado e não há filha aberta; a evidência continua obrigatória no PR. Alto: Done só com aceite do Richard.
 12. In Review é a fila "Com o Richard": esperando decisão, aceite ou AUTORIZO dele, e nada mais. Limite de 3 itens. Fila cheia: não abra trabalho novo que vá precisar dele, e diga isso.
 13. Issue nova só nasce de fatia do roadmap, defeito ou pedido do Richard. Não crie issue de "Avaliar", "Planejar" ou "Design" por conta própria; ideia vira uma linha de comentário na issue da fatia em curso (exceção à regra 3).
@@ -17,7 +17,7 @@
 
 O Prisma se desenvolve com as skills do plugin agent-skills (requisito: plugin `agent-skills` instalado), carregadas pelos comandos do repo em `.claude/skills/pri-*`, que trazem os ajustes do Acordo. Não use direto `/agent-skills:spec`, `:plan`, `:build` ou `:ship`: eles gravam na raiz, param para aprovação e abrem revisores extras. O grafo de `.claude/commands/` (`/plan`, `/implement`, `/review`, `/test`, `/verify`, `/commit`, `/fetch-ticket`) e os subagentes de `.claude/agents/` são templates da plataforma para o fluxo do consumidor, lidos pelo watcher, e não se usam aqui.
 
-`/pri-start PRI-NNN` → `/pri-spec` (Médio só se precisar; Alto sempre, aprovada pelo Richard) → `/pri-plan` → (Médio e Alto) Richard aprova o plano → `/clear` → `/pri-build` → `/pri-check` → (Alto) pedido do `/pri-autorizo` → `/pri-pr` → (Alto) AUTORIZO e bump → `/pri-autorizo PRI-NNN readback`. Diagrama: [`docs/fluxo-dev.md`](docs/fluxo-dev.md).
+`/pri-start PRI-NNN` → (Médio e Alto) `/pri-spec` (Médio só se precisar; Alto sempre, aprovada pelo Richard) → (Médio e Alto) `/pri-plan` → (Médio e Alto) Richard aprova o plano → `/clear` → `/pri-build` (o Leve vai direto do `/pri-start` ao `/pri-build`) → `/pri-check` → (Alto) pedido do `/pri-autorizo` → `/pri-pr` → (Alto) AUTORIZO e bump → `/pri-autorizo PRI-NNN readback`. Diagrama: [`docs/fluxo-dev.md`](docs/fluxo-dev.md).
 
 - Spec, plano e todo ficam em `tasks/fN-M-<nome>/` ou `tasks/pri-NNN/`. Nada de `SPEC.md` na raiz.
 - Médio e Alto param no plano: o Richard aprova o `todo.md` antes do `/pri-build`; o Leve segue direto (D-FLX-01, 17/11/2026, substitui a D-a no plano). O Médio continua sem parar na spec.

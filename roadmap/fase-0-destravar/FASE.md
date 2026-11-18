@@ -24,7 +24,7 @@ execuções.
 - [x] `npm run demo` na raiz roda um ciclo simulado; README com "Veja funcionando".
 - [x] Regras de fluxo aprovadas no `CLAUDE.md` e no `AGENTS.md`.
 - [x] Sonda da CLI rodada uma vez com a CLI real.
-- [ ] Uma fatia real passou pelo `/pri-*` abrindo pela spec viva e fechando com ela atualizada (F0.11 a F0.13); `tasks/` só com o que está em curso (F0.14).
+- [x] Uma fatia real passou pelo `/pri-*` abrindo pela spec viva e fechando com ela atualizada (F0.11 a F0.13); `tasks/` só com o que está em curso (F0.14).
 - [x] Tabela-ponte publicada: cada página do canvas de design e cada macrofase da arquitetura tem um destino (F0.10).
 
 ## Fatias
@@ -38,13 +38,13 @@ execuções.
 | F0.5 | (removida em 2026-11-16: a premissa caiu) Poda dos prompts dos nós | 2 | Alto | Sim | — | O preâmbulo não é idêntico nos 11 comandos e é quase todo instrução; o ganho seria de cerca de 0,5 KB em 125 KB. Um teste fixa o hash de `implement.md`, `review.md` e `commit.md` (`scripts/lib/decomposition-watcher.test.js`). Reabrir só com medição de duplicação interna | removida | PRI-376 |
 | F0.6 | Sonda de fumaça da CLI contra mudança no modo `-p` | 2 | Leve | Não | — | — | concluída | PRI-376 |
 | F0.7 | ESLint só de erros no JavaScript de produção e teto de linhas nos três arquivos grandes | 2 | Leve | Não | F0.2 | — | concluída | PRI-406 |
-| F0.8 | Merge automático do Leve com CI verde e lista de caminhos | 2 | Alto | Sim | F0.2, F0.4 | D12 | não iniciada | sem issue |
+| F0.8 | Merge automático do Leve com CI verde e lista de caminhos | 2 | Alto | Sim | F0.2, F0.4 | D12 | concluída | PRI-410 |
 | F0.9 | Bloco de Estado e relatório semanal automáticos | 3 | Médio | Não | F0.4 | — | em andamento | PRI-399 |
 | F0.10 | Tabela-ponte: uma linha por página do canvas de design e por macrofase do roadmap de arquitetura, dizendo se está numa fatia, na Fase 6 com gatilho ou é só visão | 1 | Leve | Não | — | D13 | concluída | PRI-403 |
 | F0.11 | Mapa de capacidades: uma página de entrada, um arquivo por capacidade e todo arquivo de código com dono (C1 da spec viva) | 2 | Leve | Não | — | D5 | concluída | PRI-396 |
 | F0.12 | Três specs vivas completas (`spec`, `grafo`, `estado`), seção "Delta de capacidade" no modelo de SPEC e aviso no `processo-check` (C2) | 3 | Leve | Não | F0.11 | D5 | concluída | PRI-402 |
 | F0.13 | Fluxo `/pri-*` amarrado à spec viva: a fatia abre pela capacidade, a mudança traz o delta e o PR só sai com a spec viva conferida | 2 | Leve | Não | F0.4, F0.12 | D5 | concluída | PRI-409 |
-| F0.14 | Arrumar a casa: `tasks/` de issue fechada para `docs/historico/`, `docs/prisma/` marcado como histórico e uma só descrição do fluxo de desenvolvimento (C3) | 1 | Leve | Não | F0.11 | D5 | em andamento | PRI-411 |
+| F0.14 | Arrumar a casa: `tasks/` de issue fechada para `docs/historico/`, `docs/prisma/` marcado como histórico e uma só descrição do fluxo de desenvolvimento (C3) | 1 | Leve | Não | F0.11 | D5 | concluída | PRI-411 |
 
 ## Sementes das fatias ainda não iniciadas
 

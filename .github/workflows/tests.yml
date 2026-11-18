@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # O merge-leve dispara a suíte na main depois de cada merge do bot (o push
+  # feito com o GITHUB_TOKEN não dispara o push acima).
+  workflow_dispatch:
 
 permissions:
   contents: read
