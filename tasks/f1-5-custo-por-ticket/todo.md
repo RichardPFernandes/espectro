@@ -16,7 +16,7 @@ Testes: `npm run test:changed -- origin/main` na raiz, com Node 22 ou mais.
   Teste: `scripts/lib/cli-result.test.js`, com fixtures sintéticas, incluindo JSON
   ilegível, `session_id` de outra sessão e template ausente.
 
-- [ ] **T2. Argv do despacho.** AC-04.
+- [x] **T2. Argv do despacho.** AC-04.
   Em `dispatchClaudeSegment` (`scripts/readmine-watcher.js`), com a flag ligada, acrescentar
   `--output-format json`. Teste golden: com a flag desligada, o argv é idêntico ao atual. Teste
   de que `looksUnavailable`, `looksLikeSessionLimit` e `operationalCause` detectam o mesmo
