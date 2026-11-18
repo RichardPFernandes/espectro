@@ -1,6 +1,5 @@
 'use strict';
-// Base de violações aceitas do lint: só encolhe, nunca cresce. Funções puras, sem I/O.
-// A base é { "<arquivo>": { "<regra>": n } }, com caminhos relativos à raiz e com "/".
+// Base de violações aceitas do lint ({ "<arquivo>": { "<regra>": n } }, caminhos relativos com "/"): só encolhe. Funções puras.
 
 const path = require('path');
 

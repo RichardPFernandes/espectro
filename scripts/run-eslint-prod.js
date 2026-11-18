@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// PRI-406 / F0.7: ESLint só de erros sobre o JavaScript de produção de scripts/ e dashboard/,
-// comparado com a base de violações aceitas (scripts/lint-baseline.json), que só encolhe.
+// PRI-406 / F0.7: ESLint só de erros sobre o JavaScript de produção, comparado com a base scripts/lint-baseline.json (só encolhe).
 //   node scripts/run-eslint-prod.js            confere (CI): sai 1 se algo cresceu ou se a base ficou folgada
 //   node scripts/run-eslint-prod.js --shrink   grava na base o que encolheu (nunca aceita crescimento)
 
@@ -21,11 +20,9 @@ function fail(code, message) {
 
 /** Roda o ESLint e devolve o array do `-f json`; sem saída válida, falha (nunca vira PASS). */
 function runEslint() {
-    const r = spawnSync(
-        eslint,
-        ['-c', 'eslint.prod.config.mjs', 'scripts', 'dashboard', '-f', 'json'],
-        { cwd: repoRoot, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'inherit'], env: process.env }
-    );
+    const r = spawnSync(eslint, ['-c', 'eslint.prod.config.mjs', 'scripts', 'dashboard', '-f', 'json'], {
+        cwd: repoRoot, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'inherit'], env: process.env,
+    });
     if (r.error) fail(2, `lint:prod: não foi possível rodar o eslint: ${r.error.message}`);
     if (r.status === null || r.status > 1) fail(2, `lint:prod: o eslint falhou (status ${r.status === null ? r.signal : r.status})`);
     let results;
@@ -46,34 +43,28 @@ function readBaseline() {
     }
 }
 
-function printItems(items) {
-    for (const i of items) console.log(`${i.file} ${i.rule} ${i.base} -> ${i.now}`);
-}
+const printItems = items => items.forEach(i => console.log(`${i.file} ${i.rule} ${i.base} -> ${i.now}`));
 
 function main() {
-    const shrinkMode = process.argv.includes('--shrink');
     const current = countViolations(runEslint(), repoRoot);
     const baseline = readBaseline();
+    const { added, shrunk } = compareToBaseline(current, baseline);
 
-    if (shrinkMode) {
+    if (process.argv.includes('--shrink')) {
         let next;
         try {
             next = shrinkBaseline(current, baseline);
         } catch (err) {
             fail(1, `lint:prod: ${err.message}`);
         }
-        const { shrunk } = compareToBaseline(current, baseline);
         fs.writeFileSync(baselinePath, formatBaseline(next));
-        if (!shrunk.length) {
-            console.log('lint:prod: a base já estava justa; nada a encolher');
-        } else {
-            printItems(shrunk);
-            console.log(`lint:prod: base encolhida em ${shrunk.length} item(ns); commite scripts/lint-baseline.json`);
-        }
+        printItems(shrunk);
+        console.log(shrunk.length
+            ? `lint:prod: base encolhida em ${shrunk.length} item(ns); commite scripts/lint-baseline.json`
+            : 'lint:prod: a base já estava justa; nada a encolher');
         return;
     }
 
-    const { added, shrunk } = compareToBaseline(current, baseline);
     if (added.length) {
         printItems(added);
         fail(1, 'lint:prod: violação nova acima da base; corrija o código (a base só encolhe)');
@@ -82,7 +73,7 @@ function main() {
         printItems(shrunk);
         fail(1, 'lint:prod: a base encolheu; rode: npm --prefix scripts run lint:prod:shrink e commite scripts/lint-baseline.json');
     }
-    const total = Object.values(current).reduce((sum, rules) => sum + Object.values(rules).reduce((a, b) => a + b, 0), 0);
+    const total = Object.values(current).flatMap(Object.values).reduce((a, b) => a + b, 0);
     console.log(`lint:prod ok (${total} violações aceitas)`);
 }
 

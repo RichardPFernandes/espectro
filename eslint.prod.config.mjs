@@ -1,11 +1,6 @@
-/**
- * PRI-406 / F0.7 — ESLint só de erros sobre o JavaScript de produção de
- * scripts/ e dashboard/. Regras: eslint:recommended (todas em "error", sem
- * estilo). As violações que já existem ficam em scripts/lint-baseline.json e
- * só podem diminuir (scripts/run-eslint-prod.js). O TypeScript de src/ segue
- * no eslint.config.mjs (npm --prefix scripts run lint:src).
- * Dependências vivem em scripts/node_modules (sem runner de raiz).
- */
+// PRI-406 / F0.7: ESLint só de erros (eslint:recommended) no JavaScript de produção de scripts/ e
+// dashboard/. Violações existentes: scripts/lint-baseline.json, que só encolhe (scripts/run-eslint-prod.js).
+// O TypeScript de src/ segue no eslint.config.mjs. Dependências em scripts/node_modules.
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +17,6 @@ export default [
     ignores: [
       "**/node_modules/**",
       "**/dist/**",
-      // testes e fixtures não são código de produção
       "**/*.test.js",
       "scripts/fixtures/**",
       "scripts/harness/**",
@@ -38,9 +32,7 @@ export default [
     },
   },
   {
-    // JavaScript do navegador: scripts clássicos carregados pelo index.html.
-    // Eles usam globais (esc, $, api, runs...) definidos no script inline do
-    // index.html, que o ESLint não lê; por isso no-undef fica fora aqui.
+    // Navegador: scripts clássicos que usam globais do script inline do index.html (no-undef fora).
     files: ["dashboard/public/**/*.js"],
     languageOptions: {
       sourceType: "script",
