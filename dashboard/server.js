@@ -3860,6 +3860,18 @@ if (require.main === module) {
     // Default do operador só neste processo. Testes que criam o servidor sem
     // COORD_STATUS_PATH ficam num arquivo temporário (coordination.js).
     applyCoordinationDefault(process.env);
+    // Guard do checkout (F1.2, PRI-379): com PRISMA_CHECKOUT_GUARD ligada, árvore do Prisma
+    // suja ou fora da main não sobe (sai com 2, sem abrir a porta). Flag ausente: nada roda.
+    const returnPoint = require('../scripts/lib/return-point');
+    if (returnPoint.guardEnabled(process.env)) {
+        const guardRoot = path.resolve(process.env.PRISMA_ROOT || path.join(__dirname, '..'));
+        const tree = returnPoint.checkTree({ root: guardRoot });
+        if (!tree.ok) {
+            console.error(`[dashboard] subida recusada pelo guard do checkout (PRISMA_CHECKOUT_GUARD): ${tree.reasons.join(', ')} em ${guardRoot}`);
+            for (const p of tree.paths) console.error(`[dashboard]   ${p}`);
+            process.exit(2);
+        }
+    }
     const PORT = Number(process.env.PORT) || 3333;
     const HOST = process.env.HOST || '127.0.0.1';
     // Reinício pedido pelo painel Versão: mesmo caminho do SIGTERM (para o watcher e sai).

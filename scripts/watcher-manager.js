@@ -100,6 +100,10 @@ function createWatcherManager(options = {}) {
     const gracefulMs = require('./lib/graceful-shutdown').resolveGracefulTimeoutMs();
     const stopGraceMs = options.stopGraceMs ?? Math.max(STOP_GRACE_MS, gracefulMs + 2000);
     const envFile = options.envFile === undefined ? path.join(repoRoot, '.env') : options.envFile;
+    // Guard do checkout (F1.2, PRI-379): com PRISMA_CHECKOUT_GUARD ligada, cada tick confere a
+    // árvore do Prisma (a mesma PRISMA_ROOT que o tick recebe). Flag ausente: nada roda.
+    const guardRoot = options.prismaRoot || PRISMA_ROOT;
+    const guardGit = options.git;
 
     const events = new EventEmitter();
     events.setMaxListeners(0);
@@ -112,6 +116,7 @@ function createWatcherManager(options = {}) {
     let child = null;
     let state = 'stopped'; // stopped | starting | running | restarting | stopping
     let error = null;
+    let guard = null; // { reasons, paths } da última recusa do guard do checkout
     let startedAt = null;
     let tickStartedAt = null;
     let nextTickAt = null;
@@ -194,9 +199,26 @@ function createWatcherManager(options = {}) {
 
     // --------------------------------------------------------------- ciclo
     const PRIVILEGED_ENV_RE = /^PRISMA_(DB_|APPROVERS|PSQL)/;
+    // Árvore recusada: não inicia o tick e para o laço (sem timer novo) até um start manual.
+    function guardRefused() {
+        const returnPoint = require('./lib/return-point');
+        if (!returnPoint.guardEnabled({ ...process.env, ...options.env })) return false;
+        const tree = returnPoint.checkTree({ root: guardRoot, ...(guardGit ? { git: guardGit } : {}) });
+        if (tree.ok) return false;
+        state = 'stopped';
+        error = 'checkout_guard';
+        guard = { reasons: tree.reasons, paths: tree.paths };
+        startedAt = null;
+        releaseLoopLock();
+        note(`watcher parado pelo guard do checkout (PRISMA_CHECKOUT_GUARD): ${tree.reasons.join(', ')} em ${guardRoot}${tree.paths.length ? ` — ${tree.paths.join(', ')}` : ''}. Deixe a árvore limpa na main e use Start.`, 'ERROR');
+        record('stop', { reason: 'checkout_guard' });
+        return true;
+    }
+
     function spawnTick() {
         timer = null;
         nextTickAt = null;
+        if (guardRefused()) return;
         let proc;
         try {
             // WATCHER_LOOP_STARTED_AT/WATCHER_TICK_INTERVAL_MS: o watcher grava uptime e
@@ -302,6 +324,7 @@ function createWatcherManager(options = {}) {
             }
             redact.reset(); // relê os secrets: o .env pode ter mudado desde o último start
             error = null;
+            guard = null;
             restarts = 0;
             restartTimes = [];
             startedAt = Date.now();
@@ -319,7 +342,7 @@ function createWatcherManager(options = {}) {
         if (stopPromise) return stopPromise;
         if (state === 'stopped') {
             // stop() depois do limite de reinícios só limpa o aviso.
-            if (error) { error = null; }
+            if (error) { error = null; guard = null; }
             return Promise.resolve(status());
         }
         state = 'stopping';
@@ -358,6 +381,7 @@ function createWatcherManager(options = {}) {
             restarts_last_hour: restartTimes.filter(t => now - t < RESTART_WINDOW_MS).length,
             max_restarts_per_hour: MAX_AUTO_RESTARTS,
             error,
+            guard,
             phase: child ? 'tick' : (state === 'running' || state === 'restarting') ? 'idle' : null,
             tick_started_at: tickStartedAt ? new Date(tickStartedAt).toISOString() : null,
             next_tick_at: nextTickAt ? new Date(nextTickAt).toISOString() : null,

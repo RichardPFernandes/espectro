@@ -188,3 +188,102 @@ test('PRI-180 A4: o tick do watcher não herda config/segredo de banco nem aprov
     await m.stop();
     assert.strictEqual(texts(m).find(t => t.startsWith('ENV ')), 'ENV ');
 });
+
+// ------------------------------------------------------------ guard do checkout (F1.2, PRI-379)
+// Repositório temporário com origem bare local; config global e de sistema do git fora,
+// autor fixo. O git é injetado contando chamadas; nada toca o checkout do Prisma.
+const { runGit } = require('./lib/return-point');
+const GUARD_GIT_ENV = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1',
+    GIT_AUTHOR_NAME: 'Teste', GIT_AUTHOR_EMAIL: 'teste@example.invalid', GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
+    GIT_COMMITTER_NAME: 'Teste', GIT_COMMITTER_EMAIL: 'teste@example.invalid', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+};
+function guardSh(cwd, ...args) {
+    const r = require('child_process').spawnSync('git', args, { cwd, env: GUARD_GIT_ENV, encoding: 'utf8' });
+    if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
+}
+function guardRepo() {
+    const base = fs.mkdtempSync(path.join(tmp, 'guard-'));
+    const origin = path.join(base, 'origin.git');
+    const root = path.join(base, 'work');
+    guardSh(base, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
+    guardSh(base, 'init', '--quiet', '--initial-branch=main', root);
+    fs.writeFileSync(path.join(root, 'a.txt'), 'um\n');
+    guardSh(root, 'add', 'a.txt');
+    guardSh(root, 'commit', '--quiet', '-m', 'um');
+    guardSh(root, 'remote', 'add', 'origin', origin);
+    guardSh(root, 'push', '--quiet', 'origin', 'main');
+    guardSh(root, 'fetch', '--quiet', 'origin');
+    return root;
+}
+function countingGit() {
+    const g = (args, opts) => { g.calls++; return runGit(args, { ...opts, env: GUARD_GIT_ENV }); };
+    g.calls = 0;
+    return g;
+}
+
+test('guard: flag ausente não chama git e o tick segue igual ao de hoje', async () => {
+    const root = guardRepo();
+    fs.writeFileSync(path.join(root, 'solto.txt'), 'sujo\n');
+    const git = countingGit();
+    const m = manager(fake('guard-off', `console.log('tick ok');`), { prismaRoot: root, git });
+    await m.start();
+    await until(() => m.status().ticks >= 2);
+    await m.stop();
+    assert.strictEqual(git.calls, 0);
+    assert.strictEqual(m.status().error, null);
+    assert.strictEqual(m.status().guard, null);
+    assert.ok(texts(m).includes('tick ok'));
+});
+
+test('guard: flag ligada e árvore suja não inicia o tick, para o laço e expõe o motivo', async () => {
+    const root = guardRepo();
+    fs.writeFileSync(path.join(root, 'solto.txt'), 'sujo\n');
+    const marker = path.join(tmp, `guard-spawn-${++n}`);
+    const git = countingGit();
+    const m = manager(fake('guard-dirty', `require('fs').writeFileSync(${JSON.stringify(marker)}, 'x');`),
+        { prismaRoot: root, git, env: { PRISMA_CHECKOUT_GUARD: '1' } });
+    const st = await m.start();
+    await new Promise(r => setTimeout(r, 250));
+    assert.ok(git.calls > 0);
+    assert.ok(!fs.existsSync(marker), 'nenhum spawn');
+    for (const s of [st, m.status()]) {
+        assert.strictEqual(s.error, 'checkout_guard');
+        assert.ok(s.guard.reasons.includes('dirty'));
+        assert.deepStrictEqual(s.guard.paths, ['solto.txt']);
+        assert.strictEqual(s.running, false);
+        assert.strictEqual(s.state, 'stopped');
+        assert.strictEqual(s.next_tick_at, null);
+        assert.strictEqual(s.ticks, 0);
+    }
+    assert.match(texts(m).join('\n'), /dirty[\s\S]*solto\.txt/);
+
+    // Árvore limpa: start seguinte limpa error/guard e o tick roda.
+    fs.rmSync(path.join(root, 'solto.txt'));
+    const again = await m.start();
+    assert.strictEqual(again.error, null);
+    assert.strictEqual(again.guard, null);
+    await until(() => fs.existsSync(marker));
+    await m.stop();
+});
+
+test('guard: flag ligada e árvore ok faz o tick normal; sujeira depois para no tick seguinte', async () => {
+    const root = guardRepo();
+    const git = countingGit();
+    const m = manager(fake('guard-ok', `console.log('tick ok');`), { prismaRoot: root, git, env: { PRISMA_CHECKOUT_GUARD: '1' } });
+    await m.start();
+    await until(() => m.status().ticks >= 2);
+    assert.ok(git.calls > 0);
+    assert.strictEqual(m.status().error, null);
+    assert.strictEqual(m.status().running, true);
+    fs.writeFileSync(path.join(root, 'b.txt'), 'novo\n');
+    await until(() => m.status().state === 'stopped');
+    const st = m.status();
+    assert.strictEqual(st.error, 'checkout_guard');
+    assert.deepStrictEqual(st.guard.paths, ['b.txt']);
+    const ticks = st.ticks;
+    await new Promise(r => setTimeout(r, 250));
+    assert.strictEqual(m.status().ticks, ticks, 'laço parado, sem timer novo');
+    await m.stop();
+});
