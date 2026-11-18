@@ -16,7 +16,7 @@ O teste `scripts/lib/flag-registry.test.js` roda no CI e falha quando:
 - **Padrão:** estado do recurso quando a variável está ausente. `DISABLE_AUTO_CLEANUP` é "ligada" porque, sem a variável, a limpeza roda.
 - **Consumidor:** estado no consumidor corporativo. O `.env` dele não é lido aqui (dado do consumidor não acompanha o código), então vale `não verificado`, que não é "desligada". Só entra valor quando um documento do repo o afirma.
 - **Decidir até:** data (AAAA-MM-DD, em UTC) em que a flag liga de vez, é removida ou é renovada por decisão do Richard. Para flag permanente, é a próxima reconfirmação (seis meses). Passou da data sem decisão, o CI fica vermelho.
-- **Item desligado:** `sim` para o que foi construído e está desligado (métrica "itens construídos e desligados" do [`ACOMPANHAMENTO.md`](../roadmap/ACOMPANHAMENTO.md)). Hoje são 9. O roadmap não lista quais; esta lista foi reconstruída do código e dos documentos do roadmap, e quem discordar corrige a coluna.
+- **Item desligado:** `sim` para o que foi construído e está desligado (métrica "itens construídos e desligados" do [`ACOMPANHAMENTO.md`](../roadmap/ACOMPANHAMENTO.md)). Hoje são 10. O roadmap não lista quais; esta lista foi reconstruída do código e dos documentos do roadmap, e quem discordar corrige a coluna.
 
 ## Limites da detecção
 
@@ -48,6 +48,7 @@ do Acordo; este registro só diz quando a decisão é devida.
 | `PRISMA_UI_VERIFY_TAB` | env | desligada | PRI-355, PRI-361 | não verificado | junto de `PRISMA_UI_VERIFY` | junto de `PRISMA_UI_VERIFY` | 2027-01-15 | não |
 | `PRISMA_UI_CUSTOM_SERVER` | env | desligada | PRI-355 | não verificado | junto de `PRISMA_UI_VERIFY`, só se o app não sobe pelo dashboard | junto de `PRISMA_UI_VERIFY` | 2027-01-15 | não |
 | `PRISMA_OBSIDIAN` | env | desligada | PRI-373 | não verificado | a PRI-373 é mesclada e o uso se confirma (docs/obsidian.md) | a PRI-373 sai na triagem do cycle | 2026-12-07 | sim |
+| `PRISMA_CHECKOUT_GUARD` | env | desligada | PRI-379 | não verificado | AUTORIZO do Richard, depois do ensaio de `back` no consumidor: `1`, `true` ou `sim` faz o dashboard recusar subir e o watcher-manager parar o tick com árvore suja ou fora da `main` (docs/consumer-operations.md, «Ponto de retorno») | o guard recusa subida legítima, ou o consumidor deixa o modo checkout | 2026-12-18 | sim |
 | `PRISMA_DASHBOARD_READONLY` | env | desligada | sem issue | não verificado | `=1` bloqueia as rotas de escrita do dashboard | nunca precisa remover; é salvaguarda | 2027-05-17 | não |
 | `DRY_RUN` | env | desligada | sem issue | não verificado (só vale no processo da simulação) | rodar o watcher ou o dashboard em simulação; `DRY_RUN_FIXTURE`, `DRY_RUN_DELAY_FACTOR` e `DRY_RUN_RISK_LEVEL` são parâmetros dela e só valem sob `DRY_RUN` | nunca precisa remover; é o modo de ensaio | 2027-05-17 | não |
 | `DISABLE_AUTO_CLEANUP` | env | ligada | sem issue | o launcher pinado exporta; o sem pin não (docs/consumer-operations.md) | a limpeza automática de runs já roda por padrão | sandbox ou teste que não pode arquivar runs: `1`, `true` ou `sim` desliga a limpeza | 2027-05-17 | não |

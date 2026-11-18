@@ -20,6 +20,7 @@ modulos:
   - scripts/export-runs.js
   - scripts/lib/runs-exporter.js
   - scripts/validate-handoff.js
+  - scripts/return-point.js
   - scripts/lib/maestro-guard-pre-done.js
   - scripts/src/platform/marker.js
 ---
