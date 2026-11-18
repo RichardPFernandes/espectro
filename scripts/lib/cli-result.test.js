@@ -98,6 +98,12 @@ test('promptTemplates: template = primeiro token do comando sem a barra; sem com
     assert.deepStrictEqual(promptTemplates(undefined, ['fetch_ticket', 'plan']), ['fetch_ticket', 'plan']);
 });
 
+test('promptTemplates: comando de shell na cadeia plan+implement não vira template', () => {
+    assert.deepStrictEqual(
+        promptTemplates(['/plan 93803-x', 'node "/x/scripts/plan-scorer.js" 93803-x', '/implement 93803-x'], ['plan', 'implement']),
+        ['plan', 'implement']);
+});
+
 test('promptHashes: template do comando decomposto; ausente ou nome fora do formato vira UNKNOWN sem ler arquivo', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-result-'));
     try {

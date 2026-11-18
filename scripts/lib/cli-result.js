@@ -50,10 +50,11 @@ function cliVersionFromTranscript(contents) {
 
 // Templates que a run lê: o primeiro token de cada comando do despacho, sem a `/` (na run
 // decomposta o nó é implement, mas o comando é /implement-step ou /implement-integrate).
-// Sem comandos, os nós.
+// Só comandos com `/` (a cadeia plan+implement traz um `node .../plan-scorer.js`). Sem comandos, os nós.
 function promptTemplates(commands, nodes) {
     const names = (Array.isArray(commands) ? commands : [])
-        .map(c => String(c).trim().split(/\s+/)[0].replace(/^\//, '')).filter(Boolean);
+        .map(c => String(c).trim()).filter(c => c.startsWith('/'))
+        .map(c => c.split(/\s+/)[0].slice(1)).filter(Boolean);
     return names.length ? names : nodes;
 }
 
