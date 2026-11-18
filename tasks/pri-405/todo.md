@@ -1,5 +1,7 @@
 # PRI-405 · Tarefas
 
+> Plano aprovado pelo Richard em 2026-11-18.
+
 Plano em `plan.md` (regra de troca, PRs e verificação). Cada tarefa roda num subagente opus
 novo. Regras de todas: nenhum número real em commit, PR, Linear ou arquivo do repo fora da
 própria troca; durações em ms (42000, 45000 nas 6 linhas listadas no plano) não mudam; testes
