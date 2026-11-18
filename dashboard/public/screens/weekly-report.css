@@ -273,6 +273,11 @@ span.wr-mono-link { color: var(--text-secondary); }
 
 .wr-tk-row { grid-template-columns: 150px 48px repeat(3, minmax(120px, 1fr)); }
 
+/* F0.9: as cinco métricas do acompanhamento no topo da capa. */
+.wr-5m-row { display: grid; grid-template-columns: 32px minmax(180px, 1fr) minmax(200px, 1.4fr); gap: 12px; align-items: center; min-height: 52px; padding: 8px 0; border-top: 1px solid var(--c-1a1e2b); }
+.wr-5m-row:first-child { border-top-color: transparent; }
+.wr-5m-v { font-family: var(--mono); font-size: 12px; line-height: 18px; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
 @media (max-width: 760px) {
   .wr-screen { padding: 0 0 24px; }
   .wr-status { display: none; }
@@ -288,5 +293,7 @@ span.wr-mono-link { color: var(--text-secondary); }
   .wr-lb-head { display: none; }
   .wr-lb-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; padding: 8px 0; }
   .wr-lb-row > :first-child { grid-column: 1 / -1; }
+  .wr-5m-row { grid-template-columns: 32px minmax(0, 1fr); gap: 4px 12px; }
+  .wr-5m-v { grid-column: 2; text-align: left; }
   .wr-lb-row > [data-l]:not(:first-child)::before { content: attr(data-l); display: block; font-family: var(--font-sans, inherit); font-size: 11px; line-height: 14px; color: var(--muted); text-align: right; }
 }

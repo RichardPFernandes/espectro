@@ -130,8 +130,13 @@ export function evaluate({ labels = [], body = '', files = [], templateBody = ''
     }
 
     if (level === 'leve') {
-        const { maxChangedLines, forbiddenNewFiles } = config.leve;
+        const { maxChangedLines, forbiddenNewFiles, renameAllowedPrefixes = [] } = config.leve;
+        // Mover SPEC/handoff/evidence de issue fechada para o arquivo morto não cria arquivo novo:
+        // só `renamed` cujo destino começa com um prefixo permitido (default: nenhum).
+        const movedToArchive = (f) => f.status === 'renamed'
+            && renameAllowedPrefixes.some((pre) => String(f.filename).startsWith(pre));
         const added = files.filter((f) => ['added', 'renamed', 'copied'].includes(f.status)
+            && !movedToArchive(f)
             && matchesAny(f.filename, forbiddenNewFiles, { ignoreCase: true }));
         if (added.length) {
             errors.push(`Nível leve não admite SPEC, handoff ou evidence separado: ${added.map((f) => f.filename).join(', ')}. Remova o arquivo (a evidência vai na seção "${heading}" do PR). ${FIX_LEVEL}`);

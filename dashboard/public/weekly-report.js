@@ -60,6 +60,7 @@
     return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - dow * DAY - TZ;
   }
   const dm = ts => { const d = local(ts); return `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}`; };
+  const ymd = ts => { const d = local(ts); return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`; };
   function rangeLabel(from, to) { // to exclusivo
     const a = local(from), b = local(to - 1);
     const year = b.getUTCFullYear();
@@ -518,8 +519,10 @@
     if (cur.ticketsPartial) k.tickets = { t: `parcial: ${cur.ticketsKnown} de ${cur.ticketsTotal} tickets consultados no Redmine`, tone: 'muted' };
     else if (prev?.ticketsPartial && !isAll) k.tickets = { t: 'semana anterior com consulta parcial no Redmine', tone: 'muted' };
     const sr = series(list, w, env, now);
+    // Semana da linha da série (ACOMPANHAMENTO): a segunda da janela; em "Todos os runs", a semana atual e todo o histórico.
+    const week = isAll ? `${ymd(weekStart(now))} (todo o histórico)` : ymd(w.from);
     return {
-      win, isAll, w, range, scopeLabel, list, cur, prev, k, series: sr,
+      win, isAll, w, range, week, scopeLabel, list, cur, prev, k, series: sr,
       nodes: nodeCosts(list, env.nodes), stages: stageTokens(list, env.nodes), types: trackerCosts(list), projects: projectCosts(list, env),
       retries: retryRows(list, env.nodes), highlights: highlights(list, env), gates: openGates(all, env, now),
       baseline: { ...reworkBaseline(list, env.nodes), meta: baselineMeta(list, env, now, all) },
@@ -557,8 +560,12 @@
   }
 
   // Texto do "Copiar resumo" (artboard buildText, sem as partes que o app não mede).
-  function copyText(M, scope) {
+  // flags = resumo de GET /api/flags-summary; null (falha ou ainda não carregado) deixa a M4 desconhecida.
+  function copyText(M, scope, flags = null) {
     const L = [`Relatório semanal do Espectro · ${M.range}${M.isAll ? ' · todos os runs' : ''} · ${scope || M.scopeLabel || 'todos os projetos'}`, '', ...M.summary, ''];
+    const five = fiveMetrics(M, flags);
+    L.push('As cinco métricas do acompanhamento (roadmap/ACOMPANHAMENTO.md):');
+    for (const x of five) L.push(`  ${x.id.toUpperCase()} ${x.nome}: ${metricText(x)}; fonte: ${x.fonte}`);
     L.push(`Entregas: ${M.cur.done} runs concluídos, ${M.cur.merged} PRs mergeados, ${M.cur.tickets == null ? 'tickets fechados sem medição' : `${M.cur.tickets} tickets fechados`}.`);
     L.push(`Tokens: ${tok(M.cur.tokens)}; mensagens ao agente: ${M.cur.msgs}.`);
     L.push(`Custo: ${money(M.cur.cost)}; média por run ${money(M.cur.avg)}${!M.isAll && M.prev?.avg != null ? ` contra ${money(M.prev.avg)} na semana anterior` : ''}.`);
@@ -573,11 +580,43 @@
     const T = M.perTicket;
     L.push(`Custo por ticket entregue (${M.range}, n = ${plural(T.rows[0].n, 'ticket', 'tickets')} em ${plural(T.runs, 'run somado', 'runs somados')}): soma todos os runs do ticket e os ciclos de recusa de QA; sem meta definida (D6 em aberto).`);
     for (const x of T.rows) { const c = ticketCostCells(x); L.push(`  ${x.label} (n = ${x.n}): ${c.usd} · ${c.tokens} · ${c.ms}`); }
-    L.push(`Linha para a série semanal (roadmap/ACOMPANHAMENTO.md): ${seriesLine(T)}`);
+    L.push('Linha para a série semanal (roadmap/ACOMPANHAMENTO.md):', seriesRow(five, M.week));
     for (const [dt, dd] of configLines(M)) L.push(`${dt}: ${dd}.`);
     L.push(`PRs por estado: ${PR_ORDER.map(s => `${s || 'desconhecido'} ${M.cur.prCounts[s]}`).join(', ')}.`);
     L.push('', 'Fonte: state.json dos runs (cost_tracking, retries, human_inputs), Bitbucket e Redmine. Números são sinal, não verdade contábil.');
     return L.join('\n');
+  }
+
+  // ---------------------------------------------------------------- cinco métricas (F0.9, PRI-399, AC-03)
+  // As cinco de roadmap/ACOMPANHAMENTO.md, cada uma com valor, n e fonte. Sem medição: conhecida false, valor
+  // "desconhecido" e n null, nunca zero. O valor já vem no texto da célula da série (com o "n = ").
+  // flags = resumo de GET /api/flags-summary (docs/flags.md); null quando o leitor falhou.
+  const UNKNOWN_METRIC = { valor: 'desconhecido', n: null, conhecida: false };
+  function fiveMetrics(M, flags) {
+    const T = M.perTicket, a = T.rows[0];
+    const m1 = { id: 'm1', nome: 'Custo por ticket entregue', fonte: `cost_tracking dos runs (F1.5); ${costSourceText(M.costSource)}`,
+      ...(a.n && (a.usd.median != null || a.tokens.median != null) ? { valor: seriesLine(T), n: a.n, conhecida: true } : UNKNOWN_METRIC) };
+    const B = M.baseline, fp = M.cur.firstPass;
+    const usds = B.rows.map(x => x.usd), knownUsd = usds.filter(u => u.v != null), unk = sum(usds.map(u => u.unknown));
+    const rework = !knownUsd.length ? 'retrabalho desconhecido'
+      : `retrabalho ${imputed(sum(knownUsd.map(u => u.v)))}${unk ? ` +${plural(unk, 'desconhecido', 'desconhecidos')}` : ''} em ${plural(B.runs, 'run', 'runs')} com cost_tracking`;
+    const m2 = { id: 'm2', nome: 'Primeira passada e custo do retrabalho', fonte: 'state.json dos runs concluídos (retries, loop_count); retrabalho: tentativas além da primeira no cost_tracking (F1.4)',
+      ...(fp != null ? { valor: `${Math.round(fp * 100)} % de primeira, sem retry nem loop (n = ${M.cur.firstPassRuns}); ${rework}`, n: M.cur.firstPassRuns, conhecida: true } : UNKNOWN_METRIC) };
+    const m3 = { id: 'm3', nome: 'Runs bloqueadas pelo teto e acima de N× a mediana', fonte: 'não medida, F1.3/F3.4', ...UNKNOWN_METRIC };
+    const okFlags = flags && Number.isFinite(flags.n) && flags.n > 0 && flags.padrao && flags.consumidor;
+    const m4 = { id: 'm4', nome: 'Estoque desligado', fonte: okFlags ? `${flags.fonte || 'docs/flags.md'}, lido em ${flags.hoje}` : 'docs/flags.md (registro de flags indisponível)',
+      ...(okFlags ? { serie: `${flags.itens_desligados} (n = ${plural(flags.n, 'flag', 'flags')})`, valor: `${plural(flags.itens_desligados, 'item desligado', 'itens desligados')}; ${flags.padrao.desligada} ${flags.padrao.desligada === 1 ? 'flag desligada' : 'flags desligadas'} e ${flags.padrao.ligada} ${flags.padrao.ligada === 1 ? 'ligada' : 'ligadas'} por padrão, ${plural(flags.vencidas, 'vencida', 'vencidas')}, ${flags.consumidor.nao_verificado} sem verificação no consumidor (n = ${plural(flags.n, 'flag', 'flags')})`, n: flags.n, conhecida: true } : UNKNOWN_METRIC) };
+    const m5 = { id: 'm5', nome: 'Fluxo: frentes ativas, issues abertas × fechadas, escopo do cycle', fonte: 'Linear, à mão', ...UNKNOWN_METRIC };
+    return [m1, m2, m3, m4, m5];
+  }
+  // Valor de uma métrica com o n (tela e texto copiado): o valor medido já traz "(n = …)"; desconhecida diz que o n também é.
+  const metricText = x => `${x.valor}${/\(n = /.test(x.valor) ? '' : ` (n = ${x.n ?? 'desconhecido'})`}`;
+  // Linha da série semanal do ACOMPANHAMENTO: Semana | Custo por ticket entregue | Primeira passada | Runs bloqueadas pelo
+  // teto | Itens desligados | Frentes ativas | Nota. Métrica desconhecida vira "sem medição"; a Nota fica vazia.
+  // A célula usa a forma curta da métrica (serie) quando há: em Itens desligados, só o número com o n, como a linha de base.
+  function seriesRow(metrics, semana) {
+    const cell = id => { const m = metrics.find(x => x.id === id); return m && m.conhecida ? String(m.serie ?? m.valor).replace(/\|/g, '\\|') : 'sem medição'; };
+    return `| ${[semana, ...['m1', 'm2', 'm3', 'm4', 'm5'].map(cell), ''].join(' | ')} |`;
   }
 
   // ---------------------------------------------------------------- Aprendizado (Learning embutido)
@@ -670,7 +709,7 @@
   }
 
   const pub = { DAY, TZ, money, tok, pct1, modelName, msLabel, weekStart, rangeLabel, isoWeek, windowOf, inWindow, aggregate, delta, series, ticks,
-    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, nodeModels, nodeModelsText, costSource, costSourceText, configSeen, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
+    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, fiveMetrics, metricText, seriesRow, nodeModels, nodeModelsText, costSource, costSourceText, configSeen, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
   if (typeof module !== 'undefined' && module.exports) { module.exports = pub; return; }
 
   // ================================================================ navegador
@@ -681,6 +720,8 @@
     tab: 'summary', mode: 'cost', q: '', period: '30', ltab: 'metrics', copied: '', toast: '',
     capturedAt: null, wasLoading: false, renderedAt: null,
     pat: { data: null, loading: false, error: null },
+    // F0.9 (métrica 4): GET /api/flags-summary. Sem dado (carregando, erro ou 502) a M4 é desconhecida.
+    flags: { data: null, loading: false, error: null },
   };
   const save = () => { try { prefs.weekly = { win: st.win, scope: st.scope }; persist(); } catch { /* prefs indisponível */ } };
   const TABS = [['summary', 'Resumo e entregas'], ['cost', 'Custo'], ['rework', 'Retrabalho e padrões'], ['learn', 'Aprendizado e fonte']];
@@ -805,6 +846,19 @@
       `;
   }
 
+  // F0.9 (AC-03): as cinco métricas do ACOMPANHAMENTO no topo da capa, cada uma com valor, n e fonte.
+  function fiveSection(M) {
+    const F = st.flags;
+    const sub = `roadmap/ACOMPANHAMENTO.md · ${M.range} · sem medição aparece como desconhecido, nunca zero${F.loading ? ' · lendo docs/flags.md…' : ''}`;
+    return `<section class="wr-sec" aria-labelledby="wr-5m-h">
+        ${secHead('wr-5m-h', 'As cinco métricas do acompanhamento', sub)}
+        <div class="wr-box">${fiveMetrics(M, F.data).map(x => `<div class="wr-5m-row">
+            <span class="wr-mono wr-secondary">${esc(x.id.toUpperCase())}</span>
+            <span class="wr-col-2"><span class="wr-strong">${esc(x.nome)}</span><span class="wr-row-sub">Fonte: ${esc(x.fonte)}</span></span>
+            <span class="wr-5m-v${x.conhecida ? '' : ' wr-none'}">${esc(metricText(x))}</span></div>`).join('')}</div>
+      </section>`;
+  }
+
   function panelSummary(M, q) {
     const c = M.cur;
     const hl = M.highlights.filter(h => matches(q, h.ticket, h.title, h.proj, h.pr));
@@ -813,7 +867,8 @@
       ['SUPERSEDED', 'Substituídos', '○', 'queued'], ['', 'Estado desconhecido', '?', 'unknown']];
     const prMax = Math.max(1, ...PRS.map(([s]) => c.prCounts[s]));
     const over24 = M.gates.filter(g => g.mins != null && g.mins >= 1440).length;
-    return `<section class="wr-sec" aria-labelledby="wr-res-h">
+    return `${fiveSection(M)}
+      <section class="wr-sec wr-sec-rule" aria-labelledby="wr-res-h">
         <h2 id="wr-res-h" class="wr-h2">Resumo da semana</h2>
         <div class="wr-summary">${M.summary.map(t => `<p>${esc(t)}</p>`).join('')}</div>
       </section>
@@ -1027,6 +1082,8 @@
     const b = V?.bulkState?.() || {};
     if (V && runs.size && !b.running && !b.loadedOnce) setTimeout(() => V.loadAll(false), 0);
     if (st.tab === 'learn' && st.ltab === 'patterns' && !st.pat.data && !st.pat.loading && !st.pat.error) loadPatterns();
+    // Registro de flags: lê ao abrir o relatório e de novo a cada ↻ (o ↻ dispara Views.loadAll, cujo lote começa aqui).
+    if (!st.flags.loading && ((!st.flags.data && !st.flags.error) || (b.running && !st.wasLoading))) loadFlags();
     // Captura = fim da última consulta a Redmine/Bitbucket (ou a primeira montagem, sem consulta).
     if (b.running) st.wasLoading = true;
     else if (st.wasLoading || !st.capturedAt) { st.capturedAt = Date.now(); st.wasLoading = false; }
@@ -1062,6 +1119,12 @@
     st.pat.loading = false;
     window.Views?.refresh();
   }
+  async function loadFlags() {
+    st.flags.loading = true;
+    try { st.flags.data = await api('/api/flags-summary'); st.flags.error = null; } catch (e) { st.flags.data = null; st.flags.error = e.message; }
+    st.flags.loading = false;
+    window.Views?.refresh();
+  }
   const refresh = () => window.Views?.refresh();
   // Filtro: re-renderiza só o corpo e a barra de status, para o campo não perder o foco nem o cursor.
   function rerenderBody() {
@@ -1076,7 +1139,7 @@
 
   async function copy() {
     const M = lastModel || model();
-    const text = copyText(M, M.scopeLabel);
+    const text = copyText(M, M.scopeLabel, st.flags.data);
     let ok = false;
     try { await navigator.clipboard.writeText(text); ok = true; } catch {
       try {
