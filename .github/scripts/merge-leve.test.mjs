@@ -45,8 +45,9 @@ test('config: mergeLeve traz a lista da SPEC e os checks obrigatórios', () => {
     for (const p of ['ROADMAP.md', 'README.md', 'roadmap/**/*.md', 'docs/**/*.md', 'tasks/**/*.md', '**/*.test.js', '**/*.test.mjs']) {
         assert.ok(cfg.allowedPaths.includes(p), p);
     }
-    for (const p of ['.github/**', '.claude/**', 'CLAUDE.md', 'AGENTS.md', 'docs/capacidades/**', 'docs/flags.md',
-        'docs/handoff-contract.md', 'docs/migrations/**', 'templates/**', '**/fixtures/**', '**/package*.json']) {
+    for (const p of ['.github/**', '.claude/**', '**/CLAUDE.md', '**/CLAUDE.local.md', '**/AGENTS.md', '**/.*/**',
+        'docs/capacidades/**', 'docs/flags.md', 'docs/handoff-contract.md', 'docs/migrations/**', 'templates/**',
+        '**/fixtures/**', '**/package*.json']) {
         assert.ok(cfg.deniedPaths.includes(p), p);
     }
 });
@@ -82,6 +83,21 @@ test('docs/flags.md e .github/processo.json negados, mesmo casando a permissão'
 test('CLAUDE.md e AGENTS.md na raiz negados', () => {
     assert.equal(pathVerdict([file('CLAUDE.md')], cfg).ok, false);
     assert.equal(pathVerdict([file('AGENTS.md')], cfg).ok, false);
+});
+
+// O Claude Code carrega CLAUDE.md, AGENTS.md e diretórios .claude/ de qualquer
+// subpasta; um diretório de ponto em qualquer nível também é negado.
+for (const f of ['docs/CLAUDE.md', 'tasks/pri-1/CLAUDE.md', 'roadmap/CLAUDE.local.md', 'docs/AGENTS.md',
+    'docs/.claude/skills/x/SKILL.md', 'tasks/.github/x.md', 'CLAUDE.local.md']) {
+    test(`${f} negado em qualquer profundidade`, () => {
+        const v = pathVerdict([file(f)], cfg);
+        assert.equal(v.ok, false, f);
+        assert.match(v.motivos.join('\n'), /caminho negado/, f);
+    });
+}
+
+test('docs/x.md continua elegível com as negações novas', () => {
+    assert.deepEqual(pathVerdict([file('docs/x.md'), file('docs/a.b/c.md'), file('tasks/pri-1/notas.claude.md')], cfg), { ok: true, motivos: [] });
 });
 
 test('teste removido → fora (apagar teste fica com o Richard)', () => {

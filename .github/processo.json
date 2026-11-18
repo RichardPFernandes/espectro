@@ -44,8 +44,10 @@
     "deniedPaths": [
       ".github/**",
       ".claude/**",
-      "CLAUDE.md",
-      "AGENTS.md",
+      "**/.*/**",
+      "**/CLAUDE.md",
+      "**/CLAUDE.local.md",
+      "**/AGENTS.md",
       "docs/capacidades/**",
       "docs/flags.md",
       "docs/handoff-contract.md",
