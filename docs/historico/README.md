@@ -12,4 +12,5 @@ quando a issue foi para Done ou Canceled. Não há nada aqui a seguir: é regist
 - `pri-396/` guarda a SPEC, o plano e as tarefas da C1. A `PROPOSTA.md` das fatias C2 a C4
   segue em `tasks/spec-viva-do-espectro/`, porque essas fatias estão em curso.
 - Regra: pasta de issue em curso fica em `tasks/`. Ao fechar a issue, vai para cá. Se o
-  código ou um teste cita um arquivo por caminho, ele fica onde está.
+  código ou um teste cita um arquivo por caminho, ele fica onde está. Uma SPEC que ainda é o
+  contrato de uma issue aberta também fica (a `SPEC.md` da PRI-287, até a PRI-312 fechar).

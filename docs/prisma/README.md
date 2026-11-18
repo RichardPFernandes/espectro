@@ -4,7 +4,9 @@
 > registro do que valia naquela revisão, não instrução atual. Para entender o sistema hoje,
 > comece pelo [mapa de capacidades](../capacidades/README.md); para o fluxo de
 > desenvolvimento, pelo [`CLAUDE.md`](../../CLAUDE.md) e por [`docs/fluxo-dev.md`](../fluxo-dev.md).
-> Os contratos congelados citados aqui continuam valendo até uma decisão governada em contrário.
+> O texto abaixo é a captura da extração. O que continua governando são os contratos, owners,
+> bindings e gates da arquitetura congelada (item 2 do [`AGENTS.md`](../../AGENTS.md)), até
+> uma decisão governada em contrário.
 
 Prisma é a plataforma de Agentic Software Engineering extraída para o repositório privado RichardPFernandes/prisma. O app-back é o primeiro consumidor/dogfood; configuração, dados, credenciais e estado autoritativo permanecem nele.
 

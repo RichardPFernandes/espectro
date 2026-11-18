@@ -250,7 +250,7 @@ Preparação, diagnóstico, cutover e retorno: [docs/consumer-operations.md](doc
 ## Governança e contribuição
 
 Toda mudança no Prisma segue o fluxo `/pri-start` → `/pri-build` → `/pri-check` →
-`/pri-pr` (Médio e Alto passam antes por `/pri-spec` e `/pri-plan`), com revisão
+`/pri-pr` (Médio e Alto passam antes por `/pri-spec`, que no Médio só se precisar, e `/pri-plan`), com revisão
 independente e evidência atribuível à versão. As regras estão no [CLAUDE.md](CLAUDE.md) e
 o diagrama em [`docs/fluxo-dev.md`](docs/fluxo-dev.md). (O ciclo plan → implement → review
 → test → verify → commit da seção "Como funciona" é o grafo do consumidor, outra coisa.)
