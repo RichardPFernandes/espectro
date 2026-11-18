@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { evaluate, loadConfig, globToRegExp, evidenceLines } from './processo-lib.mjs';
+import { evaluate, loadConfig, globToRegExp, evidenceLines, loadCapabilityMap } from './processo-lib.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, 'processo-check.mjs');
@@ -137,4 +137,78 @@ test('alto sem Rollback, Readback e SPEC citada → FAIL; completo → OK', () =
     assert.equal(run({ labels: ['processo:alto'], body }).ok, true);
     assert.equal(run({ labels: ['processo:alto'], body: body.replace('- reverter o bump para a0', '') }).ok, false);
     assert.equal(run({ labels: ['processo:alto'], body: body.replace(/tasks\/f1-2-teto\/SPEC\.md/g, 'tasks/<pasta>/SPEC.md') }).ok, false);
+});
+
+// Capacidades sintéticas (nada do consumidor); ownersOf/isCovered são os reais do repo.
+const real = loadCapabilityMap();
+const cap = (id, spec, modulos) => ({ id, spec, modulos });
+const capabilityMap = {
+    capabilities: [cap('alfa', 'viva', ['scripts/alfa-*']), cap('beta', 'sem-spec', ['scripts/beta.js'])],
+    ownersOf: real.ownersOf,
+    isCovered: real.isCovered,
+};
+const warn = (files) => run({ labels: ['processo:medio'], files, capabilityMap });
+
+test('aviso de capacidade: código com spec viva sem tocar a spec → 1 aviso, sem reprovar', () => {
+    const r = warn([file('scripts/alfa-x.js'), file('scripts/alfa-y.js')]);
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.warnings.length, 1);
+    assert.match(r.warnings[0], /Capacidade "alfa".*scripts\/alfa-x\.js, scripts\/alfa-y\.js.*docs\/capacidades\/alfa\.md.*Aviso, não reprova/);
+    assert.match(warn(['a', 'b', 'c', 'd'].map((n) => file(`scripts/alfa-${n}.js`))).warnings[0], /\+1\)/);
+});
+
+test('aviso de capacidade: tocar a spec no mesmo PR (inclusive renomeada) tira o aviso', () => {
+    assert.deepEqual(warn([file('scripts/alfa-x.js'), file('docs/capacidades/alfa.md')]).warnings, []);
+    const renamed = { ...file('docs/capacidades/outra.md', 1, 'renamed'), previous_filename: 'docs/capacidades/alfa.md' };
+    assert.deepEqual(warn([file('scripts/alfa-x.js'), renamed]).warnings, []);
+});
+
+test('aviso de capacidade: sem-spec não avisa, mas entra na linha de info', () => {
+    const r = warn([file('scripts/beta.js'), file('scripts/alfa-x.js')]);
+    assert.equal(r.warnings.length, 1);
+    assert.match(r.info.join('\n'), /capacidades com código alterado: alfa \(viva\), beta \(sem-spec\)/);
+    assert.deepEqual(warn([file('scripts/beta.js')]).warnings, []);
+});
+
+test('aviso de capacidade: só teste, fixture ou docs alterados não avisa', () => {
+    const r = warn([file('scripts/alfa-x.test.js'), file('scripts/fixtures/alfa-y.js'), file('README.md')]);
+    assert.deepEqual(r.warnings, []);
+    assert.doesNotMatch(r.info.join('\n'), /capacidades com código/);
+});
+
+test('aviso de capacidade: código removido ou renomeado de dentro da capacidade conta', () => {
+    assert.equal(warn([file('scripts/alfa-x.js', 0, 'removed', 9)]).warnings.length, 1);
+    const moved = { ...file('scripts/outro.js', 1, 'renamed'), previous_filename: 'scripts/alfa-x.js' };
+    assert.equal(warn([moved]).warnings.length, 1);
+});
+
+test('aviso de capacidade: mapa indisponível não muda ok e fica em info', () => {
+    const r = run({ labels: ['processo:medio'], files: [file('scripts/alfa-x.js')], capabilityMap: { unavailable: 'sem docs/capacidades' } });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.warnings, []);
+    assert.match(r.info.join('\n'), /aviso de capacidade indisponível: sem docs\/capacidades/);
+    assert.equal(run({ labels: [] }).ok, false);
+    assert.deepEqual(run({ labels: ['processo:medio'] }).warnings, []);
+    assert.match(loadCapabilityMap({ dir: '/nao/existe' }).unavailable, /\S/);
+});
+
+test('CLI com --capabilities: exit 0 com AVISO (1 e 2 cabeçalhos sintéticos)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'processo-cap-'));
+    const header = (id, spec) => `---\nid: ${id}\ntipo: capacidade\nresumo: Sintética.\nsituacao: ligada\nspec: ${spec}\nflags: []\nmodulos: [scripts/${id}-*]\n---\n`;
+    const files = path.join(dir, 'files.json');
+    fs.writeFileSync(files, JSON.stringify([file('scripts/alfa-x.js'), file('scripts/gama-x.js')]));
+    const ev = path.join(dir, 'ev.json');
+    fs.writeFileSync(ev, JSON.stringify({ pull_request: { number: 1, body: BODY_OK, labels: [{ name: 'processo:medio' }] } }));
+    const env = { ...process.env, GITHUB_ACTIONS: '' };
+    const caps = path.join(dir, 'caps');
+    fs.mkdirSync(caps);
+    fs.writeFileSync(path.join(caps, 'alfa.md'), header('alfa', 'viva'));
+    const one = spawnSync(process.execPath, [CLI, '--event', ev, '--files', files, '--capabilities', caps], { encoding: 'utf8', env });
+    assert.equal(one.status, 0, one.stdout + one.stderr);
+    assert.match(one.stdout, /processo-check: PASS[\s\S]*- AVISO: Capacidade "alfa"/);
+    fs.writeFileSync(path.join(caps, 'gama.md'), header('gama', 'rascunho'));
+    const two = spawnSync(process.execPath, [CLI, '--event', ev, '--files', files, '--capabilities', caps], { encoding: 'utf8', env });
+    assert.equal(two.status, 0, two.stdout + two.stderr);
+    assert.equal(two.stdout.match(/- AVISO:/g).length, 2);
 });
