@@ -21,7 +21,7 @@ Repositórios de teste: temporários, com origem `--bare` local, `GIT_CONFIG_GLO
 
 ## PR B — F1.2 (Alto, esta branch)
 
-- [ ] **T1: conferência da árvore (AC-02, base de AC-01)** · S
+- [x] **T1: conferência da árvore (AC-02, base de AC-01)** · S
   - Fazer: `scripts/lib/return-point.js` com `checkTree({ root, git })` → `{ ok, reasons: ['dirty'|'off_main'|'no_origin_main'|'not_git'], paths: [até 10], head }`. Sujeira = `git status --porcelain` não vazio (ignorado não conta). Na `main` = `git merge-base --is-ancestor HEAD refs/remotes/origin/main`. Sem `fetch`. `guardEnabled(env)` lê `PRISMA_CHECKOUT_GUARD` (`1`, `true` ou `sim` liga).
   - Teste que falha antes: `scripts/lib/return-point.test.js` com árvore limpa na main (ok), arquivo modificado, arquivo não rastreado, arquivo ignorado (ok), branch fora da main, HEAD destacado numa revisão da main (ok), diretório sem git, mais de 10 caminhos sujos (lista corta em 10).
   - Arquivos: `scripts/lib/return-point.js`, `scripts/lib/return-point.test.js`.
