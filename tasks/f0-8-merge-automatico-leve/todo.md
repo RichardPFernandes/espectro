@@ -4,7 +4,7 @@
 
 Contexto comum para cada subagente: leia `tasks/f0-8-merge-automatico-leve/SPEC.md` (seções Decisões e Critérios de aceite) e `plan.md`. Os testes de `.github/` rodam com `node --test .github/scripts/*.test.mjs`, a partir da raiz; o `npm run test:changed` não cobre essa pasta. Não grave `MERGE_LEVE`, não mude configuração do repo, ruleset nem workflow existente fora da tarefa.
 
-- [ ] **T1: função de elegibilidade e lista `mergeLeve` (AC-01, AC-02, AC-05)** · M
+- [x] **T1: função de elegibilidade e lista `mergeLeve` (AC-01, AC-02, AC-05)** · M
   - Fazer: acrescentar a chave `mergeLeve` em `.github/processo.json`, com a lista exata do item (b) da SPEC (`allowedPaths`, `deniedPaths`; remoção e renomeação só para `.md`) e `requiredChecks: ["Node 22", "Node 24", "processo-check"]`. Criar `.github/scripts/merge-leve-lib.mjs` com:
     - `pathVerdict(files, cfg)`: devolve `{ ok, motivos[] }`; a negação vence; `removed` e `renamed` só valem para `.md` (no renomeado, o nome antigo também precisa estar na lista).
     - `evaluatePr({ pr, files, checks, config, repo })`: devolve `{ merge: boolean, motivos[] }`. Exige exatamente um rótulo de nível, e ele `processo:leve`; `draft === false`; `head.repo.full_name === repo` (sem fork); `base.ref === 'main'`; `state === 'open'`; caminhos ok; os `requiredChecks` presentes; e todo check-run e status do `head.sha` concluído com `success`, `neutral` ou `skipped`.
