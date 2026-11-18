@@ -3587,7 +3587,7 @@
           ]
         },
         "prompt_hashes": {
-          "description": "PRI-381 (F1.5): sha256 do template .claude/commands/<nó>.md de cada nó do despacho, no início do run; UNKNOWN = template ausente. Só com WATCHER_CLI_RESULT_JSON ligada.",
+          "description": "PRI-381 (F1.5): sha256 do template .claude/commands/<template>.md de cada comando do despacho (template = primeiro token do comando sem a /, ex. implement-step na run decomposta; sem comandos, o nó), no início do run; UNKNOWN = template ausente. Só com WATCHER_CLI_RESULT_JSON ligada.",
           "type": "object",
           "additionalProperties": {
             "type": "string",

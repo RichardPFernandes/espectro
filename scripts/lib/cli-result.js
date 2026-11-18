@@ -48,17 +48,28 @@ function cliVersionFromTranscript(contents) {
     return null;
 }
 
-function promptHashes(root, nodes) {
+// Templates que a run lê: o primeiro token de cada comando do despacho, sem a `/` (na run
+// decomposta o nó é implement, mas o comando é /implement-step ou /implement-integrate).
+// Sem comandos, os nós.
+function promptTemplates(commands, nodes) {
+    const names = (Array.isArray(commands) ? commands : [])
+        .map(c => String(c).trim().split(/\s+/)[0].replace(/^\//, '')).filter(Boolean);
+    return names.length ? names : nodes;
+}
+
+// Nome fora do formato de template (ex.: com `/` ou `..`) vira UNKNOWN sem ler arquivo.
+function promptHashes(root, names) {
     const out = {};
-    for (const node of nodes) {
-        const file = path.join(root, '.claude', 'commands', `${node === 'fetch_ticket' ? 'fetch-ticket' : node}.md`);
+    for (const name of names) {
+        const file = path.join(root, '.claude', 'commands', `${name === 'fetch_ticket' ? 'fetch-ticket' : name}.md`);
         try {
-            out[node] = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+            if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(name)) throw new Error('nome de template inválido');
+            out[name] = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
         } catch {
-            out[node] = 'UNKNOWN';
+            out[name] = 'UNKNOWN';
         }
     }
     return out;
 }
 
-module.exports = { cliResultJsonEnabled, parseCliResult, cliVersionFromTranscript, promptHashes };
+module.exports = { cliResultJsonEnabled, parseCliResult, cliVersionFromTranscript, promptHashes, promptTemplates };

@@ -3819,7 +3819,7 @@ function writeCostLedger(ticketId, ledger) {
     fs.writeFileSync(costLedgerPath(ticketId), JSON.stringify(ledger, null, 2));
 }
 
-function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null, signalContext = null, routing = null, phaseEffortLevel = null }) {
+function startCostRun(ticketId, { agent, nodes, commands = null, sessionId, admissionDecision = null, signalContext = null, routing = null, phaseEffortLevel = null }) {
     if (DRY_RUN) return null;
     try {
         const selected = agent === 'claude' ? resolveClaudeAccount() : null;
@@ -3832,7 +3832,7 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
             ...prospectiveSignalsForRun(agent, nodes, signalContext),
             ...(routing?.ok ? { routing_decision: routing.decision } : {}),
             ...(phaseEffortLevel ? { phase_effort: { level: phaseEffortLevel, effort_applied: true } } : {}),
-            ...cliResultRunFields(ticketId, agent, nodes) };
+            ...cliResultRunFields(ticketId, agent, nodes, commands) };
         const ledger = readCostLedger(ticketId);
         ledger.pending.push(run);
         writeCostLedger(ticketId, ledger);
@@ -3846,11 +3846,14 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
 // PRI-381 (F1.5, AC-04/AC-05): só com WATCHER_CLI_RESULT_JSON ligada e despacho Claude (o
 // único com `--output-format json`). log_offset = tamanho do log do ticket antes do spawn:
 // sem --follow, o fechamento lê o JSON da CLI só dali em diante. Desligada: nenhum campo.
-function cliResultRunFields(ticketId, agent, nodes) {
+// prompt_hashes: dos templates dos comandos do despacho (run decomposta lê /implement-step ou
+// /implement-integrate, não implement.md); sem comandos, dos nós.
+function cliResultRunFields(ticketId, agent, nodes, commands) {
     if (agent !== 'claude' || !cliResult.cliResultJsonEnabled()) return {};
     let logOffset = 0;
     try { logOffset = fs.statSync(logPathFor(ticketId)).size; } catch { /* log ainda não existe */ }
-    return { cli_result_json: true, log_offset: logOffset, prompt_hashes: cliResult.promptHashes(PRISMA_ROOT, nodes) };
+    return { cli_result_json: true, log_offset: logOffset,
+        prompt_hashes: cliResult.promptHashes(PRISMA_ROOT, cliResult.promptTemplates(commands, nodes)) };
 }
 
 // Texto onde procurar o JSON da CLI: a saída do processo (--follow) ou o log do ticket a
@@ -4447,7 +4450,7 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
     const costRun = startCostRun(ticket.id, {
-        agent: 'claude', nodes, sessionId, admissionDecision, routing, phaseEffortLevel: phaseEffortResolved.level,
+        agent: 'claude', nodes, commands, sessionId, admissionDecision, routing, phaseEffortLevel: phaseEffortResolved.level,
         signalContext: { ticket, worktreePath, isRecusaQA, base: signalBaseBranch(ticket) },
     });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);

@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { cliResultJsonEnabled, parseCliResult, cliVersionFromTranscript, promptHashes } = require('./cli-result');
+const { cliResultJsonEnabled, parseCliResult, cliVersionFromTranscript, promptHashes, promptTemplates } = require('./cli-result');
 
 const resultLine = (over = {}) => JSON.stringify({
     type: 'result', subtype: 'success', session_id: 'sess-a', num_turns: 7, total_cost_usd: 0.4321,
@@ -83,6 +83,31 @@ test('promptHashes: sha256 do template de cada nó, fetch_ticket vira fetch-tick
             plan: sha('# plan sintético\n'), fetch_ticket: sha('# fetch sintético\n'), implement: 'UNKNOWN',
         });
         assert.deepStrictEqual(promptHashes(root, []), {});
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+// Run decomposta: o nó é implement, mas o comando lido é /implement-step ou /implement-integrate.
+test('promptTemplates: template = primeiro token do comando sem a barra; sem comandos, os nós', () => {
+    assert.deepStrictEqual(promptTemplates(['/implement-step 93803-x 0-1'], ['implement']), ['implement-step']);
+    assert.deepStrictEqual(promptTemplates(['/implement-integrate 93803-x'], ['implement']), ['implement-integrate']);
+    assert.deepStrictEqual(promptTemplates(['/fetch-ticket 1', '/plan (use o task-id que acabou de gerar)'], ['fetch_ticket', 'plan']),
+        ['fetch-ticket', 'plan']);
+    assert.deepStrictEqual(promptTemplates([], ['plan']), ['plan']);
+    assert.deepStrictEqual(promptTemplates(undefined, ['fetch_ticket', 'plan']), ['fetch_ticket', 'plan']);
+});
+
+test('promptHashes: template do comando decomposto; ausente ou nome fora do formato vira UNKNOWN sem ler arquivo', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-result-'));
+    try {
+        fs.mkdirSync(path.join(root, '.claude', 'commands'), { recursive: true });
+        fs.writeFileSync(path.join(root, '.claude', 'commands', 'implement-step.md'), '# step sintético\n');
+        fs.writeFileSync(path.join(root, 'fora.md'), '# fora do diretório de comandos\n');
+        const sha = s => crypto.createHash('sha256').update(s).digest('hex');
+        assert.deepStrictEqual(promptHashes(root, ['implement-step', 'implement-integrate', '../../fora']), {
+            'implement-step': sha('# step sintético\n'), 'implement-integrate': 'UNKNOWN', '../../fora': 'UNKNOWN',
+        });
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }

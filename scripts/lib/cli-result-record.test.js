@@ -137,6 +137,15 @@ test('flag ligada, sem --follow: JSON do log a partir do offset, versão do tran
     validateSchema(state);
 });
 
+test('flag ligada, run decomposta: hash do template /implement-step que a run leu, não do implement.md', () => {
+    const id = 93805;
+    setup(id);
+    const run = withFlag('on', () => watcher.startCostRun(id, { agent: 'claude', nodes: ['implement'],
+        commands: [`/implement-step ${id}-x 0-1`], sessionId: 'on-step' }));
+    assert.deepStrictEqual(run.prompt_hashes, { 'implement-step': sha('implement-step.md') });
+    assert.deepStrictEqual(watcher.readCostLedger(id).pending[0].prompt_hashes, { 'implement-step': sha('implement-step.md') });
+});
+
 test('flag ligada, com --follow: JSON vem da saída do processo', () => {
     const id = 93803;
     const dir = setup(id);
