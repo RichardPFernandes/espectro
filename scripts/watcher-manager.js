@@ -201,10 +201,8 @@ function createWatcherManager(options = {}) {
     const PRIVILEGED_ENV_RE = /^PRISMA_(DB_|APPROVERS|PSQL)/;
     // Árvore recusada: não inicia o tick e para o laço (sem timer novo) até um start manual.
     function guardRefused() {
-        const returnPoint = require('./lib/return-point');
-        if (!returnPoint.guardEnabled({ ...process.env, ...options.env })) return false;
-        const tree = returnPoint.checkTree({ root: guardRoot, ...(guardGit ? { git: guardGit } : {}) });
-        if (tree.ok) return false;
+        const tree = checkoutGuard({ root: guardRoot, env: { ...process.env, ...options.env }, git: guardGit });
+        if (!tree) return false;
         state = 'stopped';
         error = 'checkout_guard';
         guard = { reasons: tree.reasons, paths: tree.paths };
@@ -418,6 +416,16 @@ function instance() {
     return singleton;
 }
 
+// Guard do checkout (F1.2, PRI-379): com PRISMA_CHECKOUT_GUARD ligada, confere a árvore em
+// root. null = flag desligada (sem rodar git) ou árvore ok; senão { reasons, paths }.
+// Exportado para a subida do dashboard, que não importa scripts/lib/ (PRI-104).
+function checkoutGuard({ root, env = process.env, git } = {}) {
+    const returnPoint = require('./lib/return-point');
+    if (!returnPoint.guardEnabled(env)) return null;
+    const tree = returnPoint.checkTree({ root, ...(git ? { git } : {}) });
+    return tree.ok ? null : { reasons: tree.reasons, paths: tree.paths };
+}
+
 module.exports = {
     start: opts => instance().start(opts),
     stop: opts => instance().stop(opts),
@@ -426,6 +434,7 @@ module.exports = {
     getLogBuffer: () => instance().getLogBuffer(),
     onLine: fn => instance().onLine(fn),
     createWatcherManager,
+    checkoutGuard,
     createRedactor,
     parseEnvFile,
     levelOf,

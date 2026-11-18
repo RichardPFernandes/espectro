@@ -287,3 +287,31 @@ test('guard: flag ligada e árvore ok faz o tick normal; sujeira depois para no 
     assert.strictEqual(m.status().ticks, ticks, 'laço parado, sem timer novo');
     await m.stop();
 });
+
+// checkoutGuard: a conferência de subida que o dashboard usa (sem importar scripts/lib/).
+const { checkoutGuard } = require('./watcher-manager');
+
+test('checkoutGuard: flag ausente devolve null sem chamar git', () => {
+    const root = guardRepo();
+    fs.writeFileSync(path.join(root, 'solto.txt'), 'sujo\n');
+    const git = countingGit();
+    assert.strictEqual(checkoutGuard({ root, env: {}, git }), null);
+    assert.strictEqual(git.calls, 0);
+});
+
+test('checkoutGuard: flag ligada e árvore suja devolve motivos e caminhos', () => {
+    const root = guardRepo();
+    fs.writeFileSync(path.join(root, 'solto.txt'), 'sujo\n');
+    const git = countingGit();
+    const r = checkoutGuard({ root, env: { PRISMA_CHECKOUT_GUARD: '1' }, git });
+    assert.ok(r.reasons.includes('dirty'));
+    assert.deepStrictEqual(r.paths, ['solto.txt']);
+    assert.ok(git.calls > 0);
+});
+
+test('checkoutGuard: flag ligada e árvore ok devolve null', () => {
+    const root = guardRepo();
+    const git = countingGit();
+    assert.strictEqual(checkoutGuard({ root, env: { PRISMA_CHECKOUT_GUARD: 'sim' }, git }), null);
+    assert.ok(git.calls > 0);
+});
