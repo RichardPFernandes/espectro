@@ -72,7 +72,8 @@ jobs:
           path: ${{ runner.temp }}/pri-213-node-${{ matrix.node }}/*.tap
           if-no-files-found: error
 
-  # Checagem estática: tipos dos dois pacotes e ESLint de scripts/src e dashboard/src.
+  # Checagem estática: tipos dos dois pacotes, ESLint de scripts/src e dashboard/src e
+  # ESLint só de erros do JavaScript de produção (com base de violações que só encolhe).
   # Um comando por passo: o que falha derruba o job e aparece pelo nome.
   static:
     name: Static checks
@@ -99,3 +100,5 @@ jobs:
         run: npm --prefix dashboard run check:js
       - name: Lint scripts/src and dashboard/src
         run: npm --prefix scripts run lint:src
+      - name: Lint de erros do JavaScript de produção
+        run: npm --prefix scripts run lint:prod
