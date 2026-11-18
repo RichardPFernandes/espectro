@@ -22,7 +22,7 @@ Testes: `npm run test:changed -- origin/main` na raiz, com Node 22 ou mais.
   de que `looksUnavailable`, `looksLikeSessionLimit` e `operationalCause` detectam o mesmo
   texto quando ele vem dentro do JSON da CLI.
 
-- [ ] **T3. Gravação no run.** AC-04, AC-05.
+- [x] **T3. Gravação no run.** AC-04, AC-05.
   - `startCostRun` grava `cli_result_json`, `log_offset` e `prompt_hashes`, só com a flag
     ligada.
   - `collectRunMetrics` lê o JSON (de `result.output` com `--follow`, ou do log a partir do
