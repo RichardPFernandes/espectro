@@ -27,7 +27,7 @@ Repositórios de teste: temporários, com origem `--bare` local, `GIT_CONFIG_GLO
   - Arquivos: `scripts/lib/return-point.js`, `scripts/lib/return-point.test.js`.
   - Depende de: nada.
 
-- [ ] **T2: marca de último verde e log (AC-03)** · S
+- [x] **T2: marca de último verde e log (AC-03)** · S
   - Fazer: no mesmo módulo, `lastGreen({ root })` (tag `verde/*` mais recente), `mark({ root, health, now })`: roda `health()`; se `ok`, cria a tag anotada `verde/AAAAMMDD-HHMMSS` (UTC) no HEAD com o JSON do resultado na mensagem; sempre acrescenta uma linha em `<root>/logs/return-point.jsonl` com `{at, head, tag|null, ok, items}`. Tag já existente com o mesmo nome é erro; nunca `-f`.
   - Teste que falha antes: checagem que passa cria a tag e uma linha no log; que reprova não cria tag, grava a linha e devolve `ok: false`; duas marcas seguidas fazem `lastGreen` devolver a segunda; colisão de nome não sobrescreve; o log não tem caminho absoluto.
   - Arquivos: `scripts/lib/return-point.js`, `scripts/lib/return-point.test.js`.
