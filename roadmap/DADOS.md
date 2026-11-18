@@ -34,9 +34,9 @@
 | Despacho repetido | custo além da primeira tentativa paga de cada nó (n = 17) | 66 % (teto do retrabalho; inclui retomada legítima) |
 | Retry declarado | custo das tentativas com causa "retry" (n = 17) | cerca de 12 % |
 | Recusa de QA | custo mediano com recusa (n = 8) × sem (n = 11) | 35,0 × 7,4 USD |
-| Falha de despacho | erros de nó · com código de saída 1 · em menos de 30 s | 361 · 354 · 340 |
+| Falha de despacho | erros de nó · com código de saída 1 · em menos de 30 s | 361 · 354 · 340 (refeito em 18/11: 786 com código 1; ver [F1.8](#falhas-de-despacho-em-rajada-causa-f18)) |
 | Falha de despacho | maior sequência sem um nó concluir | 148 |
-| Falha de despacho | erros por início de nó: semanas 41–43 × 44–46 | 74 % × 19 % |
+| Falha de despacho | erros por início de nó: semanas 41–43 × 44–46 | 74 % × 19 % (refeito em 18/11: 79 % × 52 %) |
 | Pré-build | mediana · passou (n = 14) | 18 s · 13 de 14 |
 | Volume | tickets iniciados por semana, últimas 6 semanas | 1 a 4 |
 
@@ -83,16 +83,25 @@ da conta: "session" 611, "5 horas" 161, "semanal" 7. As 7 restantes ficam sem ca
 (desconhecido). O agente morre em cerca de 5 s (mediana) e não gasta: as 353 tentativas
 registradas no custo com menos de 10 s somam 0,00 USD.
 
-**Por que vira rajada.** Quando a saída traz o limite, o watcher só registra o aviso e deixa
-o próximo tick tentar de novo (`dispatchTicket`, bloco `looksUnavailable`). Não há teto nem
-espera: o mesmo nó é redespachado a cada 79 s (mediana de 738 intervalos; tick de 60 s mais
-o agente falhando) até a janela abrir. As três maiores rajadas (148, 103 e 95 erros em 2 a
-3,5 h, todas no nó `test`) terminam no minuto do reset que a própria mensagem informa (−1,
-−1 e 0 min). Foram 27 rajadas de 3 ou mais erros (erros separados por menos de 15 min); as
-outras 23 param antes do reset, e o que as interrompeu não está nos arquivos lidos
-(desconhecido). Três runs concentram 68 % dos erros
-(541 de 786). Dois runs diferentes falharam nos mesmos minutos mais de uma vez: a causa é da
-conta, não do run.
+**Por que vira rajada.** Quase todo despacho é destacado: no log, 1.483 de 1.509 saídas
+finalizadas são `code=detached` e só 14 trazem `code=1` (modo `--follow`). No modo destacado
+o watcher não lê a saída: o release do lease só grava o `node_error` com o código
+(`recordNodeExit`, `node-lease.js`), e o próximo tick redespacha o nó. A leitura do texto
+(`looksLikeSessionLimit` e `looksUnavailable`, `readmine-watcher.js:5384-5401`) roda só em
+`--follow`; ali "session limit" pararia o run até retomada manual e os demais sinais só
+avisam e deixam o próximo tick tentar de novo. As assinaturas cobrem a mensagem "session" e
+não cobrem "5 horas" nem "semanal". No destacado, `operationalCause` só alimenta o DOM-06
+(`node-lease.js:420`, flag reservada). Não há teto nem espera: os eventos mostram um novo
+`node_start` a cada 79 s (mediana de 738 intervalos; tick de 60 s mais o agente falhando)
+até a janela abrir. Não conferi o modo de cada run individual; o que vale é a proporção do
+log.
+
+As três maiores rajadas (148, 103 e 95 erros em 2 a 3,5 h, todas no nó `test`) terminam no
+minuto do reset que a própria mensagem informa (−1, −1 e 0 min). Foram 27 rajadas de 3 ou
+mais erros (erros separados por menos de 15 min): 4 terminam no reset (as três maiores e
+uma de 14) e 23 param antes dele; o que as interrompeu não está nos arquivos lidos
+(desconhecido). Três runs concentram 69 % dos erros (541 de 786). Dois runs diferentes
+falharam nos mesmos minutos mais de uma vez: a causa é da conta, não do run.
 
 | Semana ISO | Inícios de nó | Erros com código 1 | Com mensagem de limite |
 | -- | -- | -- | -- |
@@ -127,10 +136,12 @@ mesmo run). A causa e a forma da rajada não mudam.
   teto da F1.3, cada run pararia em N e esperaria uma retomada manual por um problema que se
   resolve em horas. Os runs em paralelo também continuariam gastando N cada um, pois o teto é
   por run e a causa é da conta.
-- O sinal já existe: `operationalCause` devolve `PROVIDER_UNAVAILABLE` e o DOM-06 já isenta
-  essa causa do teto (`EXEMPT_CAUSES` em `dom06-attempt.js`); falta o despacho comum fazer o
-  mesmo.
-- Recomendação: não abrir fatia nova. Acrescentar à F1.3 um critério: saída com limite de uso
-  não conta no teto e segura o despacho de toda a conta até o horário de reset informado na
-  mensagem (ou um intervalo fixo, se faltar). Mesma região de código e mesma flag da F1.3
+- Parte do sinal existe: `operationalCause` devolve `PROVIDER_UNAVAILABLE` e o DOM-06 já
+  isenta essa causa do teto (`EXEMPT_CAUSES` em `dom06-attempt.js`). Mas só roda no release
+  destacado com papel de subtarefa (flag reservada), e as assinaturas não pegam "5 horas"
+  nem "semanal". O despacho comum hoje não lê a saída.
+- Recomendação: não abrir fatia nova. Acrescentar à F1.3 um critério: o release lê a cauda
+  do log (como o DOM-06 já faz) e, com limite de uso (as três mensagens), a saída não conta
+  no teto e segura o despacho de toda a conta até o horário de reset informado na mensagem
+  (ou um intervalo fixo, se faltar). Mesma região de código e mesma flag da F1.3
   (Alto ao ligar). Decisão do Richard: é mudança de escopo da F1.3.
