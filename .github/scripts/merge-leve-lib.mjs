@@ -74,14 +74,17 @@ function compareRuns(a, b) {
 // Só a execução mais recente de cada nome. Se não dá para dizer qual é a mais
 // recente, ficam todas as empatadas, e todas precisam estar verdes.
 export function latestRuns(runs) {
-    const byName = new Map();
+    // Chave (app, nome): um check de outro app com o mesmo nome não some atrás
+    // de uma execução mais nova do Actions.
+    const byKey = new Map();
     for (const c of runs) {
-        const top = byName.get(c.name);
+        const key = `${c?.app?.id ?? c?.app?.slug ?? ''}\u0000${c.name}`;
+        const top = byKey.get(key);
         const cmp = top ? compareRuns(c, top[0]) : 1;
-        if (cmp > 0) byName.set(c.name, [c]);
+        if (cmp > 0) byKey.set(key, [c]);
         else if (cmp === 0) top.push(c);
     }
-    return [...byName.values()].flat();
+    return [...byKey.values()].flat();
 }
 
 function checksVerdict(checks, requiredChecks) {

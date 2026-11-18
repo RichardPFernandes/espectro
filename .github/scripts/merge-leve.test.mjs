@@ -264,6 +264,14 @@ test('mesmo id ou sem id: desempata pelo started_at', () => {
     assert.equal(run({ checks }).merge, false, 'failure mais novo vale');
 });
 
+test('check de outro app com o mesmo nome, falhado e mais antigo, não some atrás do success do Actions', () => {
+    const checks = green();
+    checks.checkRuns.push(cr(50, 'Node 22', 'completed', 'failure', { app: { id: 999, slug: 'outro-app' } }));
+    const r = run({ checks });
+    assert.equal(r.merge, false);
+    assert.match(r.motivos.join('\n'), /check sem sucesso: Node 22 \(failure\)/);
+});
+
 // B: presença dos requiredChecks só conta check run do GitHub Actions.
 test('status success com o nome de um check obrigatório, sem check run → não mescla', () => {
     const checks = green();

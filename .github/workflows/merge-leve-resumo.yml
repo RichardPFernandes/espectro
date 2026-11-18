@@ -2,9 +2,9 @@ name: merge-leve-resumo
 
 # Resumo diário do merge automático do Leve (F0.8, PRI-410; SPEC item d, AC-03).
 # Comenta na issue fixa "Merge automático do Leve: resumo" o que o bot mesclou
-# nas últimas 24 h e os Leve que ficaram de fora, com o motivo. Dia vazio não
-# comenta. Checkout só de /.github/ da main; nada do código dos PRs. A única
-# escrita é a issue fixa e o comentário.
+# desde o último resumo, os elegíveis não mesclados e os Leve que ficaram de
+# fora, com o motivo. Dia vazio não comenta. Checkout só de /.github/ da main;
+# nada do código dos PRs. A única escrita é a issue fixa e o comentário.
 on:
   schedule:
     - cron: '0 11 * * *'
