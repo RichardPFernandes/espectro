@@ -23,7 +23,8 @@ e só deixa um efeito correr com autoridade válida, que vem da admissão e não
 mesma chave de idempotência não repete o efeito e resultado incerto nunca é repetido sozinho. O
 `git-push-effect.sh` é o push do `/commit` sob essa autoridade, sem aprovação humana própria: a
 chave leva o repo real e o commit enviado (repos irmãos e commit novo são efeitos distintos), e um
-push que falha grava `failed` e sai com o código do git, sem virar entrega; a
+push que falha grava `failed` e sai com o código do git, sem virar entrega; forma que a chave
+não representa (vários refspecs, `--tags`, `--all`, `--mirror`) sai 2 sem rodar o git; a
 autorização humana do Attempt (`escalation`) ainda é só reservada. O `human-input-intent.js` lê a
 mensagem humana antes de destravar uma task `blocked`.
 
