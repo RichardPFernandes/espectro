@@ -115,11 +115,24 @@ function normalizeSeed(t, now) {
 
 const lockFile = storeFile => `${storeFile}.lock`;
 
+function pidAlive(pid) {
+    try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+}
+
+// Dono vivo da trava (pid) ou null. Trava de processo morto é órfã (kill -9, queda) e some aqui.
+function lockOwner(storeFile) {
+    const file = lockFile(storeFile);
+    let pid;
+    try { pid = Number(fs.readFileSync(file, 'utf8')); } catch { return null; }
+    if (pid && pidAlive(pid)) return pid;
+    try { fs.unlinkSync(file); } catch { /* já removida */ }
+    return null;
+}
+
 // Seed só com o servidor parado: um PUT em voo regravaria o store sem os tickets novos.
 function seed(storeFile, fromFile) {
-    if (fs.existsSync(lockFile(storeFile))) {
-        throw new Error(`servidor rodando sobre ${storeFile} (${lockFile(storeFile)}); pare-o antes do seed`);
-    }
+    const owner = lockOwner(storeFile);
+    if (owner) throw new Error(`servidor rodando sobre ${storeFile} (pid ${owner}); pare-o antes do seed`);
     const store = loadStore(storeFile);
     const incoming = JSON.parse(fs.readFileSync(fromFile, 'utf8'));
     if (!Array.isArray(incoming)) throw new Error('--from precisa ser uma lista de tickets');
@@ -256,10 +269,11 @@ function createServer({ store: storeFile, key, log }) {
     // Um request por vez sobre o store: leitura e escrita nunca se cruzam. O corpo é lido antes
     // de entrar na fila, então um cliente lento não trava os outros.
     let chain = Promise.resolve();
-    const serial = fn => (chain = chain.then(fn, fn));
+    const serial = fn => (chain = chain.then(fn, fn).catch(() => {}));
 
     const handle = async (req, res, body) => {
-        const url = new URL(req.url, `http://${HOST}`);
+        let url; let badUrl = false;
+        try { url = new URL(req.url, `http://${HOST}`); } catch { url = new URL('/', `http://${HOST}`); badUrl = true; }
         const send = (status, payload, handled = true) => {
             writeLog({ method: req.method, path: url.pathname, query: safeQuery(url), status, handled });
             if (payload === undefined) { res.writeHead(status); res.end(); return; }
@@ -268,6 +282,7 @@ function createServer({ store: storeFile, key, log }) {
         };
         try {
             if (req.headers['x-redmine-api-key'] !== key) return send(401, { errors: ['chave inválida'] });
+            if (badUrl) return send(400, { errors: ['URL inválida'] }, false);
             if (body.aborted) return send(400, { errors: ['corpo interrompido'] });
             if (body.tooLarge) return send(413, { errors: ['corpo grande demais'] });
             const store = loadStore(storeFile);
@@ -302,16 +317,22 @@ function createServer({ store: storeFile, key, log }) {
         const body = await readBody(req);
         serial(() => handle(req, res, body));
     });
-    // Trava do store enquanto escuta: o seed recusa rodar com o servidor de pé.
-    server.on('listening', () => { try { fs.writeFileSync(lockFile(storeFile), String(process.pid)); } catch { /* sem trava, o seed não é protegido */ } });
-    server.on('close', () => { try { fs.unlinkSync(lockFile(storeFile)); } catch { /* já removida */ } });
+    // Trava do store (pid, criada com wx) enquanto escuta: o seed e um segundo servidor recusam.
+    server.takeLock = () => {
+        const owner = lockOwner(storeFile);
+        if (owner) throw new Error(`já há servidor (pid ${owner}) sobre ${storeFile}`);
+        fs.writeFileSync(lockFile(storeFile), String(process.pid), { flag: 'wx' });
+    };
+    server.dropLock = () => { try { fs.unlinkSync(lockFile(storeFile)); } catch { /* já removida */ } };
+    server.on('close', server.dropLock);
     return server;
 }
 
 // Sempre em loopback: é o único jeito de subir o servidor pelo CLI.
 function listen(server, port) {
     return new Promise((resolve, reject) => {
-        server.once('error', reject);
+        try { server.takeLock(); } catch (e) { return reject(e); }
+        server.once('error', e => { server.dropLock(); reject(e); });
         server.listen(port, HOST, () => resolve(server.address()));
     });
 }
