@@ -465,7 +465,7 @@ test('AC-05: human_gate_required é o literal true; false, "true", 1 e ausente s
     }
 });
 
-test('AC-03 (QRD-AC-09): #42359 sintética → db_migration MODERATE, request_effect, gate humano, sem autorização nem despacho', () => {
+test('AC-03 (QRD-AC-09): #10007 sintética → db_migration MODERATE, request_effect, gate humano, sem autorização nem despacho', () => {
     const v = withRec({
         assertions: [migFact({ evidence_ids: ['s-journal'] })],
         cause: causeOf([hyp()]),
@@ -517,7 +517,7 @@ test('depends_on_missing só aponta o que está em context.missing[]; sem repeti
     assert.equal(ok({ ...noCtx, recommendation: rec() }), true, 'sem context e sem dependência');
 });
 
-test('AC-02 (QRD-AC-08): #43782/#43608 → preparação bloqueada em platform_signals; causa de produto UNKNOWN sem rótulo humano', () => {
+test('AC-02 (QRD-AC-08): #10014/#10011 → preparação bloqueada em platform_signals; causa de produto UNKNOWN sem rótulo humano', () => {
     const v = withRec({
         platform_signals: [sig({ id: 'p-prep', kind: 'preparation_blocked', evidence_ids: ['s-run'] }),
             sig({ id: 'p-spec', kind: 'spec_missing', evidence_ids: [] })],

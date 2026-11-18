@@ -104,7 +104,7 @@ test('baixa e converte cada tipo, com auth Basic key:key', async t => {
     });
     t.after(() => server.close());
     const dir = tmpDir();
-    const dest = path.join(dir, '43000-attachments');
+    const dest = path.join(dir, '13000-attachments');
     const r = await downloadAttachments([
         att(1, 'print.png', 'image/png', url),
         att(2, 'req.pdf', 'application/pdf', url),
@@ -272,7 +272,7 @@ test('CLI: grava manifesto, e a API key não aparece em stdout, stderr nem em ar
         att(3, 'grande.pdf', 'application/pdf', url, { filesize: 15 * 1024 * 1024 }),
     ];
     const env = { PATH: process.env.PATH, REDMINE_URL: url, REDMINE_API_KEY: API_KEY };
-    const r = await runCli(['43000', '--dest', dest], { input: JSON.stringify({ issue: { attachments } }), env });
+    const r = await runCli(['13000', '--dest', dest], { input: JSON.stringify({ issue: { attachments } }), env });
     assert.strictEqual(r.code, 0, r.stderr);
     const out = JSON.parse(r.stdout);
     assert.deepStrictEqual(out.downloaded.map(d => d.id), [1]);
@@ -288,9 +288,9 @@ test('CLI: grava manifesto, e a API key não aparece em stdout, stderr nem em ar
 test('CLI: uso incorreto e JSON inválido saem com 2; lista vazia não cria diretório', async () => {
     const env = { PATH: process.env.PATH };
     assert.strictEqual((await runCli([], { input: '[]', env })).code, 2);
-    assert.strictEqual((await runCli(['43000'], { input: '{nope', env })).code, 2);
+    assert.strictEqual((await runCli(['13000'], { input: '{nope', env })).code, 2);
     const dest = path.join(tmpDir(), 'vazio');
-    const r = await runCli(['43000', '--dest', dest], { input: '[]', env });
+    const r = await runCli(['13000', '--dest', dest], { input: '[]', env });
     assert.strictEqual(r.code, 0);
     assert.strictEqual(fs.existsSync(dest), false);
 });

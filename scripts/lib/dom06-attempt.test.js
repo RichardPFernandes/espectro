@@ -12,7 +12,7 @@ function runDir() {
     return fs.mkdtempSync(path.join(tmpBase, 'dom06-attempt-'));
 }
 
-const snapshot = { ticket_id: 41948, node: 'implement', base_branch: 'development', spec_hash: 'hash-v1' };
+const snapshot = { ticket_id: 11948, node: 'implement', base_branch: 'development', spec_hash: 'hash-v1' };
 const admitted = { status: 'ADMITTED', owner: 'dom06', snapshot };
 
 test('AC1: Attempt só começa depois de ADMITTED; DENIED e UNKNOWN não despacham e não são PASS', () => {
@@ -89,7 +89,7 @@ test('AC2: obrigação não cumprida aparece no resultado e ausência não vira 
 test('AC3: retry, timeout e resume não fazem upgrade nem rebind de owner/snapshot', () => {
     const dir = runDir();
     const first = dom06.prepareDispatch({
-        runDir: dir, node: 'implement', ticketId: 41948, baseBranch: 'development', specHash: 'hash-v1',
+        runDir: dir, node: 'implement', ticketId: 11948, baseBranch: 'development', specHash: 'hash-v1',
     });
     assert.strictEqual(first.dispatch, true);
     assert.strictEqual(first.attempt.owner, 'dom06');
@@ -97,7 +97,7 @@ test('AC3: retry, timeout e resume não fazem upgrade nem rebind de owner/snapsh
 
     for (const cause of ['retry', 'timeout', 'resume']) {
         const next = dom06.prepareDispatch({
-            runDir: dir, node: 'implement', ticketId: 41948, baseBranch: 'development', specHash: 'hash-v2', cause,
+            runDir: dir, node: 'implement', ticketId: 11948, baseBranch: 'development', specHash: 'hash-v2', cause,
         });
         assert.strictEqual(next.dispatch, true, cause);
         assert.notStrictEqual(next.attempt.attempt_id, first.attempt.attempt_id);
@@ -114,7 +114,7 @@ test('AC3: retry, timeout e resume não fazem upgrade nem rebind de owner/snapsh
     };
     assert.strictEqual(dom06.causeFromState(state), 'timeout');
     const fromState = dom06.prepareDispatch({
-        runDir: dir, node: 'implement', ticketId: 41948, baseBranch: 'development', specHash: 'hash-v3', state,
+        runDir: dir, node: 'implement', ticketId: 11948, baseBranch: 'development', specHash: 'hash-v3', state,
     });
     assert.strictEqual(fromState.attempt.cause, 'timeout');
     assert.strictEqual(fromState.attempt.snapshot.spec_hash, 'hash-v1');
@@ -180,7 +180,7 @@ test('AC5: 401 no meio do ciclo revoga e o efeito seguinte não executa nem cont
     assert.ok(summary.pending_count > 0);
 
     const again = dom06.prepareDispatch({
-        runDir: dir, node: 'commit', ticketId: 41948, baseBranch: 'development', specHash: 'hash-v1', cause: 'retry',
+        runDir: dir, node: 'commit', ticketId: 11948, baseBranch: 'development', specHash: 'hash-v1', cause: 'retry',
     });
     assert.strictEqual(again.dispatch, false);
     assert.notStrictEqual(dom06.summarize(again.attempt).verdict, 'PASS');
@@ -240,7 +240,7 @@ test('exit 0 cumpre execute_node; commit, código diferente de 0 e repetição n
     assert.ok(dom06.readAttempt(commit.attemptFile).obligations.every(item => item.status === 'pending'));
 });
 
-// Regressão (#43511, #43782, #43812, #43819): o redmine-effect mandava o PUT sem
+// Regressão (#13511, #10014, #13812, #10029): o redmine-effect mandava o PUT sem
 // X-Redmine-API-Key, o Redmine respondia 401 e o Attempt era revogado — nenhum
 // /commit movia o ticket pra "Ag Merge". O Redmine falso aqui exige a chave.
 test('redmine-effect manda X-Redmine-API-Key do ambiente; sem chave não chama nem revoga', async () => {
