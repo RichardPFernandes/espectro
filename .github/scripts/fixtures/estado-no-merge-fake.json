@@ -23,6 +23,15 @@
     }
   },
   "pulls": {
+    "215": {
+      "number": 215,
+      "state": "closed",
+      "merged": true,
+      "merged_at": "2026-11-18T15:00:00Z",
+      "title": "feat(ci): estado no merge, F0.9 (Refs PRI-399)",
+      "body": "**Nível:** médio\n**Issue:** Refs PRI-399\nTambém Refs PRI-400.",
+      "labels": [{ "name": "processo:medio" }]
+    },
     "216": { "number": 216, "state": "open", "merged": false }
   }
 }

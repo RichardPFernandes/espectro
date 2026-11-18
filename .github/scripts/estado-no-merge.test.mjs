@@ -71,8 +71,10 @@ function fakes({ issues = {}, pulls = {} } = {}) {
     return { calls, linear, gh };
 }
 
-async function exec({ mode, event, issues, pulls, env = {} }) {
-    const f = fakes({ issues, pulls });
+// O PR do evento também existe na API falsa (a CLI o busca de novo), salvo se o teste já o definiu.
+async function exec({ mode, event, issues, pulls = {}, env = {} }) {
+    const n = event?.pull_request?.number;
+    const f = fakes({ issues, pulls: n && !pulls[n] ? { ...pulls, [n]: event.pull_request } : pulls });
     const out = [];
     const code = await run({
         env: { GITHUB_REPOSITORY: REPO, ...(mode === undefined ? {} : { ESTADO_NO_MERGE: mode }), ...env },
@@ -124,6 +126,16 @@ test('on + Alto: zero mutações', async () => {
     assert.match(r.summary, /alto/);
 });
 
+test('evento velho (Re-run): a decisão vem do PR na API, não do payload', async () => {
+    const event = { pull_request: pull({ labels: [{ name: 'processo:medio' }] }) };
+    const pulls = { 50: pull({ labels: [{ name: 'processo:alto' }] }) };
+    const r = await exec({ mode: 'on', event, issues: { 'PRI-1': issue('PRI-1') }, pulls });
+    assert.equal(r.code, 0);
+    assert.deepEqual(r.calls.gh[0], ['getPull', 50]);
+    assert.deepEqual(r.calls.mutations, []);
+    assert.match(r.summary, /alto/);
+});
+
 test('on + filha aberta: mutação só com descrição, sem stateId', async () => {
     const children = [
         { identifier: 'PRI-2', state: { type: 'started' } },
@@ -149,7 +161,7 @@ test('on + outro PR aberto anexado: conta só PR deste repo, diferente do mescla
     const pulls = { 51: pull({ number: 51, state: 'open', merged: false }), 52: pull({ number: 52, state: 'closed' }) };
     const r = await exec({ mode: 'on', event: { pull_request: pull() }, issues: { 'PRI-1': issue('PRI-1', { attachments }) }, pulls });
     assert.equal(r.code, 0);
-    assert.deepEqual(r.calls.gh.map((c) => c[1]).sort(), [51, 52]);
+    assert.deepEqual(r.calls.gh.map((c) => c[1]).sort(), [50, 51, 52]);
     assert.equal(r.calls.mutations.length, 1);
     assert.equal('stateId' in r.calls.mutations[0].input, false);
     assert.match(r.calls.mutations[0].input.description, /falta PR #51\./);

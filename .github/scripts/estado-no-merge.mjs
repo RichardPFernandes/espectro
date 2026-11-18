@@ -22,7 +22,7 @@ const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * Processa o merge de um PR. Não lança: erros viram linhas do resumo e código 1.
  * @param {object} deps
  * @param {Record<string, string|undefined>} deps.env ESTADO_NO_MERGE, GITHUB_REPOSITORY (tokens só para mascarar)
- * @param {object} deps.event payload com `pull_request`, ou `inputs.pr` (workflow_dispatch)
+ * @param {object} deps.event payload com `pull_request` (só o número é usado), ou `inputs.pr` (workflow_dispatch)
  * @param {{ getIssue(id: string): Promise<object>, updateIssue(id: string, input: object): Promise<unknown> }} deps.linear
  * @param {{ getPull(n: number): Promise<object> }} deps.gh
  * @param {(markdown: string) => void} deps.summary
@@ -45,10 +45,11 @@ export async function run({ env, event, linear, gh, summary, now = () => new Dat
 
     let pr;
     try {
-        const n = Number(event?.inputs?.pr ?? NaN);
-        if (event?.pull_request) pr = event.pull_request;
-        else if (Number.isInteger(n) && n > 0) pr = await gh.getPull(n);
-        else throw new Error('evento sem pull_request nem inputs.pr');
+        // Do evento só o número: num Re-run o payload é o original, então rótulos, título e corpo
+        // podem estar velhos. A decisão vem sempre do PR buscado na API (como no processo-check).
+        const n = Number(event?.pull_request?.number ?? event?.inputs?.pr ?? NaN);
+        if (!Number.isInteger(n) || n <= 0) throw new Error('evento sem pull_request nem inputs.pr');
+        pr = await gh.getPull(n);
     } catch (e) {
         lines.push(`- ERRO ao ler o PR: ${errMsg(e)}`);
         return finish(1);
