@@ -1,7 +1,7 @@
 # ADR 0003: O bot mescla o PR Leve elegível; agente nunca mescla
 
 **Status:** Aceita em 2026-11-18
-**Fonte:** `roadmap/DECISOES.md` D12 (16/11/2026); Mesa `D-PRI-410-01` e `D-PRI-410-02` (18/11); PR #215 e #223 (F0.8, PRI-410); `CLAUDE.md`, regra 10
+**Fonte:** `roadmap/DECISOES.md` D12 (16/11/2026); Mesa `D-PRI-410-01` e `D-PRI-410-02` (18/11); SPEC `tasks/f0-8-merge-automatico-leve/SPEC.md`; PR #215 e #223 (F0.8, PRI-410); `CLAUDE.md`, regra 10
 
 ## Contexto
 

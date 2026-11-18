@@ -1,7 +1,7 @@
 # ADR 0004: O repo é público de propósito, porque o Espectro vai ser open source
 
 **Status:** Aceita em 2026-11-17
-**Fonte:** `roadmap/DECISOES.md` D8 (17/11/2026); Mesa `D-PRI-401-01` (18/11, destino dos achados da varredura)
+**Fonte:** `roadmap/DECISOES.md` D8 (17/11/2026); Mesa `D-PRI-401-01` (resposta de 18/11: aprovada a recomendação sobre histórico, texto dos PRs e nomes do consumidor)
 
 ## Contexto
 
