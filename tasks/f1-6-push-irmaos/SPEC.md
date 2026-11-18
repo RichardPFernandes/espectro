@@ -1,6 +1,6 @@
 # SPEC: F1.6, push dos repos irmãos: pulado não vira sucesso (PRI-179)
 
-> **Status:** v1, proposta (18/11/2026), aguardando aprovação do Richard.
+> **Status:** v1, aprovada pelo Richard em 18/11/2026 (D-PRI-179-01: Q1 = sim, Q2 = sem flag).
 > Nível **Alto**: muda `scripts/git-push-effect.sh`, que o `/commit` do consumidor executa a cada
 > ticket; chega ao consumidor no bump do checkout, com AUTORIZO próprio e readback.
 > Issue: [PRI-179](https://linear.app/prisma-app/issue/PRI-179). Roadmap: F1.6
@@ -25,7 +25,7 @@ Reprodução em `42316e9`, com dois repos temporários e remotes locais (bare), 
 | `git-push-effect.sh -C <dir> push …` | rc≠0: o script vira `git push -C …` (`unknown switch`) | — |
 
 A terceira linha é o mesmo defeito por outro caminho: o push da anotação `@spec` (passo 7.5 do
-`commit.md`) usa os mesmos argumentos no mesmo repo e também é pulado em silêncio. Ver Q1.
+`commit.md`) usa os mesmos argumentos no mesmo repo e também é pulado em silêncio. Entra nesta fatia (Q1, AC-3).
 
 O resultado esperado: cada push que de fato não aconteceu sai com código diferente de 0 ou é um
 `DUPLICATE` verdadeiro, isto é, o mesmo conteúdo já entregue no mesmo repo.
@@ -39,10 +39,12 @@ O resultado esperado: cada push que de fato não aconteceu sai com código difer
 - **AC-2. Semântica explícita de checkout.** Dois checkouts distintos com a mesma URL de remote são
   dois efeitos (cada checkout é dono do seu push; o git torna inócuo o segundo se o conteúdo for
   igual). Falha observável: o segundo checkout recebe `DUPLICATE`.
-- **AC-3. Repetição idêntica continua deduplicada.** Mesmo repo, mesmos argumentos e mesmo commit
-  (ver Q1) no mesmo Attempt: o git não roda de novo, a saída é 0 e a linha de pulo diz qual repo e
-  qual commit já estavam entregues. Falha observável: um segundo `git push` roda, ou a linha de pulo
-  não identifica repo e commit.
+- **AC-3. Commit novo é efeito novo; repetição idêntica continua deduplicada.** A chave inclui o
+  commit enviado (`git rev-parse` da origem do refspec, `HEAD` quando a branch é o próprio refspec):
+  um commit novo no mesmo repo faz um push novo. Mesmo repo, mesmos argumentos e mesmo commit no
+  mesmo Attempt: o git não roda de novo, a saída é 0 e a linha de pulo diz qual repo e
+  qual commit já estavam entregues. Falha observável: commit novo não chega ao remote; um segundo
+  `git push` roda para o mesmo commit; ou a linha de pulo não identifica repo e commit.
 - **AC-4. Entrada por cwd e por `-C`.** `git-push-effect.sh push …` usa o cwd;
   `git-push-effect.sh -C <dir> push …` usa `<dir>` para o git e para a identidade. Os dois caminhos
   para o mesmo repo dão a mesma chave. Falha observável: `-C` sai ≠ 0 num repo válido, ou cwd e `-C`
@@ -54,8 +56,10 @@ O resultado esperado: cada push que de fato não aconteceu sai com código difer
   com a mesma chave roda o git de novo. Falha observável: saída 0, efeito `fulfilled`, ou
   `DUPLICATE` na nova tentativa.
 - **AC-7. Garantias atuais intactas.** Sem `DOM06_ATTEMPT_FILE`, ou com Attempt revogado, o script
-  sai 1 sem chamar o git, como hoje. Os testes existentes do DOM06 passam, salvo o ajuste que Q1
-  decidir. Falha observável: qualquer teste de `scripts/lib/dom06-*.test.js` vermelho sem decisão.
+  sai 1 sem chamar o git, como hoje. Os testes existentes do DOM06 passam; o único ajuste é o teste
+  da PRI-94 em `dom06-dispatch-env.test.js`, que passa a esperar o commit novo no remote e dois
+  efeitos `fulfilled` de push. Falha observável: outro teste de `scripts/lib/dom06-*.test.js` muda
+  ou fica vermelho.
 - **AC-8. Testes sem push real.** Os testes novos usam repos temporários e remotes locais (bare) em
   diretório temporário, com nomes neutros (`repo-a`, `repo-b`, `TICKET-X`). Falha observável: teste
   que usa rede, remote corporativo, número de ticket ou nome de repo do consumidor.
@@ -64,22 +68,16 @@ O resultado esperado: cada push que de fato não aconteceu sai com código difer
 
 **Sempre**
 - Mudar só `scripts/git-push-effect.sh`, o teste novo dele e a linha do push em
-  `docs/capacidades/autorizacao.md` (spec viva); com Q1 = sim, também o teste da PRI-94. O `dom06-attempt.js` fica como está: a chave é
+  `docs/capacidades/autorizacao.md` (spec viva) e o teste da PRI-94 (AC-7). O `dom06-attempt.js` fica como está: a chave é
   responsabilidade de quem chama.
 - Evidência no PR: a tabela de reprodução acima rodada antes e depois, e o run da CI.
 
-**Perguntar antes** (decisões pedidas nesta SPEC, com recomendação)
-- **Q1. Commit novo no mesmo repo é efeito novo?** Recomendo **sim**: a chave inclui o commit que
-  vai ser enviado (`git rev-parse` da origem do refspec, `HEAD` quando a branch é o próprio
-  refspec). Sem isso, o push da anotação `@spec` continua pulado e reportado como sucesso. Efeito
-  colateral: o teste da PRI-94 em `scripts/lib/dom06-dispatch-env.test.js` hoje afirma que "o
-  commit feito depois do primeiro push não chega ao remote"; ele passa a afirmar o contrário, com
-  dois efeitos `fulfilled`. Alternativa: manter a chave sem commit e corrigir só repo (AC-1); o
-  passo 7.5 fica com o defeito e vira linha nas Agent notes.
-- **Q2. Sem flag.** Recomendo **corrigir sem flag**: é defeito com falso sucesso, o comportamento
-  atual não tem uso legítimo, e a barreira real é o bump com AUTORIZO e readback. Volta: reverter o
-  commit ou voltar o checkout ao commit anterior. Alternativa: flag desligada registrada em
-  `docs/flags.md`; o defeito fica vivo no consumidor até um segundo AUTORIZO para ligá-la.
+**Decidido** (D-PRI-179-01, 18/11/2026)
+- Q1: commit novo no mesmo repo é efeito novo (AC-3).
+- Q2: sem flag. A barreira é o bump com AUTORIZO e readback; a volta é reverter o commit ou
+  voltar o checkout ao commit anterior.
+
+**Perguntar antes**
 - Qualquer mudança em `.claude/commands/commit.md` (o AC-29 fixa o hash dele) ou no formato do
   arquivo de Attempt.
 
