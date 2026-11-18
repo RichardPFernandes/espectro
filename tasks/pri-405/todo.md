@@ -15,7 +15,7 @@ sem pkill/killall por nome; sem force push; commit com "Refs PRI-405".
   checagem de colisão por arquivo. Prova: o script lista 0 colisões e cobre os 87 valores dos
   testes e os dos prompts. Sem commit no repo.
 
-- [ ] **T1 · PR A, testes (AC-01, AC-02).** Branch `RichardPFernandes/pri-405-testes-a` de
+- [x] **T1 · PR A, testes (AC-01, AC-02).** Branch `RichardPFernandes/pri-405-testes-a` de
   `origin/main`. Aplicar `mapa.tsv` em: `scripts/lib/redmine-hours-sync.test.js`,
   `scripts/invalidate.test.js`, `dashboard/tickets-api.test.js`,
   `dashboard/validity-api.test.js`, `scripts/bitbucket-open-pr.test.js`,
