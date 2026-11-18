@@ -55,7 +55,7 @@ Depende de T1.
 
 Depende de T2.
 
-- [ ] **O que:** `.github/workflows/estado-no-merge.yml`:
+- [x] **O que:** `.github/workflows/estado-no-merge.yml`:
   - `on: pull_request: types [closed]` e `workflow_dispatch` com input `pr` (obrigatório, número).
   - `if` do job: `vars.ESTADO_NO_MERGE` em `simular`/`on` E (dispatch OU (`merged` e base `main` e
     `head.repo.full_name == github.repository`)).
@@ -64,15 +64,15 @@ Depende de T2.
     actions pinadas pelo mesmo SHA dos outros workflows.
   - Um passo roda a CLI com `LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}`, `GITHUB_TOKEN`,
     `ESTADO_NO_MERGE: ${{ vars.ESTADO_NO_MERGE }}` e `--pr ${{ inputs.pr }}` no dispatch.
-- [ ] **Teste que falha antes:** `.github/scripts/estado-no-merge-workflow.test.mjs` lê o YAML como texto
+- [x] **Teste que falha antes:** `.github/scripts/estado-no-merge-workflow.test.mjs` lê o YAML como texto
   e confere: gatilhos; `if` com a variável e com `merged`; nenhum checkout de `head.sha`/`head.ref`;
   `persist-credentials: false`; nenhuma permissão `write`; secret só no `env` do passo da CLI.
-- [ ] **Arquivos:** workflow e teste. Escopo S.
+- [x] **Arquivos:** workflow e teste. Escopo S.
 
 ## Ponto de controle: depois de T3
 
-- [ ] `node --test .github/scripts/*.test.mjs` verde nos três modos
-- [ ] `node .github/scripts/estado-no-merge.mjs` com `ESTADO_NO_MERGE=simular` e o evento de exemplo,
+- [x] `node --test .github/scripts/*.test.mjs` verde nos três modos
+- [x] `node .github/scripts/estado-no-merge.mjs` com `ESTADO_NO_MERGE=simular` e o evento de exemplo,
   com rede falsa, imprime a decisão (saída vai para a Evidência)
 
 ## T4: registro de flags e /pri-pr (AC-02)
