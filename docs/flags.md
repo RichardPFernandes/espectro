@@ -16,7 +16,7 @@ O teste `scripts/lib/flag-registry.test.js` roda no CI e falha quando:
 - **Padrão:** estado do recurso quando a variável está ausente. `DISABLE_AUTO_CLEANUP` é "ligada" porque, sem a variável, a limpeza roda.
 - **Consumidor:** estado no consumidor corporativo. O `.env` dele não é lido aqui (dado do consumidor não acompanha o código), então vale `não verificado`, que não é "desligada". Só entra valor quando um documento do repo o afirma.
 - **Decidir até:** data (AAAA-MM-DD, em UTC) em que a flag liga de vez, é removida ou é renovada por decisão do Richard. Para flag permanente, é a próxima reconfirmação (seis meses). Passou da data sem decisão, o CI fica vermelho.
-- **Item desligado:** `sim` para o que foi construído e está desligado (métrica "itens construídos e desligados" do [`ACOMPANHAMENTO.md`](../roadmap/ACOMPANHAMENTO.md)). Hoje são 9. O roadmap não lista quais; esta lista foi reconstruída do código e dos documentos do roadmap, e quem discordar corrige a coluna.
+- **Item desligado:** `sim` para o que foi construído e está desligado (métrica "itens construídos e desligados" do [`ACOMPANHAMENTO.md`](../roadmap/ACOMPANHAMENTO.md)). Hoje são 10. O roadmap não lista quais; esta lista foi reconstruída do código e dos documentos do roadmap, e quem discordar corrige a coluna.
 
 ## Limites da detecção
 
@@ -44,6 +44,7 @@ do Acordo; este registro só diz quando a decisão é devida.
 | `WATCHER_PLAN_IMPLEMENT_CHAIN` | env | desligada | PRI-353, PRI-354 | não verificado | o piloto decide; só vale com pré-build pulado e roteamento OFF | o piloto não mostra ganho, ou segue inelegível no repo do Espectro (roteamento ON) | 2027-01-15 | sim |
 | `WATCHER_PLAN_DENY_SETTINGS` | env | desligada | PRI-315 | não verificado | nova medição, por decisão do Richard (a medida da PRI-315 não mostrou ganho) | remover na F2.5 | 2027-01-15 | sim |
 | `WATCHER_QA_DIAGNOSTICO` | env | desligada | PRI-181 | não verificado | passa o Promotion Gate próprio e o modelo deixa de recusar a chave que a identidade gera | congelada (F6.10); remover se o dado não justificar | 2027-01-15 | sim |
+| `WATCHER_CLI_RESULT_JSON` | env | desligada | PRI-381 | não verificado | o PR da F1.5 é mesclado e o piloto no Espectro mostra o custo da CLI batendo com o do transcript; ligar no consumidor é Alto, com AUTORIZO próprio | o JSON da CLI não chega ao log ou diverge sem explicação do transcript | 2027-01-15 | sim |
 | `PRISMA_UI_VERIFY` | env | desligada | PRI-355, PRI-360, PRI-361 | não verificado | PRI-360 e PRI-361 terminam e há dado que justifique (F6.8) | congelada (D5); remover se não houver dado | 2027-01-15 | sim |
 | `PRISMA_UI_VERIFY_TAB` | env | desligada | PRI-355, PRI-361 | não verificado | junto de `PRISMA_UI_VERIFY` | junto de `PRISMA_UI_VERIFY` | 2027-01-15 | não |
 | `PRISMA_UI_CUSTOM_SERVER` | env | desligada | PRI-355 | não verificado | junto de `PRISMA_UI_VERIFY`, só se o app não sobe pelo dashboard | junto de `PRISMA_UI_VERIFY` | 2027-01-15 | não |
