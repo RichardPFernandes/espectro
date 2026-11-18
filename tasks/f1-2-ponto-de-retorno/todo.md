@@ -56,7 +56,7 @@ Repositórios de teste: temporários, com origem `--bare` local, `GIT_CONFIG_GLO
   - Arquivos: `scripts/watcher-manager.js`, `scripts/watcher-manager.test.js`, `dashboard/server.js`, um teste novo em `dashboard/` (`checkout-guard-boot.test.js`).
   - Depende de: T1.
 
-- [ ] **T6: flag, documentação, dono e `.gitignore` (AC-07)** · S
+- [x] **T6: flag, documentação, dono e `.gitignore` (AC-07)** · S
   - Fazer: linha `PRISMA_CHECKOUT_GUARD` em `docs/flags.md` (env, desligada, PRI-379, consumidor `não verificado`, ligar com AUTORIZO depois do ensaio, decidir até 2026-12-18, item desligado `sim`) e no `.env.example`. Em `docs/consumer-operations.md`: seção "Ponto de retorno" (comandos, o que recusa, o que fica com o Richard) e a seção "Decisão pendente: DB-13 × checkout" fechada com a D3 de 17/11. Dono dos arquivos novos: rodar `node --test scripts/capability-map.test.js` e seguir a mensagem (provável `ciclo-da-run` para o módulo e `ferramentas` para a CLI). `pnpm-lock.yaml` no `.gitignore`, com comentário de uma linha.
   - Teste que falha antes: `node --test scripts/lib/flag-registry.test.js scripts/capability-map.test.js` falha sem a linha e sem o dono.
   - Arquivos: `docs/flags.md`, `.env.example`, `docs/consumer-operations.md`, `docs/capacidades/<dono>.md`, `.gitignore`.
