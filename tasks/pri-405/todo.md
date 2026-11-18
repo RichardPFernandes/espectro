@@ -59,7 +59,7 @@ sem pkill/killall por nome; sem force push; commit com "Refs PRI-405".
   PRI-405). `implement.md` e `review.md` continuam com o hash antigo. Prova: grep nos prompts
   zero; `npm run test:changed` verde.
 
-- [ ] **T5 · F0.1 concluída (AC-04).** Nesta branch, depois da T4. Em
+- [x] **T5 · F0.1 concluída (AC-04).** Nesta branch, depois da T4. Em
   `roadmap/fase-0-destravar/FASE.md`: marcar o critério "Estado atual da `main` sem caminho
   pessoal nem número de ticket…", Status da F0.1 `concluída`, coluna da issue com
   `PRI-376, PRI-405 (Médio)`. Condição: PR #198 (README do dashboard) mesclado e PRs A, B e C
