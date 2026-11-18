@@ -241,7 +241,7 @@ function propose(dir, extra = {}) {
     assert.deepStrictEqual(out.errors, []);
     // Watcher publica a proposta no Redmine: comment_id = journal da PROPOSTA.
     const state = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
-    state.spec_change_pending.comment_id = 45411;
+    state.spec_change_pending.comment_id = 20001;
     fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(state, null, 2));
     return out.decision;
 }
@@ -250,7 +250,7 @@ test('T6/T5. rationale citando human input SEM human_input_refs → só SPEC_CHA
     const { root, dir } = seedRun();
     prov.appendEvents('94100', prov.descriptionOriginEvents('94100', ['AC-01']), { root });
     propose(dir, { ac_affected: ['AC-01'] });
-    const out = sc.approveSpecChange(dir, { by: 'Ana (Redmine, 2026-10-01T11:20:38Z)', at: '2026-10-01T11:21:49.000Z', approvalJournalId: 45412 });
+    const out = sc.approveSpecChange(dir, { by: 'Ana (Redmine, 2026-10-01T11:20:38Z)', at: '2026-10-01T11:21:49.000Z', approvalJournalId: 15412 });
     assert.ok(out.ok, out.error);
     assert.deepStrictEqual(out.added, ['AC-03']);
     const log = runLog(root);
@@ -262,11 +262,11 @@ test('T6/T5. rationale citando human input SEM human_input_refs → só SPEC_CHA
     assert.strictEqual(added.reference.change_id, 'SC-001');
     assert.match(added.reference.approval_ref, /^spec-change-audit\.json#entry-\d+$/);
     // EC-4: separados, nunca um no lugar do outro.
-    assert.strictEqual(added.reference.proposal_comment_id, 45411);
-    assert.strictEqual(added.reference.approval_journal_id, 45412);
+    assert.strictEqual(added.reference.proposal_comment_id, 20001);
+    assert.strictEqual(added.reference.approval_journal_id, 15412);
     const audit = sc.readAudit(dir).entries.find(e => e.event === 'approved');
-    assert.strictEqual(audit.proposal_comment_id, 45411);
-    assert.strictEqual(audit.approval_journal_id, 45412);
+    assert.strictEqual(audit.proposal_comment_id, 20001);
+    assert.strictEqual(audit.approval_journal_id, 15412);
 });
 
 test('T7. human_input_refs válido → HUMAN_CLARIFICATION/CLARIFICATION antes de SPEC_CHANGE/MODIFICATION', () => {
