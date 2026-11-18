@@ -1,0 +1,28 @@
+{
+  "issues": {
+    "PRI-399": {
+      "id": "uuid-399",
+      "identifier": "PRI-399",
+      "description": "**Estado:** PR #215 em revisão.\n**Próximo passo:** mesclar o PR #215.\n**Decisão pendente:** nenhuma.\n\nCorpo.",
+      "state": { "type": "started", "name": "In Review" },
+      "team": { "states": [
+        { "id": "st-review", "name": "In Review", "type": "started" },
+        { "id": "st-done", "name": "Done", "type": "completed" }
+      ] },
+      "children": [{ "identifier": "PRI-398", "state": { "type": "completed" } }],
+      "attachments": [{ "url": "https://github.com/acme/prisma/pull/215" }]
+    },
+    "PRI-400": {
+      "id": "uuid-400",
+      "identifier": "PRI-400",
+      "description": "**Estado:** em curso.\n**Próximo passo:** PR #216.",
+      "state": { "type": "started", "name": "In Progress" },
+      "team": { "states": [{ "id": "st-done", "name": "Done", "type": "completed" }] },
+      "children": [],
+      "attachments": [{ "url": "https://github.com/acme/prisma/pull/216" }]
+    }
+  },
+  "pulls": {
+    "216": { "number": 216, "state": "open", "merged": false }
+  }
+}
