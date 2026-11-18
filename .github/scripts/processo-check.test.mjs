@@ -7,7 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { evaluate, loadConfig, globToRegExp, evidenceLines, loadCapabilityMap } from './processo-lib.mjs';
+import { evaluate, loadConfig, globToRegExp, evidenceLines, loadCapabilityMap, specAcIds } from './processo-lib.mjs';
+import { readSpecs } from './processo-spec.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, 'processo-check.mjs');
@@ -229,4 +230,120 @@ test('CLI com --capabilities: exit 0 com AVISO (1 e 2 cabeçalhos sintéticos)',
     const two = spawnSync(process.execPath, [CLI, '--event', ev, '--files', files, '--capabilities', caps], { encoding: 'utf8', env });
     assert.equal(two.status, 0, two.stdout + two.stderr);
     assert.equal(two.stdout.match(/- AVISO:/g).length, 2);
+});
+
+const specs = (content, filename = 'tasks/pri-9/SPEC.md') => [{ filename, content }];
+const specWarn = (content, body = BODY_OK) => run({ labels: ['processo:medio'], specs: specs(content), body }).warnings.filter((w) => w.startsWith('SPEC '));
+
+test('aviso de SPEC: AC da SPEC ausente da Evidência → 1 aviso com o ID, sem reprovar', () => {
+    const r = run({ labels: ['processo:medio'], specs: specs('- AC-01: a\n- AC-02: b\n') });
+    assert.equal(r.ok, true);
+    const w = r.warnings.filter((x) => x.startsWith('SPEC '));
+    assert.equal(w.length, 1);
+    assert.match(w[0], /^SPEC "tasks\/pri-9\/SPEC\.md": o AC AC-02 não aparece na Evidência\. .* Aviso, não reprova\.$/);
+    assert.doesNotMatch(w[0], /AC-01/);
+    assert.match(r.info.join('\n'), /SPEC alterada: tasks\/pri-9\/SPEC\.md \(2 ACs, 1 na Evidência\)/);
+});
+
+test('aviso de SPEC: AC-01, AC-1 e AC-001 são o mesmo; lista longa corta em 5 com +N', () => {
+    assert.deepEqual(specWarn('- AC-01: a\n* AC-001: a\nAC-1: a\n**AC-1**\n'), []);
+    const body = BODY_OK.replace('| AC-1 |', '| AC-001 |');
+    assert.deepEqual(specWarn('- AC-1: a\n', body), []);
+    const w = specWarn(Array.from({ length: 7 }, (_, i) => `- AC-${i + 2}: x`).join('\n'));
+    assert.match(w[0], /o AC AC-2, AC-3, AC-4, AC-5, AC-6 \+2 não aparece/);
+});
+
+test('aviso de SPEC: AC "(removido", bloco de código e comentário HTML são ignorados', () => {
+    const content = '- AC-1: a\n- AC-2: b (removido em 2026-11-18: sem efeito)\n```\n- AC-3: x\n```\n<!--\n- AC-4: y\n-->\n';
+    assert.deepEqual(specWarn(content), []);
+});
+
+test('aviso de SPEC: sem specs (ou vazio) nada muda', () => {
+    const base = run({ labels: ['processo:medio'] });
+    assert.deepEqual(run({ labels: ['processo:medio'], specs: [] }), base);
+    assert.equal(base.warnings.length, 0);
+    assert.doesNotMatch(base.info.join('\n'), /SPEC alterada/);
+});
+
+test('aviso de SPEC: Evidência ausente → só o erro de hoje, sem o aviso novo', () => {
+    const r = run({ labels: ['processo:medio'], body: '## O que muda\nx', specs: specs('- AC-9: a\n') });
+    assert.equal(r.ok, false);
+    assert.equal(r.errors.length, 1);
+    assert.equal(r.warnings.filter((w) => w.startsWith('SPEC ')).length, 0);
+});
+
+test('CLI: lê a SPEC de --root e avisa; SPEC com status removed não conta', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'processo-spec-'));
+    fs.mkdirSync(path.join(dir, 'tasks', 'pri-9'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'tasks', 'pri-9', 'SPEC.md'), '- AC-1: a\n- AC-2: b\n');
+    const ev = path.join(dir, 'ev.json');
+    fs.writeFileSync(ev, JSON.stringify({ pull_request: { number: 1, body: BODY_OK, labels: [{ name: 'processo:medio' }] } }));
+    const env = { ...process.env, GITHUB_ACTIONS: '' };
+    const cli = (status) => {
+        const files = path.join(dir, `files-${status}.json`);
+        fs.writeFileSync(files, JSON.stringify([file('tasks/pri-9/SPEC.md', 2, status)]));
+        return spawnSync(process.execPath, [CLI, '--event', ev, '--files', files, '--root', dir], { encoding: 'utf8', env });
+    };
+    const added = cli('added');
+    assert.equal(added.status, 0, added.stdout + added.stderr);
+    assert.match(added.stdout, /- AVISO: SPEC "tasks\/pri-9\/SPEC\.md": o AC AC-2 não aparece/);
+    const removed = cli('removed');
+    assert.equal(removed.status, 0, removed.stdout + removed.stderr);
+    assert.doesNotMatch(removed.stdout, /AVISO: SPEC|SPEC alterada/);
+});
+
+test('aviso de SPEC: linha gigante é descartada pelo corte de 500 caracteres, sem travar, e o AC seguinte é achado', () => {
+    const t0 = performance.now();
+    const acs = specAcIds(`${' '.repeat(200000)}\n- AC-1: x\n`);
+    assert.ok(performance.now() - t0 < 500, `levou ${performance.now() - t0} ms`);
+    assert.deepEqual(acs.map((a) => a.id), ['AC-1']);
+});
+
+test('aviso de SPEC: AC com 25 dígitos e zeros à esquerda casa sem perder precisão', () => {
+    const big = '1234567890123456789012345';
+    const body = BODY_OK.replace('AC-1', `AC-${big}`);
+    assert.deepEqual(specWarn(`- AC-0${big}: a\n`, body), []);
+    const w = specWarn(`- AC-0${big}: a\n- AC-${big.slice(0, -1)}9: b\n`, body);
+    assert.equal(w.length, 1);
+    assert.match(w[0], new RegExp(`o AC AC-${big.slice(0, -1)}9 não aparece`));
+    assert.deepEqual(specWarn('- AC-0: a\n', BODY_OK.replace('AC-1', 'AC-0')), []);
+});
+
+const spec = (name) => ({ filename: name, status: 'modified' });
+const readRemote = (files, fetchJson, extra = {}) =>
+    readSpecs(files, config, { local: false, repo: 'o/r', sha: 'abc123', token: 't', fetchJson, ...extra });
+
+test('readSpecs (produção): decodifica base64 com quebras de 60 colunas e pede o caminho codificado por segmento', async () => {
+    const texto = '- AC-1: ação com acento\n'.repeat(10);
+    const b64 = Buffer.from(texto).toString('base64').replace(/(.{60})/g, '$1\n');
+    const urls = [];
+    const r = await readRemote([spec('tasks/pri 9/SPEC #1.md')], async (url) => { urls.push(url); return { encoding: 'base64', content: b64 }; });
+    assert.deepEqual(urls, ['/repos/o/r/contents/tasks/pri%209/SPEC%20%231.md?ref=abc123']);
+    assert.deepEqual(r, { specs: [{ filename: 'tasks/pri 9/SPEC #1.md', content: texto }], skipped: [] });
+});
+
+test('readSpecs (produção): erro da API vira skipped sem lançar; glob ignora maiúsculas; removed e não-SPEC não são lidos', async () => {
+    const pedidos = [];
+    const r = await readRemote(
+        [spec('tasks/a/spec.md'), { filename: 'tasks/b/SPEC.md', status: 'removed' }, spec('README.md')],
+        async (url) => { pedidos.push(url); throw new Error('GitHub API 404 em x'); },
+    );
+    assert.equal(pedidos.length, 1);
+    assert.deepEqual(r.specs, []);
+    assert.equal(r.skipped.length, 1);
+    assert.match(r.skipped[0], /não leu a SPEC tasks\/a\/spec\.md \(GitHub API 404/);
+});
+
+test('readSpecs (produção): encoding diferente de base64 (arquivo > 1 MB) vira skipped, não "0 ACs"', async () => {
+    const r = await readRemote([spec('tasks/a/SPEC.md')], async () => ({ encoding: 'none', content: '' }));
+    assert.deepEqual(r.specs, []);
+    assert.equal(r.skipped.length, 1);
+    assert.match(r.skipped[0], /tasks\/a\/SPEC\.md/);
+});
+
+test('readSpecs (local): arquivo inexistente vira skipped em vez de silêncio', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'processo-spec-'));
+    const r = await readSpecs([spec('tasks/x/SPEC.md')], config, { local: true, root: dir });
+    assert.deepEqual(r.specs, []);
+    assert.equal(r.skipped.length, 1);
 });

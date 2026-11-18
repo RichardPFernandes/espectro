@@ -17,6 +17,11 @@
       "docs/historico/"
     ]
   },
+  "spec": {
+    "globs": [
+      "tasks/**/SPEC*.md"
+    ]
+  },
   "alto": {
     "requiredSections": [
       "Rollback",

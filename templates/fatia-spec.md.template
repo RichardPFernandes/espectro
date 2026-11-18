@@ -32,7 +32,8 @@
 
 ## Delta de capacidade
 
-<!-- O que a fatia muda no comportamento descrito na spec viva (docs/capacidades/<id>.md). Uma linha por
+<!-- O que a fatia muda no comportamento descrito na spec viva (docs/capacidades/<id>.md). Parta da lista
+     `capacidades` do `.prisma/context.json`, gravada pelo /pri-start. Uma linha por
      requisito ou invariante, com o ID dele; a capacidade dona de um arquivo sai de
      `node scripts/capability-map.js --of <caminho>`. O PR aplica este delta na spec viva: depois do merge
      vale a spec viva, não esta SPEC. Apague o grupo vazio. Sem mudança de comportamento descrito, escreva
