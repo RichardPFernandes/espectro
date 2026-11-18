@@ -62,7 +62,7 @@ Repositórios de teste: temporários, com origem `--bare` local, `GIT_CONFIG_GLO
   - Arquivos: `docs/flags.md`, `.env.example`, `docs/consumer-operations.md`, `docs/capacidades/<dono>.md`, `.gitignore`.
   - Depende de: T1–T5.
 
-- [ ] **T7: ensaio de volta em repositório temporário (AC-04)** · XS
+- [x] **T7: ensaio de volta em repositório temporário (AC-04)** · XS
   - Fazer: teste `scripts/return-point-ensaio.test.js` que roda a sequência inteira pela CLI e imprime cada passo: marcar (com saúde falsa ok), avançar, sujar, `back` recusa, limpar, `back` volta, `git tag -n` e o log. A saída vai para `~/Workspace/prisma-evidence/PRI-379/<sha>/ensaio.txt` e para a Evidência do PR.
   - Arquivos: `scripts/return-point-ensaio.test.js`.
   - Depende de: T4.
