@@ -28,15 +28,19 @@ const openPr = (number, title, o = {}) => ({
     labels: [{ name: 'processo:leve' }],
     head: { sha: String(number).repeat(40).slice(0, 40), repo: { full_name: REPO } },
     base: { ref: 'main', repo: { full_name: REPO } },
+    changed_files: 1,
     ...o,
 });
+const ACTIONS = { id: 15368, slug: 'github-actions' };
 const greenRuns = () => [
-    { name: 'Node 22', status: 'completed', conclusion: 'success' },
-    { name: 'Node 24', status: 'completed', conclusion: 'success' },
-    { name: 'processo-check', status: 'completed', conclusion: 'success' },
+    { id: 101, name: 'Node 22', status: 'completed', conclusion: 'success', app: ACTIONS },
+    { id: 102, name: 'Node 24', status: 'completed', conclusion: 'success', app: ACTIONS },
+    { id: 103, name: 'processo-check', status: 'completed', conclusion: 'success', app: ACTIONS },
 ];
 
 // gh(method, path, body) falso. Listas paginadas como a API (per_page/page).
+// Como a API, a listagem de PRs não traz merged_by nem changed_files: só o PR
+// individual traz.
 function fakeGh({ closed = [], open = [], files = {}, issues = [] } = {}) {
     const calls = [];
     let nextIssue = 900;
@@ -48,7 +52,9 @@ function fakeGh({ closed = [], open = [], files = {}, issues = [] } = {}) {
         const per = Number(params.get('per_page') ?? 30);
         const slice = (list) => list.slice((page - 1) * per, page * per);
         if (method === 'GET' && p === `/repos/${REPO}/pulls`) {
-            return slice(params.get('state') === 'closed' ? closed.map(({ merged_by, ...rest }) => rest) : open);
+            return slice(params.get('state') === 'closed'
+                ? closed.map(({ merged_by, changed_files, ...rest }) => rest)
+                : open.map(({ changed_files, ...rest }) => rest));
         }
         let m = p.match(new RegExp(`^/repos/${REPO}/pulls/(\\d+)$`));
         if (method === 'GET' && m) {

@@ -24,16 +24,18 @@ const prJson = (o = {}) => ({
     base: { ref: 'main', repo: { full_name: REPO } },
     ...o,
 });
+const ACTIONS = { id: 15368, slug: 'github-actions' };
 const greenRuns = () => [
-    { name: 'Node 22', status: 'completed', conclusion: 'success' },
-    { name: 'Node 24', status: 'completed', conclusion: 'success' },
-    { name: 'processo-check', status: 'completed', conclusion: 'success' },
+    { id: 101, name: 'Node 22', status: 'completed', conclusion: 'success', app: ACTIONS },
+    { id: 102, name: 'Node 24', status: 'completed', conclusion: 'success', app: ACTIONS },
+    { id: 103, name: 'processo-check', status: 'completed', conclusion: 'success', app: ACTIONS },
 ];
 const event = (pullRequests = [{ number: 7 }]) => ({
     workflow_run: { event: 'pull_request', head_sha: SHA, pull_requests: pullRequests },
 });
 
-// gh(method, path, body) falso. `files` é paginado como a API (100 por página).
+// gh(method, path, body) falso. `files` é paginado como a API (100 por página);
+// o PR traz changed_files coerente com `files`, salvo se o caso o fixar.
 function fakeGh({ pr = prJson(), files = [{ filename: 'docs/x.md', status: 'modified' }], checkRuns = greenRuns(),
     statuses = [], pulls = [], mergeError } = {}) {
     const calls = [];
@@ -44,7 +46,7 @@ function fakeGh({ pr = prJson(), files = [{ filename: 'docs/x.md', status: 'modi
         const page = Number(params.get('page') ?? 1);
         const per = Number(params.get('per_page') ?? 30);
         const slice = (list) => list.slice((page - 1) * per, page * per);
-        if (method === 'GET' && p === `/repos/${REPO}/pulls/7`) return pr;
+        if (method === 'GET' && p === `/repos/${REPO}/pulls/7`) return { changed_files: files.length, ...pr };
         if (method === 'GET' && p === `/repos/${REPO}/pulls/7/files`) return slice(files);
         if (method === 'GET' && p === `/repos/${REPO}/commits/${SHA}/check-runs`) return { total_count: checkRuns.length, check_runs: slice(checkRuns) };
         if (method === 'GET' && p === `/repos/${REPO}/commits/${SHA}/status`) return { state: 'success', total_count: statuses.length, statuses: slice(statuses) };
@@ -105,8 +107,8 @@ test('arquivos paginados: caminho proibido na segunda página impede o merge (AC
 });
 
 test('check-runs paginados: check vermelho na segunda página impede o merge', async () => {
-    const checkRuns = [...greenRuns(), ...Array.from({ length: 100 }, (_, i) => ({ name: `extra ${i}`, status: 'completed', conclusion: 'success' }))];
-    checkRuns.push({ name: 'Static checks', status: 'completed', conclusion: 'failure' });
+    const checkRuns = [...greenRuns(), ...Array.from({ length: 100 }, (_, i) => ({ id: 200 + i, name: `extra ${i}`, status: 'completed', conclusion: 'success', app: ACTIONS }))];
+    checkRuns.push({ id: 400, name: 'Static checks', status: 'completed', conclusion: 'failure', app: ACTIONS });
     const r = await exec({ env: { MERGE_LEVE: 'on' }, checkRuns });
     assert.deepEqual(r.writes, []);
     assert.match(r.summary, /Static checks/);

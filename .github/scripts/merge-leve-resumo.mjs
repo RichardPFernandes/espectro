@@ -38,8 +38,10 @@ async function mergedByBot(gh, repo, since) {
 async function skippedLeve(gh, repo, config) {
     const open = await paginate(gh, `/repos/${repo}/pulls?state=open`, (b) => b);
     const skipped = [];
-    for (const pr of open) {
-        if (pr.draft !== false || !labelNames(pr).includes(LEVE)) continue;
+    for (const item of open) {
+        if (item.draft !== false || !labelNames(item).includes(LEVE)) continue;
+        // A listagem não traz changed_files, que evaluatePr exige: lê o PR.
+        const pr = await gh('GET', `/repos/${repo}/pulls/${item.number}`);
         const files = await paginate(gh, `/repos/${repo}/pulls/${pr.number}/files`, (b) => b);
         const checks = await checksOf(gh, repo, pr.head?.sha);
         const { merge, motivos } = evaluatePr({ pr, files, checks, config, repo });

@@ -4,13 +4,17 @@
 // estas mesmas funções, com a configuração lida da `main` (nunca do PR, AC-01).
 //
 // Entradas de evaluatePr, no formato da API do GitHub:
-//   pr:     GET /repos/{r}/pulls/{n}. Lê só number, state, draft, labels
-//           (objetos { name } ou strings), head.sha, head.repo.full_name e base.ref.
-//   files:  GET /repos/{r}/pulls/{n}/files (todas as páginas):
+//   pr:     GET /repos/{r}/pulls/{n} (o PR individual: a listagem não traz
+//           changed_files). Lê só number, state, draft, labels (objetos { name }
+//           ou strings), head.sha, head.repo.full_name, base.ref e changed_files.
+//   files:  GET /repos/{r}/pulls/{n}/files (todas as páginas, que param em 3000):
 //           [{ filename, status, previous_filename? }].
 //   checks: { checkRuns, statuses } do head.sha:
 //           checkRuns = `check_runs` de GET /repos/{r}/commits/{sha}/check-runs
-//                       (filter=latest, o padrão): [{ name, status, conclusion }];
+//                       (todas as páginas): [{ id, name, status, conclusion,
+//                       started_at, app: { id, slug } }]. Cada disparo cria um
+//                       check suite novo, e filter=latest não tira as execuções
+//                       antigas: vale só a mais recente de cada nome;
 //           statuses  = `statuses` de GET /repos/{r}/commits/{sha}/status
 //                       (o último por contexto): [{ context, state }].
 //   config: o objeto de .github/processo.json da `main` (usa levels e mergeLeve).
@@ -54,11 +58,39 @@ export function pathVerdict(files, cfg) {
     return { ok: motivos.length === 0, motivos };
 }
 
+const ACTIONS_APP_ID = 15368;
+const isActions = (c) => c?.app?.id === ACTIONS_APP_ID || c?.app?.slug === 'github-actions';
+
+// Ordem entre duas execuções do mesmo nome: maior id; empate ou id ausente,
+// started_at mais novo. 0 quando não dá para saber.
+function compareRuns(a, b) {
+    if (Number.isFinite(a.id) && Number.isFinite(b.id) && a.id !== b.id) return a.id - b.id;
+    const ta = Date.parse(a.started_at ?? '');
+    const tb = Date.parse(b.started_at ?? '');
+    if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+    return 0;
+}
+
+// Só a execução mais recente de cada nome. Se não dá para dizer qual é a mais
+// recente, ficam todas as empatadas, e todas precisam estar verdes.
+export function latestRuns(runs) {
+    const byName = new Map();
+    for (const c of runs) {
+        const top = byName.get(c.name);
+        const cmp = top ? compareRuns(c, top[0]) : 1;
+        if (cmp > 0) byName.set(c.name, [c]);
+        else if (cmp === 0) top.push(c);
+    }
+    return [...byName.values()].flat();
+}
+
 function checksVerdict(checks, requiredChecks) {
     const motivos = [];
-    const runs = checks?.checkRuns ?? [];
+    const runs = latestRuns(checks?.checkRuns ?? []);
     const statuses = checks?.statuses ?? [];
-    const present = new Set([...runs.map((c) => c.name), ...statuses.map((s) => s.context)]);
+    // Presença: só check run do GitHub Actions. Commit status ou check de outro
+    // app com o mesmo nome não prova que o job do repositório rodou.
+    const present = new Set(runs.filter(isActions).map((c) => c.name));
     for (const name of requiredChecks) {
         if (!present.has(name)) motivos.push(`check obrigatório ausente: ${name}`);
     }
@@ -89,6 +121,12 @@ export function evaluatePr({ pr, files, checks, config, repo }) {
     if (pr.head?.repo?.full_name !== repo) motivos.push(`PR de fork ou de origem desconhecida (${pr.head?.repo?.full_name ?? 'sem repo'})`);
     if (pr.base?.ref !== 'main') motivos.push(`base ${pr.base?.ref}, não main`);
 
+    // A API de arquivos para em 3000: lista que não bate com changed_files, ou
+    // que chegou ao teto, pode esconder um caminho negado.
+    const n = files?.length ?? 0;
+    if (!Number.isInteger(pr.changed_files) || n !== pr.changed_files || n >= 3000) {
+        motivos.push(`lista de arquivos incompleta (${n} de ${pr.changed_files})`);
+    }
     motivos.push(...pathVerdict(files, cfg).motivos);
     motivos.push(...checksVerdict(checks, cfg.requiredChecks ?? []));
     return { merge: motivos.length === 0, motivos };
