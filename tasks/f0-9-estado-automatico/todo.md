@@ -1,63 +1,98 @@
+# Tarefas F0.9 AC-02: Action no merge
+
 > Plano aprovado pelo Richard em 2026-11-18.
 
-# Tarefas PRI-399 (AC-03)
+Plano: [`plan.md`](plan.md). Médio: um subagente opus por tarefa, em ordem. Teste de cada tarefa:
+`node --test .github/scripts/*.test.mjs` (o `test:changed` não cobre `.github/`). Não rode
+`npm test` dentro de `scripts/` ou `dashboard/`. Nenhuma tarefa grava a variável do repo nem usa o
+secret de verdade.
 
-Contexto para cada subagente: leia `tasks/f0-9-estado-automatico/plan.md`. Nível Médio.
-Nenhum dado do consumidor em teste ou fixture (use marcadores, como `90003-...`).
+## T1: lib pura de decisão (AC-02)
 
-- [x] **T1: leitor do registro de flags por processo (AC-03, métrica 4)** · S
-  - O que: função pura `summarizeFlags(rows, today)` em `scripts/lib/flag-registry.js` e o
-    script `scripts/flags-read.js --json`, que lê `docs/flags.md` (caminho a partir do
-    `__dirname`) e imprime `{ ok: true, summary }` ou `{ ok: false, error }`. `summary`:
-    `n` (linhas), `padrao` {ligada, desligada}, `consumidor` {nao_verificado, outro},
-    `vencidas` (Decidir até < hoje, UTC), `itens_desligados` (coluna = `sim`),
-    `fonte: "docs/flags.md"`, `hoje`.
-  - Teste que falha antes: `scripts/lib/flag-registry.test.js` (ou `scripts/flags-read.test.js`)
-    com markdown de fixture e `today` fixo: contagens certas, uma linha vencida, tabela
-    quebrada → `ok:false`, nunca zero.
-  - Arquivos: `scripts/lib/flag-registry.js`, `scripts/flags-read.js`, teste.
-  - Depende de: nada
+- [ ] **O que:** `.github/scripts/estado-no-merge-lib.mjs`, sem rede nem disco, exportando:
+  - `parseRefs(title, body)`: IDs `PRI-N` citados como `Refs PRI-N` (sem distinção de caixa, vários
+    por PR, sem repetição). `Fixes`/`Closes` não contam.
+  - `levelFromLabels(labels, levels)`: `levels` é o mapa `levels` do `.github/processo.json`; sem
+    rótulo ou com mais de um nível devolve `null`.
+  - `decide({ level, otherOpenPrs, openChildren })`: `alto` ou `null` → `{ acao: 'nada', motivo }`;
+    leve/medio sem pendência → `'done'`; com pendência → `'estado'` (lista o que falta).
+  - `rewriteEstado(description, { estado, proximo })`: troca só o texto depois de `**Estado:**` e
+    `**Próximo passo:**` (primeira ocorrência de cada); devolve `{ text, changed }`; sem a linha,
+    `changed: false` e o texto intacto. Não toca "Decisão pendente" nem o resto.
+  - `estadoText({ pr, data, acao, pendencias })`: as frases. Done: Estado `PR #n mesclado em
+    AAAA-MM-DD; issue em Done pela Action.` e Próximo passo `nenhum.`; pendência: Estado `PR #n
+    mesclado em AAAA-MM-DD.` e Próximo passo `falta <PR #m / filha PRI-k>.`
+- [ ] **Teste que falha antes:** `.github/scripts/estado-no-merge-lib.test.mjs` cobre: Refs múltiplos
+  e "Fixes" ignorado; rótulo ausente/duplo; Alto → nada; Médio com PR aberto → estado; Leve limpo →
+  done; rewrite preserva "Decisão pendente" e o corpo, e não muda nada sem a linha.
+- [ ] **Arquivos:** os dois acima. Escopo S.
 
-- [x] **T2: rota `GET /api/flags-summary` no dashboard (AC-03, métrica 4)** · S
-  - O que: o servidor chama `scripts/flags-read.js` por `execFile` (opção
-    `flagsReadScript` para teste, como `effortMissReadScript`), devolve o `summary`; falha →
-    502 `{ status: "UNKNOWN" }` sem vazar caminho. Só leitura.
-  - Teste que falha antes: `dashboard/flags-summary-api.test.js`: 200 com `n` igual ao número
-    de linhas do `docs/flags.md`; script quebrado → 502 UNKNOWN; POST/PUT/DELETE → 404/405;
-    o dashboard não importa `scripts/lib/flag-registry` (fronteira G3).
-  - Arquivos: `dashboard/server.js`, `dashboard/flags-summary-api.test.js`.
-  - Depende de: T1
+## T2: CLI com Linear e GitHub injetáveis (AC-02)
 
-- [x] **T3: modelo das cinco métricas no relatório (AC-03)** · S
-  - O que: `fiveMetrics(M, flags)` em `dashboard/public/weekly-report.js` (exportada), cinco
-    linhas `{ id, nome, valor, n, fonte, conhecida }`: M1 de `M.perTicket` + `M.costSource`;
-    M2 de `M.cur.firstPass`/`firstPassRuns` + soma de `M.baseline` (USD imputado, +N
-    desconhecido); M3 sempre desconhecido (F1.3/F3.4); M4 do `flags` (null → desconhecido);
-    M5 desconhecido (Linear, à mão). E `seriesRow(metrics, semana)`: a linha com as colunas
-    da série do `ACOMPANHAMENTO.md`, "sem medição" onde não há dado.
-  - Teste que falha antes: em `dashboard/weekly-report.test.js`: sem runs e sem flags → as
-    cinco desconhecidas, nenhum "0"; com fixture → valores, `n =` e fonte em todas; a linha
-    da série tem 7 colunas.
-  - Arquivos: `dashboard/public/weekly-report.js`, `dashboard/weekly-report.test.js`.
-  - Depende de: nada (usa o formato do `summary` de T1)
+Depende de T1.
 
-## Checkpoint: depois de T1–T3
-- [x] `npm run test:changed` verde; `node scripts/lib/flag-registry.test.js` verde
+- [ ] **O que:** `.github/scripts/estado-no-merge.mjs`, com `run({ env, event, linear, gh, summary, now })`
+  exportado e um `main` que monta as dependências reais (fetch em `https://api.linear.app/graphql`
+  com `LINEAR_API_KEY`; API do GitHub com `GITHUB_TOKEN`; evento de `GITHUB_EVENT_PATH`, ou
+  `--pr N` buscando o PR pela API; resumo em `GITHUB_STEP_SUMMARY`, ou stdout).
+  - Modo por `ESTADO_NO_MERGE`: ausente/`off` → sai 0 sem chamar `linear` nem `gh`; `simular` → só
+    leituras, e o resumo diz o que faria; `on` → escreve.
+  - PR não mesclado → nada. Para cada issue de `parseRefs`: lê a issue (descrição, estado, time e
+    seus estados, filhas com `state.type`, anexos); "outro PR aberto" = anexo
+    `github.com/<GITHUB_REPOSITORY>/pull/<n>` com `n` ≠ PR, e `gh` diz `open`.
+  - `done`: um `issueUpdate` com `stateId` (estado `type: completed`, nome `Done`) e `description`
+    (se `changed`). `estado`: `issueUpdate` só com `description`. `nada`: nenhuma mutação.
+  - Erro numa issue não impede as outras; o processo sai 1 no fim se alguma falhou. O token nunca
+    vai para o resumo nem para o log.
+- [ ] **Teste que falha antes:** `.github/scripts/estado-no-merge.test.mjs` com `linear` e `gh` falsos
+  que registram chamadas: `off` → zero chamadas; `simular` → zero mutações e resumo com a decisão;
+  `on` + Médio limpo → uma mutação com `stateId` do Done e descrição nova; `on` + Alto → zero
+  mutações; `on` + filha aberta → mutação sem `stateId`; PR fechado sem merge → nada; erro do
+  Linear numa issue → a outra ainda é processada e o código de saída é 1.
+- [ ] **Arquivos:** CLI e teste; um evento de exemplo em `.github/scripts/fixtures/` se ajudar. Escopo M.
 
-- [x] **T4: tela, "Copiar resumo" e docs (AC-03)** · M
-  - O que: seção "As cinco métricas do acompanhamento" no topo da capa (aba Resumo), uma
-    linha por métrica com valor, n e fonte; desconhecido com a classe `wr-none`. O front
-    busca `/api/flags-summary` ao abrir o relatório e no ↻ (como `loadPatterns`); erro →
-    M4 desconhecida. O `copyText` ganha o bloco das cinco métricas e a "Linha para a série"
-    vira a `seriesRow`. Docs: seção do relatório no `dashboard/README.md`; coluna "Onde já é
-    medida" das métricas 4 e o rito no `roadmap/ACOMPANHAMENTO.md`; spec viva
-    `docs/capacidades/medicao.md` se ela citar o relatório.
-  - Teste que falha antes: `copyText` traz as cinco linhas, cada uma com `n =` e `fonte:`;
-    render da capa com as cinco (teste de UI existente do weekly, se houver harness).
-  - Arquivos: `dashboard/public/weekly-report.js`, `dashboard/public/screens/weekly-report.css`,
-    `dashboard/weekly-report.test.js`, `dashboard/README.md`, `roadmap/ACOMPANHAMENTO.md`.
-  - Depende de: T2, T3
+## T3: workflow (AC-02)
 
-## Checkpoint: completo
-- [ ] `npm test` e `npm run check` verdes (`/pri-check`)
-- [ ] Relatório com `DRY_RUN` mostra as cinco métricas; texto copiado vai para a Evidência
+Depende de T2.
+
+- [ ] **O que:** `.github/workflows/estado-no-merge.yml`:
+  - `on: pull_request: types [closed]` e `workflow_dispatch` com input `pr` (obrigatório, número).
+  - `if` do job: `vars.ESTADO_NO_MERGE` em `simular`/`on` E (dispatch OU (`merged` e base `main` e
+    `head.repo.full_name == github.repository`)).
+  - `permissions: contents: read, pull-requests: read`; `concurrency` por PR, sem cancelar.
+  - Checkout esparso só de `/.github/` da `main`, `persist-credentials: false`; `setup-node` 24;
+    actions pinadas pelo mesmo SHA dos outros workflows.
+  - Um passo roda a CLI com `LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}`, `GITHUB_TOKEN`,
+    `ESTADO_NO_MERGE: ${{ vars.ESTADO_NO_MERGE }}` e `--pr ${{ inputs.pr }}` no dispatch.
+- [ ] **Teste que falha antes:** `.github/scripts/estado-no-merge-workflow.test.mjs` lê o YAML como texto
+  e confere: gatilhos; `if` com a variável e com `merged`; nenhum checkout de `head.sha`/`head.ref`;
+  `persist-credentials: false`; nenhuma permissão `write`; secret só no `env` do passo da CLI.
+- [ ] **Arquivos:** workflow e teste. Escopo S.
+
+## Ponto de controle: depois de T3
+
+- [ ] `node --test .github/scripts/*.test.mjs` verde nos três modos
+- [ ] `node .github/scripts/estado-no-merge.mjs` com `ESTADO_NO_MERGE=simular` e o evento de exemplo,
+  com rede falsa, imprime a decisão (saída vai para a Evidência)
+
+## T4: registro de flags e /pri-pr (AC-02)
+
+Depende de T3 (o arquivo do workflow precisa existir para o registro).
+
+- [ ] **O que:**
+  - `docs/flags.md`: linha `ESTADO_NO_MERGE`, `Onde` = `.github/workflows/estado-no-merge.yml`,
+    Padrão `desligada`, Issue `PRI-399`, Consumidor `não se aplica: CI deste repo`, Ligar quando
+    "o Richard grava `simular`, confere o resumo do job num merge e grava `on`", Desligar quando
+    "move issue errada ou reescreve Estado fora do bloco", Decidir até `2026-12-18`, Item desligado
+    `sim`; "Hoje são 10" vira 11.
+  - `.claude/skills/pri-pr/SKILL.md`, passo 7: uma frase dizendo que, com `ESTADO_NO_MERGE=on`, a
+    Action move Leve e Médio para Done no merge; o `/pri-pr` continua sem mover.
+- [ ] **Teste que falha antes:** `node scripts/lib/flag-registry.test.js` com a linha nova (antes de
+  existir o workflow, `SOURCE_MISSING`); depois, verde. Conferir que nenhum teste depende da
+  contagem 10.
+- [ ] **Arquivos:** `docs/flags.md`, `.claude/skills/pri-pr/SKILL.md`. Escopo XS.
+
+## Ponto de controle: fim
+
+- [ ] `npm test` e `npm run check` verdes na raiz (`/pri-check`)
+- [ ] Evidência: testes por AC e saída do `--simular`; o `/pri-pr` marca a F0.9 `concluída`
