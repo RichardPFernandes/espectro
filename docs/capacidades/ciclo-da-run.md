@@ -4,7 +4,7 @@ tipo: fluxo
 resumo: O watcher, que a cada tick descobre os tickets, aplica os portões e despacha o próximo nó.
 situacao: ligada
 spec: sem-spec
-flags: [DRY_RUN, DISABLE_AUTO_CLEANUP, WORKTREE_CLEANUP_ON_PR_OPEN]
+flags: [DRY_RUN, DISABLE_AUTO_CLEANUP, WORKTREE_CLEANUP_ON_PR_OPEN, PRISMA_CHECKOUT_GUARD]
 modulos:
   - scripts/readmine-watcher.js
   - scripts/watcher-manager.js
@@ -15,6 +15,7 @@ modulos:
   - scripts/lib/graceful-shutdown.js
   - scripts/lib/node-events.js
   - scripts/lib/process-identity.js
+  - scripts/lib/return-point.js
   - scripts/lib/watcher-health.js
   - scripts/lib/watcher-lock.js
   - scripts/lib/worktree-cleanup.js
@@ -29,8 +30,7 @@ reserva por ticket impede que o watcher e o dashboard despachem o mesmo ticket j
 `watcher-manager.js` é o laço que o dashboard usa para repetir o tick.
 
 Cada nó executado deixa eventos em `state.json`; o replay reentra o ciclo num nó anterior, numa
-Run nova. Com `DRY_RUN=true` o ciclo roda contra fixtures, sem chamada externa. Worktrees saem
-quando o PR abre, salvo `WORKTREE_CLEANUP_ON_PR_OPEN=0`.
+Run nova. Com `DRY_RUN=true` o ciclo roda contra fixtures, sem chamada externa. Worktrees saem quando o PR abre, salvo `WORKTREE_CLEANUP_ON_PR_OPEN=0`.
 
 ## Por onde começar
 

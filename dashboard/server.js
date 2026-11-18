@@ -3857,9 +3857,9 @@ if (require.main === module) {
     const repoKeys = [...INTEGRATION_KEYS, ...PREVIEW_KEYS, ...APPROVAL_KEYS, ...PRE_BUILD_KEYS, ...NOTIFY_KEYS,
         'WATCHER_SIBLING_REPOS', 'WATCHER_MAIN_REPO_NAME', 'BITBUCKET_PR_REPOS', 'BITBUCKET_ACCOUNT_ID', 'REDMINE_USER_ID'];
     loadDotEnv(path.join(consumerRoot, '.env'), key => repoKeys.includes(key) || AUTHORIZATION_KEYS(key));
-    // Default do operador só neste processo. Testes que criam o servidor sem
-    // COORD_STATUS_PATH ficam num arquivo temporário (coordination.js).
+    // Default do operador só neste processo; testes sem COORD_STATUS_PATH usam arquivo temporário (coordination.js).
     applyCoordinationDefault(process.env);
+    defaultWatcherManager.exitIfCheckoutRefused({ codeRoot: path.resolve(__dirname, '..'), env: process.env }); // guard do checkout (F1.2)
     const PORT = Number(process.env.PORT) || 3333;
     const HOST = process.env.HOST || '127.0.0.1';
     // Reinício pedido pelo painel Versão: mesmo caminho do SIGTERM (para o watcher e sai).
