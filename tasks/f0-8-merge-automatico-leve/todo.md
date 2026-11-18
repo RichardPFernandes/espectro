@@ -57,7 +57,7 @@ Contexto comum para cada subagente: leia `tasks/f0-8-merge-automatico-leve/SPEC.
   - Arquivos: `.github/scripts/merge-leve.mjs`, `.github/scripts/merge-leve-cli.test.mjs`, `.claude/skills/pri-pr/SKILL.md`
   - Depende de: T2
 
-- [ ] **T6: texto da exceção e linha do roadmap (item a da SPEC)** · XS, só texto
+- [x] **T6: texto da exceção e linha do roadmap (item a da SPEC)** · XS, só texto
   - Fazer:
     - Regra 10 do `CLAUDE.md` e a linha "PR sempre em draft…" de "O que nunca muda" no `AGENTS.md`, com o texto exato do item (a) da SPEC, incluindo o draft como trava.
     - `docs/fluxo-dev.md`: o nó do `/pri-pr` diz "PR draft, ou pronto no Leve elegível".

@@ -8,7 +8,7 @@
 7. Nível pelo efeito: atrás de flag desligada, ou piloto no launcher do próprio Espectro, é Médio; mudar o que já roda no consumidor corporativo (ligar flag, bump, polling, operação protegida, credencial) é Alto. Se o trabalho passar do nível, peça reclassificação. Não crie adendo.
 8. Pare e peça decisão só quando mudar o escopo, faltar acesso/credencial ou a ação não tiver volta. Sempre com recomendação. Leve/Médio: sem objeção até a janela de segunda ou quinta, vale a recomendação.
 9. Toda fatia termina em algo ligado ou demonstrável; "flag reservada" sem gatilho não é Pronto.
-10. Merge é sempre do Richard. PR em draft. Use "Refs", nunca "Fixes".
+10. Merge é sempre do Richard, com uma exceção: com `MERGE_LEVE` ligado, o bot do GitHub Actions mescla o PR `processo:leve`, fora de draft, que só toca caminhos da lista `mergeLeve` de `.github/processo.json` na `main` e tem todos os checks verdes. Agente nunca mescla. Fora disso, PR em draft. O draft é a trava: para segurar um Leve elegível, converta o PR para draft. Use "Refs", nunca "Fixes".
 11. Leve/Médio: mesclar é aceitar. A issue vai para Done quando o último PR dela é mesclado e não há filha aberta; a evidência continua obrigatória no PR. Alto: Done só com aceite do Richard.
 12. In Review é a fila "Com o Richard": esperando decisão, aceite ou AUTORIZO dele, e nada mais. Limite de 3 itens. Fila cheia: não abra trabalho novo que vá precisar dele, e diga isso.
 13. Issue nova só nasce de fatia do roadmap, defeito ou pedido do Richard. Não crie issue de "Avaliar", "Planejar" ou "Design" por conta própria; ideia vira uma linha de comentário na issue da fatia em curso (exceção à regra 3).
