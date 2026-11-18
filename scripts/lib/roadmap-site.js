@@ -98,7 +98,8 @@ details ul{padding-left:1.1rem;margin:.5rem 0 0}li{margin:.2rem 0}
 .hoje{position:absolute;top:0;bottom:0;width:2px;background:var(--hj)}
 svg{display:block;min-width:640px;width:100%;height:auto}.n rect{fill:color-mix(in srgb,var(--c) 18%,var(--bg));stroke:var(--c);stroke-width:1.5}.n.s0 rect{stroke-dasharray:4 2}.n text,.cl{fill:var(--fg);font:10px system-ui,sans-serif;text-anchor:middle;dominant-baseline:central}
 .e{fill:none;stroke:var(--mut);opacity:.45}.lg{margin:.5rem 0}.lg span{margin:0 .5rem .25rem 0}
-table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:.3rem .5rem;text-align:left}th,td:not(:nth-child(2)):not(:nth-child(7)){white-space:nowrap}`;
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:.3rem .5rem;text-align:left}th,td:not(:nth-child(2)):not(:nth-child(7)){white-space:nowrap}td:nth-child(2){min-width:12rem}
+@media(max-width:600px){.ax b:nth-child(even){display:none}}`;
 
 function progress(slices) {
     const sum = pred => slices.filter(pred).reduce((t, s) => t + (s.dias || 0), 0);
