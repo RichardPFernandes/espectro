@@ -139,7 +139,7 @@ test('main: grava index.html em diretório novo e em caminho .html, sem git, com
 test('removida não aparece na lista, no grafo nem na tabela de Alto; o card só cita o ID', () => {
     const fx = (id, status, alto = false) => ({ id, name: `nome ${id}`, dias: 2, nivel: alto ? 'Alto' : 'Leve', autorizo: alto ? 'Sim' : 'Não', alto, status, deps: [], issue: '', phase: 0 });
     const model = { phases: [{ n: 0, name: 'Zero', status: 'em andamento', start: '2026-11-16', end: '2026-12-01',
-        slices: [fx('F0.1', 'concluída'), fx('F0.5', 'removida', true), fx('F0.8', 'não iniciada', true)] }] };
+        slices: [fx('F0.1', 'concluída'), fx('F0.5', 'removida', true), { ...fx('F0.8', 'não iniciada', true), deps: ['F0.5'] }] }] };
     const html = render(model, { today: '2026-11-18', commit: 'abcdef1', generatedAt: 'x' });
     assert.ok(!html.includes('data-id="F0.5"'), 'lista');
     assert.ok(!html.includes('<title>F0.5'), 'grafo');
@@ -147,4 +147,8 @@ test('removida não aparece na lista, no grafo nem na tabela de Alto; o card só
     assert.ok(/<td>F0\.8<\/td>/.test(html), 'Alto vivo segue na tabela');
     assert.match(html, /Removidas: F0\.5/);
     assert.match(html, /<summary>2 fatias<\/summary>/);
+    assert.ok(!html.includes('class="e"'), 'aresta para removida some');
+    assert.ok(!html.includes('>removida<'), 'legenda sem removida');
+    const semRemovida = render({ phases: [{ ...model.phases[0], slices: [fx('F0.1', 'concluída')] }] }, { today: '2026-11-18', commit: 'abcdef1', generatedAt: 'x' });
+    assert.ok(!semRemovida.includes('Removidas:'));
 });
