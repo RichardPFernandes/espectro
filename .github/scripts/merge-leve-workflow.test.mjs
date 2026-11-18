@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 const WF_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'workflows');
 
 const WORKFLOWS = [
-    { file: 'merge-leve.yml', trigger: 'workflow_run', allowDispatch: false },
+    { file: 'merge-leve.yml', trigger: 'workflow_run', allowDispatch: false, readsMergeLeve: true },
+    { file: 'merge-leve-resumo.yml', trigger: 'schedule', allowDispatch: true, readsMergeLeve: false },
 ];
 
 // Tira comentários (linha inteira e fim de linha) para que um texto explicativo
@@ -64,9 +65,15 @@ for (const wf of WORKFLOWS) {
         for (const u of uses) assert.match(u, /@[0-9a-f]{40}$/, u);
     });
 
-    test(`${wf.file}: passa vars.MERGE_LEVE`, () => {
-        assert.match(read(wf.file), /MERGE_LEVE:\s*\$\{\{\s*vars\.MERGE_LEVE\s*\}\}/);
-    });
+    if (wf.readsMergeLeve) {
+        test(`${wf.file}: passa vars.MERGE_LEVE`, () => {
+            assert.match(read(wf.file), /MERGE_LEVE:\s*\$\{\{\s*vars\.MERGE_LEVE\s*\}\}/);
+        });
+    } else {
+        test(`${wf.file}: não lê MERGE_LEVE`, () => {
+            assert.doesNotMatch(read(wf.file), /MERGE_LEVE/);
+        });
+    }
 }
 
 test('merge-leve.yml: só PR, concorrência por sha, CLI da main', () => {
@@ -79,4 +86,27 @@ test('merge-leve.yml: só PR, concorrência por sha, CLI da main', () => {
     for (const p of ['contents: write', 'pull-requests: write', 'actions: write', 'checks: read', 'statuses: read']) {
         assert.ok(y.includes(p), p);
     }
+});
+
+test('merge-leve-resumo.yml: cron das 08:00 BRT, só na main, permissões mínimas, CLI da main', () => {
+    const y = read('merge-leve-resumo.yml');
+    assert.match(y, /^\s+schedule:\s*\n\s+-\s*cron:\s*'0 11 \* \* \*'/m);
+    assert.match(y, /^\s+workflow_dispatch:/m);
+    assert.match(y, /if:\s*github\.ref == 'refs\/heads\/main'/);
+    assert.match(y, /node \.github\/scripts\/merge-leve-resumo\.mjs/);
+    for (const p of ['issues: write', 'pull-requests: read', 'checks: read', 'statuses: read']) {
+        assert.ok(y.includes(p), p);
+    }
+    for (const p of ['contents: write', 'pull-requests: write', 'actions: write', 'checks: write', 'statuses: write']) {
+        assert.ok(!y.includes(p), p);
+    }
+});
+
+test('merge-leve-resumo.yml: mesmas actions fixadas e mesmo checkout esparso do merge-leve.yml', () => {
+    const uses = (f) => [...read(f).matchAll(/^\s*(?:-\s+)?uses:\s*(\S+)/gm)].map((m) => m[1]);
+    assert.deepEqual(uses('merge-leve-resumo.yml'), uses('merge-leve.yml'));
+    const y = read('merge-leve-resumo.yml');
+    assert.match(y, /sparse-checkout-cone-mode:\s*false/);
+    assert.match(y, /sparse-checkout:\s*\|\s*\n\s+\/\.github\/\s*$/m);
+    assert.doesNotMatch(y, /^\s+ref:/m);
 });

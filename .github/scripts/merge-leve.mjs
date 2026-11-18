@@ -18,15 +18,26 @@ const RETRY_LATER = new Set([405, 409]);
 
 // O que vem do PR (nomes de arquivo, rótulos, checks) não pode quebrar a linha:
 // forjaria uma linha no resumo ou um workflow command no log.
-const esc = (s) => String(s).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+export const esc = (s) => String(s).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
 
-async function paginate(gh, url, pick) {
+// Todas as páginas de uma listagem (100 por página). `until(batch)` verdadeiro
+// para depois da página atual (listagens ordenadas, como as do resumo diário).
+export async function paginate(gh, url, pick, until = () => false) {
     const all = [];
+    const sep = url.includes('?') ? '&' : '?';
     for (let page = 1; ; page++) {
-        const batch = pick(await gh('GET', `${url}?per_page=100&page=${page}`)) ?? [];
+        const batch = pick(await gh('GET', `${url}${sep}per_page=100&page=${page}`)) ?? [];
         all.push(...batch);
-        if (batch.length < 100) return all;
+        if (batch.length < 100 || until(batch)) return all;
     }
+}
+
+// Check-runs e status do sha, no formato que evaluatePr espera.
+export async function checksOf(gh, repo, sha) {
+    return {
+        checkRuns: await paginate(gh, `/repos/${repo}/commits/${sha}/check-runs`, (b) => b?.check_runs),
+        statuses: await paginate(gh, `/repos/${repo}/commits/${sha}/status`, (b) => b?.statuses),
+    };
 }
 
 async function prsOf(gh, repo, wr) {
@@ -50,10 +61,7 @@ export async function run({ event, env = process.env, gh, config, log = console.
             const pr = await gh('GET', `/repos/${repo}/pulls/${n}`);
             const sha = pr.head?.sha;
             const files = await paginate(gh, `/repos/${repo}/pulls/${n}/files`, (b) => b);
-            const checks = {
-                checkRuns: await paginate(gh, `/repos/${repo}/commits/${sha}/check-runs`, (b) => b?.check_runs),
-                statuses: await paginate(gh, `/repos/${repo}/commits/${sha}/status`, (b) => b?.statuses),
-            };
+            const checks = await checksOf(gh, repo, sha);
             const { merge, motivos } = evaluatePr({ pr, files, checks, config, repo });
             if (!merge) { lines.push(`- não #${n}: ${esc(motivos.join('; '))}`); continue; }
             if (!live) { lines.push(`- mesclaria #${n}`); continue; }

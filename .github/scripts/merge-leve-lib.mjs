@@ -93,3 +93,35 @@ export function evaluatePr({ pr, files, checks, config, repo }) {
     motivos.push(...checksVerdict(checks, cfg.requiredChecks ?? []));
     return { merge: motivos.length === 0, motivos };
 }
+
+// Texto vindo do PR (título, nome de arquivo, motivo) dentro do markdown do
+// resumo: uma linha só, sem marcação ativa, sem menção nem referência cruzada.
+export function escapeMarkdown(s) {
+    return String(s)
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/[\\`*_{}[\]()<>#!|~&]/g, (c) => `\\${c}`)
+        .replace(/@/g, '@​');
+}
+
+// Resumo diário do merge automático do Leve (AC-03; SPEC item d).
+//   merged:  [{ number, title, issue }] mesclados pelo bot nas últimas 24 h
+//            (issue = "PRI-NNN" ou null);
+//   skipped: [{ number, title, motivos[] }] Leve fora de draft que a
+//            elegibilidade recusa;
+//   date:    "AAAA-MM-DD" do dia do resumo.
+// Devolve markdown, ou null quando não há nada a dizer (dia vazio não comenta).
+export function buildDailySummary({ merged = [], skipped = [], date }) {
+    if (!merged.length && !skipped.length) return null;
+    const lines = [`## Merge automático do Leve: ${escapeMarkdown(date)}`, ''];
+    lines.push(`### Mesclados pelo bot nas últimas 24 h (${merged.length})`, '');
+    if (!merged.length) lines.push('Nenhum.');
+    for (const m of merged) {
+        lines.push(`- #${Number(m.number)} ${escapeMarkdown(m.title)} (${m.issue ? escapeMarkdown(m.issue) : 'sem issue citada'})`);
+    }
+    lines.push('', `### Leve que ficou de fora (${skipped.length})`, '');
+    if (!skipped.length) lines.push('Nenhum.');
+    for (const s of skipped) {
+        lines.push(`- #${Number(s.number)} ${escapeMarkdown(s.title)}: ${s.motivos.map(escapeMarkdown).join('; ')}`);
+    }
+    return `${lines.join('\n')}\n`;
+}
