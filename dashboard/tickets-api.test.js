@@ -19,7 +19,7 @@ function writeRun(taskId, state, root = runs) {
 }
 
 let fetchCalls = 0;
-let fetchResult = [{ id: 10001, subject: 'Painel de tickets', status: 'Novo', priority: 'Alta', updated_on: '2026-09-26T10:00:00Z' }];
+let fetchResult = [{ id: 43666, subject: 'Painel de tickets', status: 'Novo', priority: 'Alta', updated_on: '2026-09-26T10:00:00Z' }];
 const fakeFetchAssignedTickets = async () => { fetchCalls++; return fetchResult; };
 
 let dispatchCalls = [];
@@ -85,13 +85,13 @@ test('POST /api/runs/start: ticketId inválido => 400', async () => {
 });
 
 test('POST /api/runs/start: run ativa para o ticket => 409 com runId, sem chamar dispatchNode', async () => {
-    writeRun('10010-em-andamento', { redmine_ticket: { id: 10010 } });
+    writeRun('43590-em-andamento', { redmine_ticket: { id: 43590 } });
     dispatchCalls = [];
-    assert.ok(await eventually(async () => (await get('/api/runs')).body.some(run => run.taskId === '10010-em-andamento')),
+    assert.ok(await eventually(async () => (await get('/api/runs')).body.some(run => run.taskId === '43590-em-andamento')),
         'chokidar não publicou a run ativa em 3s');
-    const r = await post('/api/runs/start', { ticketId: '10010' });
+    const r = await post('/api/runs/start', { ticketId: '43590' });
     assert.strictEqual(r.status, 409);
-    assert.strictEqual(r.body.runId, '10010-em-andamento');
+    assert.strictEqual(r.body.runId, '43590-em-andamento');
     assert.strictEqual(dispatchCalls.length, 0);
 });
 
@@ -105,9 +105,9 @@ test('GET /api/runs: memory/runs criado depois do start => run aparece no primei
         await new Promise(r => late.server.listen(0, '127.0.0.1', r));
         await late.ready;
         assert.ok(!fs.existsSync(lateRuns));
-        writeRun('13592-raiz-nova', { redmine_ticket: { id: 13592 } }, lateRuns);
+        writeRun('43592-raiz-nova', { redmine_ticket: { id: 43592 } }, lateRuns);
         const res = await fetch(`http://localhost:${late.server.address().port}/api/runs`);
-        assert.ok((await res.json()).some(run => run.taskId === '13592-raiz-nova'));
+        assert.ok((await res.json()).some(run => run.taskId === '43592-raiz-nova'));
     } finally {
         await late.close();
         fs.rmSync(lateTmp, { recursive: true, force: true });
@@ -119,12 +119,12 @@ test('GET /api/runs: memory/runs criado depois do start => run aparece no primei
 test('POST /api/runs/start: run ativa no disco fora do cache => 409 com runId, sem chamar dispatchNode', async () => {
     dash.watcher.unwatch(runs);
     try {
-        writeRun('13591-fora-do-cache', { redmine_ticket: { id: 13591 } });
+        writeRun('43591-fora-do-cache', { redmine_ticket: { id: 43591 } });
         dispatchCalls = [];
-        assert.ok(!(await get('/api/runs')).body.some(run => run.taskId === '13591-fora-do-cache'), 'pré-condição: run fora do cache');
-        const r = await post('/api/runs/start', { ticketId: '13591' });
+        assert.ok(!(await get('/api/runs')).body.some(run => run.taskId === '43591-fora-do-cache'), 'pré-condição: run fora do cache');
+        const r = await post('/api/runs/start', { ticketId: '43591' });
         assert.strictEqual(r.status, 409);
-        assert.strictEqual(r.body.runId, '13591-fora-do-cache');
+        assert.strictEqual(r.body.runId, '43591-fora-do-cache');
         assert.strictEqual(dispatchCalls.length, 0);
     } finally {
         dash.watcher.add(runs);
@@ -159,7 +159,7 @@ test('POST /api/runs/start: skip de recusa QA com run anterior => 409 reaproveit
 test('POST /api/runs/start: outro processo despachando o ticket (reserva ou fetch_ticket vivo) => 409 (PRI-218)', async () => {
     for (const reason of ['despacho_reservado', 'fetch_em_execucao']) {
         dispatchResult = { action: 'skip', reason };
-        const r = await post('/api/runs/start', { ticketId: '14444' });
+        const r = await post('/api/runs/start', { ticketId: '44444' });
         assert.strictEqual(r.status, 409, reason);
         assert.strictEqual(r.body.error, 'disparo já em andamento para este ticket');
     }

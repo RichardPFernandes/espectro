@@ -220,7 +220,7 @@ test('segundo watcher real não grava nada e sai 75; --ticket igual; --dry-run n
     assert.deepStrictEqual(filesUnder(repo), before, 'tick recusado não cria nem altera arquivo');
 
     const beforeTicket = filesUnder(repo);
-    const refusedTicket = await runNode([WATCHER, '--ticket=13210'], childEnv(repo));
+    const refusedTicket = await runNode([WATCHER, '--ticket=43210'], childEnv(repo));
     assert.strictEqual(refusedTicket.code, lock.EXIT_LOCKED);
     assert.match(refusedTicket.out, /Nada foi gravado/);
     assert.deepStrictEqual(filesUnder(repo), beforeTicket);

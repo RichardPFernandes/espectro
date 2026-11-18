@@ -137,9 +137,9 @@ test('falha na remoção não lança: worktree do app-back ficou → cópias des
     assert.match(r2[0].errors[0].error, /git sumiu/);
 });
 
-test('runs legados de OUTROS tickets versionados no worktree (branch da development): não disparam nem são copiados (#10013)', async () => {
+test('runs legados de OUTROS tickets versionados no worktree (branch da development): não disparam nem são copiados (#43746)', async () => {
     reset();
-    const legacy = seed('7108', '13499-recusa-qa');           // committed + URL de PR, mas é de outro ticket
+    const legacy = seed('7108', '43499-recusa-qa');           // committed + URL de PR, mas é de outro ticket
     seed('7108', '2026-09-21-remover-liquibase');                // task-id datado, idem
     const calls = [];
     const res = await watcher.cleanupWorktreesAfterPrOpen(deps({ cleanupWorktrees: stubCleanup(calls) }));
@@ -153,7 +153,7 @@ test('runs legados de OUTROS tickets versionados no worktree (branch da developm
     await watcher.cleanupWorktreesAfterPrOpen(deps({ cleanupWorktrees: stubCleanup(calls) }));
     assert.strictEqual(calls.length, 1);
     assert.ok(fs.existsSync(path.join(runs, '_archive', '7108-a')));
-    assert.ok(!fs.existsSync(path.join(runs, '_archive', '13499-recusa-qa')));
+    assert.ok(!fs.existsSync(path.join(runs, '_archive', '43499-recusa-qa')));
     assert.ok(!fs.existsSync(path.join(runs, '_archive', '2026-09-21-remover-liquibase')));
 });
 

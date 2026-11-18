@@ -27,9 +27,9 @@ const ENV = { ...process.env, BITBUCKET_API_TOKEN: SECRET_TOKEN, REDMINE_API_KEY
 
 const SPEC = `---
 spec_template_version: 1
-ticket: 10004
+ticket: 43700
 ---
-# Ticket #10004 — Desconto por volume
+# Ticket #43700 — Desconto por volume
 
 ## Contexto
 Hoje o relatório de fretes não mostra o desconto por volume.
@@ -67,23 +67,23 @@ let seq = 0;
  * fetch-ticket (init) → /plan (baseline sela v1) → implement (portão de drift) → review
  * (record) → test (finalize) → verify (--write): todos os artefatos VALID na v1.
  */
-function seedRun({ root = path.join(sandbox, `repo-${++seq}`), taskId = `10004-desconto-${++seq}`, downstream = true } = {}) {
+function seedRun({ root = path.join(sandbox, `repo-${++seq}`), taskId = `43700-desconto-${++seq}`, downstream = true } = {}) {
     const dir = path.join(root, 'memory', 'runs', taskId);
     fs.mkdirSync(dir, { recursive: true });
     fs.mkdirSync(path.join(root, 'memory', 'spec'), { recursive: true });
-    const specFile = path.join(root, 'memory', 'spec', '10004-spec.md');
+    const specFile = path.join(root, 'memory', 'spec', '43700-spec.md');
     if (!fs.existsSync(specFile)) fs.writeFileSync(specFile, SPEC);
     writeState(dir, {
         task_id: taskId, node: 'plan', history: ['fetch_ticket'], status: 'in_progress',
         started_at: '2026-10-01T10:00:00.000Z', ac_ids: [],
-        redmine_ticket: { id: 10004, subject: 'Desconto por volume', tracker: 'Melhoria', base_branch: 'development' },
+        redmine_ticket: { id: 43700, subject: 'Desconto por volume', tracker: 'Melhoria', base_branch: 'development' },
     });
     assert.strictEqual(cli('lib/spec-version.js', ['init', dir]).status, 0);
     const base = cli('lib/spec-authority.js', ['baseline', dir]);
     assert.strictEqual(base.status, 0, base.stderr);
     const prLine = /Spec: .*spec_hash=\w+/.exec(base.stdout)?.[0] || '';
     fs.writeFileSync(path.join(dir, 'plan.md'), `# Plano\n\n${prLine}\nACs: AC-01, AC-02\n\n## Plano de execução\n1. Desconto. Critérios: AC-01, AC-02\n`);
-    fs.writeFileSync(path.join(dir, 'handoff.md'), '# Handoff\n\n- Spec: memory/spec/10004-spec.md\n- ACs: AC-01, AC-02\n');
+    fs.writeFileSync(path.join(dir, 'handoff.md'), '# Handoff\n\n- Spec: memory/spec/43700-spec.md\n- ACs: AC-01, AC-02\n');
     const r = { root, taskId, dir, specFile };
     if (downstream) produceDownstream(r);
     return r;
@@ -320,8 +320,8 @@ test('6. Verify recusa evidence STALE (spec_hash divergente): mensagem clara, ci
 // ── 7 ────────────────────────────────────────────────────────────────────────────
 function seedReplayable({ evidenceSpecHash } = {}) {
     const repoPath = path.join(sandbox, `replay-repo-${++seq}`);
-    const worktree = path.join(repoPath, '.claude', 'worktrees', '10004');
-    const r = seedRun({ root: worktree, taskId: `10004-replay-src-${seq}` });
+    const worktree = path.join(repoPath, '.claude', 'worktrees', '43700');
+    const r = seedRun({ root: worktree, taskId: `43700-replay-src-${seq}` });
     const st = stateOf(r.dir);
     Object.assign(st, { status: 'committed', node: 'commit', history: ['fetch_ticket', 'plan', 'implement', 'review', 'test', 'verify', 'commit'] });
     writeState(r.dir, st);
@@ -376,7 +376,7 @@ test('7. Replay com evidence antiga: evidence marcada STALE, nova evidence produ
     // Evidence nova do replay (test na spec ativa) é a única VALID.
     writeMatrix({ ...r, dir: out.replayDir, taskId: out.replayTaskId }, ['AC-01', 'AC-02', 'AC-03']);
     const rs = stateOf(out.replayDir);
-    sa.applyBaseline(rs, { root: r.worktree, specPath: 'memory/spec/10004-spec.md', taskId: out.replayTaskId });
+    sa.applyBaseline(rs, { root: r.worktree, specPath: 'memory/spec/43700-spec.md', taskId: out.replayTaskId });
     writeState(out.replayDir, rs);
     assert.strictEqual(cli('lib/acceptance-evidence.js', ['finalize', out.replayDir]).status, 0);
     assert.strictEqual(stateOf(out.replayDir).artifact_validity.evidence.validity.status, 'VALID');
@@ -394,11 +394,11 @@ test('7b. Replay de verify com a mesma spec mas matriz de outra versão: STALE e
 test('8. Run legado sem spec_hash: UNKNOWN; Verify recusa com aviso; dashboard "legado sem versão"; nada reescrito', () => {
     // Run legado: sem bloco spec, sem artifact_validity, review e matriz sem spec_hash.
     const legacyState = {
-        task_id: '10004-legado', node: 'verify', history: ['plan', 'implement', 'review', 'test'], status: 'in_progress',
+        task_id: '43700-legado', node: 'verify', history: ['plan', 'implement', 'review', 'test'], status: 'in_progress',
         started_at: '2026-09-20T00:00:00Z', spec_hash: 'c'.repeat(64),
         review_results: { verdict: 'PASS', failure_origin: null, spec_compliance: {}, engineering: {} },
     };
-    const legacyMatrix = { schema_version: 1, run_id: '10004-legado', generated_at: '2026-09-20T00:00:00Z', coverage: { 'AC-01': { status: 'PASS', evidence: [] } } };
+    const legacyMatrix = { schema_version: 1, run_id: '43700-legado', generated_at: '2026-09-20T00:00:00Z', coverage: { 'AC-01': { status: 'PASS', evidence: [] } } };
     const d = inv.describe(legacyState, { evidenceData: legacyMatrix });
     assert.strictEqual(d.phases.evidence.status, 'UNKNOWN');
     assert.strictEqual(d.phases.evidence.label, 'legado sem versão');
@@ -437,13 +437,13 @@ test('9. Run em andamento (implement) quando a SPEC_CHANGE chega: transição no
     // Run A propõe e aprova a SPEC_CHANGE; run B (mesma spec, mesmo checkout) está com o
     // implement rodando.
     const a = seedRun();
-    const b = seedRun({ root: a.root, taskId: '10004-paralelo' });
+    const b = seedRun({ root: a.root, taskId: '43700-paralelo' });
     const sb = stateOf(b.dir);
     Object.assign(sb, { node: 'implement', status: 'running', node_started_at: '2026-10-01T11:59:00.000Z' });
     writeState(b.dir, sb);
     const bBefore = fs.readFileSync(path.join(b.dir, 'state.json'), 'utf8');
     const out = proposeAndApprove(a, ADD_AC03);
-    assert.deepStrictEqual(out.propagated, [{ task: '10004-paralelo', case: 'active_phase' }]);
+    assert.deepStrictEqual(out.propagated, [{ task: '43700-paralelo', case: 'active_phase' }]);
     assert.strictEqual(fs.readFileSync(path.join(b.dir, 'state.json'), 'utf8'), bBefore, 'state.json do nó em execução não é tocado (o nó o sobrescreveria)');
     let s = stateOf(b.dir);
     assert.strictEqual(s.status, 'running', 'o nó não é interrompido');

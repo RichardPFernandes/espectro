@@ -37,13 +37,13 @@ test('POST start dry-run: 202, progresso até done, status espelha summary', asy
         await delay(30);
         onProgress?.({ phase: 'scan_done', action: 'scan_done', total: 2, actionable: 1, message: '2 runs' });
         onProgress?.({
-            phase: 'sync', action: 'would_create', taskId: '10002-x', ticketId: 10002,
+            phase: 'sync', action: 'would_create', taskId: '43703-x', ticketId: 43703,
             hours: 1.5, index: 1, total: 2,
         });
         progressCalls += 1;
         await delay(20);
         onProgress?.({
-            phase: 'sync', action: 'skip', taskId: '13704-y', ticketId: 13704,
+            phase: 'sync', action: 'skip', taskId: '43704-y', ticketId: 43704,
             reason: 'no_duration', index: 2, total: 2,
         });
         return {

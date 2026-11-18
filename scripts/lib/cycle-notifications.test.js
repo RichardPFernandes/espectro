@@ -25,12 +25,12 @@ const text = p => p.attachments[0].text;
 
 test('PR aberto low-risk: notifica uma vez, com título do ticket e URL', async () => {
     const base = runsDir();
-    const dir = task(base, '10012-x', { status: 'committed', pull_request: PR, redmine_ticket: { subject: 'Ajuste <tela>' } }, { archived: true });
+    const dir = task(base, '43670-x', { status: 'committed', pull_request: PR, redmine_ticket: { subject: 'Ajuste <tela>' } }, { archived: true });
     const { calls, send } = recorder();
     const r1 = await cn.sweepOpenedPrs({ runsDirs: [base], send, enabled: true });
     assert.strictEqual(r1.length, 1);
     const a = calls[0].attachments[0];
-    assert.strictEqual(a.title, '✅ Task #10012-x — PR aberto');
+    assert.strictEqual(a.title, '✅ Task #43670-x — PR aberto');
     assert.strictEqual(a.color, 'good');
     assert.strictEqual(a.title_link, PR['app-back'].url);
     assert.match(a.text, /\*Ajuste &lt;tela&gt;\*/);

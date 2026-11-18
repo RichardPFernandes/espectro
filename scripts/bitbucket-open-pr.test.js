@@ -80,15 +80,15 @@ const server = http.createServer((req, res) => {
 const base = () => `http://127.0.0.1:${server.address().port}/2.0`;
 
 function run(extraEnv = {}, branches = {}) {
-    const source = branches.source || '11948';
+    const source = branches.source || '41948';
     const dest = branches.dest || 'development';
     const { attemptFile } = dom06.beginAttempt(path.join(tmp, 'run'), {
         node: 'commit',
-        admission: { status: 'ADMITTED', owner: 'dom06', snapshot: { ticket_id: 11948, node: 'commit', repo: REPO, source, destination: dest } },
+        admission: { status: 'ADMITTED', owner: 'dom06', snapshot: { ticket_id: 41948, node: 'commit', repo: REPO, source, destination: dest } },
         obligations: [{ id: 'pull_request', kind: 'external_effect' }],
     });
     return new Promise(resolve => {
-        const child = execFile('bash', [script, REPO, source, dest, 'Melhoria #11948'], {
+        const child = execFile('bash', [script, REPO, source, dest, 'Melhoria #41948'], {
             env: { PATH: process.env.PATH, HOME: tmp, BITBUCKET_WORKSPACE: WS, BITBUCKET_API_TOKEN: 'tok-fake', BITBUCKET_API_BASE: base(), REPO_PATH: tmp, DOM06_ATTEMPT_FILE: attemptFile, ...extraEnv },
         }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr, attempt: dom06.readAttempt(attemptFile) }));
         child.stdin.end('descrição');
@@ -131,8 +131,8 @@ test('BITBUCKET_ACCOUNT_ID: manda os default reviewers sem o autor, num POST só
     assert.match(r.stderr, /Reviewers: Ana, Beto/);
     assert.deepStrictEqual(r.attempt.obligations, [{ id: 'pull_request', kind: 'external_effect', status: 'fulfilled' }]);
     assert.strictEqual(r.attempt.effects.length, 1);
-    assert.strictEqual(r.attempt.effects[0].idempotency_key, 'pr:app-front:11948:development');
-    assert.strictEqual(listGets[0], 'source.branch.name="11948" AND destination.branch.name="development" AND state="OPEN"');
+    assert.strictEqual(r.attempt.effects[0].idempotency_key, 'pr:app-front:41948:development');
+    assert.strictEqual(listGets[0], 'source.branch.name="41948" AND destination.branch.name="development" AND state="OPEN"');
 });
 
 test('/user com escopo: usa o account_id dele pra tirar o autor', async () => {
@@ -193,7 +193,7 @@ test('PR OPEN da mesma origem e destino é reutilizado: URL na última linha, se
     const href = `https://bitbucket.org/${WS}/${REPO}/pull-requests/7`;
     fake = {
         pages: [[]],
-        openPrs: [{ id: 7, source: '11948', destination: 'development', href }],
+        openPrs: [{ id: 7, source: '41948', destination: 'development', href }],
     };
     const r = await run({ BITBUCKET_ACCOUNT_ID: ME });
     assert.strictEqual(r.code, 0, r.stderr);
@@ -207,7 +207,7 @@ test('PR OPEN da mesma origem e destino é reutilizado: URL na última linha, se
 test('PR OPEN para outro destino não é reutilizado', async () => {
     fake = {
         pages: [[]],
-        openPrs: [{ id: 8, source: '11948', destination: 'main', href: `https://bitbucket.org/${WS}/${REPO}/pull-requests/8` }],
+        openPrs: [{ id: 8, source: '41948', destination: 'main', href: `https://bitbucket.org/${WS}/${REPO}/pull-requests/8` }],
     };
     const r = await run({ BITBUCKET_ACCOUNT_ID: ME });
     assert.strictEqual(r.code, 0, r.stderr);

@@ -68,7 +68,7 @@ function job(sqlText, verify = 'SELECT count(*) AS n FROM clientes', extra = {})
     return { id: `AUTH-${String(++n).padStart(3, '0')}`, artifact: 'docs/x.sql', artifact_sha256: dbEffect.sha256(sqlText), sql: sqlText, verify_sql: verify, target_alias: 'pg-test', ...extra };
 }
 function runDir() {
-    const d = path.join(tmp, 'runs', `10007-pg-${++n}`);
+    const d = path.join(tmp, 'runs', `42359-pg-${++n}`);
     fs.mkdirSync(d, { recursive: true });
     return d;
 }

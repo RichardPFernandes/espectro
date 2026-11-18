@@ -72,53 +72,53 @@ test('hoursFromDurationMs sobe para o próximo meio-hora / hora (ceil 0,5)', () 
 });
 
 test('marcador de idempotência é estável e parseável', () => {
-    assert.strictEqual(hoursMarker('10002-frete'), '[prisma-hours:10002-frete]');
-    assert.strictEqual(markerOfComments('x [prisma-hours:10002-frete] y'), '10002-frete');
+    assert.strictEqual(hoursMarker('43703-frete'), '[prisma-hours:43703-frete]');
+    assert.strictEqual(markerOfComments('x [prisma-hours:43703-frete] y'), '43703-frete');
     assert.strictEqual(markerOfComments('sem marcador'), null);
 });
 
 test('buildTimeEntryPayload monta o corpo Redmine', () => {
     const p = buildTimeEntryPayload({
-        issueId: 10002,
+        issueId: 43703,
         hours: 1.06,
         spentOn: '2026-10-02',
-        comments: 'teste [prisma-hours:10002-x]',
+        comments: 'teste [prisma-hours:43703-x]',
         activityId: 9,
     });
     assert.deepStrictEqual(p, {
         time_entry: {
-            issue_id: 10002,
+            issue_id: 43703,
             hours: 1.06,
             spent_on: '2026-10-02',
             activity_id: 9,
-            comments: 'teste [prisma-hours:10002-x]',
+            comments: 'teste [prisma-hours:43703-x]',
         },
     });
 });
 
 test('buildCandidate usa state.cost_tracking e cai pro cost.json', () => {
     const { runs, archive } = tmpRuns();
-    writeRun(archive, '10002-com-state', {
+    writeRun(archive, '43703-com-state', {
         status: 'fully_merged',
         updated_at: '2026-10-02T12:00:00.000Z',
-        redmine_ticket: { id: 10002 },
+        redmine_ticket: { id: 43703 },
         cost_tracking: { totals: { duration_ms: 3_600_000 } },
     });
-    writeRun(archive, '13704-so-ledger', {
+    writeRun(archive, '43704-so-ledger', {
         status: 'committed',
         updated_at: '2026-10-03T12:00:00.000Z',
-        redmine_ticket: { id: 13704 },
+        redmine_ticket: { id: 43704 },
     }, {
         cost: {
-            ticket_id: 13704,
+            ticket_id: 43704,
             tasks: {
-                '13704-so-ledger': { totals: { duration_ms: 7_200_000 }, nodes: {} },
+                '43704-so-ledger': { totals: { duration_ms: 7_200_000 }, nodes: {} },
             },
         },
     });
-    writeRun(archive, '13705-sem-horas', {
+    writeRun(archive, '43705-sem-horas', {
         status: 'committed',
-        redmine_ticket: { id: 13705 },
+        redmine_ticket: { id: 43705 },
     });
     writeRun(archive, '2026-09-21-sdd-docs-por-classe', {
         status: 'committed',
@@ -127,16 +127,16 @@ test('buildCandidate usa state.cost_tracking e cai pro cost.json', () => {
 
     const list = collectCandidates(runs, { includeActive: false });
     const byId = Object.fromEntries(list.filter(c => c.ok).map(c => [c.taskId, c]));
-    assert.strictEqual(byId['10002-com-state'].hours, 1);
-    assert.strictEqual(byId['10002-com-state'].source, 'state.cost_tracking');
-    assert.strictEqual(byId['13704-so-ledger'].hours, 2);
-    assert.strictEqual(byId['13704-so-ledger'].source, 'cost.json');
+    assert.strictEqual(byId['43703-com-state'].hours, 1);
+    assert.strictEqual(byId['43703-com-state'].source, 'state.cost_tracking');
+    assert.strictEqual(byId['43704-so-ledger'].hours, 2);
+    assert.strictEqual(byId['43704-so-ledger'].source, 'cost.json');
     // Sem duration → presumed_complexity (piso 0,5; só no_ticket skipa)
     // (#67 presumed_min supersedido)
-    assert.ok(byId['13705-sem-horas']);
-    assert.strictEqual(byId['13705-sem-horas'].source, 'presumed_complexity');
-    assert.strictEqual(byId['13705-sem-horas'].reason, 'presumed_complexity');
-    assert.strictEqual(byId['13705-sem-horas'].hours, 0.5);
+    assert.ok(byId['43705-sem-horas']);
+    assert.strictEqual(byId['43705-sem-horas'].source, 'presumed_complexity');
+    assert.strictEqual(byId['43705-sem-horas'].reason, 'presumed_complexity');
+    assert.strictEqual(byId['43705-sem-horas'].hours, 0.5);
     assert.ok(list.some(c => c.taskId === '2026-09-21-sdd-docs-por-classe' && c.reason === 'no_ticket'));
 });
 
@@ -144,10 +144,10 @@ test('resolveDuration: nodes do state, prefixo no ledger, agent_log e wallclock'
     const { runs, archive, rotated } = tmpRuns();
 
     // totals ausente/0, mas nodes têm duration_ms
-    writeRun(archive, '13760-so-nodes', {
+    writeRun(archive, '43760-so-nodes', {
         status: 'committed',
         updated_at: '2026-10-01T12:00:00.000Z',
-        redmine_ticket: { id: 13760 },
+        redmine_ticket: { id: 43760 },
         cost_tracking: {
             totals: { duration_ms: 0 },
             nodes: {
@@ -158,42 +158,42 @@ test('resolveDuration: nodes do state, prefixo no ledger, agent_log e wallclock'
     });
 
     // Cópia timestampada: ledger só tem a chave-base
-    writeRun(archive, '13761-ciclo-2026-09-29T17-46-58-152Z', {
+    writeRun(archive, '43761-ciclo-2026-09-29T17-46-58-152Z', {
         status: 'fully_merged',
-        task_id: '13761-ciclo',
+        task_id: '43761-ciclo',
         updated_at: '2026-09-29T18:00:00.000Z',
-        redmine_ticket: { id: 13761 },
+        redmine_ticket: { id: 43761 },
     }, {
         runsDir: runs,
         cost: {
-            ticket_id: 13761,
+            ticket_id: 43761,
             tasks: {
-                '13761-ciclo': { totals: { duration_ms: 3_600_000 }, nodes: {} },
+                '43761-ciclo': { totals: { duration_ms: 3_600_000 }, nodes: {} },
             },
         },
     });
 
     // Colisão de archive: sufixo __main
-    writeRun(path.join(rotated, '2026-07'), '13762-old__main', {
+    writeRun(path.join(rotated, '2026-07'), '43762-old__main', {
         status: 'fully_merged',
         updated_at: '2026-07-10T12:00:00.000Z',
-        redmine_ticket: { id: 13762 },
+        redmine_ticket: { id: 43762 },
     }, {
         runsDir: runs,
         cost: {
-            ticket_id: 13762,
+            ticket_id: 43762,
             tasks: {
-                '13762-old': { totals: { duration_ms: 1_800_000 }, nodes: {} },
+                '43762-old': { totals: { duration_ms: 1_800_000 }, nodes: {} },
             },
         },
     });
 
     // Sem cost_tracking/ledger — agent_log
-    writeRun(archive, '13763-via-log', {
+    writeRun(archive, '43763-via-log', {
         status: 'committed',
         started_at: '2026-10-05T10:00:00.000Z',
         updated_at: '2026-10-05T12:00:00.000Z',
-        redmine_ticket: { id: 13763 },
+        redmine_ticket: { id: 43763 },
         agent_log: [
             { at: '2026-10-05T10:30:00.000Z', nodes: ['plan'] },
             { at: '2026-10-05T11:00:00.000Z', nodes: ['implement'] },
@@ -201,38 +201,38 @@ test('resolveDuration: nodes do state, prefixo no ledger, agent_log e wallclock'
     });
 
     // Só wallclock started→updated
-    writeRun(archive, '13764-wallclock', {
+    writeRun(archive, '43764-wallclock', {
         status: 'committed',
         started_at: '2026-10-06T08:00:00.000Z',
         updated_at: '2026-10-06T09:30:00.000Z',
-        redmine_ticket: { id: 13764 },
+        redmine_ticket: { id: 43764 },
     });
 
     const list = collectCandidates(runs, { includeActive: false });
     const byId = Object.fromEntries(list.filter(c => c.ok).map(c => [c.taskId, c]));
 
-    assert.strictEqual(byId['13760-so-nodes'].source, 'state.cost_tracking');
-    assert.strictEqual(byId['13760-so-nodes'].hours, 0.5); // 0.5h exato
+    assert.strictEqual(byId['43760-so-nodes'].source, 'state.cost_tracking');
+    assert.strictEqual(byId['43760-so-nodes'].hours, 0.5); // 0.5h exato
 
-    assert.strictEqual(byId['13761-ciclo-2026-09-29T17-46-58-152Z'].source, 'cost.json#13761-ciclo');
-    assert.strictEqual(byId['13761-ciclo-2026-09-29T17-46-58-152Z'].hours, 1);
+    assert.strictEqual(byId['43761-ciclo-2026-09-29T17-46-58-152Z'].source, 'cost.json#43761-ciclo');
+    assert.strictEqual(byId['43761-ciclo-2026-09-29T17-46-58-152Z'].hours, 1);
 
-    assert.strictEqual(byId['13762-old__main'].source, 'cost.json#13762-old');
-    assert.strictEqual(byId['13762-old__main'].hours, 0.5);
+    assert.strictEqual(byId['43762-old__main'].source, 'cost.json#43762-old');
+    assert.strictEqual(byId['43762-old__main'].hours, 0.5);
 
-    assert.strictEqual(byId['13763-via-log'].source, 'state.agent_log');
-    assert.strictEqual(byId['13763-via-log'].hours, 1); // 1h exact
+    assert.strictEqual(byId['43763-via-log'].source, 'state.agent_log');
+    assert.strictEqual(byId['43763-via-log'].hours, 1); // 1h exact
 
-    assert.strictEqual(byId['13764-wallclock'].source, 'state.wallclock');
-    assert.strictEqual(byId['13764-wallclock'].hours, 1.5); // 1.5h exact
+    assert.strictEqual(byId['43764-wallclock'].source, 'state.wallclock');
+    assert.strictEqual(byId['43764-wallclock'].hours, 1.5); // 1.5h exact
 });
 
 test('findExistingMarker detecta time entry já sincronizada', () => {
     const entries = [
         { id: 1, hours: 2, comments: 'manual' },
-        { id: 2, hours: 1, comments: 'Horas... [prisma-hours:10002-x]' },
+        { id: 2, hours: 1, comments: 'Horas... [prisma-hours:43703-x]' },
     ];
-    assert.strictEqual(findExistingMarker(entries, '10002-x').id, 2);
+    assert.strictEqual(findExistingMarker(entries, '43703-x').id, 2);
     assert.strictEqual(findExistingMarker(entries, 'outro'), null);
 });
 
@@ -323,22 +323,22 @@ async function fakeRedmine({
 }
 
 test('syncCandidateHours dry-run: would_create sem POST', async t => {
-    const rm = await fakeRedmine({ entriesByIssue: { 10002: [] } });
+    const rm = await fakeRedmine({ entriesByIssue: { 43703: [] } });
     t.after(rm.close);
     const c = {
         ok: true,
-        taskId: '10002-x',
-        ticketId: 10002,
+        taskId: '43703-x',
+        ticketId: 43703,
         hours: 1.5,
         spentOn: '2026-10-02',
         source: 'state.cost_tracking',
-        marker: hoursMarker('10002-x'),
-        comments: `x ${hoursMarker('10002-x')}`,
+        marker: hoursMarker('43703-x'),
+        comments: `x ${hoursMarker('43703-x')}`,
         payload: buildTimeEntryPayload({
-            issueId: 10002,
+            issueId: 43703,
             hours: 1.5,
             spentOn: '2026-10-02',
-            comments: `x ${hoursMarker('10002-x')}`,
+            comments: `x ${hoursMarker('43703-x')}`,
         }),
     };
     const r = await syncCandidateHours(c, {
@@ -352,22 +352,22 @@ test('syncCandidateHours dry-run: would_create sem POST', async t => {
 });
 
 test('syncCandidateHours apply cria entry; segunda vez already_synced', async t => {
-    const rm = await fakeRedmine({ entriesByIssue: { 10002: [] } });
+    const rm = await fakeRedmine({ entriesByIssue: { 43703: [] } });
     t.after(rm.close);
     const c = {
         ok: true,
-        taskId: '10002-x',
-        ticketId: 10002,
+        taskId: '43703-x',
+        ticketId: 43703,
         hours: 1.5,
         spentOn: '2026-10-02',
         source: 'state.cost_tracking',
-        marker: hoursMarker('10002-x'),
-        comments: `x ${hoursMarker('10002-x')}`,
+        marker: hoursMarker('43703-x'),
+        comments: `x ${hoursMarker('43703-x')}`,
         payload: buildTimeEntryPayload({
-            issueId: 10002,
+            issueId: 43703,
             hours: 1.5,
             spentOn: '2026-10-02',
-            comments: `x ${hoursMarker('10002-x')}`,
+            comments: `x ${hoursMarker('43703-x')}`,
         }),
     };
 
@@ -384,7 +384,7 @@ test('syncCandidateHours apply cria entry; segunda vez already_synced', async t 
     // Simula que o GET agora devolve a entry criada
     const rm2 = await fakeRedmine({
         entriesByIssue: {
-            10002: [{ id: 99, hours: 1.5, comments: c.comments }],
+            43703: [{ id: 99, hours: 1.5, comments: c.comments }],
         },
     });
     t.after(rm2.close);
@@ -402,24 +402,24 @@ test('syncCandidateHours apply cria entry; segunda vez already_synced', async t 
 test('syncCandidateHours pula ticket que já tem spent (sem --fill-even-if-spent)', async t => {
     const rm = await fakeRedmine({
         entriesByIssue: {
-            10002: [{ id: 1, hours: 3, comments: 'apontamento manual' }],
+            43703: [{ id: 1, hours: 3, comments: 'apontamento manual' }],
         },
     });
     t.after(rm.close);
     const c = {
         ok: true,
-        taskId: '10002-x',
-        ticketId: 10002,
+        taskId: '43703-x',
+        ticketId: 43703,
         hours: 1.5,
         spentOn: '2026-10-02',
         source: 'state.cost_tracking',
-        marker: hoursMarker('10002-x'),
-        comments: `x ${hoursMarker('10002-x')}`,
+        marker: hoursMarker('43703-x'),
+        comments: `x ${hoursMarker('43703-x')}`,
         payload: buildTimeEntryPayload({
-            issueId: 10002,
+            issueId: 43703,
             hours: 1.5,
             spentOn: '2026-10-02',
-            comments: `x ${hoursMarker('10002-x')}`,
+            comments: `x ${hoursMarker('43703-x')}`,
         }),
     };
     const r = await syncCandidateHours(c, {
@@ -436,26 +436,26 @@ test('syncCandidateHours pula ticket que já tem spent (sem --fill-even-if-spent
 
 test('syncRunHoursLive (hot path): cria mesmo com spent prévio; presume sem duração', async t => {
     const { runs, archive } = tmpRuns();
-    const withHours = writeRun(archive, '13720-live', {
+    const withHours = writeRun(archive, '43720-live', {
         status: 'committed',
         updated_at: '2026-10-20T12:00:00.000Z',
-        redmine_ticket: { id: 13720 },
+        redmine_ticket: { id: 43720 },
         cost_tracking: { totals: { duration_ms: 3_600_000 } },
     });
-    const noHours = writeRun(archive, '13721-live-sem', {
+    const noHours = writeRun(archive, '43721-live-sem', {
         status: 'committed',
-        redmine_ticket: { id: 13721 },
+        redmine_ticket: { id: 43721 },
         pull_request: { 'app-back': { url: 'https://github.com/org/app-back/pull/9', pr_id: 9 } },
     });
     assert.strictEqual(runsDirOf(withHours), runs);
 
     const rm = await fakeRedmine({
         entriesByIssue: {
-            13720: [{ id: 1, hours: 2, comments: 'apontamento manual' }],
-            13721: [],
+            43720: [{ id: 1, hours: 2, comments: 'apontamento manual' }],
+            43721: [],
         },
         journalsByIssue: {
-            13721: [
+            43721: [
                 { notes: 'ok', details: [] },
                 { notes: 'qa', details: [{ name: 'status_id' }] },
                 { notes: 'go', details: [] },
@@ -511,13 +511,13 @@ test('presumedHoursFromComplexity: escala baixo/médio/alto em degraus 0,5', () 
 
 test('runBackfill presumed_complexity enriquece com journals; duration real não baixa', async t => {
     const { runs, archive } = tmpRuns();
-    writeRun(archive, '13770-presume', {
+    writeRun(archive, '43770-presume', {
         status: 'committed',
-        redmine_ticket: { id: 13770 },
+        redmine_ticket: { id: 43770 },
     });
-    writeRun(archive, '13771-real-curto', {
+    writeRun(archive, '43771-real-curto', {
         status: 'committed',
-        redmine_ticket: { id: 13771 },
+        redmine_ticket: { id: 43771 },
         // 0.1h real → ceil 0.5; duration real prevalece (não sobe pelos 3 PRs)
         cost_tracking: { totals: { duration_ms: 360_000 } },
         pull_request: {
@@ -528,9 +528,9 @@ test('runBackfill presumed_complexity enriquece com journals; duration real não
     });
 
     const rm = await fakeRedmine({
-        entriesByIssue: { 13770: [], 13771: [] },
+        entriesByIssue: { 43770: [], 43771: [] },
         journalsByIssue: {
-            13770: Array.from({ length: 10 }, (_, i) => ({ notes: `n${i}`, details: [] })),
+            43770: Array.from({ length: 10 }, (_, i) => ({ notes: `n${i}`, details: [] })),
         },
     });
     t.after(rm.close);
@@ -543,8 +543,8 @@ test('runBackfill presumed_complexity enriquece com journals; duration real não
         apiKey: 'k',
         includeActive: false,
     });
-    const presume = results.find(r => r.taskId === '13770-presume');
-    const real = results.find(r => r.taskId === '13771-real-curto');
+    const presume = results.find(r => r.taskId === '43770-presume');
+    const real = results.find(r => r.taskId === '43771-real-curto');
     assert.strictEqual(presume.action, 'would_create');
     assert.strictEqual(presume.reason, 'presumed_complexity');
     assert.strictEqual(presume.hours, 1.5); // alto por moves≥9
@@ -557,10 +557,10 @@ test('runBackfill presumed_complexity enriquece com journals; duration real não
 test('syncRunHoursLive com attemptFile: POST direto; Attempt intacto em create/skip/401', async t => {
     const dom06 = require('./dom06-attempt');
     const { archive } = tmpRuns();
-    const runDir = writeRun(archive, '13730-attempt', {
+    const runDir = writeRun(archive, '43730-attempt', {
         status: 'committed',
         updated_at: '2026-10-28T12:00:00.000Z',
-        redmine_ticket: { id: 13730 },
+        redmine_ticket: { id: 43730 },
         cost_tracking: { totals: { duration_ms: 3_600_000 } },
     });
 
@@ -571,7 +571,7 @@ test('syncRunHoursLive com attemptFile: POST direto; Attempt intacto em create/s
         admission: {
             status: 'ADMITTED',
             owner: 'dom06',
-            snapshot: { ticket_id: 13730, node: 'commit', base_branch: 'main', spec_hash: 'h1' },
+            snapshot: { ticket_id: 43730, node: 'commit', base_branch: 'main', spec_hash: 'h1' },
         },
         obligations: dom06.obligationsFor('commit'),
     });
@@ -585,7 +585,7 @@ test('syncRunHoursLive com attemptFile: POST direto; Attempt intacto em create/s
     assert.strictEqual(dom06.summarize(dom06.readAttempt(decision.attemptFile)).verdict, 'PASS');
     const obligationIdsBefore = dom06.readAttempt(decision.attemptFile).obligations.map(o => o.id).sort();
 
-    const rmOk = await fakeRedmine({ entriesByIssue: { 13730: [] } });
+    const rmOk = await fakeRedmine({ entriesByIssue: { 43730: [] } });
     t.after(rmOk.close);
     const created = await syncRunHoursLive(runDir, {
         dryRun: false,
@@ -606,7 +606,7 @@ test('syncRunHoursLive com attemptFile: POST direto; Attempt intacto em create/s
 
     const rmSkip = await fakeRedmine({
         entriesByIssue: {
-            13730: [{ id: 99, hours: 1, comments: `x ${hoursMarker('13730-attempt')}` }],
+            43730: [{ id: 99, hours: 1, comments: `x ${hoursMarker('43730-attempt')}` }],
         },
     });
     t.after(rmSkip.close);
@@ -623,7 +623,7 @@ test('syncRunHoursLive com attemptFile: POST direto; Attempt intacto em create/s
     assert.strictEqual(dom06.summarize(after).verdict, 'PASS');
     assert.ok(!after.obligations.some(o => o.id === 'redmine_hours'));
 
-    const rm401 = await fakeRedmine({ entriesByIssue: { 13730: [] }, postStatus: 401 });
+    const rm401 = await fakeRedmine({ entriesByIssue: { 43730: [] }, postStatus: 401 });
     t.after(rm401.close);
     const failed = await syncRunHoursLive(runDir, {
         dryRun: false,
@@ -644,13 +644,13 @@ test('syncRunHoursLive com attemptFile: POST direto; Attempt intacto em create/s
 
 test('runBackfill integra coleta + dry-run', async t => {
     const { runs, archive } = tmpRuns();
-    writeRun(archive, '13710-a', {
+    writeRun(archive, '43710-a', {
         status: 'fully_merged',
         updated_at: '2026-10-10T12:00:00.000Z',
-        redmine_ticket: { id: 13710 },
+        redmine_ticket: { id: 43710 },
         cost_tracking: { totals: { duration_ms: 3_600_000 } },
     });
-    const rm = await fakeRedmine({ entriesByIssue: { 13710: [] } });
+    const rm = await fakeRedmine({ entriesByIssue: { 43710: [] } });
     t.after(rm.close);
 
     const { summary, results } = await runBackfill({
@@ -663,56 +663,56 @@ test('runBackfill integra coleta + dry-run', async t => {
     });
     assert.strictEqual(summary.dryRun, true);
     assert.strictEqual(summary.actionable, 1);
-    assert.strictEqual(results.find(r => r.taskId === '13710-a').action, 'would_create');
+    assert.strictEqual(results.find(r => r.taskId === '43710-a').action, 'would_create');
     assert.strictEqual(rm.posts.length, 0);
 });
 
 test('collectCandidates inclui memory/archive/<YYYY-MM>/ (rotação cleanup-runs)', () => {
     const { runs, archive, rotated } = tmpRuns();
-    writeRun(archive, '13730-ainda-em-_archive', {
+    writeRun(archive, '43730-ainda-em-_archive', {
         status: 'fully_merged',
         updated_at: '2026-09-01T12:00:00.000Z',
-        redmine_ticket: { id: 13730 },
+        redmine_ticket: { id: 43730 },
         cost_tracking: { totals: { duration_ms: 3_600_000 } },
     });
     const monthDir = path.join(rotated, '2026-07');
-    writeRun(monthDir, '13731-rotacionado', {
+    writeRun(monthDir, '43731-rotacionado', {
         status: 'fully_merged',
         updated_at: '2026-07-15T12:00:00.000Z',
-        redmine_ticket: { id: 13731 },
+        redmine_ticket: { id: 43731 },
         cost_tracking: { totals: { duration_ms: 7_200_000 } },
     });
     // Pasta que não casa YYYY-MM — ignorada.
-    writeRun(path.join(rotated, 'not-a-month'), '13732-lixo', {
+    writeRun(path.join(rotated, 'not-a-month'), '43732-lixo', {
         status: 'fully_merged',
-        redmine_ticket: { id: 13732 },
+        redmine_ticket: { id: 43732 },
         cost_tracking: { totals: { duration_ms: 3_600_000 } },
     });
 
     const list = collectCandidates(runs, { includeActive: false });
     const byId = Object.fromEntries(list.filter(c => c.ok).map(c => [c.taskId, c]));
-    assert.ok(byId['13730-ainda-em-_archive'], 'ainda vê _archive');
-    assert.ok(byId['13731-rotacionado'], 'vê memory/archive/YYYY-MM');
-    assert.strictEqual(byId['13731-rotacionado'].hours, 2);
-    assert.ok(!byId['13732-lixo'], 'ignora mês inválido');
+    assert.ok(byId['43730-ainda-em-_archive'], 'ainda vê _archive');
+    assert.ok(byId['43731-rotacionado'], 'vê memory/archive/YYYY-MM');
+    assert.strictEqual(byId['43731-rotacionado'].hours, 2);
+    assert.ok(!byId['43732-lixo'], 'ignora mês inválido');
 });
 
 test('runBackfill dry-run = apply em vários runs do mesmo ticket (sem fillEvenIfSpent)', async t => {
     const { runs, archive } = tmpRuns();
-    writeRun(archive, '13740-ciclo-a', {
+    writeRun(archive, '43740-ciclo-a', {
         status: 'fully_merged',
         updated_at: '2026-10-01T12:00:00.000Z',
-        redmine_ticket: { id: 13740 },
+        redmine_ticket: { id: 43740 },
         cost_tracking: { totals: { duration_ms: 3_600_000 } },
     });
-    writeRun(archive, '13740-ciclo-b', {
+    writeRun(archive, '43740-ciclo-b', {
         status: 'fully_merged',
         updated_at: '2026-10-02T12:00:00.000Z',
-        redmine_ticket: { id: 13740 },
+        redmine_ticket: { id: 43740 },
         cost_tracking: { totals: { duration_ms: 7_200_000 } },
     });
 
-    const rmDry = await fakeRedmine({ entriesByIssue: { 13740: [] } });
+    const rmDry = await fakeRedmine({ entriesByIssue: { 43740: [] } });
     t.after(rmDry.close);
     const dry = await runBackfill({
         runsDir: runs,
@@ -724,7 +724,7 @@ test('runBackfill dry-run = apply em vários runs do mesmo ticket (sem fillEvenI
         fillEvenIfSpent: false,
     });
 
-    const rmApply = await fakeRedmine({ entriesByIssue: { 13740: [] }, mutableEntries: true });
+    const rmApply = await fakeRedmine({ entriesByIssue: { 43740: [] }, mutableEntries: true });
     t.after(rmApply.close);
     const apply = await runBackfill({
         runsDir: runs,
@@ -764,38 +764,38 @@ test('listTimeEntries pagina além de limit=100 (marcador na 2ª página)', asyn
     firstPage.push({
         id: 101,
         hours: 1.5,
-        comments: `Horas... ${hoursMarker('13750-deep')}`,
+        comments: `Horas... ${hoursMarker('43750-deep')}`,
     });
-    const rm = await fakeRedmine({ entriesByIssue: { 13750: firstPage } });
+    const rm = await fakeRedmine({ entriesByIssue: { 43750: firstPage } });
     t.after(rm.close);
 
     const entries = await listTimeEntries(rm.fetch, {
         baseUrl: rm.baseUrl,
         apiKey: 'k',
-        issueId: 13750,
+        issueId: 43750,
         pageLimit: 100,
     });
     assert.strictEqual(entries.length, 101);
     assert.ok(rm.gets.length >= 2, 'fez pelo menos 2 GETs');
     assert.strictEqual(rm.gets[0].offset, 0);
     assert.strictEqual(rm.gets[1].offset, 100);
-    assert.ok(findExistingMarker(entries, '13750-deep'));
+    assert.ok(findExistingMarker(entries, '43750-deep'));
 
     // sync também enxerga o marcador fora da 1ª página → already_synced, sem POST.
     const c = {
         ok: true,
-        taskId: '13750-deep',
-        ticketId: 13750,
+        taskId: '43750-deep',
+        ticketId: 43750,
         hours: 1.5,
         spentOn: '2026-10-02',
         source: 'state.cost_tracking',
-        marker: hoursMarker('13750-deep'),
-        comments: `x ${hoursMarker('13750-deep')}`,
+        marker: hoursMarker('43750-deep'),
+        comments: `x ${hoursMarker('43750-deep')}`,
         payload: buildTimeEntryPayload({
-            issueId: 13750,
+            issueId: 43750,
             hours: 1.5,
             spentOn: '2026-10-02',
-            comments: `x ${hoursMarker('13750-deep')}`,
+            comments: `x ${hoursMarker('43750-deep')}`,
         }),
     };
     const r = await syncCandidateHours(c, {

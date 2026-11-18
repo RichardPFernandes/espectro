@@ -70,17 +70,17 @@ test('laço do dashboard parado e nenhum watcher vivo: sem próxima poll nem upt
 
 test('laço parado com agente destacado ainda rodando: stopped, healthy=false e issue', async () => {
     mgrState = 'stopped'; fail = null;
-    health = sample({ status: 'running', activeCycle: { taskId: '10010-a', node: 'implement', startedAt: '2026-09-24T12:00:00Z', source: 'agent' } });
+    health = sample({ status: 'running', activeCycle: { taskId: '43590-a', node: 'implement', startedAt: '2026-09-24T12:00:00Z', source: 'agent' } });
     const { body } = await get();
     assert.strictEqual(body.status, 'stopped');
     assert.strictEqual(body.healthy, false);
-    assert.match(body.issues[0], /laço do watcher parado com 10010-a \(implement\)/);
+    assert.match(body.issues[0], /laço do watcher parado com 43590-a \(implement\)/);
     assert.deepStrictEqual(body.activeCycle.source, 'agent');
 });
 
 test('laço rodando com agente destacado: mantém running/healthy', async () => {
     mgrState = 'running'; fail = null;
-    health = sample({ status: 'running', activeCycle: { taskId: '10010-a', node: 'implement', source: 'agent' } });
+    health = sample({ status: 'running', activeCycle: { taskId: '43590-a', node: 'implement', source: 'agent' } });
     const { body } = await get();
     assert.deepStrictEqual([body.status, body.healthy, body.issues], ['running', true, []]);
 });
