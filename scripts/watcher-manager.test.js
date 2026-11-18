@@ -429,3 +429,45 @@ test('guard: HEAD destacado numa tag verde/* alcançável pela origin/main passa
     assert.strictEqual(m.status().guard, null);
     await m.stop();
 });
+
+// exitIfCheckoutRefused: a subida do dashboard imprime a recusa e sai com 2 (PRI-379).
+const { exitIfCheckoutRefused } = require('./watcher-manager');
+function bootSpy() {
+    const s = { lines: [], exits: [] };
+    s.log = line => s.lines.push(line);
+    s.exit = code => s.exits.push(code);
+    return s;
+}
+
+test('exitIfCheckoutRefused: flag ausente não loga, não sai e não chama git', () => {
+    const root = guardRepo();
+    fs.writeFileSync(path.join(root, 'solto.txt'), 'sujo\n');
+    const git = countingGit();
+    const s = bootSpy();
+    exitIfCheckoutRefused({ codeRoot: root, env: {}, log: s.log, exit: s.exit, git });
+    assert.deepStrictEqual(s.lines, []);
+    assert.deepStrictEqual(s.exits, []);
+    assert.strictEqual(git.calls, 0);
+});
+
+test('exitIfCheckoutRefused: flag ligada e árvore suja imprime motivos e caminhos e sai com 2', () => {
+    const root = guardRepo();
+    fs.writeFileSync(path.join(root, 'solto.txt'), 'sujo\n');
+    const s = bootSpy();
+    exitIfCheckoutRefused({ codeRoot: root, env: { PRISMA_CHECKOUT_GUARD: '1' }, log: s.log, exit: s.exit, git: countingGit() });
+    assert.deepStrictEqual(s.exits, [2]);
+    assert.ok(s.lines[0].startsWith('[dashboard] subida recusada pelo guard do checkout (PRISMA_CHECKOUT_GUARD): '));
+    assert.ok(s.lines[0].includes('dirty'));
+    assert.ok(s.lines.some(l => l.startsWith(`[dashboard]   em ${root}: `) && l.includes('dirty')));
+    assert.ok(s.lines.includes('[dashboard]     solto.txt'));
+});
+
+test('exitIfCheckoutRefused: flag ligada e árvore ok não loga nem sai', () => {
+    const root = guardRepo();
+    const git = countingGit();
+    const s = bootSpy();
+    exitIfCheckoutRefused({ codeRoot: root, env: { PRISMA_CHECKOUT_GUARD: '1' }, log: s.log, exit: s.exit, git });
+    assert.deepStrictEqual(s.lines, []);
+    assert.deepStrictEqual(s.exits, []);
+    assert.ok(git.calls > 0);
+});

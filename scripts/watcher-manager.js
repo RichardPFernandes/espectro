@@ -451,6 +451,21 @@ function bootGuardRoots({ codeRoot, env = process.env } = {}) {
     return roots;
 }
 
+// Subida do dashboard (F1.2, PRI-379): com PRISMA_CHECKOUT_GUARD ligada, árvore do Prisma
+// suja ou fora da main não sobe (sai com 2, sem abrir a porta). Confere sempre a raiz de
+// onde o código roda e, se PRISMA_ROOT apontar para outra, também ela. Flag ausente:
+// nada roda. log, exit e git são injetáveis para teste.
+function exitIfCheckoutRefused({ codeRoot, env = process.env, log = console.error, exit = process.exit, git } = {}) {
+    const refused = checkoutGuard({ roots: bootGuardRoots({ codeRoot, env }), env, git });
+    if (!refused) return;
+    log(`[dashboard] subida recusada pelo guard do checkout (PRISMA_CHECKOUT_GUARD): ${refused.reasons.join(', ')}`);
+    for (const r of refused.byRoot) {
+        log(`[dashboard]   em ${r.root}: ${r.reasons.join(', ')}`);
+        for (const p of r.paths) log(`[dashboard]     ${p}`);
+    }
+    exit(2);
+}
+
 module.exports = {
     start: opts => instance().start(opts),
     stop: opts => instance().stop(opts),
@@ -461,6 +476,7 @@ module.exports = {
     createWatcherManager,
     checkoutGuard,
     bootGuardRoots,
+    exitIfCheckoutRefused,
     createRedactor,
     parseEnvFile,
     levelOf,
