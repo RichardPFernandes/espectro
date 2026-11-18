@@ -131,7 +131,7 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    - **Decisão pendente** não muda: continua manual. Ajuste só "Ligado ao fechar" se o
      escopo do PR mudou.
    - **ACs:** no mesmo update da descrição, marque `[x]` nas linhas `AC-NN` que este PR
-     entrega, e só nelas (D-PRI-399-01).
+     entrega e nas já entregues por PR mesclado, e só nelas (D-PRI-399-01).
    - Leve e Médio: a issue vai para In Review só se precisar de decisão ou aceite do
      Richard. Mesclar é aceitar. Com `ESTADO_NO_MERGE=on`, a Action
      `estado-no-merge.yml` move Leve e Médio para Done no merge, só quando não sobra AC
