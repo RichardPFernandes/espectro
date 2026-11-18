@@ -13,9 +13,9 @@ executa uma troca.
 Desde 2026-11-05 às 20:53 o app-back roda o dashboard a partir do checkout de
 trabalho `~/Workspace/prisma`, e não de uma revisão fixada. O Richard ratificou
 esse modo em sessão em 2026-11-06 ([PRI-263](https://linear.app/prisma-app/issue/PRI-263)).
-Isso diverge da DB-13 da PRI-181 (pin explícito aprovado). A divergência fica
-registrada para reconciliação (AGENTS.md, regra 8), e este documento não revoga
-a DB-13.
+Isso divergia da DB-13 da PRI-181 (pin explícito aprovado). A D3 de 2026-11-17
+fechou a divergência: o modo checkout fica, com ponto de retorno (ver «Decisão:
+DB-13 × checkout»).
 
 | Item | Observado em 2026-11-06 | Observado em 2026-11-15, 15:14–15:27 (PRI-364) |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ Consequências, enquanto este modo valer:
 2. Conforme a decisão registrada na PRI-263, um merge na main só deve deixar a
    main em estado que rode no app-back sozinho, sem a fatia seguinte. Quando a
    fatia não atender isso, ela precisa de contenção declarada na própria spec.
-   O gate formal continua dependendo da reconciliação da DB-13.
+   O gate formal é o ponto de retorno da D3 (ver «Ponto de retorno»).
 3. Alterações não commitadas no checkout estão em uso. O drift observado em
    2026-11-06 está preservado na branch `fix/pri-263-drift-checkout-vivo`
    (`bdfae26`). Não limpar, resetar ou fazer stash sem antes preservar essas
@@ -72,20 +72,96 @@ Em 2026-11-15 os dois arquivos estão no app-back com os hashes da tabela. O pin
 anterior a50ff9f, tree 97fe983, em `../prisma-wt/pri-63`, não existia no disco em
 2026-11-06.
 
-### Decisão pendente: DB-13 × checkout (2026-11-15)
+### Decisão: DB-13 × checkout (fechada em 2026-11-17)
 
 O retrato da PRI-364 mostra que o modo checkout, na prática, é "a árvore de onde o
 dashboard subir": em 2026-11-13 o app-back rodou um worktree de correção, fora da
 main e fora do checkout. Os pré-requisitos estáticos do launcher pinado voltaram
 em 2026-11-09, e o laço está desligado desde 2026-11-13.
 
-**Recomendação (R5 da PRI-363, decisão do Richard):** voltar ao pin numa SHA da
-main, por `prisma-bump.sh`, numa issue **Alto** separada, com AUTORIZO e readback
-depois do bump. Não subir o launcher pinado em `2024597` sem bump: a revisão é
-anterior ao código que gravou os states de 2026-11-12 e 2026-11-13 (risco do
-U-22, não provado). Até a decisão, este documento não muda o modo e não revoga a
-DB-13. Alternativa: ratificar o checkout, com as salvaguardas do launcher pinado
-restauradas no `prisma-start-dev.sh` e subida só a partir da main do checkout.
+A recomendação da época (R5 da PRI-363) era voltar ao pin numa issue Alto
+separada. Em 2026-11-17 o Richard decidiu o contrário, na
+[D3 do roadmap](../roadmap/DECISOES.md): o modo checkout fica, com um ponto de
+retorno (fatia F1.2, PRI-379). A volta ao pin (PRI-371) não segue. Essa decisão
+resolve a divergência com a DB-13 registrada acima. O ponto de retorno está
+descrito em «Ponto de retorno», logo abaixo.
+
+### Ponto de retorno
+
+O ponto de retorno é uma marca de "último verde" no checkout da plataforma, um
+comando que volta a ela e uma conferência da árvore na subida. Nasce desligado:
+os comandos só rodam quando chamados, e a conferência só vale com a flag
+`PRISMA_CHECKOUT_GUARD` ([registro de flags](flags.md)).
+
+Árvore válida é árvore limpa, contando arquivo não rastreado, com o HEAD
+alcançável pela `origin/main` local. Nenhum comando faz `stash`, `reset` ou
+`clean`, nem `fetch` direto. O `mark` consulta o `/api/version` do dashboard,
+e esse endpoint faz `git fetch origin main` no checkout da plataforma (ou
+reaproveita um fetch recente).
+
+Comandos, na raiz da plataforma:
+
+```bash
+node scripts/return-point.js status [--root <dir>] [--json]
+node scripts/return-point.js mark   [--root <dir>] [--repo <dir>] [--json]
+node scripts/return-point.js back   [--root <dir>] [--repo <dir>] [--to verde/<id>] [--json]
+```
+
+`--root` é o checkout da plataforma; o padrão é o checkout onde o script está.
+`--repo` é o repo do consumidor, onde ficam a trava do watcher e os agentes; o
+padrão é `REPO_PATH`. Saída: 0 sucesso, 1 recusa ou reprovação, 2 uso errado.
+
+- **`status`** só lê o git, sem rede. Mostra se a árvore está limpa (ou o
+  motivo), o HEAD curto, até 10 caminhos sujos e o último verde.
+- **`mark`** roda a checagem de saúde: árvore válida; dashboard respondendo em
+  loopback com o SHA em execução igual ao HEAD e sem drift; trava do watcher
+  legível no repo do consumidor; nenhuma queda do tick desde o start do laço, e
+  o laço não parou por limite de quedas desde a subida. Tick sem dado fica
+  `desconhecido` e não reprova. Sem repo do consumidor, ou com um caminho que
+  não é diretório com `.git`, a trava reprova. Se passar e o HEAD não tiver
+  mudado durante a checagem, cria a tag anotada `verde/AAAAMMDD-HHMMSS` (hora
+  UTC) no HEAD, com o resultado na anotação. Depois que a checagem roda,
+  passando ou não, grava uma linha em `logs/return-point.jsonl`; erro no meio
+  (checagem que lança, HEAD que muda, tag que falha) vai na linha com um código
+  curto. A tag nunca é publicada, movida ou apagada. Numa worktree ligada,
+  `mark` recusa sem rodar nada: rode no checkout principal.
+- **`back`** leva o HEAD, destacado, à última tag `verde/*` (ou à de `--to`).
+  Não mexe em branch. Avisa quando `scripts/package-lock.json` ou
+  `dashboard/package-lock.json` diferem entre as duas revisões: aí é preciso
+  reinstalar as dependências. Depois da volta, reinicie o dashboard. Para avançar
+  de novo: `git switch main`.
+
+`back` recusa, sem mudar nada e dizendo o motivo, quando:
+
+- não há tag verde, ou a tag de `--to` não existe;
+- a árvore está suja;
+- falta o repo do consumidor ou ele é inválido (sem `.git`), ou a trava do
+  watcher está ilegível (corrompida ou sem permissão de leitura);
+- a trava do watcher tem dono vivo, ou há agente vivo no consumidor;
+- o laço do watcher está ativo no dashboard.
+
+Com `PRISMA_CHECKOUT_GUARD=1` (também `true` ou `sim`), árvore suja ou fora da
+main faz o seguinte:
+
+- o dashboard não abre a porta e sai com 2; os motivos, cada raiz recusada e
+  até 10 caminhos no total vão para o stderr. A raiz conferida é sempre a de
+  onde o código do dashboard roda (a pasta acima de `dashboard/`); se
+  `PRISMA_ROOT` apontar para outra pasta (comparada pelo caminho real), as duas
+  são conferidas;
+- o watcher-manager não inicia o tick e para o laço. `/api/watcher/status`
+  mostra `error: 'checkout_guard'` e `guard: { reasons, paths }`. A raiz
+  conferida é a de onde o código do tick roda.
+
+HEAD destacado numa tag verde passa no guard. Sem a flag, a subida e o tick não
+rodam nenhum comando novo. Rodar `node scripts/readmine-watcher.js` direto não
+passa pelo guard, que só existe no watcher-manager e na subida do dashboard.
+
+Ficam com o Richard, cada uma com AUTORIZO e rollback:
+
+1. subir o checkout do consumidor para a revisão mesclada desta fatia;
+2. o primeiro `mark` no consumidor;
+3. um `back` de ensaio no consumidor;
+4. exportar `PRISMA_CHECKOUT_GUARD` no launcher do consumidor.
 
 ## Núcleo 2 do roteamento (Jev em sombra)
 
