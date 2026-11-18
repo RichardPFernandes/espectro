@@ -9,9 +9,11 @@ const path = require('node:path');
 
 const MAX_PATHS = 10;
 const ORIGIN_MAIN = 'refs/remotes/origin/main';
-const ON_VALUES = new Set(['1', 'true', 'sim']);
 const TAG_PREFIX = 'verde/';
 const LOG_FILE = path.join('logs', 'return-point.jsonl');
+// Prazo curto de cada git do guard (subida e tick rodam no event loop do dashboard); a CLI
+// fica com o padrão do runGit.
+const GUARD_GIT_TIMEOUT_MS = 3000;
 
 // Roda `git <args>` em cwd, sem shell. Falha ao iniciar (git ausente) vira status null.
 function runGit(args, { cwd, env = process.env, timeout = 15000 } = {}) {
@@ -32,8 +34,11 @@ function dirtyPaths(stdout) {
     return paths;
 }
 
-function checkTree({ root, git = runGit }) {
-    const run = args => git(args, { cwd: root });
+// timeoutMs: prazo de cada git (o guard usa GUARD_GIT_TIMEOUT_MS). Git que estoura o prazo
+// sai com status null e conta como falha: a recusa continua fechada.
+function checkTree({ root, git = runGit, timeoutMs }) {
+    const opts = timeoutMs ? { cwd: root, timeout: timeoutMs } : { cwd: root };
+    const run = args => git(args, opts);
     if (run(['rev-parse', '--is-inside-work-tree']).status !== 0) {
         return { ok: false, reasons: ['not_git'], paths: [], head: null };
     }
@@ -55,8 +60,9 @@ function checkTree({ root, git = runGit }) {
 }
 
 // PRISMA_CHECKOUT_GUARD: 1, true ou sim (sem diferenciar maiúsculas) liga; o resto desliga.
+// A forma da leitura é a que o scripts/lib/flag-registry reconhece.
 function guardEnabled(env = process.env) {
-    return ON_VALUES.has(String(env.PRISMA_CHECKOUT_GUARD ?? '').trim().toLowerCase());
+    return /^(1|true|sim)$/i.test(String(env.PRISMA_CHECKOUT_GUARD ?? '').trim());
 }
 
 // Último verde: a tag verde/* mais recente. A data de criação desempata pelo nome, que
@@ -72,35 +78,71 @@ function tagName(d) {
     return `${TAG_PREFIX}${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
 }
 
+const realpathOr = p => { try { return fs.realpathSync(p); } catch { return p; } };
+const refused = (code, message) => Object.assign(new Error(message), { code });
+
+// Worktree ligada: o git-dir é .git/worktrees/<nome> do repositório comum, e a tag iria para
+// o checkout principal (o vivo, no consumidor).
+function linkedWorktree(run, root) {
+    const r = run(['rev-parse', '--git-dir', '--git-common-dir']);
+    if (r.status !== 0) return false;
+    const [gitDir, commonDir] = r.stdout.trim().split('\n').map(p => realpathOr(path.resolve(root, p)));
+    return !!commonDir && gitDir !== commonDir;
+}
+
+function appendLog(root, line) {
+    const logPath = path.join(root, LOG_FILE);
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, JSON.stringify(line) + '\n');
+}
+
 // Roda a checagem de saúde; se passar, cria a tag anotada no HEAD com o resultado.
-// Passando ou não, acrescenta uma linha no log da raiz. Só SHA, tag, hora, itens e
-// resultado: nada de caminho. Tag existente é erro (nunca -f); nada é publicado.
+// Depois que a checagem roda, toda saída acrescenta uma linha no log da raiz: aprovada,
+// reprovada, ou com `error` (health_failed: a checagem lançou; head_changed: o HEAD mudou
+// durante a checagem; tag_failed: o git tag falhou). Só SHA, tag, hora, itens, resultado e
+// código: nada de caminho. Antes da checagem, worktree ligada e tag já existente recusam sem
+// log. Tag existente é erro (nunca -f); nada é publicado.
 async function mark({ root, health, now = () => new Date(), git = runGit }) {
     const run = args => git(args, { cwd: root });
-    const headR = run(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
-    const head = headR.status === 0 ? headR.stdout.trim() : '';
+    if (linkedWorktree(run, root)) {
+        throw refused('linked_worktree', 'mark: rode no checkout principal (numa worktree ligada a tag iria para o repositório comum)');
+    }
+    const readHead = () => {
+        const r = run(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+        return r.status === 0 ? r.stdout.trim() : '';
+    };
+    const head = readHead();
     if (!head) throw new Error('mark: HEAD não resolvido');
     const date = now();
     const name = tagName(date);
     if (run(['rev-parse', '--verify', '--quiet', `refs/tags/${name}`]).status === 0) {
         throw new Error(`mark: a tag ${name} já existe`);
     }
+    const at = date.toISOString();
 
-    const result = await health();
-    const ok = result?.ok === true;
+    let result;
+    try { result = await health(); } catch (e) {
+        appendLog(root, { at, head, tag: null, ok: false, error: 'health_failed' });
+        throw e;
+    }
     const items = Array.isArray(result?.items) ? result.items : [];
-    const record = { at: date.toISOString(), head, ok, items };
-
-    let tag = null;
-    if (ok) {
-        const t = run(['tag', '-a', '--cleanup=verbatim', '-m', JSON.stringify(record), name, head]);
-        if (t.status !== 0) throw new Error(`mark: não criou a tag ${name}: ${t.stderr.trim()}`);
-        tag = name;
+    // A saúde devolve o HEAD que validou (tree.head); a tag vai no HEAD lido antes dela.
+    if ((result?.head !== undefined && result.head !== head) || readHead() !== head) {
+        appendLog(root, { at, head, tag: null, ok: false, items, error: 'head_changed' });
+        return { ok: false, tag: null, head, items, error: 'head_changed' };
     }
 
-    const logPath = path.join(root, LOG_FILE);
-    fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    fs.appendFileSync(logPath, JSON.stringify({ at: record.at, head, tag, ok, items }) + '\n');
+    const ok = result?.ok === true;
+    let tag = null;
+    if (ok) {
+        const t = run(['tag', '-a', '--cleanup=verbatim', '-m', JSON.stringify({ at, head, ok, items }), name, head]);
+        if (t.status !== 0) {
+            appendLog(root, { at, head, tag: null, ok: false, items, error: 'tag_failed' });
+            throw refused('tag_failed', `mark: não criou a tag ${name}: ${t.stderr.trim()}`);
+        }
+        tag = name;
+    }
+    appendLog(root, { at, head, tag, ok, items });
     return { ok, tag, head, items };
 }
 
@@ -144,31 +186,48 @@ function dashboardItem(v, head) {
 }
 
 // A trava do watcher e os agentes moram no repo do consumidor (REPO_PATH), não na raiz do
-// Prisma. lockStatus injetado vale (chamado com o repo); ausente sem repo = trava reprova.
+// Prisma.
 const NO_REPO = 'repo do consumidor não informado (--repo ou REPO_PATH)';
-function resolveLockStatus(repo, lockStatus) {
-    if (lockStatus !== undefined) return lockStatus;
-    return repo ? r => require('./watcher-lock').status(r) : null;
+
+// Repo do consumidor válido = diretório existente com .git (diretório ou arquivo). Sem isso,
+// watcher-lock.status cai numa trava em /tmp e diria "livre". Motivo curto, sem caminho.
+function repoProblem(repo) {
+    let st;
+    try { st = fs.statSync(repo); } catch { return 'não existe'; }
+    if (!st.isDirectory()) return 'não é diretório';
+    if (!fs.existsSync(path.join(repo, '.git'))) return 'sem .git';
+    return null;
 }
 
-// "Legível" = status() não lança e a trava está livre, viva ou velha com conteúdo; arquivo
-// corrompido aparece como stale sem lock (watcher-lock.readLock) e reprova. Sem repo do
-// consumidor a trava não é conferida e reprova (a SPEC exige a trava legível para marcar).
-function lockItem(lockStatus, repo) {
-    if (!lockStatus) return { name: 'trava', status: repo ? 'desconhecido' : 'fail', reason: NO_REPO };
-    let st;
-    try { st = lockStatus(repo); } catch { return { name: 'trava', status: 'fail', reason: 'status da trava ilegível' }; }
-    const s = st?.lock_state;
-    if (s === 'free' || ((s === 'held' || s === 'stale') && st.lock && typeof st.lock === 'object')) {
-        return { name: 'trava', status: 'pass', reason: `legível (${s})` };
+// Um critério só para a saúde e o back. Devolve { st } com a trava legível, ou { code, reason }.
+// Legível = status() não lança e a trava está livre, viva ou velha com conteúdo; arquivo
+// corrompido ou sem permissão de leitura aparece como stale sem lock (watcher-lock.readLock)
+// e não é legível. lockStatus injetado vale (chamado com o repo); null com repo = não
+// conferida. Sem repo do consumidor, a trava não é conferida (a SPEC exige a trava legível).
+function readConsumerLock(repo, lockStatus) {
+    if (repo) {
+        const why = repoProblem(repo);
+        if (why) return { code: 'repo_invalid', reason: `repo do consumidor inválido (${why})` };
     }
-    return { name: 'trava', status: 'fail', reason: s === 'stale' ? 'arquivo da trava corrompido' : 'estado da trava desconhecido' };
+    const status = lockStatus !== undefined ? lockStatus : repo ? r => require('./watcher-lock').status(r) : null;
+    if (!status) return repo ? { code: 'lock_unchecked', reason: 'trava não conferida' } : { code: 'no_repo', reason: NO_REPO };
+    let st;
+    try { st = status(repo); } catch { return { code: 'lock_unreadable', reason: 'status da trava ilegível' }; }
+    const s = st?.lock_state;
+    if (s === 'free' || ((s === 'held' || s === 'stale') && st.lock && typeof st.lock === 'object')) return { st };
+    return { code: 'lock_unreadable', reason: s === 'stale' ? 'arquivo da trava corrompido ou sem permissão' : 'estado da trava desconhecido' };
+}
+
+function lockItem(repo, lockStatus) {
+    const r = readConsumerLock(repo, lockStatus);
+    if (!r.st) return { name: 'trava', status: 'fail', reason: r.reason };
+    return { name: 'trava', status: 'pass', reason: `legível (${r.st.lock_state})` };
 }
 
 // Subida = boot do dashboard (/api/version started_at; o watcher-manager nasce com ele, e
 // `ticks` conta desde então). Queda = `error` do laço, `restarts` (crash desde o start do
-// laço) ou `last_run` encerrado por restart_limit depois da subida. Sem tick concluído
-// desde a subida: desconhecido.
+// laço; zera a cada start) ou `last_run` encerrado por restart_limit depois da subida. Sem
+// tick concluído desde a subida: desconhecido.
 function tickItem(w, bootAt) {
     const item = (status, reason) => ({ name: 'tick', status, reason });
     if (w.error || !w.body || typeof w.body !== 'object') return item('desconhecido', 'status do watcher indisponível');
@@ -183,7 +242,7 @@ function tickItem(w, bootAt) {
     }
     const done = (Number.isInteger(b.ticks) ? b.ticks : 0) - (b.phase === 'tick' ? 1 : 0);
     if (done <= 0) return item('desconhecido', 'sem tick concluído desde a subida');
-    return item('pass', 'sem queda desde a subida');
+    return item('pass', 'sem queda desde o start do laço');
 }
 
 const defaultBaseUrl = () => `http://127.0.0.1:${process.env.PORT || 3333}`;
@@ -196,18 +255,19 @@ async function health({ root, repo, baseUrl, fetch: fetchFn = globalThis.fetch, 
     const items = [
         treeItem(tree),
         dashboardItem(version, tree.head),
-        lockItem(resolveLockStatus(repo, lockStatus), repo),
+        lockItem(repo, lockStatus),
         tickItem(watcher, version.body?.started_at),
     ];
-    return { ok: items.every(i => i.status !== 'fail'), items };
+    return { ok: items.every(i => i.status !== 'fail'), items, head: tree.head };
 }
 
 // ---------------------------------------------------------------- volta ao último verde
 // Recusa (sem mudar nada, com todos os motivos) se não há alvo verde, a árvore está suja,
-// não há repo do consumidor, a trava tem dono vivo ou não se lê, há agente vivo ou o laço do
-// watcher está ativo no dashboard (sem resposta dele, vale só a trava). Senão, HEAD destacado
-// na tag. Nunca stash, reset, clean, nem mover branch ou tag. Fora da main não impede: depois
-// de uma volta o HEAD fica destacado, e uma nova volta tem de seguir possível.
+// o repo do consumidor falta ou é inválido, a trava tem dono vivo ou não se lê (mesmo
+// critério da saúde), há agente vivo ou o laço do watcher está ativo no dashboard (sem
+// resposta dele, vale só a trava). Senão, HEAD destacado na tag. Nunca stash, reset, clean,
+// nem mover branch ou tag. Fora da main não impede: depois de uma volta o HEAD fica
+// destacado, e uma nova volta tem de seguir possível.
 const DEP_LOCKS = ['scripts/package-lock.json', 'dashboard/package-lock.json'];
 const GREEN_RE = /^verde\/[0-9A-Za-z._-]+$/;
 
@@ -238,18 +298,14 @@ async function back({ root, to, repo, lockStatus, watcherStatus = defaultWatcher
     if (tree.reasons.includes('not_git')) refuse('not_git', 'a raiz não é um repositório git');
     if (tree.reasons.includes('dirty')) refuse('dirty', 'árvore suja (arquivo modificado ou não rastreado)');
 
-    const lock = resolveLockStatus(repo, lockStatus);
-    if (!lock) {
-        refuse('no_repo', NO_REPO);
+    const lock = readConsumerLock(repo, lockStatus);
+    if (!lock.st) {
+        const hint = { lock_unreadable: `não foi possível ler a trava do watcher: ${lock.reason}`, repo_invalid: `${lock.reason}; confira --repo ou REPO_PATH` };
+        refuse(lock.code, hint[lock.code] || lock.reason);
     } else {
-        let st = null;
-        try { st = lock(repo); } catch { st = null; }
-        if (!st || typeof st !== 'object') refuse('lock_unreadable', 'não foi possível ler a trava do watcher');
-        else {
-            if (st.lock_state === 'held') refuse('lock_held', 'a trava do watcher tem dono vivo; pare o watcher antes');
-            const n = Array.isArray(st.agents) ? st.agents.length : 0;
-            if (n > 0) refuse('agents_alive', `${n} agente(s) destacado(s) vivo(s) no consumidor; espere terminarem`);
-        }
+        if (lock.st.lock_state === 'held') refuse('lock_held', 'a trava do watcher tem dono vivo; pare o watcher antes');
+        const n = Array.isArray(lock.st.agents) ? lock.st.agents.length : 0;
+        if (n > 0) refuse('agents_alive', `${n} agente(s) destacado(s) vivo(s) no consumidor; espere terminarem`);
     }
 
     let w = null;
@@ -280,4 +336,4 @@ async function back({ root, to, repo, lockStatus, watcherStatus = defaultWatcher
     return { ...result, ok: true, restart: result.head !== from };
 }
 
-module.exports = { checkTree, guardEnabled, runGit, lastGreen, mark, health, back, MAX_PATHS };
+module.exports = { checkTree, guardEnabled, runGit, lastGreen, mark, health, back, MAX_PATHS, GUARD_GIT_TIMEOUT_MS };

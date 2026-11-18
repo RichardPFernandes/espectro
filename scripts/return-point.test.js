@@ -199,6 +199,52 @@ test('mark: sem --repo nem REPO_PATH a trava reprova, sai com 1 e não cria tag'
     assert.equal(log[0].ok, false);
 });
 
+const readLog = root => fs.readFileSync(path.join(root, 'logs', 'return-point.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+
+test('mark: --repo inexistente reprova a trava sem caminho no motivo, sai com 1 e não cria tag', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const missing = path.join(tmp(), 'nao-existe');
+    const srv = await fakeDashboard({
+        '/api/version': { status: 'ok', started_at: '2026-11-18T08:00:00.000Z', current: { sha: head }, drift: false },
+        '/api/watcher/status': { running: true, state: 'running', error: null, restarts: 0, ticks: 2, phase: 'idle', last_run: null },
+    });
+    let r;
+    try { r = await cli(['mark', '--root', root, '--repo', missing, '--json'], { port: srv.port }); } finally { await srv.close(); }
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    const trava = out.items.find(i => i.name === 'trava');
+    assert.equal(trava.status, 'fail');
+    assert.match(trava.reason, /^repo do consumidor inválido/);
+    assert.ok(!r.stdout.includes(missing) && !r.stdout.includes(os.tmpdir()));
+    assert.equal(sh(root, 'tag', '-l', 'verde/*'), '');
+    assert.equal(readLog(root).length, 1);
+});
+
+test('mark: numa worktree ligada recusa sem rodar nada e sai com 1', async () => {
+    const root = cloneOnMain();
+    const wt = path.join(path.dirname(root), 'ligada');
+    sh(root, 'worktree', 'add', '--quiet', '--detach', wt);
+    const r = await cli(['mark', '--root', wt, '--repo', consumerRepo()]);
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /rode no checkout principal/);
+    assert.equal(sh(root, 'tag', '-l', 'verde/*'), '');
+    assert.ok(!fs.existsSync(path.join(wt, 'logs')));
+    assert.ok(!fs.existsSync(path.join(root, 'logs')));
+});
+
+test('mark: PORT inválida faz a saúde lançar; sai com 1 e grava a linha no log', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await cli(['mark', '--root', root, '--repo', consumerRepo()], { port: 'abc' });
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /URL inválida/);
+    assert.equal(sh(root, 'tag', '-l', 'verde/*'), '');
+    const log = readLog(root);
+    assert.equal(log.length, 1);
+    assert.deepEqual({ head: log[0].head, tag: log[0].tag, ok: log[0].ok, error: log[0].error }, { head, tag: null, ok: false, error: 'health_failed' });
+});
+
 test('back: volta ao último verde, sai com 0 e diz para reiniciar o dashboard', async () => {
     const { root, green, tag } = await markedAndAdvanced();
     const r = await cli(['back', '--root', root, '--repo', consumerRepo()]);
@@ -231,53 +277,75 @@ test('back: lock de dependência diferente gera aviso e a volta acontece', async
     assert.match(r.stdout, /aviso:.*scripts\/package-lock\.json/);
 });
 
-async function refusedViaCli(root, args, opts, pattern) {
+// Recusa pela CLI com --json: saída 1, o código esperado em reasons[], HEAD e branch iguais.
+async function refusedViaCli(root, args, opts, code) {
     const before = sh(root, 'rev-parse', 'HEAD');
     const branch = sh(root, 'symbolic-ref', '-q', 'HEAD');
-    const r = await cli(['back', '--root', root, ...args], opts);
+    const r = await cli(['back', '--root', root, ...args, '--json'], opts);
     assert.equal(r.code, 1, r.stdout + r.stderr);
-    assert.match(r.stdout + r.stderr, pattern);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.ok, false);
+    assert.ok(out.reasons.some(x => x.code === code), `esperava ${code}, veio ${JSON.stringify(out.reasons)}`);
     assert.equal(sh(root, 'rev-parse', 'HEAD'), before);
     assert.equal(sh(root, 'symbolic-ref', '-q', 'HEAD'), branch);
-    return r;
+    assert.ok(!r.stdout.includes(os.tmpdir()), 'saída cita caminho absoluto');
+    return out;
 }
 
 test('back: sem tag verde sai com 1 e HEAD igual', async () => {
     const root = cloneOnMain();
-    await refusedViaCli(root, ['--repo', consumerRepo()], {}, /verde/);
+    await refusedViaCli(root, ['--repo', consumerRepo()], {}, 'no_green');
 });
 
 test('back: --to fora de verde/* sai com 1 e HEAD igual', async () => {
     const { root } = await markedAndAdvanced();
-    await refusedViaCli(root, ['--repo', consumerRepo(), '--to', 'main'], {}, /verde/);
+    await refusedViaCli(root, ['--repo', consumerRepo(), '--to', 'main'], {}, 'to_invalid');
 });
 
 test('back: árvore suja sai com 1, HEAD igual, e cita o caminho', async () => {
     const { root } = await markedAndAdvanced();
     fs.writeFileSync(path.join(root, 'solto.txt'), 'x\n');
-    await refusedViaCli(root, ['--repo', consumerRepo()], {}, /solto\.txt/);
+    const out = await refusedViaCli(root, ['--repo', consumerRepo()], {}, 'dirty');
+    assert.deepEqual(out.paths, ['solto.txt']);
+    const human = await cli(['back', '--root', root, '--repo', consumerRepo()]);
+    assert.equal(human.code, 1);
+    assert.match(human.stdout, /back recusado; nada mudou/);
+    assert.match(human.stdout, /: solto\.txt/);
 });
 
 test('back: trava viva no repo do consumidor sai com 1 e HEAD igual', async () => {
     const { root } = await markedAndAdvanced();
-    await refusedViaCli(root, ['--repo', consumerRepo({ held: true })], {}, /trava/);
+    await refusedViaCli(root, ['--repo', consumerRepo({ held: true })], {}, 'lock_held');
 });
 
 test('back: sem --repo nem REPO_PATH recusa com o motivo', async () => {
     const { root } = await markedAndAdvanced();
-    await refusedViaCli(root, [], {}, /repo do consumidor não informado \(--repo ou REPO_PATH\)/);
+    const out = await refusedViaCli(root, [], {}, 'no_repo');
+    assert.equal(out.reasons.find(x => x.code === 'no_repo').message, 'repo do consumidor não informado (--repo ou REPO_PATH)');
 });
 
 test('back: REPO_PATH no ambiente vale como --repo', async () => {
     const { root } = await markedAndAdvanced();
-    await refusedViaCli(root, [], { env: { REPO_PATH: consumerRepo({ held: true }) } }, /trava/);
+    await refusedViaCli(root, [], { env: { REPO_PATH: consumerRepo({ held: true }) } }, 'lock_held');
+});
+
+test('back: --repo inexistente recusa com repo_invalid, sem caminho na saída', async () => {
+    const { root } = await markedAndAdvanced();
+    const missing = path.join(tmp(), 'nao-existe');
+    const out = await refusedViaCli(root, ['--repo', missing], {}, 'repo_invalid');
+    assert.ok(!JSON.stringify(out).includes(missing));
+});
+
+test('back: REPO_PATH sem .git recusa com repo_invalid', async () => {
+    const { root } = await markedAndAdvanced();
+    await refusedViaCli(root, [], { env: { REPO_PATH: tmp() } }, 'repo_invalid');
 });
 
 test('back: watcher rodando segundo o dashboard sai com 1 e HEAD igual', async () => {
     const { root } = await markedAndAdvanced();
     const srv = await fakeDashboard({ '/api/watcher/status': { running: true, state: 'running' } });
     try {
-        await refusedViaCli(root, ['--repo', consumerRepo()], { port: srv.port }, /watcher/);
+        await refusedViaCli(root, ['--repo', consumerRepo()], { port: srv.port }, 'watcher_running');
     } finally { await srv.close(); }
 });
 

@@ -70,7 +70,9 @@ async function runMark({ root, repo }, out) {
     for (const i of result.items) out.log(`  ${String(i.name).padEnd(10)} ${String(i.status).padEnd(13)} ${i.reason}`);
     out.log(result.ok
         ? `marca: ${result.tag} criada no ${short(result.head)}`
-        : 'marca: não criada; a checagem reprovou (registrado em logs/return-point.jsonl)');
+        : result.error === 'head_changed'
+            ? 'marca: não criada; o HEAD mudou durante a checagem (registrado em logs/return-point.jsonl)'
+            : 'marca: não criada; a checagem reprovou (registrado em logs/return-point.jsonl)');
     return { code: result.ok ? 0 : 1 };
 }
 

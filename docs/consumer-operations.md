@@ -113,11 +113,16 @@ padrão é `REPO_PATH`. Saída: 0 sucesso, 1 recusa ou reprovação, 2 uso errad
   motivo), o HEAD curto, até 10 caminhos sujos e o último verde.
 - **`mark`** roda a checagem de saúde: árvore válida; dashboard respondendo em
   loopback com o SHA em execução igual ao HEAD e sem drift; trava do watcher
-  legível no repo do consumidor; nenhum tick caiu desde a subida. Tick sem dado
-  fica `desconhecido` e não reprova. Sem repo do consumidor, a trava reprova.
-  Se passar, cria a tag anotada `verde/AAAAMMDD-HHMMSS` (hora UTC) no HEAD, com
-  o resultado na anotação. Passando ou não, grava uma linha em
-  `logs/return-point.jsonl`. A tag nunca é publicada, movida ou apagada.
+  legível no repo do consumidor; nenhuma queda do tick desde o start do laço, e
+  o laço não parou por limite de quedas desde a subida. Tick sem dado fica
+  `desconhecido` e não reprova. Sem repo do consumidor, ou com um caminho que
+  não é diretório com `.git`, a trava reprova. Se passar e o HEAD não tiver
+  mudado durante a checagem, cria a tag anotada `verde/AAAAMMDD-HHMMSS` (hora
+  UTC) no HEAD, com o resultado na anotação. Depois que a checagem roda,
+  passando ou não, grava uma linha em `logs/return-point.jsonl`; erro no meio
+  (checagem que lança, HEAD que muda, tag que falha) vai na linha com um código
+  curto. A tag nunca é publicada, movida ou apagada. Numa worktree ligada,
+  `mark` recusa sem rodar nada: rode no checkout principal.
 - **`back`** leva o HEAD, destacado, à última tag `verde/*` (ou à de `--to`).
   Não mexe em branch. Avisa quando `scripts/package-lock.json` ou
   `dashboard/package-lock.json` diferem entre as duas revisões: aí é preciso
@@ -128,7 +133,8 @@ padrão é `REPO_PATH`. Saída: 0 sucesso, 1 recusa ou reprovação, 2 uso errad
 
 - não há tag verde, ou a tag de `--to` não existe;
 - a árvore está suja;
-- falta o repo do consumidor, ou a trava do watcher está ilegível;
+- falta o repo do consumidor ou ele é inválido (sem `.git`), ou a trava do
+  watcher está ilegível (corrompida ou sem permissão de leitura);
 - a trava do watcher tem dono vivo, ou há agente vivo no consumidor;
 - o laço do watcher está ativo no dashboard.
 
