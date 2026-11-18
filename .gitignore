@@ -3,6 +3,8 @@ node_modules/
 dist/
 build/
 coverage/
+# O repo usa npm; o pnpm-lock.yaml que aparece solto nas worktrees não entra
+pnpm-lock.yaml
 
 # Credenciais e configuração local
 .env

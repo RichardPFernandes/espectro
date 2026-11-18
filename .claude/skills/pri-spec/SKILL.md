@@ -14,13 +14,20 @@ com os ajustes abaixo. Onde os dois divergem, valem os ajustes. A pasta vem de
 arquivo, rode `/pri-start` antes.
 
 - **Nível.** Leve não tem SPEC: pare. No Médio, escreva a SPEC só se a issue não
-  bastar como contrato; se bastar, diga isso e siga para o `/pri-plan`.
+  bastar como contrato; se bastar, diga isso e siga para o `/pri-plan`. Sem SPEC, o
+  delta de capacidade vai no corpo do PR, pelo `/pri-pr`.
 - **Onde.** Grave em `<pasta>/SPEC.md`, e o mapa de módulos, se houver, também na
   pasta. Nada na raiz, em `docs/` ou em `spec/`.
 - **Tamanho.** Até 1 página no Médio; de 1 a 2 páginas no Alto.
-- **Conteúdo.** Só quatro seções: Objetivo, Critérios de aceite, Limites (sempre /
-  perguntar antes / nunca) e Fora de escopo.
+- **Conteúdo.** Cinco seções: Objetivo, Critérios de aceite, Delta de capacidade,
+  Limites (sempre / perguntar antes / nunca) e Fora de escopo.
   - Cada critério se escreve `AC-1`, `AC-2`… e tem um estado de falha observável.
+  - **Delta de capacidade.** Parta da lista `capacidades` do `.prisma/context.json` e leia
+    a spec viva de cada uma (`docs/capacidades/<id>.md`) antes de escrever. Use o
+    modelo da seção em `templates/fatia-spec.md.template`: uma linha por requisito ou
+    invariante que muda, com o ID dele (Adicionado, Modificado ou Removido). Sem mudança
+    de comportamento descrito, escreva "Nenhum" e o motivo em uma linha. O PR aplica o
+    delta na spec viva; depois do merge vale a página, não a SPEC.
   - Comandos, estrutura, estilo de código e estratégia de teste já estão no
     `AGENTS.md` e no `README.md`: não repita.
   - Decisões do Richard: cite o ID (`D5`, `D-GER-02`), não copie o texto.

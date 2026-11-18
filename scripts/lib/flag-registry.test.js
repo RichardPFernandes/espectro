@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { validateAll, ENV_READ_RES } = require('./config-validator');
-const { parseFlagRegistry, checkFlagRegistry, flagShapedReads, inspectRepo, unreadExampleVars, readsOf, COLUMNS } = require('./flag-registry');
+const { parseFlagRegistry, checkFlagRegistry, flagShapedReads, inspectRepo, unreadExampleVars, readsOf, COLUMNS, summarizeFlags, summarizeFlagRegistry } = require('./flag-registry');
 
 const REAL_ROOT = path.resolve(__dirname, '..', '..');
 const HEADER = `| ${COLUMNS.join(' | ')} |\n|${COLUMNS.map(() => ' -- ').join('|')}|\n`;
@@ -163,4 +163,39 @@ test('repositório real (AC-01, AC-02, AC-04): docs/flags.md confere com o códi
     const r = inspectRepo(REAL_ROOT);
     assert.deepStrictEqual(r.problems, [], r.problems.map(p => `${p.code} ${p.flag}: ${p.message}`).join('\n'));
     assert.ok(r.flags > 0);
+});
+
+// PRI-399 (F0.9, AC-03, métrica 4): resumo do registro para o relatório semanal.
+test('summarizeFlags conta padrão, consumidor, vencidas (antes de hoje, UTC) e itens desligados', () => {
+    const { rows } = parseFlagRegistry(doc(
+        row({ Flag: '`FLAG_90003_A`', 'Decidir até': '2026-11-16' }),
+        row({ Flag: '`FLAG_90003_B`', 'Decidir até': '2026-11-17', Consumidor: 'não verificado (marcador 90003-x)' }),
+        row({ Flag: '`FLAG_90003_C`', 'Padrão': 'ligada', 'Item desligado': 'não', Consumidor: 'marcador 90003-y', 'Decidir até': '2027-01-01' }),
+    ));
+    assert.deepStrictEqual(summarizeFlags(rows, '2026-11-17'), {
+        n: 3,
+        padrao: { ligada: 1, desligada: 2 },
+        consumidor: { nao_verificado: 2, outro: 1 },
+        vencidas: 1,
+        itens_desligados: 2,
+        fonte: 'docs/flags.md',
+        hoje: '2026-11-17',
+    });
+});
+
+test('summarizeFlagRegistry: tabela válida dá ok com o resumo', () => {
+    const r = summarizeFlagRegistry(doc(row({ Flag: '`FLAG_90003_A`' })), '2026-11-17');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.summary.n, 1);
+    assert.strictEqual(r.summary.itens_desligados, 1);
+});
+
+test('summarizeFlagRegistry: tabela quebrada, ausente ou vazia é ok:false, nunca zero', () => {
+    const quebrada = doc(row(), '| `FLAG_90003_X` | env | desligada |\n');
+    for (const md of [quebrada, '# nada aqui', doc(row()).replace('Decidir até', 'Prazo'), doc()]) {
+        const r = summarizeFlagRegistry(md, '2026-11-17');
+        assert.strictEqual(r.ok, false, md);
+        assert.strictEqual(r.summary, undefined);
+        assert.match(r.error, /\S/);
+    }
 });

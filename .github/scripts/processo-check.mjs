@@ -4,12 +4,13 @@
 // (API do GitHub, só leitura) e aplica as regras de .github/processo.json.
 //
 // Uso local, sem rede:
-//   node .github/scripts/processo-check.mjs --event payload.json --files files.json [--capabilities <dir>]
+//   node .github/scripts/processo-check.mjs --event payload.json --files files.json [--capabilities <dir>] [--root <dir>]
 // files.json = array no formato de GET /repos/{o}/{r}/pulls/{n}/files.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { evaluate, loadCapabilityMap, loadConfig } from './processo-lib.mjs';
+import { readSpecs } from './processo-spec.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = path.join(HERE, '..', 'pull_request_template.md');
@@ -60,7 +61,9 @@ async function main() {
 
     const capabilities = arg('--capabilities');
     const capabilityMap = loadCapabilityMap(capabilities ? { dir: capabilities } : {});
-    const result = evaluate({ labels, body: pr.body ?? '', files, templateBody, config, capabilityMap });
+    const { specs, skipped } = await readSpecs(files, config, { local, root: arg('--root'), repo: process.env.GITHUB_REPOSITORY, sha: pr.head?.sha, token: process.env.GITHUB_TOKEN, fetchJson: gh });
+    const result = evaluate({ labels, body: pr.body ?? '', files, templateBody, config, capabilityMap, specs });
+    result.info.push(...skipped);
     // Nomes de arquivo vêm do PR: escapa o que viraria workflow command.
     const esc = (s) => String(s).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
     const report = [

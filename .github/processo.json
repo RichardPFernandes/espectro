@@ -12,6 +12,14 @@
       "**/handoff*.yaml",
       "**/handoff*.yml",
       "**/evidence*.md"
+    ],
+    "renameAllowedPrefixes": [
+      "docs/historico/"
+    ]
+  },
+  "spec": {
+    "globs": [
+      "tasks/**/SPEC*.md"
     ]
   },
   "alto": {

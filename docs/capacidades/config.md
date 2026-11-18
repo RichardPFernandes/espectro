@@ -9,6 +9,7 @@ modulos:
   - scripts/validate-config.js
   - scripts/lib/config-validator.js
   - scripts/lib/flag-registry.js
+  - scripts/flags-read.js
 ---
 
 # Config
@@ -22,6 +23,8 @@ script e mostra o resultado.
 
 O registro de flags (`docs/flags.md`, fatia F1.1) lista cada flag com padrão, data de decisão e
 estado no consumidor. O teste `scripts/lib/flag-registry.test.js` o confere contra o código no CI.
+`scripts/flags-read.js --json` resume o registro (métrica 4 do acompanhamento) para o relatório
+semanal do dashboard.
 O estado no consumidor só entra quando um documento do repo o afirma; senão vale
 `não verificado`. Cada leitura de variável continua no módulo que a usa; cada capacidade lista as
 suas flags.

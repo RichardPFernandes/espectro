@@ -86,10 +86,26 @@ export function loadCapabilityMap({ script = path.join(HERE, '..', '..', 'script
     }
 }
 
+// IDs de AC da SPEC (`- AC-01: ...`, `AC-2: ...`, `**AC-3**`), sem blocos de código, comentários HTML
+// e ACs marcados "(removido". Dado do PR: só regex, nunca interpretado; linha com mais de 500 caracteres é ignorada, o que limita o custo da regex.
+// Linhas acima de 500 caracteres são ignoradas. Devolve [{ id, n }], n = número como string sem zeros à esquerda.
+export function specAcIds(content) {
+    const text = String(content ?? '').replace(/\r\n?/g, '\n').replace(/<!--[\s\S]*?(?:-->|$)/g, '');
+    const out = new Map();
+    let fence = false;
+    for (const l of text.split('\n')) {
+        if (/^\s*(```|~~~)/.test(l)) { fence = !fence; continue; }
+        const m = fence || l.length > 500 ? null : l.match(/^[ \t]*(?:[-*][ \t]+)?(?:\*\*|__)?[ \t]*(AC-(\d+))(?![\p{L}\p{N}])/iu);
+        const n = m?.[2].replace(/^0+(?=\d)/, '');
+        if (m && !/\(removido/i.test(l) && !out.has(n)) out.set(n, m[1]);
+    }
+    return [...out].map(([n, id]) => ({ id, n }));
+}
+
 const FIX_LEVEL = 'Para reclassificar, troque o rótulo (subir de nível exige o Richard).';
 
 // files: [{ filename, status, additions, deletions, previous_filename? }] (formato da API do GitHub).
-export function evaluate({ labels = [], body = '', files = [], templateBody = '', config, capabilityMap }) {
+export function evaluate({ labels = [], body = '', files = [], templateBody = '', config, capabilityMap, specs = [] }) {
     const errors = [];
     const info = [];
     const warnings = [];
@@ -114,8 +130,13 @@ export function evaluate({ labels = [], body = '', files = [], templateBody = ''
     }
 
     if (level === 'leve') {
-        const { maxChangedLines, forbiddenNewFiles } = config.leve;
+        const { maxChangedLines, forbiddenNewFiles, renameAllowedPrefixes = [] } = config.leve;
+        // Mover SPEC/handoff/evidence de issue fechada para o arquivo morto não cria arquivo novo:
+        // só `renamed` cujo destino começa com um prefixo permitido (default: nenhum).
+        const movedToArchive = (f) => f.status === 'renamed'
+            && renameAllowedPrefixes.some((pre) => String(f.filename).startsWith(pre));
         const added = files.filter((f) => ['added', 'renamed', 'copied'].includes(f.status)
+            && !movedToArchive(f)
             && matchesAny(f.filename, forbiddenNewFiles, { ignoreCase: true }));
         if (added.length) {
             errors.push(`Nível leve não admite SPEC, handoff ou evidence separado: ${added.map((f) => f.filename).join(', ')}. Remova o arquivo (a evidência vai na seção "${heading}" do PR). ${FIX_LEVEL}`);
@@ -154,6 +175,17 @@ export function evaluate({ labels = [], body = '', files = [], templateBody = ''
             const changed = [...new Set(code.get(c.id))];
             const shown = changed.slice(0, 3).join(', ') + (changed.length > 3 ? ` +${changed.length - 3}` : '');
             warnings.push(`Capacidade "${c.id}": o PR muda código dela (${shown}) e não toca a spec viva (${spec}). Se o comportamento mudou, atualize a spec no mesmo PR; se não mudou, diga isso na Evidência. Aviso, não reprova.`);
+        }
+    }
+    // SPEC alterada: cada AC aparece na Evidência? Aviso só com a seção preenchida (senão o erro acima já cobre).
+    for (const { filename, content } of specs) {
+        const acs = specAcIds(content);
+        const evText = ev?.length ? ev.join('\n') : '';
+        const missing = acs.filter((a) => !new RegExp(`\\bAC-0*${a.n}\\b`, 'i').test(evText));
+        info.push(`SPEC alterada: ${filename} (${acs.length} ACs, ${acs.length - missing.length} na Evidência)`);
+        if (missing.length && evText) {
+            const ids = missing.slice(0, 5).map((a) => a.id).join(', ') + (missing.length > 5 ? ` +${missing.length - 5}` : '');
+            warnings.push(`SPEC "${filename}": o AC ${ids} não aparece na Evidência. Cada AC da SPEC alterada entra na Evidência com resultado e prova (ou é removido da SPEC com "(removido em AAAA-MM-DD: motivo)"). Aviso, não reprova.`);
         }
     }
     return { ok: errors.length === 0, level, errors, warnings, info };
