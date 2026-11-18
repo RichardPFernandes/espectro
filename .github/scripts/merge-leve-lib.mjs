@@ -142,19 +142,27 @@ export function escapeMarkdown(s) {
 }
 
 // Resumo diário do merge automático do Leve (AC-03; SPEC item d).
-//   merged:  [{ number, title, issue }] mesclados pelo bot nas últimas 24 h
-//            (issue = "PRI-NNN" ou null);
-//   skipped: [{ number, title, motivos[] }] Leve fora de draft que a
-//            elegibilidade recusa;
-//   date:    "AAAA-MM-DD" do dia do resumo.
-// Devolve markdown, ou null quando não há nada a dizer (dia vazio não comenta).
-export function buildDailySummary({ merged = [], skipped = [], date }) {
-    if (!merged.length && !skipped.length) return null;
+//   merged:   [{ number, title, issue }] mesclados pelo bot desde o último
+//             resumo (issue = "PRI-NNN" ou null);
+//   eligible: [{ number, title }] Leve abertos, fora de draft, que a
+//             elegibilidade aceita e o bot ainda não mesclou (em simulação, os
+//             que ele mesclaria);
+//   skipped:  [{ number, title, motivos[] }] Leve fora de draft que a
+//             elegibilidade recusa;
+//   date:     "AAAA-MM-DD" do dia do resumo.
+// Devolve markdown, ou null quando as três listas estão vazias (dia vazio não comenta).
+export function buildDailySummary({ merged = [], skipped = [], eligible = [], date }) {
+    if (!merged.length && !skipped.length && !eligible.length) return null;
     const lines = [`## Merge automático do Leve: ${escapeMarkdown(date)}`, ''];
-    lines.push(`### Mesclados pelo bot nas últimas 24 h (${merged.length})`, '');
+    lines.push(`### Mesclados pelo bot desde o último resumo (${merged.length})`, '');
     if (!merged.length) lines.push('Nenhum.');
     for (const m of merged) {
         lines.push(`- #${Number(m.number)} ${escapeMarkdown(m.title)} (${m.issue ? escapeMarkdown(m.issue) : 'sem issue citada'})`);
+    }
+    lines.push('', `### Elegível, não mesclado (${eligible.length})`, '');
+    if (!eligible.length) lines.push('Nenhum.');
+    for (const e of eligible) {
+        lines.push(`- #${Number(e.number)} ${escapeMarkdown(e.title)}`);
     }
     lines.push('', `### Leve que ficou de fora (${skipped.length})`, '');
     if (!skipped.length) lines.push('Nenhum.');

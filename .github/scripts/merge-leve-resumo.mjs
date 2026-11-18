@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 // merge-leve-resumo: resumo diário do merge automático do Leve (F0.8, PRI-410;
 // AC-03, SPEC item d). Roda no cron das 08:00 BRT e lista, num comentário da
-// issue fixa "Merge automático do Leve: resumo":
-//   - os PRs mesclados por github-actions[bot] nas últimas 24 h;
+// issue fixa "Merge automático do Leve: resumo" (a aberta, criada por
+// github-actions[bot], de menor número):
+//   - os PRs mesclados por github-actions[bot] desde o último comentário do bot
+//     na issue fixa (sem issue ou sem comentário, nas últimas 24 h);
+//   - os PRs Leve abertos e fora de draft que a elegibilidade aceita e ainda não
+//     foram mesclados (em simulação, os que o bot mesclaria);
 //   - os PRs Leve abertos e fora de draft que a elegibilidade recusa, com o motivo.
-// Dia sem nada não comenta. Só lê PRs e checks; a única escrita é a issue fixa
-// (criada na primeira vez) e o comentário. Não lê MERGE_LEVE.
+// Dia sem nada não comenta. Só lê PRs, checks e a issue fixa; a única escrita é
+// a issue fixa (criada só quando há resumo) e o comentário. Não lê MERGE_LEVE.
 // A rede entra pelo parâmetro `gh(method, path, body)` (makeGh do merge-leve.mjs).
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,9 +39,10 @@ async function mergedByBot(gh, repo, since) {
     return merged.sort((a, b) => a.number - b.number);
 }
 
-async function skippedLeve(gh, repo, config) {
+async function openLeve(gh, repo, config) {
     const open = await paginate(gh, `/repos/${repo}/pulls?state=open`, (b) => b);
     const skipped = [];
+    const eligible = [];
     for (const item of open) {
         if (item.draft !== false || !labelNames(item).includes(LEVE)) continue;
         // A listagem não traz changed_files, que evaluatePr exige: lê o PR.
@@ -45,15 +50,34 @@ async function skippedLeve(gh, repo, config) {
         const files = await paginate(gh, `/repos/${repo}/pulls/${pr.number}/files`, (b) => b);
         const checks = await checksOf(gh, repo, pr.head?.sha);
         const { merge, motivos } = evaluatePr({ pr, files, checks, config, repo });
-        if (!merge) skipped.push({ number: pr.number, title: pr.title, motivos });
+        if (merge) eligible.push({ number: pr.number, title: pr.title });
+        else skipped.push({ number: pr.number, title: pr.title, motivos });
     }
-    return skipped.sort((a, b) => a.number - b.number);
+    const byNumber = (a, b) => a.number - b.number;
+    return { skipped: skipped.sort(byNumber), eligible: eligible.sort(byNumber) };
 }
 
-async function fixedIssue(gh, repo) {
+// A issue fixa: aberta, com o título exato, criada pelo bot; a de menor número.
+// Issue de outro autor com o mesmo título não conta. null se não houver.
+async function findFixedIssue(gh, repo) {
     const issues = await paginate(gh, `/repos/${repo}/issues?state=open`, (b) => b);
-    const found = issues.find((i) => !i.pull_request && i.title === ISSUE_TITLE);
-    if (found) return found.number;
+    const numbers = issues
+        .filter((i) => !i.pull_request && i.title === ISSUE_TITLE && i.user?.login === BOT)
+        .map((i) => Number(i.number));
+    return numbers.length ? Math.min(...numbers) : null;
+}
+
+// created_at do último comentário do bot na issue fixa, ou null.
+async function lastBotComment(gh, repo, issue) {
+    const comments = await paginate(gh, `/repos/${repo}/issues/${issue}/comments`, (b) => b);
+    const times = comments
+        .filter((c) => c.user?.login === BOT)
+        .map((c) => Date.parse(c.created_at))
+        .filter(Number.isFinite);
+    return times.length ? new Date(Math.max(...times)) : null;
+}
+
+async function createFixedIssue(gh, repo) {
     const created = await gh('POST', `/repos/${repo}/issues`, {
         title: ISSUE_TITLE,
         body: 'Resumo diário do merge automático do Leve (F0.8): um comentário por dia com o que o bot mesclou e o que ficou de fora.',
@@ -64,17 +88,20 @@ async function fixedIssue(gh, repo) {
 export async function run({ env = process.env, gh, config, now = new Date(), log = console.log }) {
     const repo = env.GITHUB_REPOSITORY;
     if (!repo) throw new Error('sem GITHUB_REPOSITORY');
-    const since = new Date(now.getTime() - DAY_MS);
+    // Procura a issue sem criar: a janela começa no último resumo do bot.
+    const found = await findFixedIssue(gh, repo);
+    const last = found === null ? null : await lastBotComment(gh, repo, found);
+    const since = last ?? new Date(now.getTime() - DAY_MS);
     const merged = await mergedByBot(gh, repo, since);
-    const skipped = await skippedLeve(gh, repo, config);
-    const body = buildDailySummary({ merged, skipped, date: now.toISOString().slice(0, 10) });
+    const { skipped, eligible } = await openLeve(gh, repo, config);
+    const body = buildDailySummary({ merged, skipped, eligible, date: now.toISOString().slice(0, 10) });
     if (body === null) {
-        log('merge-leve-resumo: nada nas últimas 24 h, sem comentário');
+        log(`merge-leve-resumo: nada desde ${since.toISOString()}, sem comentário`);
         return { commented: false };
     }
-    const issue = await fixedIssue(gh, repo);
+    const issue = found ?? await createFixedIssue(gh, repo);
     await gh('POST', `/repos/${repo}/issues/${issue}/comments`, { body });
-    log(`merge-leve-resumo: comentário na issue #${issue} (${merged.length} mesclado(s), ${skipped.length} de fora)`);
+    log(`merge-leve-resumo: comentário na issue #${issue} (${merged.length} mesclado(s), ${eligible.length} elegível(is), ${skipped.length} de fora)`);
     return { commented: true, issue };
 }
 

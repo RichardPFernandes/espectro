@@ -40,8 +40,8 @@ const greenRuns = () => [
 
 // gh(method, path, body) falso. Listas paginadas como a API (per_page/page).
 // Como a API, a listagem de PRs não traz merged_by nem changed_files: só o PR
-// individual traz.
-function fakeGh({ closed = [], open = [], files = {}, issues = [] } = {}) {
+// individual traz. `comments` é { [issue]: [{ user, created_at }] }.
+function fakeGh({ closed = [], open = [], files = {}, issues = [], comments = {} } = {}) {
     const calls = [];
     let nextIssue = 900;
     const gh = async (method, url, body) => {
@@ -71,11 +71,12 @@ function fakeGh({ closed = [], open = [], files = {}, issues = [] } = {}) {
         if (method === 'GET' && m) return { state: 'success', total_count: 0, statuses: [] };
         if (method === 'GET' && p === `/repos/${REPO}/issues`) return slice(issues);
         if (method === 'POST' && p === `/repos/${REPO}/issues`) {
-            const created = { number: nextIssue++, title: body.title, state: 'open' };
+            const created = { number: nextIssue++, title: body.title, state: 'open', user: { login: BOT } };
             issues.push(created);
             return created;
         }
         m = p.match(new RegExp(`^/repos/${REPO}/issues/(\\d+)/comments$`));
+        if (method === 'GET' && m) return slice(comments[m[1]] ?? []);
         if (method === 'POST' && m) return { id: 1, html_url: `https://github.com/${REPO}/issues/${m[1]}#c1` };
         throw new Error(`chamada inesperada: ${method} ${url}`);
     };
@@ -90,7 +91,9 @@ async function exec(fake = {}, env = {}) {
     return { calls, writes, comments, result };
 }
 
-const FIXED = { number: 50, title: ISSUE_TITLE, state: 'open' };
+const FIXED = { number: 50, title: ISSUE_TITLE, state: 'open', user: { login: BOT } };
+// Corpo do comentário dividido por seção (### Título (N)).
+const sections = (body) => Object.fromEntries(body.split(/^### /m).slice(1).map((s) => [s.split(' (')[0], s]));
 
 test('PR mesclado pelo bot aparece no comentário, com número, título e issue', async () => {
     const r = await exec({ closed: [closedPr(11, 'docs: ajusta guia (Refs PRI-123)', BOT)], issues: [FIXED] });
@@ -145,7 +148,7 @@ test('sem a issue fixa, ela é criada uma vez e recebe o comentário', async () 
 });
 
 test('PR (não issue) com o título exato não conta como a issue fixa', async () => {
-    const issues = [{ number: 5, title: ISSUE_TITLE, state: 'open', pull_request: { url: 'x' } }];
+    const issues = [{ number: 5, title: ISSUE_TITLE, state: 'open', user: { login: BOT }, pull_request: { url: 'x' } }];
     const r = await exec({ closed: [closedPr(11, 'docs: x', BOT)], issues });
     assert.equal(r.writes.filter((c) => c.url === `/repos/${REPO}/issues`).length, 1);
 });
@@ -164,9 +167,64 @@ test('Leve fora da lista aparece em "ficou de fora" com o motivo', async () => {
     assert.equal(r.comments.length, 1);
     const body = r.comments[0].body.body;
     assert.match(body, /ficou de fora/i);
-    assert.match(body, /#21/);
-    assert.match(body, /scripts\/a\.js: fora da lista mergeLeve/);
-    for (const n of ['#22', '#23', '#24']) assert.ok(!body.includes(n), n);
+    const fora = sections(body)['Leve que ficou de fora'];
+    assert.match(fora, /#21/);
+    assert.match(fora, /scripts\/a\.js: fora da lista mergeLeve/);
+    // #22 é elegível: vai para a própria seção, não para "ficou de fora".
+    assert.ok(!fora.includes('#22'));
+    for (const n of ['#23', '#24']) assert.ok(!body.includes(n), n);
+});
+
+// G1: a issue fixa é a do bot.
+test('issue de outro autor com o título exato é ignorada, e a do bot é criada', async () => {
+    const issues = [{ number: 3, title: ISSUE_TITLE, state: 'open', user: { login: 'mallory' } }];
+    const r = await exec({ closed: [closedPr(11, 'docs: x (Refs PRI-9)', BOT)], issues });
+    const creates = r.writes.filter((c) => c.method === 'POST' && c.url === `/repos/${REPO}/issues`);
+    assert.equal(creates.length, 1);
+    assert.equal(r.comments.length, 1);
+    assert.equal(r.comments[0].url, `/repos/${REPO}/issues/900/comments`);
+});
+
+test('duas issues do bot com o título exato: vale a de menor número', async () => {
+    const issues = [{ ...FIXED, number: 60 }, { ...FIXED, number: 50 }, { ...FIXED, number: 40, user: { login: 'mallory' } }];
+    const r = await exec({ closed: [closedPr(11, 'docs: x', BOT)], issues });
+    assert.equal(r.writes.filter((c) => c.url === `/repos/${REPO}/issues`).length, 0);
+    assert.equal(r.comments[0].url, `/repos/${REPO}/issues/50/comments`);
+});
+
+// G2: a janela começa no último comentário do bot na issue fixa.
+test('último comentário do bot há 30 h: PR mesclado pelo bot há 26 h aparece', async () => {
+    const r = await exec({
+        closed: [closedPr(11, 'docs: dentro da janela', BOT, 26), closedPr(12, 'docs: antes do resumo', BOT, 31)],
+        issues: [FIXED],
+        // Comentário de outra pessoa depois do resumo não muda a janela.
+        comments: { 50: [{ user: { login: BOT }, created_at: HOURS_AGO(54) }, { user: { login: BOT }, created_at: HOURS_AGO(30) },
+            { user: { login: 'RichardPFernandes' }, created_at: HOURS_AGO(1) }] },
+    });
+    assert.equal(r.comments.length, 1);
+    const body = r.comments[0].body.body;
+    assert.match(body, /#11/);
+    assert.doesNotMatch(body, /#12/);
+});
+
+test('último comentário do bot há 2 h: PR mesclado há 3 h já saiu no resumo anterior', async () => {
+    const r = await exec({
+        closed: [closedPr(11, 'docs: x', BOT, 3)],
+        issues: [FIXED],
+        comments: { 50: [{ user: { login: BOT }, created_at: HOURS_AGO(2) }] },
+    });
+    assert.deepEqual(r.writes, []);
+});
+
+// G3: Leve aberto que a elegibilidade aceita (em simulação, o que o bot mesclaria).
+test('Leve elegível e não mesclado aparece na seção própria e basta para comentar', async () => {
+    const r = await exec({ open: [openPr(22, 'docs: elegível (Refs PRI-5)')], issues: [FIXED] });
+    assert.equal(r.comments.length, 1);
+    const sec = sections(r.comments[0].body.body);
+    assert.match(sec['Elegível, não mesclado'], /#22 docs: elegível/);
+    assert.doesNotMatch(sec['Leve que ficou de fora'], /#22/);
+    assert.equal(buildDailySummary({ merged: [], skipped: [], eligible: [{ number: 22, title: 'x' }], date: '2026-11-18' }) === null, false);
+    assert.equal(buildDailySummary({ merged: [], skipped: [], eligible: [], date: '2026-11-18' }), null);
 });
 
 test('o que vem do PR é escapado no markdown', async () => {
