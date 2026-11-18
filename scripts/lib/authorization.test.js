@@ -42,7 +42,7 @@ prismaConfig.writeSecureJson('db-targets.json', TARGETS, { dir: CONFIG });
 let seq = 0;
 function seedRun(state = {}) {
     const root = path.join(tmp, `repo-${++seq}`);
-    const taskId = `42359-teste-${seq}`;
+    const taskId = `10007-teste-${seq}`;
     const dir = path.join(root, 'memory', 'runs', taskId);
     fs.mkdirSync(dir, { recursive: true });
     fs.mkdirSync(path.join(root, 'docs', 'migrations'), { recursive: true });
@@ -151,7 +151,7 @@ test('approve: CAS velho = STATE_CONFLICT; hash vazio recusado; mesmo operation_
     const ok = approve(dir, { operationId: 'op-aprova-1' });
     assert.strictEqual(ok.status, 'applied');
     assert.strictEqual(ok.frozen.sql, SQL);
-    assert.strictEqual(ok.frozen.ticket, 42359, 'M3: ticket do task-id, não de state.ticket_id/redmine_ticket');
+    assert.strictEqual(ok.frozen.ticket, 10007, 'M3: ticket do task-id, não de state.ticket_id/redmine_ticket');
     const after = readState(dir);
     const e = after.authorization_history.find(x => x.event === 'approved');
     assert.deepStrictEqual([e.by, e.via, e.target, e.request_hash], ['richard', 'dashboard', 'qa-app', ok.frozen.request_hash]);
@@ -226,7 +226,7 @@ test('db-effect: executor recebe só alias + SQL congelado; saídas; Attempt COM
     assert.strictEqual(out.ok, true, out.error);
     assert.deepStrictEqual(Object.keys(exec.calls[0]).sort(), ['alias', 'mode', 'sql', 'verify_sql']);
     assert.strictEqual(exec.calls[0].alias, 'qa-app');
-    assert.strictEqual(ctx.ticket, 42359);
+    assert.strictEqual(ctx.ticket, 10007);
     const outDir = path.join(dir, 'authorization', 'AUTH-001');
     for (const f of ['pre.txt', 'apply.txt', 'post.txt', 'result.json']) assert.ok(fs.existsSync(path.join(outDir, f)), f);
     const attempt = dom06.listAttempts(dir).find(a => a.node === 'db-effect');
@@ -500,7 +500,7 @@ function seedRouted() {
     const seeded = seedRun();
     const snap = mr.buildRoutingSnapshot({ status: 'ON', policy: ROUTED_POLICY,
         policy_ref: { id: ROUTED_POLICY.id, version: ROUTED_POLICY.version, sha256: 'a'.repeat(64), path: '.claude/routing-policy.json' } });
-    const fetch = dom06.prepareDispatch({ runDir: path.join(path.dirname(seeded.dir), '_dom06'), node: 'fetch_ticket', ticketId: 42359,
+    const fetch = dom06.prepareDispatch({ runDir: path.join(path.dirname(seeded.dir), '_dom06'), node: 'fetch_ticket', ticketId: 10007,
         baseBranch: 'development', specHash: null, cause: 'dispatch', routing: snap });
     writeState(seeded.dir, { ...readState(seeded.dir), routing_snapshot: { attempt_id: fetch.attempt.attempt_id, sha256: snap.sha256 } });
     return seeded;

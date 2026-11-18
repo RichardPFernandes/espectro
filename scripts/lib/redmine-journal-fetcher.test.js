@@ -29,9 +29,9 @@ test('fetchLastRejectionNote: nota mais recente não vazia, fora [Watcher], com 
         { id: 4, created_on: 'T4', notes: '   ', details: [] },
         { id: 5, created_on: 'T5', notes: '[Watcher] pendência', details: [] },
     ] } }));
-    const out = await qa.fetchLastRejectionNote(43499, base(fn));
+    const out = await qa.fetchLastRejectionNote(13499, base(fn));
     assert.deepStrictEqual(out, { note: 'corrigir filtro', journal_id: 3, created_on: 'T3', author: 'QA', rejected_at: 'T2' });
-    assert.strictEqual(calls[0].url, 'http://redmine.test/issues/43499.json?include=journals');
+    assert.strictEqual(calls[0].url, 'http://redmine.test/issues/13499.json?include=journals');
     assert.strictEqual(calls[0].init.headers['X-Redmine-API-Key'], KEY);
 });
 
@@ -90,7 +90,7 @@ test('fetchLastRejectionNote: 2ª recusa sem comentário não herda a nota da 1�
     assert.strictEqual(await qa.fetchLastRejectionNote(1, base(fn)), null);
 });
 
-test('fetchLastRejectionNote: QA devolve pra Em Desenvolvimento com nota e o ticket vai pra Recusa QA em saltos sem nota (#43819)', async () => {
+test('fetchLastRejectionNote: QA devolve pra Em Desenvolvimento com nota e o ticket vai pra Recusa QA em saltos sem nota (#10029)', async () => {
     const { fn } = stub(() => json(200, { issue: { journals: [
         { id: 1, created_on: 'T1', notes: null, details: [{ name: 'status_id', old_value: '20', new_value: '8' }] },
         { id: 2, created_on: 'T2', notes: '1° Não deixa criar a DT', user: { name: 'QA' }, details: [{ name: 'status_id', old_value: '8', new_value: '2' }] },

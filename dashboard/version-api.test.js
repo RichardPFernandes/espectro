@@ -102,7 +102,7 @@ test('AC-03: recusa com loop ativo, trava de outro watcher, agente vivo e alvo f
         [{ watcher: { running: true, state: 'running' } }, /Loop do watcher/],
         [{ watcher: { running: false, state: 'stopping' } }, /Loop do watcher/],
         [{ lock: { lock_state: 'held', agents: [] } }, /trava/],
-        [{ lock: { lock_state: 'free', agents: [{ task_id: '43999-x' }] } }, /43999-x/],
+        [{ lock: { lock_state: 'free', agents: [{ task_id: '13999-x' }] } }, /13999-x/],
     ];
     for (const [opts, re] of cases) {
         const { v } = make(opts);

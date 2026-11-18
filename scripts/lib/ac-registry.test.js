@@ -69,8 +69,8 @@ test('extractACs: cabeçalho ### / Textile / sem acento; spec sem seção devolv
 });
 
 test('extractDependencies: ids #NNN da seção Dependências, sem o próprio id', () => {
-    const c = '## Dependências\n- depende de #43509 e #41948\n- ver #43511\n## Outra\n- #99999';
-    assert.deepStrictEqual(acRegistry.extractDependencies(c, '43511'), ['43509', '41948']);
+    const c = '## Dependências\n- depende de #10009 e #11948\n- ver #13511\n## Outra\n- #99999';
+    assert.deepStrictEqual(acRegistry.extractDependencies(c, '13511'), ['10009', '11948']);
     assert.deepStrictEqual(acRegistry.extractDependencies('## Contexto\n#1234'), []);
 });
 

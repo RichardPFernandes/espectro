@@ -66,12 +66,12 @@ test('recusa gravada pelo watcher sem retry ainda: pending', () => {
 test('reconstrução: context.md sumarizado sem o bloco usa qa_rejection.retry_requested_at', () => {
     const q = buildQaCycles({
         status: 'committed', ticket_status: 'Ag Merge', qa_retry_count: 1,
-        qa_rejection: { note: 'nota', rejected_at: '2026-09-28T14:35:40Z', journal_id: '44724', retry_requested_at: '2026-09-28T14:46:59.501Z' },
+        qa_rejection: { note: 'nota', rejected_at: '2026-09-28T14:35:40Z', journal_id: '14724', retry_requested_at: '2026-09-28T14:46:59.501Z' },
         agent_log: [log('commit', '2026-09-24T14:16:05Z'), log('implement', '2026-09-28T14:56:32Z'), log('commit', '2026-09-28T20:26:01Z')],
     }, '# resumo sem blocos');
     assert.strictEqual(q.cycles.length, 1);
     assert.deepStrictEqual([q.cycles[0].note, q.cycles[0].journal_id, q.cycles[0].situation, q.cycles[0].reconstructed, q.cycles[0].cost_usd],
-        ['nota', '44724', 'committed', true, null]);
+        ['nota', '14724', 'committed', true, null]);
     assert.strictEqual(q.main.steps, 1);
 });
 

@@ -15,9 +15,9 @@ const sa = require('./spec-authority');
 const { validateState } = require('../validate-state');
 
 const CLI = path.join(__dirname, 'review-result.js');
-const SPEC_PATH = 'memory/spec/43700-spec.md';
-const TASK_ID = '43700-filtro';
-const SPEC = `# Spec 43700
+const SPEC_PATH = 'memory/spec/10004-spec.md';
+const TASK_ID = '10004-filtro';
+const SPEC = `# Spec 10004
 
 ## Problema
 Filtro de transportadora lista todas as transportadoras cadastradas.
@@ -214,7 +214,7 @@ test('registeredDecisions: state.json + spec gate; entrada sem approved_at ISO �
 });
 
 test('upsertHandoffBlock preserva o resto do handoff e substitui o bloco entre rodadas', () => {
-    const handoff = '# Handoff\n\n## Referência da Spec\n- Spec: memory/spec/43700-spec.md\n- ACs: AC-01, AC-02\n';
+    const handoff = '# Handoff\n\n## Referência da Spec\n- Spec: memory/spec/10004-spec.md\n- ACs: AC-01, AC-02\n';
     const once = rr.upsertHandoffBlock(handoff, `${rr.HANDOFF_START}\nA\n${rr.HANDOFF_END}`);
     const twice = rr.upsertHandoffBlock(once, `${rr.HANDOFF_START}\nB\n${rr.HANDOFF_END}`);
     assert.ok(twice.startsWith(handoff.trimEnd()));
@@ -232,7 +232,7 @@ function makeRepo(stateExtra = {}) {
     fs.writeFileSync(path.join(root, SPEC_PATH), SPEC);
     const state = {
         task_id: TASK_ID, node: 'review', history: ['plan', 'implement'], status: 'in_progress',
-        started_at: '2026-09-30T09:00:00Z', redmine_ticket: { id: 43700 },
+        started_at: '2026-09-30T09:00:00Z', redmine_ticket: { id: 10004 },
         ...sa.baselineFields(root, SPEC_PATH, 'plan', '2026-09-30T09:00:00Z'),
         ...stateExtra,
     };
@@ -332,8 +332,8 @@ test('CLI record: FAIL grava review_results/failure_origin, review-result.md e a
 
 test('CLI record: decisão técnica aprovada no spec gate é aceita', () => {
     const { root, runDir } = makeRepo();
-    fs.writeFileSync(path.join(root, 'memory/runs/43700-spec-gate.json'), JSON.stringify({
-        ticket_id: 43700, status: 'valid',
+    fs.writeFileSync(path.join(root, 'memory/runs/10004-spec-gate.json'), JSON.stringify({
+        ticket_id: 10004, status: 'valid',
         technical_decisions: [{ ac: 'AC-01', rationale: 'filtro em memória, mesmo resultado', approved_at: '2026-09-30T08:00:00Z' }],
     }));
     const input = passingInput();
