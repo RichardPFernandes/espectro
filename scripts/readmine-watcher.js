@@ -3831,13 +3831,38 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
             ...(selected?.dir ? { claude_config_dir: selected.dir } : {}),
             ...prospectiveSignalsForRun(agent, nodes, signalContext),
             ...(routing?.ok ? { routing_decision: routing.decision } : {}),
-            ...(phaseEffortLevel ? { phase_effort: { level: phaseEffortLevel, effort_applied: true } } : {}) };
+            ...(phaseEffortLevel ? { phase_effort: { level: phaseEffortLevel, effort_applied: true } } : {}),
+            ...cliResultRunFields(ticketId, agent, nodes) };
         const ledger = readCostLedger(ticketId);
         ledger.pending.push(run);
         writeCostLedger(ticketId, ledger);
         return run;
     } catch (e) {
         console.error(`[custo] #${ticketId}: falha registrando início do despacho (seguindo sem métrica):`, e.message);
+        return null;
+    }
+}
+
+// PRI-381 (F1.5, AC-04/AC-05): só com WATCHER_CLI_RESULT_JSON ligada e despacho Claude (o
+// único com `--output-format json`). log_offset = tamanho do log do ticket antes do spawn:
+// sem --follow, o fechamento lê o JSON da CLI só dali em diante. Desligada: nenhum campo.
+function cliResultRunFields(ticketId, agent, nodes) {
+    if (agent !== 'claude' || !cliResult.cliResultJsonEnabled()) return {};
+    let logOffset = 0;
+    try { logOffset = fs.statSync(logPathFor(ticketId)).size; } catch { /* log ainda não existe */ }
+    return { cli_result_json: true, log_offset: logOffset, prompt_hashes: cliResult.promptHashes(PRISMA_ROOT, nodes) };
+}
+
+// Texto onde procurar o JSON da CLI: a saída do processo (--follow) ou o log do ticket a
+// partir do log_offset, sem o carimbo de hora que o spawnAgent põe antes de `[claude] `.
+// Log menor que o offset (truncado/rotacionado): lê do início; o session_id filtra.
+function cliResultText(ticketId, run, cliOutput) {
+    if (typeof cliOutput === 'string' && cliOutput) return cliOutput;
+    try {
+        const buf = fs.readFileSync(logPathFor(ticketId));
+        const offset = Number.isSafeInteger(run.log_offset) && run.log_offset <= buf.length ? run.log_offset : 0;
+        return buf.subarray(offset).toString('utf8').replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z (?=\[claude\] )/gm, '');
+    } catch {
         return null;
     }
 }
@@ -4015,18 +4040,26 @@ function findCostTargetTask(ticketId, node) {
     return best;
 }
 
-function collectRunMetrics(run, target, endMs) {
+function collectRunMetrics(run, target, endMs, { ticketId = null, cliOutput = null } = {}) {
     const node = run.nodes[run.nodes.length - 1];
     let tokens = { input_tokens: null, output_tokens: null };
     let observedEnd = null;
+    let cli = null;
     if (run.agent === 'claude') {
         const files = findRunTranscripts(run);
-        const usage = costTracking.sumClaudeUsage(files.map(f => ({
+        const contents = files.map(f => ({
             role: f.includes(`${path.sep}subagents${path.sep}`) ? 'subagent' : 'main',
             file_ref: f.includes(`${path.sep}subagents${path.sep}`) ? path.basename(f) : 'main',
             content: fs.readFileSync(f, 'utf8'),
-        })), run.pricing_snapshot);
+        }));
+        const usage = costTracking.sumClaudeUsage(contents, run.pricing_snapshot);
         tokens = usage;
+        // PRI-381 (F1.5): JSON ausente ou ilegível => null, nunca zero (reserva: o transcript).
+        if (run.cli_result_json) {
+            const parsed = cliResult.parseCliResult(cliResultText(ticketId, run, cliOutput), run.session_id);
+            const main = contents.find(c => c.role === 'main');
+            cli = { cli_cost_usd: parsed?.cost_usd ?? null, cli_version: main ? cliResult.cliVersionFromTranscript(main.content) : null };
+        }
         observedEnd = usage.last_timestamp_ms
             ?? (files.length ? Math.max(...files.map(f => fs.statSync(f).mtimeMs)) : null);
     } else if (run.agent === 'codex' && target) {
@@ -4043,6 +4076,7 @@ function collectRunMetrics(run, target, endMs) {
     for (const field of ['usage', 'unpriced_models', 'read_order', 'dedup_conflicts', 'role_attribution', 'first_turn', 'cost_estimated', 'pricing_sha256', 'pricing_source']) {
         if (tokens[field] !== undefined) metrics[field] = tokens[field];
     }
+    if (cli) Object.assign(metrics, cli);
     return { node, metrics };
 }
 
@@ -4072,7 +4106,7 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
         if (idx === -1) return;
         const run = ledger.pending[idx];
         const target = findCostTargetTask(ticketId, run.nodes[run.nodes.length - 1]);
-        const { node, metrics } = collectRunMetrics(run, target, endMs);
+        const { node, metrics } = collectRunMetrics(run, target, endMs, { ticketId, cliOutput: outcome.cliOutput });
         // Só leitura do arquivo admitido; nunca deriva identidade do lease ou latest.
         let attemptResult = 'UNKNOWN';
         const ref = run.admission?.attempt_ref;
@@ -4418,7 +4452,8 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);
     if (costRun) {
-        if (FOLLOW) finishCostRun(ticket.id, sessionId, Date.now(), { exitCode: result.code, output: result.stderr });
+        if (FOLLOW) finishCostRun(ticket.id, sessionId, Date.now(), { exitCode: result.code, output: result.stderr,
+            ...(costRun.cli_result_json ? { cliOutput: result.output } : {}) });
         else setCostRunPid(ticket.id, sessionId, result.pid);
     }
     return result;

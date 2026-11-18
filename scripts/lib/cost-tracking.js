@@ -182,6 +182,18 @@ function recomputeTotals(ct) {
         totals.duration_ms += entry.duration_ms || 0;
         totals.loop_count += entry.retries || 0;
     }
+    // PRI-381 (F1.5): só quando algum nó já tem custo da CLI (flag ligada em algum run).
+    // Nó sem o campo tem todos os runs sem custo da CLI. Sem isso, os bytes ficam os de antes.
+    const nodes = Object.values(ct.nodes);
+    if (nodes.some(entry => Object.hasOwn(entry, 'cli_cost_usd'))) {
+        totals.cli_cost_usd = null;
+        totals.runs_without_cli_cost = 0;
+        for (const entry of nodes) {
+            const tracked = Object.hasOwn(entry, 'cli_cost_usd');
+            if (tracked) totals.cli_cost_usd = roundUsd(addNullable(totals.cli_cost_usd, entry.cli_cost_usd));
+            totals.runs_without_cli_cost += tracked ? entry.runs_without_cli_cost || 0 : entry.runs || 0;
+        }
+    }
     return { ...ct, totals, pricing_source: ct.pricing_source || PRICING_SOURCE };
 }
 
@@ -214,7 +226,18 @@ function mergeRun(ct, { node, agent, alsoCovers = [], metrics, run = {}, outcome
         entry.runs_without_tokens = (entry.runs_without_tokens || 0) + 1;
     }
     if (alsoCovers.length) entry.also_covers = [...new Set([...(entry.also_covers || []), ...alsoCovers])];
-    entry.attempts = [...(prev?.attempts || []), attemptRecord({ ...run, agent }, node, alsoCovers, metrics, outcome)];
+    // PRI-381 (F1.5): custo da CLI só quando este run foi com a flag ou o nó já o acompanha.
+    // Runs do nó de antes da flag contam como sem custo da CLI; null nunca vira zero.
+    if (run.cli_result_json || Object.hasOwn(entry, 'cli_cost_usd')) {
+        if (!Object.hasOwn(entry, 'cli_cost_usd')) {
+            entry.cli_cost_usd = null;
+            entry.runs_without_cli_cost = entry.runs - 1;
+        }
+        const cliUsd = run.cli_result_json ? metrics.cli_cost_usd ?? null : null;
+        entry.cli_cost_usd = roundUsd(addNullable(entry.cli_cost_usd, cliUsd));
+        if (cliUsd == null) entry.runs_without_cli_cost = (entry.runs_without_cli_cost || 0) + 1;
+    }
+    entry.attempts =[...(prev?.attempts || []), attemptRecord({ ...run, agent }, node, alsoCovers, metrics, outcome)];
     return recomputeTotals({ ...base, nodes: { ...base.nodes, [node]: entry } });
 }
 
@@ -390,7 +413,10 @@ function attemptRecord(run, node, alsoCovers, metrics, outcome) {
         read_order: metrics.read_order || [], dedup_conflicts: metrics.dedup_conflicts || [],
         role_attribution: metrics.role_attribution || { status: 'UNKNOWN', conflicted_messages: 0 },
         cost: { usd: metrics.cost_usd ?? null, unpriced_models: metrics.unpriced_models || [],
-            pricing_source: metrics.pricing_source || PRICING_SOURCE, pricing_sha256: metrics.pricing_sha256 || PRICING_SHA256, estimated: metrics.cost_estimated ?? 'UNKNOWN' },
+            pricing_source: metrics.pricing_source || PRICING_SOURCE, pricing_sha256: metrics.pricing_sha256 || PRICING_SHA256, estimated: metrics.cost_estimated ?? 'UNKNOWN',
+            // PRI-381 (F1.5): custo do JSON da CLI; chave só com WATCHER_CLI_RESULT_JSON ligada.
+            ...(run.cli_result_json ? { cli_usd: metrics.cli_cost_usd ?? null } : {}) },
+        ...(run.cli_result_json ? { cli_version: metrics.cli_version ?? null, prompt_hashes: run.prompt_hashes || {} } : {}),
         duration_ms: Math.max(0, Math.round(metrics.duration_ms || 0)), wait_ms: 'UNAVAILABLE',
         exit: Number.isInteger(outcome.exitCode) ? outcome.exitCode : 'UNKNOWN', result: outcome.attemptResult || 'UNKNOWN',
     };
