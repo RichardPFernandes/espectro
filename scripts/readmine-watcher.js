@@ -3856,11 +3856,10 @@ function cliResultRunFields(ticketId, agent, nodes, commands) {
         prompt_hashes: cliResult.promptHashes(PRISMA_ROOT, cliResult.promptTemplates(commands, nodes)) };
 }
 
-// Texto onde procurar o JSON da CLI: a saída do processo (--follow) ou o log do ticket a
-// partir do log_offset, sem o carimbo de hora que o spawnAgent põe antes de `[claude] `.
+// Log do ticket a partir do log_offset, onde procurar o JSON da CLI quando a saída do processo
+// (--follow) não o tem, sem o carimbo de hora que o spawnAgent põe antes de `[claude] `.
 // Log menor que o offset (truncado/rotacionado): lê do início; o session_id filtra.
-function cliResultText(ticketId, run, cliOutput) {
-    if (typeof cliOutput === 'string' && cliOutput) return cliOutput;
+function cliResultLogText(ticketId, run) {
     try {
         const buf = fs.readFileSync(logPathFor(ticketId));
         const offset = Number.isSafeInteger(run.log_offset) && run.log_offset <= buf.length ? run.log_offset : 0;
@@ -4059,7 +4058,9 @@ function collectRunMetrics(run, target, endMs, { ticketId = null, cliOutput = nu
         tokens = usage;
         // PRI-381 (F1.5): JSON ausente ou ilegível => null, nunca zero (reserva: o transcript).
         if (run.cli_result_json) {
-            const parsed = cliResult.parseCliResult(cliResultText(ticketId, run, cliOutput), run.session_id);
+            // --follow: a saída do processo primeiro; sem o objeto result nela, o log do ticket.
+            const parsed = cliResult.parseCliResult(cliOutput, run.session_id)
+                ?? cliResult.parseCliResult(cliResultLogText(ticketId, run), run.session_id);
             const main = contents.find(c => c.role === 'main');
             cli = { cli_cost_usd: parsed?.cost_usd ?? null, cli_version: main ? cliResult.cliVersionFromTranscript(main.content) : null };
         }

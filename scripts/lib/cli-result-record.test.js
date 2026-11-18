@@ -159,6 +159,20 @@ test('flag ligada, com --follow: JSON vem da saída do processo', () => {
     validateSchema(stateOf(dir));
 });
 
+test('flag ligada, com --follow: saída do processo sem o objeto result cai para o log a partir do offset', () => {
+    const id = 93806;
+    const dir = setup(id);
+    write(logPath(id), logLine('texto de despacho anterior'));
+    const run = withFlag('on', () => watcher.startCostRun(id, { agent: 'claude', nodes: ['plan'], sessionId: 'on-5' }));
+    transcript('on-5', '2.6.1');
+    fs.appendFileSync(logPath(id), logLine(resultLine('on-5', 0.75)));
+    watcher.finishCostRun(id, 'on-5', run.started_at_ms + 10, { exitCode: 0, cliOutput: 'saída sem o JSON da CLI\n' });
+    const attempt = stateOf(dir).cost_tracking.nodes.plan.attempts[0];
+    assert.strictEqual(attempt.cost.cli_usd, 0.75);
+    assert.strictEqual(attempt.cli_version, '2.6.1');
+    validateSchema(stateOf(dir));
+});
+
 test('flag ligada, JSON ausente: cli_usd null (nunca zero) e runs_without_cli_cost sobe', () => {
     const id = 93804;
     const dir = setup(id);
