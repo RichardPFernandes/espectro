@@ -238,20 +238,23 @@ Preparação, diagnóstico, cutover e retorno: [docs/consumer-operations.md](doc
 
 | Para | Leia |
 | --- | --- |
-| Entender a arquitetura e os contratos | [Baseline e contratos](docs/prisma/README.md) |
+| Entender o que o sistema faz hoje | [Mapa de capacidades](docs/capacidades/README.md) · contratos congelados (histórico): [baseline](docs/prisma/README.md) |
 | Operar e diagnosticar | [Runbook](docs/runbook.md) · [Consumo e cutover](docs/consumer-operations.md) |
 | Saber o que vem a seguir | [Roadmap de entrega](ROADMAP.md) · [fases, decisões e regras](roadmap/README.md) |
 | Escrever specs | [Guia de specs](docs/spec-guide.md) · [Versionamento](docs/spec-versioning.md) |
 | Verificar a UI no navegador (opcional, atrás de flag) | [Verificação de UI](docs/ui-verify.md) |
-| Entregar ou interromper uma tarefa | Regras de processo no topo do [CLAUDE.md](CLAUDE.md) (Acordo v2) · evidência no PR ([template](.github/pull_request_template.md)) · handoff Maestri opcional: [contrato](docs/handoff-contract.md) |
+| Entregar ou interromper uma tarefa | Regras de processo e fluxo `/pri-*` no [CLAUDE.md](CLAUDE.md) (Acordo v2) · [diagrama](docs/fluxo-dev.md) · evidência no PR ([template](.github/pull_request_template.md)) · handoff Maestri opcional: [contrato](docs/handoff-contract.md) |
 | Saber o que foi extraído e por quê | [Handoff da extração](docs/extraction-handoff.md) · [paths](docs/extraction-paths.md) · [manifesto](provenance/extraction-manifest.json) |
 | Instruções para agentes neste repo | [AGENTS.md](AGENTS.md) |
 
 ## Governança e contribuição
 
-Toda mudança segue **Plan → Implement → Review independente → Test → Verify →
-Commit**, com evidência atribuível à versão. Leia o [AGENTS.md](AGENTS.md) antes
-de alterar qualquer coisa.
+Toda mudança no Prisma segue o fluxo `/pri-start` → `/pri-build` → `/pri-check` →
+`/pri-pr` (Médio e Alto passam antes por `/pri-spec` e `/pri-plan`), com revisão
+independente e evidência atribuível à versão. As regras estão no [CLAUDE.md](CLAUDE.md) e
+o diagrama em [`docs/fluxo-dev.md`](docs/fluxo-dev.md). (O ciclo plan → implement → review
+→ test → verify → commit da seção "Como funciona" é o grafo do consumidor, outra coisa.)
+Leia o [AGENTS.md](AGENTS.md) antes de alterar qualquer coisa.
 
 - **Onde cada coisa vive.** Roadmap/Freeze governam a arquitetura, o Linear
   conserva planejamento e decisões, o Git conserva implementação e documentação,
