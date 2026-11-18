@@ -5,7 +5,7 @@
 Contexto para cada subagente: leia `tasks/f0-9-estado-automatico/plan.md`. Nível Médio.
 Nenhum dado do consumidor em teste ou fixture (use marcadores, como `90003-...`).
 
-- [ ] **T1: leitor do registro de flags por processo (AC-03, métrica 4)** · S
+- [x] **T1: leitor do registro de flags por processo (AC-03, métrica 4)** · S
   - O que: função pura `summarizeFlags(rows, today)` em `scripts/lib/flag-registry.js` e o
     script `scripts/flags-read.js --json`, que lê `docs/flags.md` (caminho a partir do
     `__dirname`) e imprime `{ ok: true, summary }` ou `{ ok: false, error }`. `summary`:
