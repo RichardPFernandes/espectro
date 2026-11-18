@@ -37,7 +37,7 @@ Testes: `npm run test:changed -- origin/main` na raiz, com Node 22 ou mais.
   - JSON ausente: `cli_usd` fica `null` e `runs_without_cli_cost` sobe;
   - o state gravado valida no schema.
 
-- [ ] **T4. Weekly.** AC-04, AC-05.
+- [x] **T4. Weekly.** AC-04, AC-05.
   Em `dashboard/public/weekly-report.js`:
   - o USD do run vem de `totals.cli_cost_usd` quando nenhum nó tem `runs_without_cli_cost`, e
     senão do transcript;
