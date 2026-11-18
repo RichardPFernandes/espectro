@@ -15,6 +15,7 @@ modulos:
   - scripts/run-architecture-cruise.js
   - scripts/run-eslint-src.js
   - scripts/lib/roadmap-lint.js
+  - scripts/lib/roadmap-site.js
   - scripts/cleanup-*
   - scripts/obsidian-export.js
   - scripts/export-runs.js
@@ -28,7 +29,8 @@ modulos:
 
 Scripts que o dev ou o CI chamam à mão e que nenhum nó da Run precisa para andar: o `demo.js`
 (ciclo simulado, sem credencial nem rede), as sondas e o harness, os exportadores, os
-validadores (`validate-handoff.js`, `roadmap-lint.js`) e este mapa. A exceção é a limpeza de
+validadores (`validate-handoff.js`, `roadmap-lint.js`), o gerador da página do roadmap
+(`roadmap-site.js`, chamado só pelo workflow `roadmap-pages.yml`) e este mapa. A exceção é a limpeza de
 Runs: o watcher chama `cleanup-runs.js` ao subir, e `DISABLE_AUTO_CLEANUP=true` desliga isso.
 Se um script daqui passar a ser chamado por um nó, ele muda de capacidade.
 

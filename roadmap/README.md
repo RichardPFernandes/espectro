@@ -67,6 +67,10 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
 - No máximo duas frentes por fase e um piloto de custo por vez.
 - Validar o mapa (IDs, dependências, status, links, decisões): `node scripts/lib/roadmap-lint.js`
   (exit 1 se houver erro; também roda no `npm test` de `scripts`).
+- Página visual (progresso por fase, linha do tempo, grafo de dependências, fatias Alto):
+  <https://richardpfernandes.github.io/espectro/>. O workflow `roadmap-pages.yml` a gera com
+  `scripts/lib/roadmap-site.js` a cada merge na `main` que mexe em `ROADMAP.md`, `roadmap/**` ou no
+  gerador; nada gerado entra no repo. Teste local: `node scripts/lib/roadmap-site.js . /tmp/site`.
 - Modelo da SPEC de fatia: [`templates/fatia-spec.md.template`](../templates/fatia-spec.md.template),
   copiado para `tasks/fN-M-<nome>/SPEC.md` quando a fatia entra no cycle.
 - Nunca: ligar flag no consumidor corporativo antes de F1.1, F1.2 e F1.3 (o launcher do

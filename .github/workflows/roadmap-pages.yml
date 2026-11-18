@@ -1,0 +1,59 @@
+name: roadmap-pages
+
+# Página visual do roadmap (PRI-404). A fonte é ROADMAP.md e roadmap/fase-*/FASE.md; o
+# HTML é gerado aqui, a cada merge na main que mexe no roadmap ou no gerador, e publicado
+# no GitHub Pages (origem: GitHub Actions). Nenhum arquivo gerado entra no repo.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ROADMAP.md
+      - roadmap/**
+      - scripts/lib/roadmap-site.js
+      - scripts/lib/roadmap-lint.js
+      - .github/workflows/roadmap-pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Um deploy por vez; o que está publicando termina e o mais novo espera.
+concurrency:
+  group: roadmap-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Gerar a página
+    # Só a main publica: o workflow_dispatch de outra branch não passa daqui.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Gerar o HTML
+        run: node scripts/lib/roadmap-site.js . _site
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    name: Publicar no Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
