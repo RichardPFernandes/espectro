@@ -1,6 +1,7 @@
 # Roadmap de entrega do Espectro (SDD)
 
-> **Status:** PROPOSTA de 15/11/2026, aguardando aprovação do Richard. Nada implementado.
+> **Status:** Aprovado pelo Richard em 18/11/2026. A meta de custo (D1, D6) segue em aberto. O estado de cada fatia está
+> no `FASE.md` da fase.
 > Base: estudo de `main` em `a4e3899`. Diagnóstico, evidências, riscos e rastreabilidade dos
 > candidatos C01–C35: [`BASE.md`](BASE.md).
 

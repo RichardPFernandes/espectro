@@ -1,6 +1,6 @@
 # Roadmap de entrega do Espectro
 
-> **Status:** PROPOSTA de 15/11/2026, aguardando aprovação do Richard. Estrutura, regras e
+> **Status:** Aprovado pelo Richard em 18/11/2026. A meta de custo (D1, D6) segue em aberto. Estrutura, regras e
 > decisões: [`roadmap/`](roadmap/README.md).
 
 > Revisto em 17/11/2026 (D13 e D14 em [`roadmap/DECISOES.md`](roadmap/DECISOES.md)). Cada semana
