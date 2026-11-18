@@ -7,7 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { evaluate, loadConfig, globToRegExp, evidenceLines, loadCapabilityMap } from './processo-lib.mjs';
+import { evaluate, loadConfig, globToRegExp, evidenceLines, loadCapabilityMap, specAcIds } from './processo-lib.mjs';
+import { readSpecs } from './processo-spec.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, 'processo-check.mjs');
@@ -271,4 +272,60 @@ test('CLI: lê a SPEC de --root e avisa; SPEC com status removed não conta', ()
     const removed = cli('removed');
     assert.equal(removed.status, 0, removed.stdout + removed.stderr);
     assert.doesNotMatch(removed.stdout, /AVISO: SPEC|SPEC alterada/);
+});
+
+test('aviso de SPEC: linha de 200.000 espaços não trava (regex linear) e o AC seguinte é achado', () => {
+    const t0 = performance.now();
+    const acs = specAcIds(`${' '.repeat(200000)}\n- AC-1: x\n`);
+    assert.ok(performance.now() - t0 < 500, `levou ${performance.now() - t0} ms`);
+    assert.deepEqual(acs.map((a) => a.id), ['AC-1']);
+});
+
+test('aviso de SPEC: AC com 25 dígitos e zeros à esquerda casa sem perder precisão', () => {
+    const big = '1234567890123456789012345';
+    const body = BODY_OK.replace('AC-1', `AC-${big}`);
+    assert.deepEqual(specWarn(`- AC-0${big}: a\n`, body), []);
+    const w = specWarn(`- AC-0${big}: a\n- AC-${big.slice(0, -1)}9: b\n`, body);
+    assert.equal(w.length, 1);
+    assert.match(w[0], new RegExp(`o AC AC-${big.slice(0, -1)}9 não aparece`));
+    assert.deepEqual(specWarn('- AC-0: a\n', BODY_OK.replace('AC-1', 'AC-0')), []);
+});
+
+const spec = (name) => ({ filename: name, status: 'modified' });
+const readRemote = (files, fetchJson, extra = {}) =>
+    readSpecs(files, config, { local: false, repo: 'o/r', sha: 'abc123', token: 't', fetchJson, ...extra });
+
+test('readSpecs (produção): decodifica base64 com quebras de 60 colunas e pede o caminho codificado por segmento', async () => {
+    const texto = '- AC-1: ação com acento\n'.repeat(10);
+    const b64 = Buffer.from(texto).toString('base64').replace(/(.{60})/g, '$1\n');
+    const urls = [];
+    const r = await readRemote([spec('tasks/pri 9/SPEC #1.md')], async (url) => { urls.push(url); return { encoding: 'base64', content: b64 }; });
+    assert.deepEqual(urls, ['/repos/o/r/contents/tasks/pri%209/SPEC%20%231.md?ref=abc123']);
+    assert.deepEqual(r, { specs: [{ filename: 'tasks/pri 9/SPEC #1.md', content: texto }], skipped: [] });
+});
+
+test('readSpecs (produção): erro da API vira skipped sem lançar; glob ignora maiúsculas; removed e não-SPEC não são lidos', async () => {
+    const pedidos = [];
+    const r = await readRemote(
+        [spec('tasks/a/spec.md'), { filename: 'tasks/b/SPEC.md', status: 'removed' }, spec('README.md')],
+        async (url) => { pedidos.push(url); throw new Error('GitHub API 404 em x'); },
+    );
+    assert.equal(pedidos.length, 1);
+    assert.deepEqual(r.specs, []);
+    assert.equal(r.skipped.length, 1);
+    assert.match(r.skipped[0], /não leu a SPEC tasks\/a\/spec\.md \(GitHub API 404/);
+});
+
+test('readSpecs (produção): encoding diferente de base64 (arquivo > 1 MB) vira skipped, não "0 ACs"', async () => {
+    const r = await readRemote([spec('tasks/a/SPEC.md')], async () => ({ encoding: 'none', content: '' }));
+    assert.deepEqual(r.specs, []);
+    assert.equal(r.skipped.length, 1);
+    assert.match(r.skipped[0], /tasks\/a\/SPEC\.md/);
+});
+
+test('readSpecs (local): arquivo inexistente vira skipped em vez de silêncio', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'processo-spec-'));
+    const r = await readSpecs([spec('tasks/x/SPEC.md')], config, { local: true, root: dir });
+    assert.deepEqual(r.specs, []);
+    assert.equal(r.skipped.length, 1);
 });

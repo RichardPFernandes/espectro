@@ -87,15 +87,17 @@ export function loadCapabilityMap({ script = path.join(HERE, '..', '..', 'script
 }
 
 // IDs de AC da SPEC (`- AC-01: ...`, `AC-2: ...`, `**AC-3**`), sem blocos de código, comentários HTML
-// e ACs marcados "(removido". Dado do PR: só regex, nunca interpretado. Devolve [{ id, n }].
+// e ACs marcados "(removido". Dado do PR: só regex linear (sem \s* encadeado), nunca interpretado.
+// Linhas acima de 500 caracteres são ignoradas. Devolve [{ id, n }], n = número como string sem zeros à esquerda.
 export function specAcIds(content) {
     const text = String(content ?? '').replace(/\r\n?/g, '\n').replace(/<!--[\s\S]*?(?:-->|$)/g, '');
     const out = new Map();
     let fence = false;
     for (const l of text.split('\n')) {
         if (/^\s*(```|~~~)/.test(l)) { fence = !fence; continue; }
-        const m = fence ? null : l.match(/^\s*(?:[-*]\s+)?(?:\*\*|__)?\s*(AC-(\d+))(?![\p{L}\p{N}])/iu);
-        if (m && !/\(removido/i.test(l) && !out.has(Number(m[2]))) out.set(Number(m[2]), m[1]);
+        const m = fence || l.length > 500 ? null : l.match(/^[ \t]*(?:[-*][ \t]+)?(?:\*\*|__)?[ \t]*(AC-(\d+))(?![\p{L}\p{N}])/iu);
+        const n = m?.[2].replace(/^0+(?=\d)/, '');
+        if (m && !/\(removido/i.test(l) && !out.has(n)) out.set(n, m[1]);
     }
     return [...out].map(([n, id]) => ({ id, n }));
 }

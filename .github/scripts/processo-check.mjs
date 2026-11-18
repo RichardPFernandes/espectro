@@ -9,7 +9,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { evaluate, loadCapabilityMap, loadConfig, matchesAny } from './processo-lib.mjs';
+import { evaluate, loadCapabilityMap, loadConfig } from './processo-lib.mjs';
+import { readSpecs } from './processo-spec.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = path.join(HERE, '..', 'pull_request_template.md');
@@ -40,28 +41,6 @@ async function fetchFiles(repo, number, token) {
     }
 }
 
-// SPEC alterada (não removida) no HEAD do PR. Falha de leitura nunca derruba o check: vira linha de info.
-async function readSpecs(files, config, { local, repo, sha, token }) {
-    const specs = [];
-    const skipped = [];
-    const globs = config.spec?.globs ?? [];
-    for (const { filename } of files.filter((f) => f.status !== 'removed' && matchesAny(f.filename, globs))) {
-        try {
-            if (local) {
-                const full = path.join(arg('--root') ?? process.cwd(), filename);
-                if (fs.existsSync(full)) specs.push({ filename, content: fs.readFileSync(full, 'utf8') });
-            } else {
-                const enc = filename.split('/').map(encodeURIComponent).join('/');
-                const res = await gh(`/repos/${repo}/contents/${enc}?ref=${sha}`, token);
-                specs.push({ filename, content: Buffer.from(res.content ?? '', 'base64').toString('utf8') });
-            }
-        } catch (e) {
-            skipped.push(`não leu a SPEC ${filename} (${String(e.message).slice(0, 80)}); o aviso de AC ficou sem ela`);
-        }
-    }
-    return { specs, skipped };
-}
-
 async function main() {
     const eventPath = arg('--event') ?? process.env.GITHUB_EVENT_PATH;
     if (!eventPath) throw new Error('sem evento: passe --event <payload.json> ou rode no GitHub Actions');
@@ -82,7 +61,7 @@ async function main() {
 
     const capabilities = arg('--capabilities');
     const capabilityMap = loadCapabilityMap(capabilities ? { dir: capabilities } : {});
-    const { specs, skipped } = await readSpecs(files, config, { local, repo: process.env.GITHUB_REPOSITORY, sha: pr.head?.sha, token: process.env.GITHUB_TOKEN });
+    const { specs, skipped } = await readSpecs(files, config, { local, root: arg('--root'), repo: process.env.GITHUB_REPOSITORY, sha: pr.head?.sha, token: process.env.GITHUB_TOKEN, fetchJson: gh });
     const result = evaluate({ labels, body: pr.body ?? '', files, templateBody, config, capabilityMap, specs });
     result.info.push(...skipped);
     // Nomes de arquivo vêm do PR: escapa o que viraria workflow command.
