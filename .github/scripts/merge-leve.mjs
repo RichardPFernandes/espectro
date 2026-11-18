@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { evaluatePr, loadConfig, pathVerdict } from './merge-leve-lib.mjs';
+import { escapeMarkdown, evaluatePr, loadConfig, pathVerdict } from './merge-leve-lib.mjs';
 import { matchesAny } from './processo-lib.mjs';
 
 const ROADMAP_PATHS = ['ROADMAP.md', 'roadmap/**'];
@@ -21,6 +21,8 @@ const RETRY_LATER = new Set([405, 409]);
 // O que vem do PR (nomes de arquivo, rótulos, checks) não pode quebrar a linha:
 // forjaria uma linha no resumo ou um workflow command no log.
 export const esc = (s) => String(s).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+// No resumo do job (markdown), também sem link, imagem, HTML nem menção.
+const md = (s) => escapeMarkdown(esc(s));
 
 // Todas as páginas de uma listagem (100 por página). `until(batch)` verdadeiro
 // para depois da página atual (listagens ordenadas, como as do resumo diário).
@@ -58,14 +60,18 @@ export async function run({ event, env = process.env, gh, config, log = console.
     const lines = [`merge-leve: ${live ? 'MERGE_LEVE=on' : 'simulação (MERGE_LEVE não é on)'}`];
     try {
         const numbers = await prsOf(gh, repo, wr);
-        if (!numbers.length) lines.push(`- nenhum PR aberto para o commit ${esc(wr.head_sha)}`);
+        if (!numbers.length) lines.push(`- nenhum PR aberto para o commit ${md(wr.head_sha)}`);
         for (const n of numbers) {
-            const pr = await gh('GET', `/repos/${repo}/pulls/${n}`);
-            const sha = pr.head?.sha;
+            const first = await gh('GET', `/repos/${repo}/pulls/${n}`);
+            const sha = first.head?.sha;
             const files = await paginate(gh, `/repos/${repo}/pulls/${n}/files`, (b) => b);
             const checks = await checksOf(gh, repo, sha);
+            // Arquivos e checks são do sha da primeira leitura: se entrou commit
+            // no meio, a avaliação não vale para o PR de agora.
+            const pr = await gh('GET', `/repos/${repo}/pulls/${n}`);
+            if (pr.head?.sha !== sha) { lines.push(`- #${n} mudou, fica para a próxima rodada (commit novo durante a avaliação)`); continue; }
             const { merge, motivos } = evaluatePr({ pr, files, checks, config, repo });
-            if (!merge) { lines.push(`- não #${n}: ${esc(motivos.join('; '))}`); continue; }
+            if (!merge) { lines.push(`- não #${n}: ${md(motivos.join('; '))}`); continue; }
             if (!live) { lines.push(`- mesclaria #${n}`); continue; }
             try {
                 await gh('PUT', `/repos/${repo}/pulls/${n}/merge`, { merge_method: 'squash', sha });
@@ -74,7 +80,7 @@ export async function run({ event, env = process.env, gh, config, log = console.
                 lines.push(`- #${n} mudou, fica para a próxima rodada (${e.status})`);
                 continue;
             }
-            lines.push(`- mesclado #${n} (${esc(sha)})`);
+            lines.push(`- mesclado #${n} (${md(sha)})`);
             const names = files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean));
             if (names.some((name) => matchesAny(name, ROADMAP_PATHS))) {
                 // Push do GITHUB_TOKEN não dispara outros workflows: publica à mão.

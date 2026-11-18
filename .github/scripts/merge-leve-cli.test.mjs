@@ -36,9 +36,12 @@ const event = (pullRequests = [{ number: 7 }]) => ({
 
 // gh(method, path, body) falso. `files` é paginado como a API (100 por página);
 // o PR traz changed_files coerente com `files`, salvo se o caso o fixar.
-function fakeGh({ pr = prJson(), files = [{ filename: 'docs/x.md', status: 'modified' }], checkRuns = greenRuns(),
+// `prAfter`, se dado, é o PR devolvido da segunda leitura em diante (commit novo
+// entre a avaliação e o merge).
+function fakeGh({ pr = prJson(), prAfter, files = [{ filename: 'docs/x.md', status: 'modified' }], checkRuns = greenRuns(),
     statuses = [], pulls = [], mergeError } = {}) {
     const calls = [];
+    let prReads = 0;
     const gh = async (method, url, body) => {
         calls.push({ method, url, body });
         const [p, q = ''] = url.split('?');
@@ -46,7 +49,7 @@ function fakeGh({ pr = prJson(), files = [{ filename: 'docs/x.md', status: 'modi
         const page = Number(params.get('page') ?? 1);
         const per = Number(params.get('per_page') ?? 30);
         const slice = (list) => list.slice((page - 1) * per, page * per);
-        if (method === 'GET' && p === `/repos/${REPO}/pulls/7`) return { changed_files: files.length, ...pr };
+        if (method === 'GET' && p === `/repos/${REPO}/pulls/7`) return { changed_files: files.length, ...(prReads++ && prAfter ? prAfter : pr) };
         if (method === 'GET' && p === `/repos/${REPO}/pulls/7/files`) return slice(files);
         if (method === 'GET' && p === `/repos/${REPO}/commits/${SHA}/check-runs`) return { total_count: checkRuns.length, check_runs: slice(checkRuns) };
         if (method === 'GET' && p === `/repos/${REPO}/commits/${SHA}/status`) return { state: 'success', total_count: statuses.length, statuses: slice(statuses) };
@@ -172,8 +175,30 @@ test('o que vem do PR é escapado: nome de arquivo com quebra de linha não forj
     const r = await exec({ files: [{ filename: 'scripts/a\n- mesclaria #99\r.js', status: 'modified' }] });
     assert.doesNotMatch(r.summary, /^- mesclaria #99/m);
     assert.doesNotMatch(r.summary, /mesclaria #7/);
-    assert.match(r.summary, /scripts\/a%0A- mesclaria #99%0D\.js/);
+    assert.match(r.summary, /scripts\/a%0A- mesclaria \\#99%0D\.js/);
     assert.doesNotMatch(r.logs, /^- mesclaria #99/m);
+});
+
+test('o que vem do PR é escapado: nome de arquivo com link ou imagem markdown não vira link no resumo', async () => {
+    const r = await exec({ files: [{ filename: 'scripts/[x](http://e)![i](u).js', status: 'modified' }] });
+    assert.ok(!r.summary.includes('[x](http://e)'), 'link cru');
+    assert.ok(!r.summary.includes('![i](u)'), 'imagem crua');
+    assert.ok(!/(^|[^\\])\[x\]/.test(r.summary), 'colchete sem escape');
+    assert.match(r.summary, /scripts\/\\\[x\\\]\\\(http:\/\/e\\\)\\!\\\[i\\\]\\\(u\\\)\.js/);
+});
+
+test('commit novo entre a avaliação e o merge: nenhum PUT, fica para a próxima rodada', async () => {
+    const prAfter = prJson({ head: { sha: 'd'.repeat(40), repo: { full_name: REPO } } });
+    const r = await exec({ env: { MERGE_LEVE: 'on' }, prAfter });
+    assert.deepEqual(r.writes, []);
+    assert.equal(r.calls.filter((c) => c.method === 'GET' && c.url === `/repos/${REPO}/pulls/7`).length, 2);
+    assert.match(r.summary, /#7 mudou, fica para a próxima rodada/);
+    assert.doesNotMatch(r.summary, /mesclad/);
+});
+
+test('releitura com o mesmo sha segue para o merge', async () => {
+    const r = await exec({ env: { MERGE_LEVE: 'on' }, prAfter: prJson() });
+    assert.equal(r.writes.filter((c) => c.method === 'PUT').length, 1);
 });
 
 // Modo local do /pri-pr (AC-06): `--paths <name-status> --config <processo.json>`
