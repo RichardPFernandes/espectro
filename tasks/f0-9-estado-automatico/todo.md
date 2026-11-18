@@ -79,7 +79,7 @@ Depende de T2.
 
 Depende de T3 (o arquivo do workflow precisa existir para o registro).
 
-- [ ] **O que:**
+- [x] **O que:**
   - `docs/flags.md`: linha `ESTADO_NO_MERGE`, `Onde` = `.github/workflows/estado-no-merge.yml`,
     Padrão `desligada`, Issue `PRI-399`, Consumidor `não se aplica: CI deste repo`, Ligar quando
     "o Richard grava `simular`, confere o resumo do job num merge e grava `on`", Desligar quando
@@ -87,10 +87,10 @@ Depende de T3 (o arquivo do workflow precisa existir para o registro).
     `sim`; "Hoje são 10" vira 11.
   - `.claude/skills/pri-pr/SKILL.md`, passo 7: uma frase dizendo que, com `ESTADO_NO_MERGE=on`, a
     Action move Leve e Médio para Done no merge; o `/pri-pr` continua sem mover.
-- [ ] **Teste que falha antes:** `node scripts/lib/flag-registry.test.js` com a linha nova (antes de
+- [x] **Teste que falha antes:** `node scripts/lib/flag-registry.test.js` com a linha nova (antes de
   existir o workflow, `SOURCE_MISSING`); depois, verde. Conferir que nenhum teste depende da
   contagem 10.
-- [ ] **Arquivos:** `docs/flags.md`, `.claude/skills/pri-pr/SKILL.md`. Escopo XS.
+- [x] **Arquivos:** `docs/flags.md`, `.claude/skills/pri-pr/SKILL.md`. Escopo XS.
 
 ## Ponto de controle: fim
 
