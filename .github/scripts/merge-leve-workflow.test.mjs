@@ -110,3 +110,8 @@ test('merge-leve-resumo.yml: mesmas actions fixadas e mesmo checkout esparso do 
     assert.match(y, /sparse-checkout:\s*\|\s*\n\s+\/\.github\/\s*$/m);
     assert.doesNotMatch(y, /^\s+ref:/m);
 });
+
+test('tests.yml aceita workflow_dispatch (o merge-leve dispara o Tests na main depois do merge)', () => {
+    const yml = read('tests.yml');
+    assert.match(yml, /^on:\n(?:  .*\n)*  workflow_dispatch:/m);
+});

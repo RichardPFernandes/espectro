@@ -39,7 +39,7 @@ const event = (pullRequests = [{ number: 7 }]) => ({
 // `prAfter`, se dado, é o PR devolvido da segunda leitura em diante (commit novo
 // entre a avaliação e o merge).
 function fakeGh({ pr = prJson(), prAfter, files = [{ filename: 'docs/x.md', status: 'modified' }], checkRuns = greenRuns(),
-    statuses = [], pulls = [], mergeError } = {}) {
+    statuses = [], pulls = [], mergeError, dispatchError } = {}) {
     const calls = [];
     let prReads = 0;
     const gh = async (method, url, body) => {
@@ -59,6 +59,10 @@ function fakeGh({ pr = prJson(), prAfter, files = [{ filename: 'docs/x.md', stat
             return { merged: true, sha: 'c'.repeat(40) };
         }
         if (method === 'POST' && p === `/repos/${REPO}/actions/workflows/roadmap-pages.yml/dispatches`) return null;
+        if (method === 'POST' && p === `/repos/${REPO}/actions/workflows/tests.yml/dispatches`) {
+            if (dispatchError) throw Object.assign(new Error(`GitHub API ${dispatchError}`), { status: dispatchError });
+            return null;
+        }
         throw new Error(`chamada inesperada: ${method} ${url}`);
     };
     return { gh, calls };
@@ -89,7 +93,7 @@ test('MERGE_LEVE diferente de "on" só simula (AC-04)', async () => {
 
 test('MERGE_LEVE=on e elegível: um PUT de squash com o sha avaliado', async () => {
     const r = await exec({ env: { MERGE_LEVE: 'on' } });
-    assert.deepEqual(r.writes, [
+    assert.deepEqual(r.writes.filter((c) => c.method === 'PUT'), [
         { method: 'PUT', url: `/repos/${REPO}/pulls/7/merge`, body: { merge_method: 'squash', sha: SHA } },
     ]);
     assert.match(r.summary, /mesclado #7/);
@@ -141,15 +145,33 @@ test('outro erro no merge não é engolido', async () => {
 test('merge que toca roadmap dispara o roadmap-pages na main', async () => {
     for (const filename of ['ROADMAP.md', 'roadmap/fase-0-destravar/FASE.md']) {
         const r = await exec({ env: { MERGE_LEVE: 'on' }, files: [{ filename, status: 'modified' }] });
-        assert.deepEqual(r.writes.at(-1), {
-            method: 'POST', url: `/repos/${REPO}/actions/workflows/roadmap-pages.yml/dispatches`, body: { ref: 'main' },
-        }, filename);
+        assert.deepEqual(r.writes.filter((c) => c.method === 'POST'), [
+            { method: 'POST', url: `/repos/${REPO}/actions/workflows/tests.yml/dispatches`, body: { ref: 'main' } },
+            { method: 'POST', url: `/repos/${REPO}/actions/workflows/roadmap-pages.yml/dispatches`, body: { ref: 'main' } },
+        ], filename);
     }
 });
 
 test('merge só de docs não dispara o roadmap-pages', async () => {
     const r = await exec({ env: { MERGE_LEVE: 'on' } });
-    assert.ok(!r.writes.some((c) => c.method === 'POST'));
+    assert.ok(!r.writes.some((c) => c.url.includes('roadmap-pages')));
+});
+
+// Push do GITHUB_TOKEN não dispara o Tests na main: o bot o dispara depois de
+// cada merge, para dois Leves verdes em separado não quebrarem a main sem aviso.
+test('merge dispara o Tests na main', async () => {
+    const r = await exec({ env: { MERGE_LEVE: 'on' } });
+    assert.deepEqual(r.writes.filter((c) => c.method === 'POST'), [
+        { method: 'POST', url: `/repos/${REPO}/actions/workflows/tests.yml/dispatches`, body: { ref: 'main' } },
+    ]);
+    assert.match(r.summary, /Tests disparado na main depois de #7/);
+});
+
+test('sem merge (simulação, 409 ou fora da lista), o Tests não é disparado', async () => {
+    for (const r of [await exec(), await exec({ env: { MERGE_LEVE: 'on' }, mergeError: 409 }),
+        await exec({ env: { MERGE_LEVE: 'on' }, files: [{ filename: 'scripts/a.js', status: 'modified' }] })]) {
+        assert.ok(!r.writes.some((c) => c.url.includes('tests.yml')));
+    }
 });
 
 test('simulação com roadmap não dispara nada', async () => {
@@ -266,4 +288,14 @@ test('--paths: arquivo inexistente é erro de execução, código 2', () => {
     assert.equal(r.code, 2);
     assert.equal(r.out, '');
     assert.match(r.err, /erro de execução: .*ns\.txt/);
+});
+
+test('falha no disparo do Tests não engole o roadmap-pages; o erro sobe no fim e fica no resumo', async () => {
+    const { gh, calls } = fakeGh({ dispatchError: 500, files: [{ filename: 'ROADMAP.md', status: 'modified' }] });
+    const out = [];
+    await assert.rejects(run({ event: event(), env: { GITHUB_REPOSITORY: REPO, MERGE_LEVE: 'on' }, gh, config,
+        log: () => {}, summary: (t) => out.push(t) }), /500/);
+    assert.ok(calls.some((c) => c.method === 'POST' && c.url.endsWith('/roadmap-pages.yml/dispatches')));
+    assert.match(out.join(''), /falha ao disparar o Tests na main depois de #7 \(500\)/);
+    assert.match(out.join(''), /roadmap-pages disparado depois de #7/);
 });
