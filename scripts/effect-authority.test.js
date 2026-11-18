@@ -33,7 +33,7 @@ function admitPr() {
         admission: {
             status: 'ADMITTED',
             owner: 'dom06',
-            snapshot: { ticket_id: 41948, node: 'commit', base_branch: 'development', spec_hash: 'hash-pri66' },
+            snapshot: { ticket_id: 11948, node: 'commit', base_branch: 'development', spec_hash: 'hash-pri66' },
         },
         obligations: dom06.obligationsFor('commit'),
     });
@@ -88,7 +88,7 @@ const base = () => `http://127.0.0.1:${server.address().port}/2.0`;
 
 function openPr() {
     return new Promise(resolve => {
-        const child = execFile('bash', [script, REPO, '41948', 'development', 'Melhoria #41948'], {
+        const child = execFile('bash', [script, REPO, '11948', 'development', 'Melhoria #11948'], {
             env: {
                 PATH: process.env.PATH,
                 HOME: process.env.HOME,
@@ -190,7 +190,7 @@ function fakeRedmine() {
     const fetch = async (url, init = {}) => {
         state.calls.push(`${init.method || 'GET'} ${new URL(url).pathname}`);
         const status = state.revoked ? 401 : 200;
-        return new Response(JSON.stringify(state.revoked ? { errors: ['revoked'] } : { issue: { id: 41948 } }), { status });
+        return new Response(JSON.stringify(state.revoked ? { errors: ['revoked'] } : { issue: { id: 11948 } }), { status });
     };
     const redmineFetch = createRedmineFetch({
         fetch,
@@ -203,20 +203,20 @@ function fakeRedmine() {
 
 test('Redmine: chave revogada entre o GET e o PUT da nota => 401 explícito, um PUT só, sem retry', async () => {
     const { state, redmineFetch } = fakeRedmine();
-    const ok = await redmineFetch('http://redmine.invalid/issues/41948.json');
+    const ok = await redmineFetch('http://redmine.invalid/issues/11948.json');
     assert.strictEqual(ok.status, 200);
     state.revoked = true;
-    const put = await redmineFetch('http://redmine.invalid/issues/41948.json', { method: 'PUT', body: JSON.stringify({ issue: { notes: 'x', status_id: 20 } }) });
+    const put = await redmineFetch('http://redmine.invalid/issues/11948.json', { method: 'PUT', body: JSON.stringify({ issue: { notes: 'x', status_id: 20 } }) });
     assert.strictEqual(put.ok, false);
     assert.strictEqual(put.status, 401);
-    assert.deepStrictEqual(state.calls, ['GET /issues/41948.json', 'PUT /issues/41948.json']);
-    assert.ok(state.logs.some(l => /PUT \/issues\/41948\.json: HTTP 401 — erro de autenticação, sem retry/.test(l)));
+    assert.deepStrictEqual(state.calls, ['GET /issues/11948.json', 'PUT /issues/11948.json']);
+    assert.ok(state.logs.some(l => /PUT \/issues\/11948\.json: HTTP 401 — erro de autenticação, sem retry/.test(l)));
 });
 
 test('Redmine: depois da revogação, GET idempotente também volta 401 na primeira tentativa (sem retry)', async () => {
     const { state, redmineFetch } = fakeRedmine();
     state.revoked = true;
-    const r = await redmineFetch('http://redmine.invalid/issues/41948.json');
+    const r = await redmineFetch('http://redmine.invalid/issues/11948.json');
     assert.strictEqual(r.status, 401);
     assert.strictEqual(state.calls.length, 1);
 });

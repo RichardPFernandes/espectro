@@ -14,12 +14,12 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 
 ## Critério de saída
 
-- [ ] Teste no CI falha quando há flag sem data de decisão ou vencida; contagem = 0.
+- [x] Teste no CI falha quando há flag sem data de decisão ou vencida; contagem = 0.
 - [ ] Volta ao último verde feita em um comando, ensaiada uma vez; launcher recusa checkout sujo ou fora da `main`.
 - [ ] Uma run de ensaio bate no teto de turnos e para com status de bloqueio.
 - [ ] Push de repo irmão pulado não é mais reportado como sucesso (PRI-179).
 - [ ] Capa do weekly mostra custo por ticket entregue, custo do retrabalho por nó e primeira passada por nó, com n e período.
-- [ ] Varredura do repo público feita, com destino para cada achado (F1.9).
+- [x] Varredura do repo público feita, com destino para cada achado (F1.9).
 - [ ] Custo lido do JSON da CLI, com versão da CLI, modelo e hash dos prompts por run (F1.5).
 - [ ] Causa das recusas de QA e das rajadas de despacho identificada ou marcada como desconhecida (F1.7, F1.8).
 - [ ] Meta de custo por ticket registrada (D6), ou a frase "sem meta até a semana X".
@@ -32,11 +32,11 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 | F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | em andamento | PRI-379; inclui a PRI-372 |
 | F1.3 | Teto de turnos por run; inclui parar depois de N falhas seguidas do mesmo nó ([`DADOS.md`](../DADOS.md), item 6) | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | PRI-380; a PRI-392 (defeito do state-writer) é feita junto |
 | F1.4 | Linha de base: retrabalho | 2 | Leve | Não | — | D1 | concluída | PRI-378; base é a PRI-327 (Done) |
-| F1.5 | Linha de base: custo por ticket | 3 | Leve | Não | F1.4 | D1, D6 | não iniciada | PRI-381; PRI-82 relacionada |
+| F1.5 | Linha de base: custo por ticket | 3 | Médio | Não | F1.4 | D1, D6 | concluída | PRI-381; PRI-82 relacionada; reclassificada de Leve para Médio em 17/11 (D-PRI-381-01, na Mesa de Decisões), o 1º PR foi Leve |
 | F1.6 | Push dos repos irmãos: pulado não vira sucesso | 2 | Alto | A confirmar | — | — | não iniciada | PRI-179 |
 | F1.7 | Causa das recusas de QA: as recusas repetem causa? É a metade da F5.3 que não espera a Fase 5 | 2 | Leve | Não | — | D13 | não iniciada | sem issue; PRI-86 relacionada |
-| F1.8 | Causa das falhas de despacho em rajada ([`DADOS.md`](../DADOS.md), item 6), só leitura | 2 | Leve | Não | — | D13 | não iniciada | sem issue |
-| F1.9 | Varredura de dado do consumidor no repo público: estado atual e histórico do Git | 2 | Leve | Não | — | D8 | não iniciada | sem issue |
+| F1.8 | Causa das falhas de despacho em rajada ([`DADOS.md`](../DADOS.md), item 6), só leitura | 2 | Leve | Não | — | D13 | concluída | PRI-407 |
+| F1.9 | Varredura de dado do consumidor no repo público: estado atual e histórico do Git | 2 | Leve | Não | — | D8 | concluída | PRI-401 |
 
 Com a F1.6 e as fatias F1.7 a F1.9, a fase soma 23 dias. Cada semana conta 4 dias de fatia
 (D14), o que dá 6 semanas, com 1 dia de folga. A F1.9 é feita primeiro (D8). Se estourar, a F1.5 escorrega para a primeira semana
@@ -75,6 +75,14 @@ desenho fica para a spec.
 - AC-02: Com a flag ligada, cada nó é despachado com limite de turnos, e a run tem um teto acumulado entre nós.
 - AC-03: Ao estourar o teto, a run fica bloqueada com um status já existente e o motivo registrado.
 - AC-04: Uma run de ensaio bloqueada pelo teto aparece na evidência do PR.
+- AC-05: Quando o nó falha por limite de uso da conta, o teto não conta essa falha como
+  tentativa, e o despacho espera o reset que a CLI informa (ou um intervalo fixo, se faltar),
+  em vez de parar a run. O release lê a cauda do log, como o DOM-06 já faz, e reconhece as
+  três mensagens de limite ("session", "5 horas", "semanal"); a espera vale para toda a conta,
+  não só para a run. Origem: [`DADOS.md`](../DADOS.md#falhas-de-despacho-em-rajada-causa-f18)
+  (F1.8): 779 das 786 saídas com código 1 eram limite de uso, e as três maiores rajadas (148,
+  103 e 95 erros) terminaram sozinhas no minuto do reset. Mesma região de código e mesma flag
+  da F1.3 (Alto ao ligar).
 
 ### F1.4 — Linha de base: retrabalho
 

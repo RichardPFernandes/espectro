@@ -16,13 +16,13 @@ const base = (fetch, logs = []) => ({ redmineUrl: 'http://redmine.test/', apiKey
 
 test('fetchAssignedTickets: monta a URL com assigned_to_id=me&status_id=open e mapeia os campos', async () => {
     const { fn, calls } = stub(() => json(200, { issues: [
-        { id: 43666, subject: 'Painel de tickets', status: { id: 1, name: 'Novo' }, priority: { id: 2, name: 'Alta' }, updated_on: '2026-09-26T10:00:00Z', description: 'ignorado' },
-        { id: 43590, subject: 'Outro', status: { name: 'Recusa QA' }, priority: { name: 'Normal' }, updated_on: '2026-09-25T10:00:00Z' },
+        { id: 10001, subject: 'Painel de tickets', status: { id: 1, name: 'Novo' }, priority: { id: 2, name: 'Alta' }, updated_on: '2026-09-26T10:00:00Z', description: 'ignorado' },
+        { id: 10010, subject: 'Outro', status: { name: 'Recusa QA' }, priority: { name: 'Normal' }, updated_on: '2026-09-25T10:00:00Z' },
     ] }));
     const out = await tickets.fetchAssignedTickets(base(fn));
     assert.deepStrictEqual(out, [
-        { id: 43666, subject: 'Painel de tickets', status: 'Novo', priority: 'Alta', updated_on: '2026-09-26T10:00:00Z', tracker: null, assignee: null, estimated_hours: null, done_ratio: null },
-        { id: 43590, subject: 'Outro', status: 'Recusa QA', priority: 'Normal', updated_on: '2026-09-25T10:00:00Z', tracker: null, assignee: null, estimated_hours: null, done_ratio: null },
+        { id: 10001, subject: 'Painel de tickets', status: 'Novo', priority: 'Alta', updated_on: '2026-09-26T10:00:00Z', tracker: null, assignee: null, estimated_hours: null, done_ratio: null },
+        { id: 10010, subject: 'Outro', status: 'Recusa QA', priority: 'Normal', updated_on: '2026-09-25T10:00:00Z', tracker: null, assignee: null, estimated_hours: null, done_ratio: null },
     ]);
     assert.strictEqual(calls[0].url, 'http://redmine.test/issues.json?assigned_to_id=me&status_id=open&sort=updated_on:desc');
     assert.strictEqual(calls[0].init.headers['X-Redmine-API-Key'], KEY);
@@ -74,14 +74,14 @@ function redmineStub(issue) {
 
 test('getTicketDetail: inclui journals e traduz status_id/priority_id em nome', async () => {
     const { fn, calls } = redmineStub({
-        id: 43700, subject: 'Tela X', description: 'desc', status: { id: 7, name: 'Recusada QA' }, priority: { id: 4, name: 'Urgente' },
+        id: 10004, subject: 'Tela X', description: 'desc', status: { id: 7, name: 'Recusada QA' }, priority: { id: 4, name: 'Urgente' },
         assigned_to: { name: 'Fulano' }, created_on: '2026-09-20T10:00:00Z', updated_on: '2026-09-28T10:00:00Z',
         allowed_statuses: [{ id: 2, name: 'Em Desenvolvimento' }],
         journals: [{ id: 1, user: { name: 'QA' }, notes: 'quebrou', created_on: '2026-09-28T10:00:00Z',
             details: [{ property: 'attr', name: 'status_id', old_value: '2', new_value: '7' }, { property: 'attr', name: 'priority_id', old_value: '3', new_value: '4' }] }],
     });
-    const out = await tickets.getTicketDetail(43700, { ...base(fn), noCache: true });
-    assert.match(calls[0].url, /\/issues\/43700\.json\?include=journals,changesets,watchers/);
+    const out = await tickets.getTicketDetail(10004, { ...base(fn), noCache: true });
+    assert.match(calls[0].url, /\/issues\/10004\.json\?include=journals,changesets,watchers/);
     assert.strictEqual(out.assignee, 'Fulano');
     assert.strictEqual(out.status_id, 7);
     assert.deepStrictEqual(out.allowed_statuses, [{ id: 2, name: 'Em Desenvolvimento' }]);
@@ -94,10 +94,10 @@ test('getTicketDetail: inclui journals e traduz status_id/priority_id em nome', 
 
 test('getTicketDetail: versão, horas estimadas/gastas e % feito vêm da mesma resposta', async () => {
     const { fn } = redmineStub({
-        id: 43701, subject: 'Y', status: { id: 2, name: 'Em Desenvolvimento' }, priority: { id: 2, name: 'Normal' },
+        id: 13701, subject: 'Y', status: { id: 2, name: 'Em Desenvolvimento' }, priority: { id: 2, name: 'Normal' },
         fixed_version: { id: 9, name: 'Sprint 42' }, estimated_hours: 5, spent_hours: 6.5, done_ratio: 40, journals: [],
     });
-    const out = await tickets.getTicketDetail(43701, { ...base(fn), noCache: true });
+    const out = await tickets.getTicketDetail(13701, { ...base(fn), noCache: true });
     assert.deepStrictEqual([out.version, out.estimated_hours, out.spent_hours, out.done_ratio], ['Sprint 42', 5, 6.5, 40]);
 });
 
@@ -117,14 +117,14 @@ test('getTicketDetail: sem Redmine configurado => 503 sem chamar fetch', async (
 
 test('updateTicketStatus: PUT com status_id e notes; sem nota não manda notes', async () => {
     const { fn, calls } = stub(() => noContent());
-    assert.deepStrictEqual(await tickets.updateTicketStatus(43700, 2, '  voltando pra dev  ', base(fn)), { ok: true });
-    assert.strictEqual(calls[0].url, 'http://redmine.test/issues/43700.json');
+    assert.deepStrictEqual(await tickets.updateTicketStatus(10004, 2, '  voltando pra dev  ', base(fn)), { ok: true });
+    assert.strictEqual(calls[0].url, 'http://redmine.test/issues/10004.json');
     assert.strictEqual(calls[0].init.method, 'PUT');
     assert.strictEqual(calls[0].init.headers['X-Redmine-API-Key'], KEY);
     assert.deepStrictEqual(JSON.parse(calls[0].init.body), { issue: { status_id: 2, notes: 'voltando pra dev' } });
-    await tickets.updateTicketStatus(43700, '3', '', base(fn));
+    await tickets.updateTicketStatus(10004, '3', '', base(fn));
     assert.deepStrictEqual(JSON.parse(calls[1].init.body), { issue: { status_id: 3 } });
-    await assert.rejects(tickets.updateTicketStatus(43700, 'x', '', base(fn)), e => e.status === 400);
+    await assert.rejects(tickets.updateTicketStatus(10004, 'x', '', base(fn)), e => e.status === 400);
 });
 
 test('updateTicketStatus: 422 do Redmine traz os erros do workflow, sem vazar a key', async () => {
@@ -134,9 +134,9 @@ test('updateTicketStatus: 422 do Redmine traz os erros do workflow, sem vazar a 
 
 test('addJournalNote: PUT só com notes; nota vazia => 400 sem chamar fetch', async () => {
     const { fn, calls } = stub(() => noContent());
-    await tickets.addJournalNote(43700, 'olá', base(fn));
+    await tickets.addJournalNote(10004, 'olá', base(fn));
     assert.deepStrictEqual(JSON.parse(calls[0].init.body), { issue: { notes: 'olá' } });
-    await assert.rejects(tickets.addJournalNote(43700, '   ', base(fn)), e => e.status === 400);
+    await assert.rejects(tickets.addJournalNote(10004, '   ', base(fn)), e => e.status === 400);
     assert.strictEqual(calls.length, 1);
 });
 

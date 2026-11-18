@@ -13,11 +13,11 @@ const ae = require('./acceptance-evidence');
 const sa = require('./spec-authority');
 
 const FILLER = 'Texto descritivo suficiente para passar do limite mínimo de caracteres exigido pela validação. ';
-const SPEC_PATH = 'memory/spec/43646-spec.md';
-const TASK_ID = '43646-resumo-remessa';
+const SPEC_PATH = 'memory/spec/10005-spec.md';
+const TASK_ID = '10005-resumo-remessa';
 const REPORT = 'target/surefire-reports/TEST-br.com.mosistemas.ResumoServiceTest.xml';
 
-const SPEC = `# Spec 43646
+const SPEC = `# Spec 10005
 
 ## Problema
 ${FILLER}O resumo mistura remessas e devoluções.
@@ -113,7 +113,7 @@ function seedRun({ acceptance = matrix(), report = GREEN, spec = SPEC } = {}) {
     }
     fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
         task_id: TASK_ID, node: 'verify', status: 'in_progress', started_at: '2026-10-02T09:00:00Z',
-        ac_ids: ['AC-01', 'AC-02', 'AC-03'], redmine_ticket: { id: 43646 },
+        ac_ids: ['AC-01', 'AC-02', 'AC-03'], redmine_ticket: { id: 10005 },
         spec_path: SPEC_PATH, spec_hash: sa.specHash(SPEC),
     }, null, 2));
     return { root, dir };
@@ -327,7 +327,7 @@ test('finalize carimba run_id/spec_hash/summary e liga AC → passos/arquivos do
     assert.strictEqual(f.code, 0, f.out);
     const m = readJson(path.join(dir, ae.FILE));
     assert.strictEqual(m.run_id, TASK_ID);
-    assert.strictEqual(m.ticket_id, '43646');
+    assert.strictEqual(m.ticket_id, '10005');
     assert.strictEqual(m.spec_hash, sa.specHash(SPEC));
     assert.strictEqual(m.spec_path, SPEC_PATH);
     assert.deepStrictEqual(m.coverage['AC-02'].plan_steps, [2]);
@@ -341,7 +341,7 @@ test('finalize carimba run_id/spec_hash/summary e liga AC → passos/arquivos do
     assert.strictEqual(verify(dir).code, 0);
     const t = run('acceptance-evidence.js', ['trace', dir, 'AC-02']);
     assert.strictEqual(t.code, 0, t.out);
-    assert.match(t.out, /^SPEC +memory\/spec\/43646-spec\.md: AC-02 — O filtro de unidade continua aplicado/m);
+    assert.match(t.out, /^SPEC +memory\/spec\/10005-spec\.md: AC-02 — O filtro de unidade continua aplicado/m);
     assert.match(t.out, /^PLAN +passo 2: Preservar o filtro de unidade\./m);
     assert.match(t.out, /^IMPLEMENTATION +src\/main\/java\/br\/com\/mosistemas\/FiltroUnidade\.java/m);
     assert.match(t.out, /^TEST +PASS — FiltroUnidadeTests#mantemFiltro \[regression-test\] PASS \(target\/surefire-reports\//m);

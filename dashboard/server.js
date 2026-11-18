@@ -169,7 +169,7 @@ function extractPrs(pr, primaryRepo = null) {
 
 // Ativo x concluído. Diferente da regra "tem PR => concluído": um run que ainda
 // anda ou está parado esperando alguém continua ativo mesmo já tendo PR (caso real:
-// #43452 bloqueado com PR de front aberto) — senão sumiria dentro de "Concluídos".
+// #10021 bloqueado com PR de front aberto) — senão sumiria dentro de "Concluídos".
 // spec-pending-approval: o watcher postou um draft (IA) das seções que faltavam na spec
 // e espera um comentário com a palavra-chave no Redmine — parado, mas não falhou.
 // plan-escalation: plano abaixo do score mínimo depois dos re-plans (watcher, runPlanGate),
@@ -602,7 +602,7 @@ function createDashboard(options = {}) {
     // ---------------------------------------------------------------------------
     // Arquivados com demanda em aberto. O /commit arquiva o run ao concluir o ciclo,
     // mas a demanda segue (PR aberto, "Ag Merge"/"Ag Teste" no Redmine) — e aí o run
-    // sumia do dashboard justo na fase de acompanhar o PR (caso real: #43609). Quem diz
+    // sumia do dashboard justo na fase de acompanhar o PR (caso real: #10023). Quem diz
     // se a demanda terminou é o status do ticket no Redmine, não o state.json (todo
     // arquivado diz "committed"). Varredura em segundo plano, com cache por ticket: 5 min
     // pra ticket aberto, 1 h pra fechado. Por ticket entra só o arquivado mais recente,
@@ -615,7 +615,7 @@ function createDashboard(options = {}) {
     // Status do Redmine sem resposta e sem nada conhecido: o arquivado entra marcado
     // "Redmine sem resposta" (demand.unknown) — nem aberto, nem fechado (UNKNOWN não vira
     // prova de nada). Antes ele sumia, e um restart com o Redmine instável escondia
-    // demandas abertas (13/11/2026: #43986, #43875, #44042).
+    // demandas abertas (13/11/2026: #10031, #10030, #10008).
     const ISSUE_UNKNOWN = Object.freeze({ unknown: true });
     // Cache persistido ao lado do registro (memory/ não versionado): restart não apaga o
     // que já se sabia. Mesma regra de validade; em falha, vale o último status conhecido.
@@ -1364,8 +1364,8 @@ function createDashboard(options = {}) {
     });
 
     // Knowledge Graph (memory/knowledge-graph.json do checkout principal, gravado pelo
-    // watcher e pelo /commit). Sem filtro devolve tudo; ?taskId= (43425, TASK-43425 ou
-    // 43425-slug) ou ?file= recortam o subgrafo. `tickets` já vem montado como
+    // watcher e pelo /commit). Sem filtro devolve tudo; ?taskId= (10006, TASK-10006 ou
+    // 10006-slug) ou ?file= recortam o subgrafo. `tickets` já vem montado como
     // ticket → spec → [arquivos] → PRs pra aba Grafo não refazer a travessia.
     app.get('/api/graph', (req, res) => {
         let graph;
@@ -3750,7 +3750,7 @@ function createDashboard(options = {}) {
     // Root novo (worktree criada depois do start) é lido do disco aqui, e o chokidar
     // não emite nada pro que já existia dentro dele (ignoreInitial) — sem o broadcast,
     // um run criado antes do próximo tick deste timer ficava fora da tela aberta até
-    // recarregar. Caso real: #43584, worktree recriada pelo watcher e run criado pelo
+    // recarregar. Caso real: #10003, worktree recriada pelo watcher e run criado pelo
     // /fetch-ticket segundos depois.
     // Root que ainda não existe (checkout novo sem memory/runs) não entra: o chokidar não
     // passa a observá-lo quando é criado e o cache vazio nunca seria relido. Entra no

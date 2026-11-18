@@ -79,7 +79,7 @@ permanente em `memory/`.
    Faça o commit git real — só a mudança de código. **Mensagem com a versão da spec**
    (run versionado): monte a mensagem no padrão do repo (`<id do ticket> - <título>`) e
    passe por `node "$PRISMA_ROOT/scripts/lib/spec-version.js" commit-message memory/runs/<task-id> "<mensagem>"`,
-   que devolve `43670 - Título [spec_version=2]` (run legado ou spec não selada: a
+   que devolve `10012 - Título [spec_version=2]` (run legado ou spec não selada: a
    mensagem volta intacta). Use a saída literal no `git commit -m`, também nos repos
    irmãos (passo 6.5). `memory/` é LOCAL (está no
    `.gitignore` e fora do índice desde 2026-09-23): nunca faça `git add memory`,
@@ -109,10 +109,10 @@ permanente em `memory/`.
      ```
      (branch = mesmo nome do ticket, já em uso em todos os repos tocados).
    - Monte o título do PR a partir de `state.json.redmine_ticket`, no formato
-     `<tracker> #<id> - <subject>` (ex: `Problema #43425 - Correção do comportamento informado`) — literal, sem sufixos, sem reformatar
+     `<tracker> #<id> - <subject>` (ex: `Problema #10006 - Título do ticket`) — literal, sem sufixos, sem reformatar
      o assunto. **Mesmo título em todos os repos** — é a mesma demanda.
    - Abra o PR usando **sempre** `scripts/bitbucket-open-pr.sh` (asset de plataforma indicado por PRISMA_ROOT) — nunca remonte o `curl` na mão de novo. É o mesmo request
-     testado e validado ao vivo (ticket #43509, 2026-09-11: `Authorization:
+     testado e validado ao vivo (ticket #10009, 2026-09-11: `Authorization:
      Bearer $BITBUCKET_API_TOKEN`, API token `ATATT...`, não Basic Auth —
      Basic pode dar 401/403 dependendo do endpoint). Foi justamente remontar
      esse curl à mão numa sessão anterior que gerou um diagnóstico errado de
@@ -196,7 +196,7 @@ permanente em `memory/`.
      Exit 3 = autoridade recusada ou revogada: pare, sem retry. Exit 0 com
      `DUPLICATE` = a mesma nota/status já foi aplicada neste Attempt. Só
      faça isso se o PR realmente abriu — não mova o status se o push/PR foi
-     pulado por falta de credencial. **Achado ao vivo (ticket #43425):** essa
+     pulado por falta de credencial. **Achado ao vivo (ticket #10006):** essa
      transição de status pode exigir campo customizado obrigatório que não é
      óbvio pelo nome (ex: "Necessita Lib. Plano", id 7, exigido pelo workflow
      do Redmine ao entrar em "Ag Merge" mesmo sem relação aparente com PR) —

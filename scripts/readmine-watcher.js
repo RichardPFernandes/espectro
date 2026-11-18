@@ -67,6 +67,7 @@ const dom06 = require('./lib/dom06-attempt');
 const decompositionRuntime = require('./lib/decomposition-runtime');
 const decompositionVisit = require('./lib/decomposition-visit');
 const subagentBlock = require('./lib/subagent-block');
+const cliResult = require('./lib/cli-result');
 const phaseEffort = require('./lib/phase-effort');
 const handoffLint = require('./lib/handoff-lint');
 const planImplementChain = require('./lib/plan-implement-chain');
@@ -350,7 +351,7 @@ async function fetchTicketById(id) {
 // ticket cuja task já está em andamento deixa de aparecer em
 // fetchAssignedTickets() (que só pega Aprovada/Recusa QA) — sem isto, o watcher
 // nunca mais re-descobriria esse ticket pra continuar o grafo depois do primeiro
-// segmento. Achado ao vivo (ticket #43387: "0 tickets" depois do fetch_ticket).
+// segmento. Achado ao vivo (ticket #10020: "0 tickets" depois do fetch_ticket).
 function findLocallyActiveTicketIds() {
     // DRY-RUN: os tickets do fixture já vêm todo tick; reidratar tickets reais dos
     // worktrees faria o agente simulado andar com tasks de verdade.
@@ -1073,7 +1074,7 @@ function mostRecentArchivedCommit(ticketId) {
 // despachado sem supervisão (cron, ou --follow sem ninguém olhando o terminal). O
 // grafo já modela isso com status "blocked"/"escalated" em state.json
 // (dispatchTicket já para de redespachar esses), mas até aqui isso era silencioso
-// — achado ao vivo: o ticket #43293 ficou blocked 6 dias sem ninguém notar, só
+// — achado ao vivo: o ticket #10017 ficou blocked 6 dias sem ninguém notar, só
 // descoberto vasculhando o worktree manualmente. Isto não reabre interatividade
 // (impossível sem mudar como o agente é invocado) — só avisa que HÁ uma
 // pergunta/bloqueio esperando resposta assíncrona (editando context.md/handoff.md
@@ -1435,7 +1436,7 @@ async function notifyBlocked(ticket, taskId, node, status, dir, state, noteOverr
 // redespachava fetch_ticket do zero a cada tick, com uma sessão nova (sem memória da
 // anterior) fazendo a MESMA pergunta de novo pra sempre — a pergunta anterior e
 // qualquer resposta digitada só no log (memory/runs/<ticket>.log, que é write-only,
-// nunca relido) se perdiam. Achado ao vivo no ticket #42359: ~15 rodadas da mesma
+// nunca relido) se perdiam. Achado ao vivo no ticket #10007: ~15 rodadas da mesma
 // pergunta sobre working tree sujo, com respostas do usuário no meio que nenhum
 // despacho seguinte via.
 //
@@ -2083,7 +2084,7 @@ async function notifySpecClarification(ticket, result, signature, specLocation) 
 // Ao achar um aceite novo, grava accepted_at/accepted_by no gate file (fora de dry-run).
 // Comentários (não do watcher) feitos no ticket DEPOIS do último pedido de spec do
 // watcher — é onde chega a resposta: um "aceito", ou a própria spec complementada
-// (achado ao vivo no #43584, Recusa QA: Problema/Solução/Critérios vieram num
+// (achado ao vivo no #10003, Recusa QA: Problema/Solução/Critérios vieram num
 // comentário, não na descrição). [] se o watcher nunca pediu ou se o Redmine falhar.
 async function fetchSpecReplies(ticketId) {
     // Pedido = comentário de pendência do portão OU comentário do auto-repair (draft).
@@ -3320,7 +3321,7 @@ async function runPreBuildGate(ticket, active, worktreePath, { validate = buildV
             return { proceed: true, note: preBuildAcceptedNote(state) };
         }
         // Mesmo worktree E mesmo JDK => o resultado seria o mesmo. JDK diferente (ou não
-        // registrado: falha anterior à resolução de JDK, ex #43646) recompila.
+        // registrado: falha anterior à resolução de JDK, ex #10005) recompila.
         const fp = worktreeFingerprint(worktreePath);
         const javaHome = buildValidator.resolveJavaHome(worktreePath, env).javaHome || null;
         if (fp && fp === state.preBuildFingerprint && 'preBuildJavaHome' in state && state.preBuildJavaHome === javaHome) {
@@ -3521,7 +3522,7 @@ function sessionNameFor(ticketId, isRecusaQA, label) {
 // CLAUDE_CODE_CHILD_SESSION=1 do pai e passa a resolver caminhos relativos
 // (memory/runs/...) contra o projeto REGISTRADO do pai (o checkout principal) em vez
 // do seu próprio cwd (o worktree do ticket) — bug real observado disparando o
-// ticket #43425 de dentro desta própria sessão: os arquivos foram escritos de
+// ticket #10006 de dentro desta própria sessão: os arquivos foram escritos de
 // verdade, só que no checkout principal, não no worktree. Um watcher disparado por
 // cron/terminal comum (uso normal em produção) não teria essas variáveis pra
 // começo de conversa, mas remover explicitamente é defesa em profundidade — nunca
@@ -3530,7 +3531,7 @@ function sessionNameFor(ticketId, isRecusaQA, label) {
 // padrão desta máquina aponta pro JDK 17 (usado por outros projetos) — sem isso, todo
 // `mvnw compile`/`test` que os agentes tentam rodar falha com "release version 25 not
 // supported", mascarando resultado real de build atrás de um problema de ambiente
-// (visto 2x ao vivo: implement do ticket #43425, nas duas rodadas). Só sobrescreve
+// (visto 2x ao vivo: implement do ticket #10006, nas duas rodadas). Só sobrescreve
 // pro PROCESSO FILHO — não mexe no JAVA_HOME/perfil de shell do usuário, que pode
 // ter outros projetos em JDK diferente.
 const JDK25_HOME = process.env.WATCHER_JAVA_HOME;
@@ -3558,13 +3559,13 @@ function cleanAgentEnv() {
 // modo --follow (o único em que dá pra inspecionar a saída antes do processo sair;
 // modo normal é fire-and-forget por design, detecção fica pro próximo tick perceber
 // que state.json não avançou). Encontrado ao vivo validando o orquestrador: Claude
-// bateu "session limit" no meio do teste com o ticket #43425 — motivo real da
+// bateu "session limit" no meio do teste com o ticket #10006 — motivo real da
 // lista, não hipotético. Sem um segundo agente pra assumir no mesmo tick (ver
 // memory/decisions/2026-09-18-remocao-codex-workflow.md), a única ação possível
 // aqui é logar e deixar o próximo tick tentar de novo.
 // `\b429\b` isolado foi removido depois de um falso positivo real: bateu com
 // "14:19:15,429" (milissegundos de timestamp) num log de build do Quarkus durante o
-// /test do ticket #43425. Todo padrão aqui precisa de contexto textual específico o
+// /test do ticket #10006. Todo padrão aqui precisa de contexto textual específico o
 // bastante pra não colidir com números soltos em log de build/teste normal.
 const { looksUnavailable, looksLikeSessionLimit } = require('./lib/agent-exit-signals');
 
@@ -3818,7 +3819,7 @@ function writeCostLedger(ticketId, ledger) {
     fs.writeFileSync(costLedgerPath(ticketId), JSON.stringify(ledger, null, 2));
 }
 
-function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null, signalContext = null, routing = null, phaseEffortLevel = null }) {
+function startCostRun(ticketId, { agent, nodes, commands = null, sessionId, admissionDecision = null, signalContext = null, routing = null, phaseEffortLevel = null }) {
     if (DRY_RUN) return null;
     try {
         const selected = agent === 'claude' ? resolveClaudeAccount() : null;
@@ -3830,13 +3831,40 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
             ...(selected?.dir ? { claude_config_dir: selected.dir } : {}),
             ...prospectiveSignalsForRun(agent, nodes, signalContext),
             ...(routing?.ok ? { routing_decision: routing.decision } : {}),
-            ...(phaseEffortLevel ? { phase_effort: { level: phaseEffortLevel, effort_applied: true } } : {}) };
+            ...(phaseEffortLevel ? { phase_effort: { level: phaseEffortLevel, effort_applied: true } } : {}),
+            ...cliResultRunFields(ticketId, agent, nodes, commands) };
         const ledger = readCostLedger(ticketId);
         ledger.pending.push(run);
         writeCostLedger(ticketId, ledger);
         return run;
     } catch (e) {
         console.error(`[custo] #${ticketId}: falha registrando início do despacho (seguindo sem métrica):`, e.message);
+        return null;
+    }
+}
+
+// PRI-381 (F1.5, AC-04/AC-05): só com WATCHER_CLI_RESULT_JSON ligada e despacho Claude (o
+// único com `--output-format json`). log_offset = tamanho do log do ticket antes do spawn:
+// sem --follow, o fechamento lê o JSON da CLI só dali em diante. Desligada: nenhum campo.
+// prompt_hashes: dos templates dos comandos do despacho (run decomposta lê /implement-step ou
+// /implement-integrate, não implement.md); sem comandos, dos nós.
+function cliResultRunFields(ticketId, agent, nodes, commands) {
+    if (agent !== 'claude' || !cliResult.cliResultJsonEnabled()) return {};
+    let logOffset = 0;
+    try { logOffset = fs.statSync(logPathFor(ticketId)).size; } catch { /* log ainda não existe */ }
+    return { cli_result_json: true, log_offset: logOffset,
+        prompt_hashes: cliResult.promptHashes(PRISMA_ROOT, cliResult.promptTemplates(commands, nodes)) };
+}
+
+// Log do ticket a partir do log_offset, onde procurar o JSON da CLI quando a saída do processo
+// (--follow) não o tem, sem o carimbo de hora que o spawnAgent põe antes de `[claude] `.
+// Log menor que o offset (truncado/rotacionado): lê do início; o session_id filtra.
+function cliResultLogText(ticketId, run) {
+    try {
+        const buf = fs.readFileSync(logPathFor(ticketId));
+        const offset = Number.isSafeInteger(run.log_offset) && run.log_offset <= buf.length ? run.log_offset : 0;
+        return buf.subarray(offset).toString('utf8').replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z (?=\[claude\] )/gm, '');
+    } catch {
         return null;
     }
 }
@@ -4014,18 +4042,28 @@ function findCostTargetTask(ticketId, node) {
     return best;
 }
 
-function collectRunMetrics(run, target, endMs) {
+function collectRunMetrics(run, target, endMs, { ticketId = null, cliOutput = null } = {}) {
     const node = run.nodes[run.nodes.length - 1];
     let tokens = { input_tokens: null, output_tokens: null };
     let observedEnd = null;
+    let cli = null;
     if (run.agent === 'claude') {
         const files = findRunTranscripts(run);
-        const usage = costTracking.sumClaudeUsage(files.map(f => ({
+        const contents = files.map(f => ({
             role: f.includes(`${path.sep}subagents${path.sep}`) ? 'subagent' : 'main',
             file_ref: f.includes(`${path.sep}subagents${path.sep}`) ? path.basename(f) : 'main',
             content: fs.readFileSync(f, 'utf8'),
-        })), run.pricing_snapshot);
+        }));
+        const usage = costTracking.sumClaudeUsage(contents, run.pricing_snapshot);
         tokens = usage;
+        // PRI-381 (F1.5): JSON ausente ou ilegível => null, nunca zero (reserva: o transcript).
+        if (run.cli_result_json) {
+            // --follow: a saída do processo primeiro; sem o objeto result nela, o log do ticket.
+            const parsed = cliResult.parseCliResult(cliOutput, run.session_id)
+                ?? cliResult.parseCliResult(cliResultLogText(ticketId, run), run.session_id);
+            const main = contents.find(c => c.role === 'main');
+            cli = { cli_cost_usd: parsed?.cost_usd ?? null, cli_version: main ? cliResult.cliVersionFromTranscript(main.content) : null };
+        }
         observedEnd = usage.last_timestamp_ms
             ?? (files.length ? Math.max(...files.map(f => fs.statSync(f).mtimeMs)) : null);
     } else if (run.agent === 'codex' && target) {
@@ -4042,6 +4080,7 @@ function collectRunMetrics(run, target, endMs) {
     for (const field of ['usage', 'unpriced_models', 'read_order', 'dedup_conflicts', 'role_attribution', 'first_turn', 'cost_estimated', 'pricing_sha256', 'pricing_source']) {
         if (tokens[field] !== undefined) metrics[field] = tokens[field];
     }
+    if (cli) Object.assign(metrics, cli);
     return { node, metrics };
 }
 
@@ -4071,7 +4110,7 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
         if (idx === -1) return;
         const run = ledger.pending[idx];
         const target = findCostTargetTask(ticketId, run.nodes[run.nodes.length - 1]);
-        const { node, metrics } = collectRunMetrics(run, target, endMs);
+        const { node, metrics } = collectRunMetrics(run, target, endMs, { ticketId, cliOutput: outcome.cliOutput });
         // Só leitura do arquivo admitido; nunca deriva identidade do lease ou latest.
         let attemptResult = 'UNKNOWN';
         const ref = run.admission?.attempt_ref;
@@ -4241,9 +4280,9 @@ function siblingAddDirArgs(ticketId) {
         // Convenção legada: worktree do repo irmão aninhado dentro do PRÓPRIO
         // app-back (REPO_PATH/.claude/worktrees/<ticket>-<repo>), em vez de
         // <repo>/.claude/worktrees/<ticket> (a convenção atual, acima). Achado ao
-        // vivo no ticket #42359: o WIP real de retrabalho (branch
-        // fix/42359-recusas-qa) só existia aqui — o caminho padrão apontava pra uma
-        // branch obsoleta (`42359`, 1652 commits defasada de origin/development).
+        // vivo no ticket #10007: o WIP real de retrabalho (branch
+        // fix/10007-recusas-qa) só existia aqui — o caminho padrão apontava pra uma
+        // branch obsoleta (`10007`, 1652 commits defasada de origin/development).
         // Implement ficou "blocked" com acesso de leitura à raiz errada e nenhum
         // acesso à raiz certa. Inclui as duas se ambas existirem (não são
         // conflitantes — são worktrees em branches diferentes do mesmo repo); cabe
@@ -4347,6 +4386,34 @@ function resolveHandoffNote(nodes) {
     return handoffLint.handoffNote({ nodes, enabled: true, table: loaded.table, prismaRoot: PRISMA_ROOT });
 }
 
+// Argv da CLI `claude` do despacho, sem efeito colateral além de checar os worktrees irmãos.
+// PRI-381 (F1.5, AC-04): com WATCHER_CLI_RESULT_JSON=on, acrescenta `--output-format json` ao
+// fim; desligada, o argv é o de antes (teste golden em lib/cli-result-dispatch.test.js).
+function buildClaudeArgs({ prompt, sessionName, sessionId, nodes, routing = null, ticketId, effortArgs = [], env = process.env }) {
+    const args = [
+        '-p', prompt,
+        '--name', sessionName,
+        '--session-id', sessionId,
+        '--permission-mode', 'acceptEdits',
+        '--allowedTools', 'mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob',
+        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled(env), chain: subagentBlock.planImplementChainEnabled(env) }),
+        // Sem isto, Claude ficava confinado ao cwd (worktree do consumidor) e não
+        // enxergava os worktrees irmãos mesmo com branch/worktree já criados pelo
+        // watcher, apesar da instrução em plan.md/commit.md dizer pra tratá-los
+        // simetricamente (ver decision 2026-09-02-push-pr-siblings.md — corrigiu a
+        // instrução, não este despacho).
+        '--add-dir', PRISMA_ROOT,
+        ...siblingAddDirArgs(ticketId),
+    ];
+    // PRI-233 T7: só com resolução ok (Run ON); sem routing o argv é o do AS-IS.
+    // PRI-311 (S5.2b, B8): `--agents` só em Attempt com papel e com subagent_roles na policy.
+    if (routing) args.push(...modelRouting.routedArgs([], routing, { agentsJson: routing.agentsJson || null }));
+    // PRI-353: esforço fixo por fase, só com WATCHER_PHASE_EFFORT ligada (desligada = argv inalterado).
+    args.push(...effortArgs);
+    if (cliResult.cliResultJsonEnabled(env)) args.push('--output-format', 'json');
+    return args;
+}
+
 async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null, routing = null }) {
     const qaSection = isRecusaQA
         ? `\n\nEste ticket voltou como Recusa QA — é retrabalho, não trabalho novo. ` +
@@ -4379,36 +4446,18 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     const logPath = logPathFor(ticket.id);
     // Id de sessão fixado pelo watcher só pra achar o transcript depois (custo por nó).
     const sessionId = crypto.randomUUID();
-    const args = [
-        '-p', prompt,
-        '--name', sessionName,
-        '--session-id', sessionId,
-        '--permission-mode', 'acceptEdits',
-        '--allowedTools', 'mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob',
-        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled(), chain: subagentBlock.planImplementChainEnabled() }),
-        // Sem isto, Claude ficava confinado ao cwd (worktree do consumidor) e não
-        // enxergava os worktrees irmãos mesmo com branch/worktree já criados pelo
-        // watcher, apesar da instrução em plan.md/commit.md dizer pra tratá-los
-        // simetricamente (ver decision 2026-09-02-push-pr-siblings.md — corrigiu a
-        // instrução, não este despacho).
-        '--add-dir', PRISMA_ROOT,
-        ...siblingAddDirArgs(ticket.id),
-    ];
-    // PRI-233 T7: só com resolução ok (Run ON); sem routing o argv é o do AS-IS.
-    // PRI-311 (S5.2b, B8): `--agents` só em Attempt com papel e com subagent_roles na policy.
-    if (routing) args.push(...modelRouting.routedArgs([], routing, { agentsJson: routing.agentsJson || null }));
-    // PRI-353: esforço fixo por fase, só com WATCHER_PHASE_EFFORT ligada (desligada = argv inalterado).
     const phaseEffortResolved = resolvePhaseEffort(nodes, routing);
-    args.push(...phaseEffortResolved.args);
+    const args = buildClaudeArgs({ prompt, sessionName, sessionId, nodes, routing, ticketId: ticket.id, effortArgs: phaseEffortResolved.args });
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
     const costRun = startCostRun(ticket.id, {
-        agent: 'claude', nodes, sessionId, admissionDecision, routing, phaseEffortLevel: phaseEffortResolved.level,
+        agent: 'claude', nodes, commands, sessionId, admissionDecision, routing, phaseEffortLevel: phaseEffortResolved.level,
         signalContext: { ticket, worktreePath, isRecusaQA, base: signalBaseBranch(ticket) },
     });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);
     if (costRun) {
-        if (FOLLOW) finishCostRun(ticket.id, sessionId, Date.now(), { exitCode: result.code, output: result.stderr });
+        if (FOLLOW) finishCostRun(ticket.id, sessionId, Date.now(), { exitCode: result.code, output: result.stderr,
+            ...(costRun.cli_result_json ? { cliOutput: result.output } : {}) });
         else setCostRunPid(ticket.id, sessionId, result.pid);
     }
     return result;
@@ -5902,7 +5951,7 @@ async function previewRunningViaDashboard(ticketId, base = dashboardBase()) {
 // de uma branch que ainda versiona memory/runs (ex.: development) carrega runs
 // legados de OUTROS tickets, committed e com URL de PR — sem esse filtro eles faziam
 // o worktree de um ticket recém-criado parecer "PR aberto" e ser apagado no meio do
-// /fetch-ticket (#43746, 2026-10-02).
+// /fetch-ticket (#10013, 2026-10-02).
 function worktreeTaskDirs(wtRuns, ticketId) {
     const ours = name => name === String(ticketId) || name.startsWith(`${ticketId}-`);
     return [wtRuns, `${wtRuns}/_archive`].flatMap(base => (fs.existsSync(base)
@@ -6085,6 +6134,15 @@ function writeWatcherModeFile() {
 }
 
 async function main() {
+    // PRI-381 (F1.5): valor inválido de WATCHER_CLI_RESULT_JSON falha na subida, antes da trava,
+    // de lease ou despacho; senão só lançaria no buildClaudeArgs, com o nó já em running.
+    try {
+        cliResult.cliResultJsonEnabled(process.env);
+    } catch (e) {
+        console.error(e.message);
+        process.exitCode = 1;
+        return;
+    }
     // PRI-181 c0b: valor efetivo da flag a cada tick (sem dado de ticket). Fica em main(),
     // depois do ramo --health-check, para não sujar testes, node-dispatcher nem o JSON do health.
     console.log(QA_DIAGNOSTICO ? '[qa-diagnostico] LIGADO' : '[qa-diagnostico] desligado (C0)');
@@ -6209,4 +6267,6 @@ module.exports = {
     fetchTicketById, postRedmineNote, BASE_BY_LIBERACAO,
     // Log de agente em tempo real (dashboard GET /api/runs/:taskId/agent-log[/stream]).
     logPathFor, logRun,
+    // PRI-381 (F1.5): argv do despacho (teste golden da flag WATCHER_CLI_RESULT_JSON).
+    buildClaudeArgs,
 };

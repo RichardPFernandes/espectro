@@ -20,7 +20,7 @@ const { validateState } = require('../validate-state');
 
 const CLI = path.join(__dirname, 'spec-change.js');
 const FILLER = 'Texto descritivo suficiente para passar do limite mínimo de caracteres exigido pela validação. ';
-const SPEC = `# Spec 43800
+const SPEC = `# Spec 10015
 
 ## Problema
 ${FILLER}Hoje o relatório de fretes não mostra o desconto por volume.
@@ -42,21 +42,21 @@ const readJson = f => JSON.parse(fs.readFileSync(f, 'utf8'));
 const schema = readJson(path.join(__dirname, '..', '..', '.graph', 'schemas', 'state.schema.json'));
 let seq = 0;
 
-/** Run sintético: <root>/memory/runs/<task>/ + <root>/memory/spec/43800-spec.md. */
+/** Run sintético: <root>/memory/runs/<task>/ + <root>/memory/spec/10015-spec.md. */
 function seedRun(stateOver = {}, specContent = SPEC) {
     const root = path.join(sandbox, `repo-${++seq}`);
-    const taskId = `43800-desconto-${seq}`;
+    const taskId = `10015-desconto-${seq}`;
     const dir = path.join(root, 'memory', 'runs', taskId);
     fs.mkdirSync(dir, { recursive: true });
     fs.mkdirSync(path.join(root, 'memory', 'spec'), { recursive: true });
-    const specFile = path.join(root, 'memory', 'spec', '43800-spec.md');
+    const specFile = path.join(root, 'memory', 'spec', '10015-spec.md');
     fs.writeFileSync(specFile, specContent);
     fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
         task_id: taskId, node: 'implement', history: ['fetch_ticket', 'plan'], status: 'in_progress',
-        started_at: '2026-09-30T10:00:00.000Z', redmine_ticket: { id: 43800 },
-        spec_path: 'memory/spec/43800-spec.md', spec_hash: sa.specHash(specContent), ...stateOver,
+        started_at: '2026-09-30T10:00:00.000Z', redmine_ticket: { id: 10015 },
+        spec_path: 'memory/spec/10015-spec.md', spec_hash: sa.specHash(specContent), ...stateOver,
     }, null, 2));
-    fs.writeFileSync(path.join(dir, 'handoff.md'), '# Handoff\n\n## Referência da Spec\n- Spec: memory/spec/43800-spec.md\n- ACs: AC-01, AC-02, AC-03\n');
+    fs.writeFileSync(path.join(dir, 'handoff.md'), '# Handoff\n\n## Referência da Spec\n- Spec: memory/spec/10015-spec.md\n- ACs: AC-01, AC-02, AC-03\n');
     fs.writeFileSync(path.join(dir, 'plan.md'), '# Plano\n\n## Plano de execução\n1. Desconto. Critérios: AC-01, AC-02, AC-03\n');
     fs.writeFileSync(path.join(dir, 'context.md'), '# Contexto\n\nDiagnóstico original.\n');
     return { root, taskId, dir, specFile };
@@ -318,7 +318,7 @@ test('retorno ao Plan após aprovação: nó guardado com plan.md/handoff.md sta
     assert.strictEqual(s.stale_artifacts, undefined);
     assert.strictEqual(s.stale_since, undefined);
     // AC-03 removido com a marca (nunca apagado).
-    assert.match(fs.readFileSync(path.join(sa.rootOfRunDir(dir), 'memory/spec/43800-spec.md'), 'utf8'), /- AC-03: Exportação CSV inclui a coluna de desconto\. \(removido em \d{4}-\d{2}-\d{2}: SPEC_CHANGE SC-001\)/);
+    assert.match(fs.readFileSync(path.join(sa.rootOfRunDir(dir), 'memory/spec/10015-spec.md'), 'utf8'), /- AC-03: Exportação CSV inclui a coluna de desconto\. \(removido em \d{4}-\d{2}-\d{2}: SPEC_CHANGE SC-001\)/);
 });
 
 test('Verify reprova com SPEC_CHANGE pendente', () => {

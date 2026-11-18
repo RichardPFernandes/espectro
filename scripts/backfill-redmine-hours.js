@@ -14,7 +14,7 @@
 //
 //   # Relatório JSON + filtro
 //   REPO_PATH=~/Workspace/app-back node scripts/backfill-redmine-hours.js \
-//     --ticket=43703 --report=/tmp/horas-dry.json
+//     --ticket=10002 --report=/tmp/horas-dry.json
 //
 //   # Aplicar (depois de revisar o dry-run)
 //   REPO_PATH=~/Workspace/app-back node scripts/backfill-redmine-hours.js --apply --limit=5

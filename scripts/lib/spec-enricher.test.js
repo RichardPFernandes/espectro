@@ -192,14 +192,14 @@ test('enrichSpec: CalculoFreteService com histórico no KG -> aviso de regra inv
         '     serviços correlatos, ex: FCalculoFreteService) é legado crítico."\n'
     );
     writeGraph(mainRepo, {
-        nodes: { 'TASK-41200': { type: 'ticket' }, 'TASK-38291': { type: 'ticket' }, [fileId]: { type: 'file' } },
+        nodes: { 'TASK-11200': { type: 'ticket' }, 'TASK-38291': { type: 'ticket' }, [fileId]: { type: 'file' } },
         edges: [
-            { from: 'TASK-41200', rel: 'touched_file', to: fileId },
+            { from: 'TASK-11200', rel: 'touched_file', to: fileId },
             { from: 'TASK-38291', rel: 'touched_file', to: fileId },
         ],
     });
-    // 41200 precisou de 2 implements (retrabalho); 38291 rodou limpo.
-    writeRun(mainRepo, '41200', null, { history: ['plan', 'implement', 'review', 'implement', 'review', 'test', 'verify', 'commit'] });
+    // 11200 precisou de 2 implements (retrabalho); 38291 rodou limpo.
+    writeRun(mainRepo, '11200', null, { history: ['plan', 'implement', 'review', 'implement', 'review', 'test', 'verify', 'commit'] });
     writeRun(mainRepo, '38291', null, { history: ['plan', 'implement', 'review', 'test', 'verify', 'commit'] });
 
     const specPath = writeSpec(mainRepo, 'spec', '## Problema\nAjustar o CalculoFreteService para novo cenário de rateio.\n');
@@ -210,7 +210,7 @@ test('enrichSpec: CalculoFreteService com histórico no KG -> aviso de regra inv
     const out = fs.readFileSync(specPath, 'utf8');
     assert.match(out, /⚠️ REGRA INVIOLÁVEL/);
     assert.match(out, /legado crítico/);
-    assert.match(out, /Tocado em 2 run\(s\) anterior\(es\) \(TASK-41200, TASK-38291\)/);
+    assert.match(out, /Tocado em 2 run\(s\) anterior\(es\) \(TASK-11200, TASK-38291\)/);
     assert.match(out, /Taxa de retry: 50% \(1\/2 precisaram de re-implement\)/);
 });
 
@@ -308,13 +308,13 @@ test('enrichSpec: rodar duas vezes na mesma spec não duplica a seção (idempot
 test('enrichSpec: nunca sinaliza a própria task como "run anterior" de si mesma', () => {
     const mainRepo = newRepo();
     const fileId = 'src/main/java/x/SelfService.java';
-    // O próprio ticket desta run (43425) já aparece no KG (cenário de Recusa QA
+    // O próprio ticket desta run (10006) já aparece no KG (cenário de Recusa QA
     // reabrindo o ciclo) — não deve contar como histórico "anterior" dele mesmo.
     writeGraph(mainRepo, {
-        nodes: { 'TASK-43425': { type: 'ticket' }, [fileId]: { type: 'file' } },
-        edges: [{ from: 'TASK-43425', rel: 'touched_file', to: fileId }],
+        nodes: { 'TASK-10006': { type: 'ticket' }, [fileId]: { type: 'file' } },
+        edges: [{ from: 'TASK-10006', rel: 'touched_file', to: fileId }],
     });
     const specPath = writeSpec(mainRepo, 'spec', '## Problema\nAjustar SelfService.\n');
-    const r = enrichSpec(specPath, '43425-recusa-qa', { mainRepo });
+    const r = enrichSpec(specPath, '10006-recusa-qa', { mainRepo });
     assert.strictEqual(r.applied, false);
 });

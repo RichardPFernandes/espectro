@@ -27,9 +27,9 @@ const SECRET = 'SENTINEL-senha-do-banco-NAO-VAZA-123';
 const DB_USER = 'usuario_qa_sentinel';
 const DB_HOST = 'host-sentinel.qa.interno';
 const SQL = "ALTER TABLE f_solicitacao_autorizacao DROP CONSTRAINT IF EXISTS f_check;\nALTER TABLE f_solicitacao_autorizacao ADD CONSTRAINT f_check CHECK (tipo IN ('A','SERVICO_ADICIONAL'));\n";
-const entry = (alias, extra = {}) => ({ label: alias, host: DB_HOST, port: 5432, database: 'embarc_db_stage', user: DB_USER, env: 'qa', secret: { keychain: `prisma-db-${alias}`, account: alias }, ...extra });
+const entry = (alias, extra = {}) => ({ label: alias, host: DB_HOST, port: 5432, database: 'app_db_stage', user: DB_USER, env: 'qa', secret: { keychain: `prisma-db-${alias}`, account: alias }, ...extra });
 const TARGETS = {
-    'qa-app': entry('qa-app', { label: 'QA – embarc' }),
+    'qa-app': entry('qa-app', { label: 'QA – app' }),
     'prod-app': entry('prod-app', { env: 'production' }),
     'prd-app': entry('prd-app', { env: 'prd' }),
     'live-app': entry('live-app', { env: 'live' }),
@@ -42,7 +42,7 @@ prismaConfig.writeSecureJson('db-targets.json', TARGETS, { dir: CONFIG });
 let seq = 0;
 function seedRun(state = {}) {
     const root = path.join(tmp, `repo-${++seq}`);
-    const taskId = `42359-teste-${seq}`;
+    const taskId = `10007-teste-${seq}`;
     const dir = path.join(root, 'memory', 'runs', taskId);
     fs.mkdirSync(dir, { recursive: true });
     fs.mkdirSync(path.join(root, 'docs', 'migrations'), { recursive: true });
@@ -151,7 +151,7 @@ test('approve: CAS velho = STATE_CONFLICT; hash vazio recusado; mesmo operation_
     const ok = approve(dir, { operationId: 'op-aprova-1' });
     assert.strictEqual(ok.status, 'applied');
     assert.strictEqual(ok.frozen.sql, SQL);
-    assert.strictEqual(ok.frozen.ticket, 42359, 'M3: ticket do task-id, não de state.ticket_id/redmine_ticket');
+    assert.strictEqual(ok.frozen.ticket, 10007, 'M3: ticket do task-id, não de state.ticket_id/redmine_ticket');
     const after = readState(dir);
     const e = after.authorization_history.find(x => x.event === 'approved');
     assert.deepStrictEqual([e.by, e.via, e.target, e.request_hash], ['richard', 'dashboard', 'qa-app', ok.frozen.request_hash]);
@@ -226,7 +226,7 @@ test('db-effect: executor recebe só alias + SQL congelado; saídas; Attempt COM
     assert.strictEqual(out.ok, true, out.error);
     assert.deepStrictEqual(Object.keys(exec.calls[0]).sort(), ['alias', 'mode', 'sql', 'verify_sql']);
     assert.strictEqual(exec.calls[0].alias, 'qa-app');
-    assert.strictEqual(ctx.ticket, 42359);
+    assert.strictEqual(ctx.ticket, 10007);
     const outDir = path.join(dir, 'authorization', 'AUTH-001');
     for (const f of ['pre.txt', 'apply.txt', 'post.txt', 'result.json']) assert.ok(fs.existsSync(path.join(outDir, f)), f);
     const attempt = dom06.listAttempts(dir).find(a => a.node === 'db-effect');
@@ -442,13 +442,13 @@ test('db-targets --from-properties: lê o .properties (ISO-8859-1/CRLF), mostra 
     const PROP_SECRET = 'SENTINEL-props-çã"\\x';
     const props = path.join(tmp, 'application.properties');
     fs.writeFileSync(props, Buffer.from([
-        '# comentário', 'quarkus.datasource.db-kind=postgresql', 'quarkus.datasource.jdbc.url=jdbc:postgresql://192.168.10.234/embarc_db_stage',
+        '# comentário', 'quarkus.datasource.db-kind=postgresql', 'quarkus.datasource.jdbc.url=jdbc:postgresql://192.0.2.24/app_db_stage',
         `quarkus.datasource.username=${DB_USER}`, `quarkus.datasource.password=${PROP_SECRET.replace(/\\/g, '\\\\')}`,
         'quarkus.datasource.portal.jdbc.url=jdbc:postgresql://outro/portal', 'quarkus.datasource.portal.password=nao-e-esta', '',
     ].join('\r\n'), 'latin1'));
     const run = args => new Promise(resolve => execFile(process.execPath, [path.join(__dirname, 'db-targets.js'), ...args], { env: { PATH: '/usr/bin:/bin', HOME: tmp } },
         (err, stdout, stderr) => resolve({ code: err ? err.code : 0, out: stdout + stderr })));
-    const base = ['add', 'qa-app', `--from-properties=${props}`, '--env=qa', '--label=QA – embarc_db_stage', `--config-dir=${cfg}`];
+    const base = ['add', 'qa-app', `--from-properties=${props}`, '--env=qa', '--label=QA – app_db_stage', `--config-dir=${cfg}`];
     assert.strictEqual((await run(base)).code, 1, 'sem TTY e sem --yes: não grava');
     assert.ok(!fs.existsSync(argvLog), 'nada chamado sem confirmação');
     const r = await run([...base, '--yes']);
@@ -464,7 +464,7 @@ test('db-targets --from-properties: lê o .properties (ISO-8859-1/CRLF), mostra 
     assert.match(stdin, /add-generic-password -s "prisma-db-qa-app" -a "qa-app" .*-T "" -w /);
     assert.ok(!stdin.includes('nao-e-esta'), 'datasource nomeado (portal) ignorado');
     const saved = prismaConfig.readSecureJson('db-targets.json', { dir: cfg })['qa-app'];
-    assert.deepStrictEqual([saved.host, saved.port, saved.database, saved.user, saved.env], ['192.168.10.234', 5432, 'embarc_db_stage', DB_USER, 'qa']);
+    assert.deepStrictEqual([saved.host, saved.port, saved.database, saved.user, saved.env], ['192.0.2.24', 5432, 'app_db_stage', DB_USER, 'qa']);
     assert.ok(!JSON.stringify(saved).includes('SENTINEL'));
     assert.strictEqual((await run(['add', 'x', '--host=h', '--db=d', '--user=u', '--env=qa', '--password=x', `--config-dir=${cfg}`])).code, 2);
 });
@@ -500,7 +500,7 @@ function seedRouted() {
     const seeded = seedRun();
     const snap = mr.buildRoutingSnapshot({ status: 'ON', policy: ROUTED_POLICY,
         policy_ref: { id: ROUTED_POLICY.id, version: ROUTED_POLICY.version, sha256: 'a'.repeat(64), path: '.claude/routing-policy.json' } });
-    const fetch = dom06.prepareDispatch({ runDir: path.join(path.dirname(seeded.dir), '_dom06'), node: 'fetch_ticket', ticketId: 42359,
+    const fetch = dom06.prepareDispatch({ runDir: path.join(path.dirname(seeded.dir), '_dom06'), node: 'fetch_ticket', ticketId: 10007,
         baseBranch: 'development', specHash: null, cause: 'dispatch', routing: snap });
     writeState(seeded.dir, { ...readState(seeded.dir), routing_snapshot: { attempt_id: fetch.attempt.attempt_id, sha256: snap.sha256 } });
     return seeded;

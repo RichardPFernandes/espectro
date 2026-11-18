@@ -4,12 +4,12 @@
 // (API do GitHub, só leitura) e aplica as regras de .github/processo.json.
 //
 // Uso local, sem rede:
-//   node .github/scripts/processo-check.mjs --event payload.json --files files.json
+//   node .github/scripts/processo-check.mjs --event payload.json --files files.json [--capabilities <dir>]
 // files.json = array no formato de GET /repos/{o}/{r}/pulls/{n}/files.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { evaluate, loadConfig } from './processo-lib.mjs';
+import { evaluate, loadCapabilityMap, loadConfig } from './processo-lib.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = path.join(HERE, '..', 'pull_request_template.md');
@@ -58,16 +58,20 @@ async function main() {
     const template = arg('--template') ?? TEMPLATE;
     const templateBody = fs.existsSync(template) ? fs.readFileSync(template, 'utf8') : '';
 
-    const result = evaluate({ labels, body: pr.body ?? '', files, templateBody, config });
+    const capabilities = arg('--capabilities');
+    const capabilityMap = loadCapabilityMap(capabilities ? { dir: capabilities } : {});
+    const result = evaluate({ labels, body: pr.body ?? '', files, templateBody, config, capabilityMap });
     // Nomes de arquivo vêm do PR: escapa o que viraria workflow command.
     const esc = (s) => String(s).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
     const report = [
         `processo-check: ${result.ok ? 'PASS' : 'FAIL'}`,
         ...result.info.map((l) => `- ${l}`),
+        ...result.warnings.map((w) => `- AVISO: ${w}`),
         ...result.errors.map((e) => `- ERRO: ${e}`),
     ];
     console.log(report.map(esc).join('\n'));
     if (process.env.GITHUB_ACTIONS === 'true') {
+        for (const w of result.warnings) console.log(`::warning title=processo-check::${esc(w)}`);
         for (const e of result.errors) console.log(`::error title=processo-check::${esc(e)}`);
         if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${report.join('\n')}\n`);
     }

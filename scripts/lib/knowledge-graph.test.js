@@ -205,7 +205,7 @@ test('subgrafos: por ticket aceita 90010 / TASK-90010 / task-id; arquivo desconh
     }
     assert.deepStrictEqual(kg.subgraphForFile(g, 'nao/existe.java'), { nodes: {}, edges: [] });
     assert.strictEqual(kg.ticketIdOf('2026-09-19-liquibase-migrations', {}), null);
-    assert.strictEqual(kg.ticketIdOf('43425-slug', {}), '43425');
+    assert.strictEqual(kg.ticketIdOf('10006-slug', {}), '10006');
 });
 
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));

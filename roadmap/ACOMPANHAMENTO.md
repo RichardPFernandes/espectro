@@ -8,7 +8,7 @@
 
 | # | Métrica | Onde já é medida | O que falta | Fatia que destrava |
 | -- | -- | -- | -- | -- |
-| 1 | Custo por ticket entregue (USD imputado e tokens), com n | Os dados existem por run, nó e tentativa | Somar por ticket, incluindo recusas de QA; conferir a PRI-327 para não duplicar | F1.5 |
+| 1 | Custo por ticket entregue (USD imputado e tokens), com n | Relatório semanal do dashboard: custo por ticket entregue, somando recusas de QA; o "Copiar resumo" traz a linha da série e a fonte do custo (JSON da CLI ou transcript, com a diferença), a versão da CLI e o hash dos prompts por run | Ligar `WATCHER_CLI_RESULT_JSON` no consumidor (Alto, AUTORIZO próprio); até lá, a fonte é o transcript | F1.5 |
 | 2 | Primeira passada e custo do retrabalho por nó | O weekly mostra primeira passada por run e retries por nó | Custo do retrabalho; levar à capa | F1.4 |
 | 3 | Runs bloqueadas pelo teto e runs acima de N vezes a mediana | Não medida | Teto de turnos; alerta de anomalia | F1.3 e F3.4 |
 | 4 | Estoque desligado: flags por estado, flags vencidas, itens construídos e desligados (9 em 15/11) | Não medida | Registro de flags; até lá, contar à mão | F1.1 |

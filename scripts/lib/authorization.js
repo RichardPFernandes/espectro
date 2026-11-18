@@ -1,5 +1,5 @@
 // Pedido de autorização humana para ação externa privilegiada (PRI-180). Caso que
-// motivou: o /implement da Recusa QA do #42359 concluiu que o defeito era do banco (check
+// motivou: o /implement da Recusa QA do #10007 concluiu que o defeito era do banco (check
 // constraint sem SERVICO_ADICIONAL, SQL já versionado) e só podia parar em "blocked" com
 // o motivo em texto. Agora o agente registra um pedido ESTRUTURADO e um humano decide no
 // dashboard.

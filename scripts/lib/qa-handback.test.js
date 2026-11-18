@@ -65,10 +65,10 @@ function seedRun(ticketId, state = {}) {
 }
 
 test('handback: PUT com X-Redmine-API-Key, status Ag Teste (8), notas + Apontamentos (cf 2); arquiva com handed_back_qa', async () => {
-    const { root, dir, taskId } = seedRun(42359);
+    const { root, dir, taskId } = seedRun(10007);
     const out = await qaHandback.handback(dir, { by: 'richard', operationId: 'op-hb-1', env });
     assert.strictEqual(out.ok, true, out.error);
-    const put = seen.filter(r => r.method === 'PUT' && r.url === '/issues/42359.json').at(-1);
+    const put = seen.filter(r => r.method === 'PUT' && r.url === '/issues/10007.json').at(-1);
     assert.strictEqual(put.key, KEY);
     const issue = JSON.parse(put.body).issue;
     assert.strictEqual(issue.status_id, 8);
@@ -88,18 +88,18 @@ test('handback: PUT com X-Redmine-API-Key, status Ag Teste (8), notas + Apontame
 });
 
 test('handback: ids configuráveis (REDMINE_STATUS_AG_TESTE / REDMINE_CF_APONTAMENTOS_ID) e textos editados', async () => {
-    const { dir } = seedRun(42400);
+    const { dir } = seedRun(12400);
     const out = await qaHandback.handback(dir, { by: 'r', operationId: 'op-hb-cfg', notes: 'nota editada', apontamentos: 'apontamento editado', env: { ...env, REDMINE_STATUS_AG_TESTE: '31', REDMINE_CF_APONTAMENTOS_ID: '77' } });
     assert.strictEqual(out.ok, true);
-    const issue = JSON.parse(seen.filter(r => r.method === 'PUT' && r.url === '/issues/42400.json').at(-1).body).issue;
+    const issue = JSON.parse(seen.filter(r => r.method === 'PUT' && r.url === '/issues/12400.json').at(-1).body).issue;
     assert.strictEqual(issue.status_id, 31);
     assert.deepStrictEqual(issue.custom_fields, [{ id: 77, value: 'apontamento editado' }]);
     assert.match(issue.notes, /^nota editada\n\n\[op handback:op-hb-cfg\]$/);
 });
 
 test('handback: 422 do Redmine → NÃO arquiva, blocked com o campo exigido', async () => {
-    const { dir } = seedRun(42401);
-    issues.get(42401).mode = '422';
+    const { dir } = seedRun(12401);
+    issues.get(12401).mode = '422';
     const out = await qaHandback.handback(dir, { by: 'r', operationId: 'op-hb-422', env });
     assert.strictEqual(out.ok, false);
     assert.strictEqual(out.http_status, 422);
@@ -112,7 +112,7 @@ test('handback: 422 do Redmine → NÃO arquiva, blocked com o campo exigido', a
 });
 
 test('handback: sem chave / chave errada → não arquiva (401 revoga o Attempt)', async () => {
-    const { dir } = seedRun(42402);
+    const { dir } = seedRun(12402);
     const noKey = await qaHandback.handback(dir, { by: 'r', operationId: 'op-hb-nokey', env: { ...env, REDMINE_API_KEY: '' } });
     assert.match(noKey.error, /REDMINE_URL\/REDMINE_API_KEY|REDMINE_API_KEY/);
     const wrong = await qaHandback.handback(dir, { by: 'r', operationId: 'op-hb-wrong', env: { ...env, REDMINE_API_KEY: 'errada' } });
@@ -122,15 +122,15 @@ test('handback: sem chave / chave errada → não arquiva (401 revoga o Attempt)
 });
 
 test('handback: 5xx depois de gravar (incerto) → não arquiva; nova tentativa com o mesmo operation_id acha o marcador e não reposta', async () => {
-    const { dir } = seedRun(42403);
-    issues.get(42403).mode = '500';
+    const { dir } = seedRun(12403);
+    issues.get(12403).mode = '500';
     const first = await qaHandback.handback(dir, { by: 'r', operationId: 'op-hb-unc', env });
     assert.strictEqual(first.ok, false);
     assert.ok(fs.existsSync(dir));
-    issues.get(42403).mode = 'ok';
-    const putsBefore = seen.filter(r => r.method === 'PUT' && r.url === '/issues/42403.json').length;
+    issues.get(12403).mode = 'ok';
+    const putsBefore = seen.filter(r => r.method === 'PUT' && r.url === '/issues/12403.json').length;
     const again = await qaHandback.handback(dir, { by: 'r', operationId: 'op-hb-unc', env });
     assert.strictEqual(again.ok, true, again.error);
-    assert.strictEqual(seen.filter(r => r.method === 'PUT' && r.url === '/issues/42403.json').length, putsBefore, 'não repostou');
-    assert.strictEqual(issues.get(42403).journals.length, 1);
+    assert.strictEqual(seen.filter(r => r.method === 'PUT' && r.url === '/issues/12403.json').length, putsBefore, 'não repostou');
+    assert.strictEqual(issues.get(12403).journals.length, 1);
 });

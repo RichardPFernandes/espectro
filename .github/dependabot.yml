@@ -1,3 +1,5 @@
+# Regra (D-RMP-01, item 7; PRI-406): patch e minor são mesclados com CI verde; major é fechado com nota.
+# O merge e o fechamento são do Richard. Os grupos abaixo juntam patch e minor num PR só.
 version: 2
 updates:
   - package-ecosystem: npm

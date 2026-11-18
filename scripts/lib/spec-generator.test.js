@@ -81,7 +81,7 @@ test('sem Solução/Critérios na descrição: seções ficam vazias (nunca inve
     assert.ok(v.missingSections.includes('criterios_aceite'));
 });
 
-// Formato do template de ticket novo (#43746): títulos numerados e critérios em Gherkin.
+// Formato do template de ticket novo (#10013): títulos numerados e critérios em Gherkin.
 const GHERKIN_ISSUE = {
     id: 90502,
     subject: 'Recálculo de OC em lote',

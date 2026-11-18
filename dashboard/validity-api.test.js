@@ -34,7 +34,7 @@ function seedRun(taskId, state, evidence) {
 }
 
 // Run invalidado por SPEC_CHANGE (v1 → v2).
-seedRun('43700-invalidado', {
+seedRun('10004-invalidado', {
     node: 'plan', status: 'in_progress', spec_hash: H2, spec: { version: 2, hash: H2, hash_scope: 'contract_sections_v1' },
     artifact_validity: {
         plan: entry('plan.md', stale), implement: entry('implementação (diff do worktree)', stale), review: entry('review-result.md', stale),
@@ -42,12 +42,12 @@ seedRun('43700-invalidado', {
     },
     invalidations: [{ at: '2026-10-01T12:00:00.000Z', triggered_by: 'SPEC_CHANGE SC-001', case: 'idle', old_spec_hash: H1, new_spec_hash: H2, old_spec_version: 1, new_spec_version: 2, phases: ['plan', 'implement', 'review', 'evidence', 'verify'], stale_acs: [] }],
 }, {
-    schema_version: 1, run_id: '43700-invalidado', generated_at: '2026-10-01T10:00:00.000Z', spec_hash: H1, spec_version: 1, validity: stale,
+    schema_version: 1, run_id: '10004-invalidado', generated_at: '2026-10-01T10:00:00.000Z', spec_hash: H1, spec_version: 1, validity: stale,
     coverage: { 'AC-03': { status: 'PASS', evidence: [{ description: 'FreteTest#csv', type: 'manual', result: 'PASS' }] } },
 });
 // Run legado: sem bloco spec, matriz sem spec_hash.
-seedRun('43701-legado', { node: 'verify', status: 'in_progress', spec_hash: H1 }, {
-    schema_version: 1, run_id: '43701-legado', generated_at: '2026-09-20T10:00:00.000Z',
+seedRun('13701-legado', { node: 'verify', status: 'in_progress', spec_hash: H1 }, {
+    schema_version: 1, run_id: '13701-legado', generated_at: '2026-09-20T10:00:00.000Z',
     coverage: { 'AC-01': { status: 'PASS', evidence: [{ description: 'x', type: 'manual', result: 'PASS' }] } },
 });
 
@@ -69,7 +69,7 @@ async function get(p) {
 }
 
 test('run invalidado: badge ⚠ STALE por fase/nó e mensagem por AC (dados das Tasks 67 e 68)', async () => {
-    const { status, body } = await get('/api/runs/43700-invalidado/validity');
+    const { status, body } = await get('/api/runs/10004-invalidado/validity');
     assert.strictEqual(status, 200);
     assert.strictEqual(body.spec.version, 2);
     assert.strictEqual(body.nodes.test, 'STALE', 'nó Verify/Test do trilho com badge');
@@ -79,13 +79,13 @@ test('run invalidado: badge ⚠ STALE por fase/nó e mensagem por AC (dados das 
     assert.deepStrictEqual(body.acs, [{ ac: 'AC-03', test_status: 'PASS', validity: 'STALE', message: 'Evidence produzida contra Spec v1. Spec atual: v2.' }]);
     assert.deepStrictEqual(body.phases.evidence.stale_acs, []);
     assert.strictEqual(body.last_invalidation.triggered_by, 'SPEC_CHANGE SC-001');
-    const detail = await get('/api/runs/43700-invalidado');
+    const detail = await get('/api/runs/10004-invalidado');
     assert.strictEqual(detail.status, 200);
     assert.deepStrictEqual(detail.body.validity, body, 'RunDetail recebe os mesmos dados');
 });
 
 test('run legado sem spec_hash: UNKNOWN exibido como "legado sem versão" (nem STALE nem VALID)', async () => {
-    const { body } = await get('/api/runs/43701-legado/validity');
+    const { body } = await get('/api/runs/13701-legado/validity');
     assert.strictEqual(body.phases.evidence.status, 'UNKNOWN');
     assert.strictEqual(body.phases.evidence.label, 'legado sem versão');
     assert.strictEqual(body.phases.evidence.badge, null);
@@ -94,5 +94,5 @@ test('run legado sem spec_hash: UNKNOWN exibido como "legado sem versão" (nem S
 });
 
 test('run inexistente: 404', async () => {
-    assert.strictEqual((await get('/api/runs/43799-nada/validity')).status, 404);
+    assert.strictEqual((await get('/api/runs/13799-nada/validity')).status, 404);
 });

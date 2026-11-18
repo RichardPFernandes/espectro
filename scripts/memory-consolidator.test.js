@@ -183,8 +183,8 @@ test('collectRuns: state.json malformado (JSON inválido) é ignorado, não lan�
 test('listRunDirs: arquivos soltos direto em memory/runs/ (*.log, *-cost.json) são ignorados, só diretórios contam', () => {
     const repoRoot = freshRepo();
     writeRun(repoRoot, 'run-1', baseState({ task_id: 'run-1' }));
-    fs.writeFileSync(path.join(repoRoot, 'memory', 'runs', '43511.log'), 'log solto');
-    fs.writeFileSync(path.join(repoRoot, 'memory', 'runs', '43511-cost.json'), '{}');
+    fs.writeFileSync(path.join(repoRoot, 'memory', 'runs', '13511.log'), 'log solto');
+    fs.writeFileSync(path.join(repoRoot, 'memory', 'runs', '13511-cost.json'), '{}');
     const result = consolidate({ repoRoot });
     assert.strictEqual(result.meta.totalRuns, 1, 'arquivo solto (não-diretório) não deveria ser tratado como run');
 });

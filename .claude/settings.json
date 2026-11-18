@@ -55,6 +55,16 @@
             "type": "command",
             "if": "Bash(gh pr create *)",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          },
+          {
+            "type": "command",
+            "if": "Bash(git commit *)",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          },
+          {
+            "type": "command",
+            "if": "Bash(git push *)",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
           }
         ]
       },

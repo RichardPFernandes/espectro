@@ -91,7 +91,15 @@
 
   // ---------------------------------------------------------------- leitura de um run
   function costOf(r) { const c = r?.state?.cost_tracking; return c && c.nodes && c.totals ? c : null; }
-  const usdOf = r => { const v = costOf(r)?.totals.cost_usd; return Number.isFinite(v) ? v : null; };
+  // F1.5 (PRI-381, AC-04): o USD do run vem do JSON da CLI (totals.cli_cost_usd) quando nenhum nó e nem os totais acusam
+  // run sem custo da CLI; senão, do leitor de transcript (totals.cost_usd). Sem WATCHER_CLI_RESULT_JSON o campo não existe.
+  const transcriptUsdOf = r => { const v = costOf(r)?.totals.cost_usd; return Number.isFinite(v) ? v : null; };
+  function cliUsdOf(r) {
+    const c = costOf(r), v = c?.totals.cli_cost_usd;
+    if (!Number.isFinite(v) || c.totals.runs_without_cli_cost > 0 || Object.values(c.nodes).some(n => n?.runs_without_cli_cost > 0)) return null;
+    return v;
+  }
+  const usdOf = r => cliUsdOf(r) ?? transcriptUsdOf(r);
   function tokensOf(r) {
     const t = costOf(r)?.totals;
     if (!t || (t.input_tokens == null && t.output_tokens == null)) return null;
@@ -368,6 +376,103 @@
   const modelLine = m => (m.models.length ? `${m.models[0].label} em ${m.models[0].uses} de ${plural(m.modelUses, 'uso por nó', 'usos por nó')}` : 'desconhecido');
   const effortLine = m => (m.effort ? m.effort.join(', ') : 'desconhecido (runs sem roteamento não gravam o esforço)');
 
+  // ---------------------------------------------------------------- custo por ticket entregue (F1.5, PRI-381)
+  // Ticket entregue na janela = ticket com run concluído dentro dela. O custo soma todos os runs do ticket, de
+  // qualquer semana (o cost_tracking de um run já acumula os ciclos de recusa de QA). Medida de um ticket só é
+  // conhecida se todos os runs a têm; senão é null (desconhecida), nunca soma parcial e nunca zero.
+  function qaRefusalsOf(r) {
+    const rej = r?.state?.qa_rejections;
+    return Math.max(Number(r?.qaRetryCount) || 0, Number(r?.state?.qa_retry_count) || 0, Array.isArray(rej) ? rej.length : 0);
+  }
+  const noneWith = (c, k) => !Object.values(c.nodes).some(n => n?.[k] > 0);
+  const TICKET_METRICS = {
+    // Nó sem leitura nenhuma sobe só runs_without_tokens e deixa totals.cost_usd parcial: os dois contadores barram.
+    usd: r => (usdOf(r) != null && noneWith(costOf(r), 'runs_without_cost') && noneWith(costOf(r), 'runs_without_tokens') ? usdOf(r) : null),
+    tokens: r => (tokensOf(r) != null && noneWith(costOf(r), 'runs_without_tokens') ? tokensOf(r) : null),
+    ms: r => { const v = costOf(r)?.totals.duration_ms; return finite(v) && v > 0 ? v : null; },
+  };
+  function ticketCosts(all, list, env) {
+    const keyOf = env.ticketKey || (r => r?.ticketId ?? r?.ticket?.id ?? null);
+    const groups = new Map();
+    for (const r of all) { const k = keyOf(r) ?? r.taskId; groups.set(k, [...(groups.get(k) || []), r]); }
+    const inList = new Set(list);
+    const tickets = [...groups.values()].filter(g => g.some(r => inList.has(r) && env.isDone(r)))
+      .map(g => ({ refused: sum(g.map(qaRefusalsOf)) > 0, runs: g.length, ...Object.fromEntries(Object.entries(TICKET_METRICS).map(([m, f]) => {
+        const vals = g.map(f); return [m, vals.some(v => v == null) ? null : sum(vals)]; })) }));
+    const stat = (ts, m) => {
+      const v = ts.map(t => t[m]).filter(x => x != null);
+      return { median: median(v), mean: v.length ? sum(v) / v.length : null, known: v.length, unknown: ts.length - v.length };
+    };
+    const row = (key, label, ts) => ({ key, label, n: ts.length, usd: stat(ts, 'usd'), tokens: stat(ts, 'tokens'), ms: stat(ts, 'ms') });
+    return { runs: sum(tickets.map(t => t.runs)), rows: [row('all', 'Todos os entregues', tickets),
+      row('refused', 'Com recusa de QA', tickets.filter(t => t.refused)), row('clean', 'Sem recusa de QA', tickets.filter(t => !t.refused))] };
+  }
+  // Células de uma linha (tela e texto copiado): mediana e média só dos tickets com a medida, mais "+N desconhecido".
+  function ticketCostCells(row) {
+    const cell = (m, fmt) => (row.n === 0 ? 'nenhum ticket' : m.median == null ? 'desconhecido'
+      : `mediana ${fmt(m.median)} · média ${fmt(m.mean)}${m.unknown ? ` +${plural(m.unknown, 'desconhecido', 'desconhecidos')}` : ''}`);
+    return { usd: cell(row.usd, imputed), tokens: cell(row.tokens, v => `${tok(v)} tokens`), ms: cell(row.ms, v => `${msLabel(v)} de parede`) };
+  }
+  // Linha para a série semanal do ACOMPANHAMENTO: mediana de USD imputado e de tokens; sem mediana, "sem medição".
+  function seriesLine(T) {
+    const a = T.rows[0];
+    return `${a.usd.median == null ? 'USD sem medição' : `${money(a.usd.median)} imputado, mediana`} · ${a.tokens.median == null ? 'tokens sem medição' : `${tok(a.tokens.median)} tokens, mediana`} (n = ${a.n})`;
+  }
+  // AC-04: quantos runs da janela usaram cada fonte do USD e a diferença (CLI − transcript) somada nos runs com as duas.
+  function costSource(list) {
+    const out = { cli: 0, transcript: 0, none: 0, both: 0, diff: null };
+    for (const r of list) {
+      const cli = cliUsdOf(r), tr = transcriptUsdOf(r);
+      if (cli != null) out.cli += 1; else if (tr != null) out.transcript += 1; else out.none += 1;
+      if (cli != null && tr != null) { out.both += 1; out.diff = (out.diff || 0) + cli - tr; }
+    }
+    return out;
+  }
+  const signedMoney = d => `${d >= 0 ? '+' : '−'}${money(Math.abs(d))}`;
+  function costSourceText(S) {
+    if (!S.cli && !S.transcript) return 'desconhecido (nenhum run da janela com custo medido)';
+    const diff = S.diff == null ? 'desconhecida (nenhum run com as duas fontes)' : `${signedMoney(S.diff)} em ${plural(S.both, 'run', 'runs')} com as duas fontes`;
+    return `JSON da CLI em ${plural(S.cli, 'run', 'runs')}, transcript em ${plural(S.transcript, 'run', 'runs')}${S.none ? `, ${S.none} sem medição` : ''}; diferença CLI − transcript ${diff}`;
+  }
+  // AC-05: versões da CLI e hashes dos prompts (8 caracteres) distintos nas tentativas dos runs da janela. Run sem a gravação
+  // (antes da flag, sem cost_tracking ou com tentativa sem o valor) conta como desconhecido, nunca some.
+  function configSeen(list) {
+    const versions = new Set(), hashes = new Set();
+    let versionsUnknown = 0, hashesUnknown = 0;
+    for (const r of list) {
+      const atts = Object.values(costOf(r)?.nodes || {}).flatMap(n => (Array.isArray(n?.attempts) ? n.attempts : []));
+      let vMiss = !atts.length, hMiss = !atts.length;
+      for (const a of atts) {
+        if (typeof a?.cli_version === 'string' && a.cli_version) versions.add(a.cli_version); else vMiss = true;
+        const hs = a?.prompt_hashes && typeof a.prompt_hashes === 'object' ? Object.values(a.prompt_hashes) : [];
+        if (!hs.length) hMiss = true;
+        for (const h of hs) if (typeof h === 'string' && /^[a-f0-9]{64}$/.test(h)) hashes.add(h.slice(0, 8)); else hMiss = true;
+      }
+      versionsUnknown += vMiss ? 1 : 0; hashesUnknown += hMiss ? 1 : 0;
+    }
+    return { versions: [...versions].sort(), versionsUnknown, hashes: [...hashes].sort(), hashesUnknown };
+  }
+  const seenText = (vals, unknown) => (vals.length ? `${vals.join(', ')}${unknown ? ` +${plural(unknown, 'desconhecido', 'desconhecidos')}` : ''}` : 'desconhecido');
+  // Linhas da configuração e da fonte (tela e texto copiado), na mesma ordem.
+  const configLines = M => [['Modelo por nó (observado nos runs da janela)', nodeModelsText(M.nodeModels)],
+    ['Versão da CLI (observada nos runs da janela)', seenText(M.config.versions, M.config.versionsUnknown)],
+    ['Hash dos prompts (observado nos runs da janela)', seenText(M.config.hashes, M.config.hashesUnknown)],
+    ['Fonte do custo', costSourceText(M.costSource)]];
+  function nodeModels(list, nodes) {
+    const acc = new Map();
+    for (const r of list) for (const [k, n] of Object.entries(costOf(r)?.nodes || {})) {
+      for (const id of new Set(n?.models || [])) {
+        if (!id || id === 'UNKNOWN') continue;
+        const m = acc.get(k) || new Map();
+        acc.set(k, m.set(id, (m.get(id) || 0) + 1));
+      }
+    }
+    const order = [...nodes.map(([k]) => k), ...[...acc.keys()].filter(k => !nodes.some(([n]) => n === k))];
+    return order.filter(k => acc.has(k)).map(k => ({ key: k, models: [...acc.get(k)].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([id, uses]) => ({ id, label: modelName(id), uses })) }));
+  }
+  const nodeModelsText = rows => (rows.length ? rows.map(x => `${x.key} ${x.models.map(m => `${m.label} (${m.uses})`).join(', ')}`).join(' · ') : 'desconhecido');
+
   // ---------------------------------------------------------------- gates e destaques
   function openGates(all, env, now) {
     return all.filter(r => !env.isDone(r) && env.needsYou(r)).map(r => {
@@ -418,6 +523,7 @@
       nodes: nodeCosts(list, env.nodes), stages: stageTokens(list, env.nodes), types: trackerCosts(list), projects: projectCosts(list, env),
       retries: retryRows(list, env.nodes), highlights: highlights(list, env), gates: openGates(all, env, now),
       baseline: { ...reworkBaseline(list, env.nodes), meta: baselineMeta(list, env, now, all) },
+      perTicket: ticketCosts(all, list, env), nodeModels: nodeModels(list, env.nodes), costSource: costSource(list), config: configSeen(list),
       summary: summaryText({ isAll, range, cur, prev, scopeLabel, weeks }),
     };
   }
@@ -464,6 +570,11 @@
     L.push(`Modelo padrão da conta (observado nos runs): ${modelLine(B.meta)}.`);
     L.push(`Esforço padrão da conta: ${effortLine(B.meta)}.`);
     L.push(`Runs concluídos por semana: ${B.meta.weeklyDone.length ? B.meta.weeklyDone.map(x => `${x.label} ${x.done}`).join(', ') : 'desconhecido (sem runs registrados)'}.`);
+    const T = M.perTicket;
+    L.push(`Custo por ticket entregue (${M.range}, n = ${plural(T.rows[0].n, 'ticket', 'tickets')} em ${plural(T.runs, 'run somado', 'runs somados')}): soma todos os runs do ticket e os ciclos de recusa de QA; sem meta definida (D6 em aberto).`);
+    for (const x of T.rows) { const c = ticketCostCells(x); L.push(`  ${x.label} (n = ${x.n}): ${c.usd} · ${c.tokens} · ${c.ms}`); }
+    L.push(`Linha para a série semanal (roadmap/ACOMPANHAMENTO.md): ${seriesLine(T)}`);
+    for (const [dt, dd] of configLines(M)) L.push(`${dt}: ${dd}.`);
     L.push(`PRs por estado: ${PR_ORDER.map(s => `${s || 'desconhecido'} ${M.cur.prCounts[s]}`).join(', ')}.`);
     L.push('', 'Fonte: state.json dos runs (cost_tracking, retries, human_inputs), Bitbucket e Redmine. Números são sinal, não verdade contábil.');
     return L.join('\n');
@@ -559,7 +670,7 @@
   }
 
   const pub = { DAY, TZ, money, tok, pct1, modelName, msLabel, weekStart, rangeLabel, isoWeek, windowOf, inWindow, aggregate, delta, series, ticks,
-    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
+    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, nodeModels, nodeModelsText, costSource, costSourceText, configSeen, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
   if (typeof module !== 'undefined' && module.exports) { module.exports = pub; return; }
 
   // ================================================================ navegador
@@ -672,6 +783,28 @@
       `;
   }
 
+  // F1.5: custo por ticket entregue na capa, nas três réguas. Sem dado = "desconhecido", nunca zero.
+  function ticketSection(M) {
+    const T = M.perTicket, N = T.rows[0].n;
+    const none = t => (/^(desconhecido|nenhum ticket)/.test(t) ? ' wr-none' : '');
+    const cols = ['Tickets', 'n', 'USD imputado', 'Tokens', 'Tempo de parede'];
+    const rows = T.rows.map(x => {
+      const c = ticketCostCells(x);
+      return `<div class="wr-lb-row wr-tk-row"><span class="wr-mono" data-l="${cols[0]}">${esc(x.label)}</span><span class="wr-num" data-l="${cols[1]}">${x.n}</span>`
+        + [c.usd, c.tokens, c.ms].map((t, i) => `<span class="wr-num${none(t)}" data-l="${cols[i + 2]}">${esc(t)}</span>`).join('') + '</div>';
+    }).join('');
+    return `<section class="wr-sec wr-sec-rule" aria-labelledby="wr-tk-h">
+        ${secHead('wr-tk-h', 'Custo por ticket entregue', `${M.range} · n = ${plural(N, 'ticket entregue', 'tickets entregues')} em ${plural(T.runs, 'run somado', 'runs somados')} · sem meta definida (D6 em aberto)`)}
+        <div class="wr-box wr-box-foot">
+          ${N ? `<div class="wr-lb-row wr-tk-row wr-lb-head" aria-hidden="true">${cols.map(l => `<span>${l}</span>`).join('')}</div>${rows}` : '<p class="wr-empty">Nenhum ticket entregue na janela.</p>'}
+          <span class="wr-foot"><span class="wr-foot-main">Ticket entregue = ticket com run concluído na janela. O custo soma todos os runs do ticket, de qualquer semana, e os ciclos de recusa de QA (o cost_tracking do run é cumulativo). Mediana e média só dos tickets com a medida completa; +N desconhecido são tickets com algum run sem a medida, nunca zero. USD imputado é preço de tabela, não desembolso. Concluído inclui run com PR aberto. Tempo = soma dos despachos dos nós, sem espera humana. Um ticket com run concluído em duas semanas aparece nas duas, com o custo acumulado.</span><span>Fonte: state.json · cost_tracking</span></span>
+        </div>
+        <dl class="wr-lb-meta">${configLines(M)
+          .map(([dt, dd]) => `<div><dt>${dt}</dt><dd${dd.startsWith('desconhecido') ? ' class="wr-none"' : ''}>${esc(dd)}</dd></div>`).join('')}</dl>
+      </section>
+      `;
+  }
+
   function panelSummary(M, q) {
     const c = M.cur;
     const hl = M.highlights.filter(h => matches(q, h.ticket, h.title, h.proj, h.pr));
@@ -715,6 +848,7 @@
         </div>
       </section>
       ${baselineSection(M)}
+      ${ticketSection(M)}
       <section class="wr-sec wr-sec-rule" aria-labelledby="wr-gt-h">
         ${secHead('wr-gt-h', 'Gates e decisões da semana', 'quanto tempo os runs esperaram por uma pessoa')}
         <div class="wr-grid wr-grid-thirds">

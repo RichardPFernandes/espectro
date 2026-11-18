@@ -19,9 +19,9 @@ const tmpRoot = fs.mkdtempSync(path.join(process.env.CLAUDE_JOB_DIR ? path.join(
 
 const FILLED_SPEC = `---
 spec_template_version: 1
-ticket: 43999
+ticket: 13999
 ---
-# Ticket #43999 — Reenvio de NF pela API
+# Ticket #13999 — Reenvio de NF pela API
 
 ## Contexto
 A transportadora não consegue reenviar a NF rejeitada pela SEFAZ: hoje abre chamado e o
@@ -185,10 +185,10 @@ test('spec legada (sem spec_template_version) → WARNING, não FAIL', () => {
 // 6
 test('fetch-ticket: spec criada do template com campos do Redmine e comentários HTML para o dev remover', () => {
     const description = '## Situação\nHoje o reenvio é manual ($& e $1 literais).\n\nh2. Detalhe textile';
-    const spec = specTemplate.renderSpecFromTemplate({ ticketId: 43999, title: 'Reenvio de NF pela API', description });
+    const spec = specTemplate.renderSpecFromTemplate({ ticketId: 13999, title: 'Reenvio de NF pela API', description });
 
-    assert.match(spec, /^---\nspec_template_version: 1\nticket: 43999\n---/);
-    assert.match(spec, /^# Ticket #43999 — Reenvio de NF pela API$/m);
+    assert.match(spec, /^---\nspec_template_version: 1\nticket: 13999\n---/);
+    assert.match(spec, /^# Ticket #13999 — Reenvio de NF pela API$/m);
     assert.ok(!/\{\{[A-Z_]+\}\}/.test(spec), 'nenhum placeholder sobrando');
     // Descrição no Contexto, com cabeçalhos rebaixados (não viram seção nova).
     assert.match(spec, /## Contexto\n<!--[\s\S]*?-->\n### Situação\nHoje o reenvio é manual \(\$& e \$1 literais\)\.\n\nh3\. Detalhe textile/);
@@ -212,13 +212,13 @@ test('fetch-ticket: descrição vazia no ticket deixa ## Contexto não preenchid
 
 test('fetch-ticket CLI: init grava a spec do template e nunca sobrescreve', () => {
     const dir = tmpDir('init');
-    const out = path.join(dir, 'memory', 'spec', '43999-spec.md');
-    const run = () => spawnSync(process.execPath, [TEMPLATE_CLI, 'init', '43999', '--title', "NF d'água", '--out', out],
+    const out = path.join(dir, 'memory', 'spec', '13999-spec.md');
+    const run = () => spawnSync(process.execPath, [TEMPLATE_CLI, 'init', '13999', '--title', "NF d'água", '--out', out],
         { input: 'Descrição do ticket.', encoding: 'utf8' });
     const first = run();
     assert.strictEqual(first.status, 0, first.stderr);
     const content = fs.readFileSync(out, 'utf8');
-    assert.match(content, /^# Ticket #43999 — NF d'água$/m);
+    assert.match(content, /^# Ticket #13999 — NF d'água$/m);
     assert.match(content, /## Contexto\n<!--[\s\S]*?-->\nDescrição do ticket\.\n/);
 
     fs.writeFileSync(out, 'spec revisada por humano');
@@ -230,10 +230,10 @@ test('fetch-ticket CLI: init grava a spec do template e nunca sobrescreve', () =
 // 7
 test('fetch-ticket: spec_template_version registrada no state.json (validador --state e record-version)', () => {
     const dir = tmpDir('state');
-    const spec = path.join(dir, '43999-spec.md');
+    const spec = path.join(dir, '13999-spec.md');
     const state = path.join(dir, 'state.json');
-    fs.writeFileSync(spec, specTemplate.renderSpecFromTemplate({ ticketId: 43999, title: 'T', description: 'D' }));
-    fs.writeFileSync(state, JSON.stringify({ task_id: '43999-t', node: 'plan', status: 'in_progress', ac_ids: [] }));
+    fs.writeFileSync(spec, specTemplate.renderSpecFromTemplate({ ticketId: 13999, title: 'T', description: 'D' }));
+    fs.writeFileSync(state, JSON.stringify({ task_id: '13999-t', node: 'plan', status: 'in_progress', ac_ids: [] }));
 
     // Spec recém-copiada é inválida (exit 1) — mas a versão é registrada mesmo assim.
     const cli = spawnSync(process.execPath, [VALIDATOR_CLI, '--state', state, spec], { encoding: 'utf8' });
@@ -253,7 +253,7 @@ test('fetch-ticket: spec_template_version registrada no state.json (validador --
 
     // E o state com o campo continua válido no schema.
     const { validateState } = require('../validate-state');
-    const base = { ...saved, task_id: '43999-t', history: ['fetch_ticket'], started_at: new Date().toISOString() };
+    const base = { ...saved, task_id: '13999-t', history: ['fetch_ticket'], started_at: new Date().toISOString() };
     assert.deepStrictEqual(validateState(base), { valid: true });
     assert.strictEqual(validateState({ ...base, spec_template_version: 0 }).valid, false, 'schema tipa o campo');
 });
