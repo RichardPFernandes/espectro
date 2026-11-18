@@ -25,6 +25,7 @@ global.fetch = async () => { throw new Error('fetch não deveria ser chamado nes
 
 const watcher = require('../readmine-watcher');
 const W = require('../../dashboard/public/weekly-report');
+const { projectCostTracking } = require('../../dashboard/cost-projection');
 
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -65,9 +66,11 @@ function dispatch(id, sid, flag, { cliUsd = 1.23, version = '2.5.1' } = {}) {
     return JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
 }
 
-// Run como o dashboard entrega ao weekly (mesma forma de dashboard/weekly-report.test.js).
+// Run como o dashboard entrega ao weekly: o cost_tracking passa pela projeção pública do servidor
+// (dashboard/server.js → projectCostTracking), como na API, antes do buildReport.
 const asRun = (id, state) => ({ taskId: `${id}-x`, ticketId: id, updatedAt: '2026-11-18T10:00:03.000Z', kind: 'completed',
-    status: 'committed', location: 'main', ticket: { tracker: 'Defeito' }, state });
+    status: 'committed', location: 'main', ticket: { tracker: 'Defeito' },
+    state: { ...state, cost_tracking: projectCostTracking(state.cost_tracking) } });
 const env = {
     nodes: [['plan', 'Plano']], isDone: r => r.kind === 'completed', needsYou: () => false, prsOf: () => [], prState: () => '',
     prUpdatedOn: () => null, ticketStatus: () => undefined, ticketLabel: r => `#${r.ticketId}`, titleText: r => `Ticket ${r.ticketId}`,
