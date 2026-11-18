@@ -1,0 +1,61 @@
+name: estado-no-merge
+
+# F0.9 AC-02: no merge de um PR, lê "Refs PRI-N" e o rótulo processo:* e, em Leve/Médio sem
+# pendência, move a issue do Linear para Done e reescreve Estado/Próximo passo.
+# Liga pela variável do repo ESTADO_NO_MERGE: ausente/off = o job nem roda; simular = só lê e
+# escreve o resumo; on = escreve no Linear. O dispatch reprocessa um merge (e atende o merge do
+# bot da F0.8, que com GITHUB_TOKEN não dispara pull_request).
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Número do PR mesclado a processar
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: estado-no-merge-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  estado-no-merge:
+    name: estado-no-merge
+    if: >-
+      (vars.ESTADO_NO_MERGE == 'simular' || vars.ESTADO_NO_MERGE == 'on') &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # Não roda código do PR: só /.github/ da main, sem credencial persistida.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Estado no merge
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ESTADO_NO_MERGE: ${{ vars.ESTADO_NO_MERGE }}
+          PR: ${{ inputs.pr }}
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            node .github/scripts/estado-no-merge.mjs --pr "$PR"
+          else
+            node .github/scripts/estado-no-merge.mjs
+          fi

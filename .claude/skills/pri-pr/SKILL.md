@@ -149,8 +149,15 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
      Se há ACs de outro PR, nomeie o próximo AC. Alto: o AUTORIZO e o `readback`.
    - **Decisão pendente** não muda: continua manual. Ajuste só "Ligado ao fechar" se o
      escopo do PR mudou.
+   - **ACs:** no mesmo update da descrição, marque `[x]` nas linhas `AC-NN` que este PR
+     entrega e nas já entregues por PR mesclado, e só nelas (D-PRI-399-01).
    - Leve e Médio: a issue vai para In Review só se precisar de decisão ou aceite do
-     Richard. Mesclar é aceitar.
+     Richard. Mesclar é aceitar. Com `ESTADO_NO_MERGE=on`, a Action
+     `estado-no-merge.yml` move Leve e Médio para Done no merge, só quando não sobra AC
+     desmarcado, PR aberto anexado nem filha aberta; o `/pri-pr` continua sem mover. O
+     merge feito pelo bot da F0.8 (com `GITHUB_TOKEN`) não dispara a Action: nesse caso,
+     o Richard dispara o workflow por `workflow_dispatch` com `pr`, até a F0.8 passar a
+     disparar sozinha.
    - Alto: In Review, esperando o AUTORIZO do Richard. Deixe na issue o comentário de 3
      linhas do `/pri-autorizo` (Bloqueio / AUTORIZO / Efeito), com o link do PR. Depois do AUTORIZO e do bump, o próximo
      passo é `/pri-autorizo PRI-NNN readback`.
