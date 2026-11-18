@@ -490,9 +490,13 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
   run o grava) e os runs concluídos por semana. Sem dado, "desconhecido", nunca zero.
   Logo abaixo, o **custo por ticket entregue** (F1.5): mediana e média por ticket com run concluído
   na janela, somando todos os runs do ticket e os ciclos de recusa de QA, nas três réguas, com n,
-  separado em com e sem recusa; mais o modelo por nó. Versão da CLI e hash dos prompts aparecem como
-  desconhecidos até o run gravá-los. O "Copiar resumo" traz a linha pronta para a série de
-  `roadmap/ACOMPANHAMENTO.md`.
+  separado em com e sem recusa; mais o modelo por nó. O USD do run vem do JSON da CLI
+  (`totals.cli_cost_usd`, gravado só com `WATCHER_CLI_RESULT_JSON=on`) quando nenhum nó acusa run
+  sem custo da CLI, e senão do leitor de transcript (`totals.cost_usd`), como antes da flag. A linha
+  **Fonte do custo** diz quantos runs usaram cada fonte e a diferença CLI − transcript somada nos
+  runs com as duas. **Versão da CLI** e **Hash dos prompts** (8 caracteres) saem distintos nos runs
+  da janela, com "+N desconhecido" para run que não os grava. O "Copiar resumo" traz essas linhas e
+  a linha pronta para a série de `roadmap/ACOMPANHAMENTO.md`.
 - **Tickets e PRs:** um cartão por ticket do Redmine, com status, responsável, % e
   estimativa; os PRs do Bitbucket por repositório, com estado real e aprovações; e os runs
   do agente. Ao abrir a aba (ou em **↻ Atualizar**), busca Redmine e Bitbucket em lote,
