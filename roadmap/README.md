@@ -47,7 +47,9 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
 8. **O Linear manda no status.** Em andamento, bloqueio e conclusão moram na issue. O
    `FASE.md` guarda só o estado da fatia (`não iniciada`, `em spec`, `em andamento`, `ligada`,
    `concluída`, `removida`) e é atualizado no PR que muda esse estado. Se os dois divergirem,
-   vale a issue e corrige-se o `FASE.md`.
+   vale a issue e corrige-se o `FASE.md`. O `/pri-pr` também mantém, na linha da fatia, o
+   `Nível` e a `Issue no Linear`, e marca o critério de saída que a fatia cumpre. Fatias que
+   dividem uma issue fecham pelos próprios ACs, não pela issue inteira.
 9. **`tasks/` antigo fica onde está.** As pastas `tasks/pri-*` e `tasks/evidence.md` são de trabalhos
    anteriores e seguem como estão. O `plan.md` e o `todo.md` da PRI-233 foram para
    `docs/historico/pri-233/` em 16/11, porque travavam os comandos do agent-skills. A F0.14 leva
