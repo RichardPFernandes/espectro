@@ -3,7 +3,7 @@
 Cada tarefa roda num subagente novo (opus), com TDD: o teste falha antes, passa depois.
 Testes: `npm run test:changed -- origin/main` na raiz, com Node 22 ou mais.
 
-- [ ] **T1. Flag e funções puras.** AC-04, AC-05.
+- [x] **T1. Flag e funções puras.** AC-04, AC-05.
   Registrar `WATCHER_CLI_RESULT_JSON` (desligada, issue PRI-381, data de decisão) em
   `docs/flags.md` e no `.env.example`. Criar `scripts/lib/cli-result.js` com:
   - `cliResultJsonEnabled(env)` (só `on` liga; valor inválido é erro, como as outras flags);
