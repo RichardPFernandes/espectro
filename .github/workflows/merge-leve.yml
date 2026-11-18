@@ -25,7 +25,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      # Só para disparar o roadmap-pages quando o PR mesclado toca o roadmap.
+      # Para disparar o Tests na main depois do merge e o roadmap-pages quando o
+      # PR mesclado toca o roadmap.
       actions: write
       checks: read
       statuses: read

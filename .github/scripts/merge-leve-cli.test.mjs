@@ -59,6 +59,7 @@ function fakeGh({ pr = prJson(), prAfter, files = [{ filename: 'docs/x.md', stat
             return { merged: true, sha: 'c'.repeat(40) };
         }
         if (method === 'POST' && p === `/repos/${REPO}/actions/workflows/roadmap-pages.yml/dispatches`) return null;
+        if (method === 'POST' && p === `/repos/${REPO}/actions/workflows/tests.yml/dispatches`) return null;
         throw new Error(`chamada inesperada: ${method} ${url}`);
     };
     return { gh, calls };
@@ -89,7 +90,7 @@ test('MERGE_LEVE diferente de "on" só simula (AC-04)', async () => {
 
 test('MERGE_LEVE=on e elegível: um PUT de squash com o sha avaliado', async () => {
     const r = await exec({ env: { MERGE_LEVE: 'on' } });
-    assert.deepEqual(r.writes, [
+    assert.deepEqual(r.writes.filter((c) => c.method === 'PUT'), [
         { method: 'PUT', url: `/repos/${REPO}/pulls/7/merge`, body: { merge_method: 'squash', sha: SHA } },
     ]);
     assert.match(r.summary, /mesclado #7/);
@@ -149,7 +150,24 @@ test('merge que toca roadmap dispara o roadmap-pages na main', async () => {
 
 test('merge só de docs não dispara o roadmap-pages', async () => {
     const r = await exec({ env: { MERGE_LEVE: 'on' } });
-    assert.ok(!r.writes.some((c) => c.method === 'POST'));
+    assert.ok(!r.writes.some((c) => c.url.includes('roadmap-pages')));
+});
+
+// Push do GITHUB_TOKEN não dispara o Tests na main: o bot o dispara depois de
+// cada merge, para dois Leves verdes em separado não quebrarem a main sem aviso.
+test('merge dispara o Tests na main', async () => {
+    const r = await exec({ env: { MERGE_LEVE: 'on' } });
+    assert.deepEqual(r.writes.filter((c) => c.method === 'POST'), [
+        { method: 'POST', url: `/repos/${REPO}/actions/workflows/tests.yml/dispatches`, body: { ref: 'main' } },
+    ]);
+    assert.match(r.summary, /Tests disparado na main depois de #7/);
+});
+
+test('sem merge (simulação, 409 ou fora da lista), o Tests não é disparado', async () => {
+    for (const r of [await exec(), await exec({ env: { MERGE_LEVE: 'on' }, mergeError: 409 }),
+        await exec({ env: { MERGE_LEVE: 'on' }, files: [{ filename: 'scripts/a.js', status: 'modified' }] })]) {
+        assert.ok(!r.writes.some((c) => c.url.includes('tests.yml')));
+    }
 });
 
 test('simulação com roadmap não dispara nada', async () => {

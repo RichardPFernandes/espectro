@@ -81,6 +81,10 @@ export async function run({ event, env = process.env, gh, config, log = console.
                 continue;
             }
             lines.push(`- mesclado #${n} (${md(sha)})`);
+            // Push do GITHUB_TOKEN não dispara o Tests na main e o ruleset não exige
+            // branch atualizada: roda a suíte na main depois de cada merge.
+            await gh('POST', `/repos/${repo}/actions/workflows/tests.yml/dispatches`, { ref: 'main' });
+            lines.push(`- Tests disparado na main depois de #${n}`);
             const names = files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean));
             if (names.some((name) => matchesAny(name, ROADMAP_PATHS))) {
                 // Push do GITHUB_TOKEN não dispara outros workflows: publica à mão.
