@@ -170,10 +170,10 @@ function render(model, { today, commit, generatedAt }) {
 `;
 }
 
-/** CLI: node roadmap-site.js <raiz> <saida>; saida é diretório (index.html) ou arquivo .html. */
-function main([root, out]) {
-    if (!root || !out) { console.error('uso: node scripts/lib/roadmap-site.js <raiz> <saida>'); process.exit(2); }
-    let commit = process.env.GITHUB_SHA;
+/** CLI: node roadmap-site.js <raiz> <saida> [commit]; saida é diretório (index.html) ou arquivo .html; sem commit, usa git rev-parse HEAD em <raiz>. */
+function main([root, out, arg]) {
+    if (!root || !out) { console.error('uso: node scripts/lib/roadmap-site.js <raiz> <saida> [commit]'); process.exit(2); }
+    let commit = arg;
     if (!commit) {
         try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* sem git */ }
     }

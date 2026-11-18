@@ -120,17 +120,15 @@ test('cabeçalho: commit de 7 caracteres, geração, hoje e marca de hoje antes 
     assert.ok(left >= 0 && left <= 100, `left ${left}`);
 });
 
-test('main: grava index.html em diretório novo e em caminho .html, sem git com GITHUB_SHA', () => {
+test('main: grava index.html em diretório novo e em caminho .html, sem git, com o commit como 3º argumento', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'roadmap-site-main-'));
-    const antes = process.env.GITHUB_SHA, log = console.log;
-    process.env.GITHUB_SHA = '1234567890abcdef';
+    const log = console.log;
     console.log = () => {};
     try {
-        main([REPO, path.join(tmp, 'novo', 'site')]);
-        main([REPO, path.join(tmp, 'solto.html')]);
+        main([REPO, path.join(tmp, 'novo', 'site'), '1234567890abcdef']);
+        main([REPO, path.join(tmp, 'solto.html'), '1234567890abcdef']);
     } finally {
         console.log = log;
-        if (antes === undefined) delete process.env.GITHUB_SHA; else process.env.GITHUB_SHA = antes;
     }
     for (const f of [path.join(tmp, 'novo', 'site', 'index.html'), path.join(tmp, 'solto.html')]) {
         assert.match(fs.readFileSync(f, 'utf8'), /^<!doctype html>[\s\S]*commit 1234567/);
