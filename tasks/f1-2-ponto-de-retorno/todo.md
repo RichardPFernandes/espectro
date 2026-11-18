@@ -47,9 +47,9 @@ Repositórios de teste: temporários, com origem `--bare` local, `GIT_CONFIG_GLO
 
 ### Checkpoint 1 (T1–T4)
 
-- [ ] `npm run test:changed` verde; `node --test scripts/capability-map.test.js` diz o dono dos arquivos novos (resolver na T6, ou já aqui se o teste bloquear).
+- [x] `npm run test:changed` verde; `node --test scripts/capability-map.test.js` diz o dono dos arquivos novos (resolver na T6, ou já aqui se o teste bloquear).
 
-- [ ] **T5: guard na subida do dashboard e no tick (AC-02, AC-06)** · M
+- [x] **T5: guard na subida do dashboard e no tick (AC-02, AC-06)** · M
   - Fazer: com `guardEnabled(env)`, (a) `dashboard/server.js`, no bloco de boot antes do `listen` (`:3874`): `checkTree({ root: prismaRoot })`; recusa imprime o motivo e até 10 caminhos e sai com 2; (b) `scripts/watcher-manager.js`, em `spawnTick` antes do `spawn` (`:197`): recusa não inicia o tick, para o laço, grava `error: 'checkout_guard'` e `guard: { reasons, paths }` em `status()`, e escreve a nota no buffer de log. Raiz conferida = `PRISMA_ROOT` do processo.
   - Teste que falha antes: watcher-manager com `git` injetado contando chamadas: flag ausente = 0 chamadas e tick igual ao de hoje; flag ligada e árvore suja = nenhum `spawn`, `status().error === 'checkout_guard'`; flag ligada e árvore ok = tick normal. Dashboard como processo filho com `PRISMA_ROOT` num repo temporário sujo e a flag ligada: sai com 2, mensagem com o motivo, porta não abre.
   - Os testes atuais de `scripts/watcher-manager.test.js` e do dashboard passam sem alteração.
