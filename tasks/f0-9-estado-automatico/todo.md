@@ -9,7 +9,7 @@ secret de verdade.
 
 ## T1: lib pura de decisão (AC-02)
 
-- [ ] **O que:** `.github/scripts/estado-no-merge-lib.mjs`, sem rede nem disco, exportando:
+- [x] **O que:** `.github/scripts/estado-no-merge-lib.mjs`, sem rede nem disco, exportando:
   - `parseRefs(title, body)`: IDs `PRI-N` citados como `Refs PRI-N` (sem distinção de caixa, vários
     por PR, sem repetição). `Fixes`/`Closes` não contam.
   - `levelFromLabels(labels, levels)`: `levels` é o mapa `levels` do `.github/processo.json`; sem
@@ -22,10 +22,10 @@ secret de verdade.
   - `estadoText({ pr, data, acao, pendencias })`: as frases. Done: Estado `PR #n mesclado em
     AAAA-MM-DD; issue em Done pela Action.` e Próximo passo `nenhum.`; pendência: Estado `PR #n
     mesclado em AAAA-MM-DD.` e Próximo passo `falta <PR #m / filha PRI-k>.`
-- [ ] **Teste que falha antes:** `.github/scripts/estado-no-merge-lib.test.mjs` cobre: Refs múltiplos
+- [x] **Teste que falha antes:** `.github/scripts/estado-no-merge-lib.test.mjs` cobre: Refs múltiplos
   e "Fixes" ignorado; rótulo ausente/duplo; Alto → nada; Médio com PR aberto → estado; Leve limpo →
   done; rewrite preserva "Decisão pendente" e o corpo, e não muda nada sem a linha.
-- [ ] **Arquivos:** os dois acima. Escopo S.
+- [x] **Arquivos:** os dois acima. Escopo S.
 
 ## T2: CLI com Linear e GitHub injetáveis (AC-02)
 
