@@ -521,10 +521,12 @@ describe('capability-map.js --of (AC-06)', () => {
 // --check e --write de ponta a ponta (AC-03 a AC-05): o script é copiado para um repo mínimo,
 // onde a raiz é a pasta acima de scripts/, e roda como processo, para valer o código de saída.
 describe('capability-map.js --check e --write', () => {
+    const MODULES = '\n  - scripts/capability-map.js\n  - scripts/lib/front-matter.js';
     const MARKERS = '<!-- capacidades:inicio -->\n<!-- capacidades:fim -->';
-    const FERRAMENTAS = doc({ id: 'ferramentas', flags: '[]', modulos: '\n  - scripts/capability-map.js' });
+    const FERRAMENTAS = doc({ id: 'ferramentas', flags: '[]', modulos: MODULES });
     const MINIMAL = {
         'scripts/capability-map.js': fs.readFileSync(CLI, 'utf8'),
+        'scripts/lib/front-matter.js': fs.readFileSync(path.join(__dirname, 'lib/front-matter.js'), 'utf8'),
         'docs/capacidades/ferramentas.md': FERRAMENTAS,
         'docs/capacidades/README.md': `# Mapa\n\n## Capacidades\n\n${MARKERS}\n`,
     };
@@ -553,7 +555,7 @@ describe('capability-map.js --check e --write', () => {
             const result = run('--check');
             assert.equal(result.status, 0);
             assert.equal(result.stderr, '');
-            assert.match(result.stdout, /1 arquivos, cada um com uma capacidade dona/);
+            assert.match(result.stdout, /2 arquivos, cada um com uma capacidade dona/);
         });
     });
 
@@ -569,14 +571,14 @@ describe('capability-map.js --check e --write', () => {
             const result = run('--check');
             assert.equal(result.status, 1);
             assert.match(result.stderr, /^scripts\/novo\.js: sem capacidade dona/);
-            assert.match(result.stdout, /faltam 1 de 2 arquivos/);
+            assert.match(result.stdout, /faltam 1 de 3 arquivos/);
         });
     });
 
     it('--check com tabela defasada sai 1 e manda rodar --write', () => {
         inRepo({}, (run, dir) => {
             run('--write');
-            fs.writeFileSync(path.join(dir, 'docs/capacidades/ferramentas.md'), doc({ id: 'ferramentas', flags: '[]', situacao: 'desligada', modulos: '\n  - scripts/capability-map.js' }));
+            fs.writeFileSync(path.join(dir, 'docs/capacidades/ferramentas.md'), doc({ id: 'ferramentas', flags: '[]', situacao: 'desligada', modulos: MODULES }));
             const result = run('--check');
             assert.equal(result.status, 1);
             assert.match(result.stderr, /README\.md: a tabela de capacidades está defasada.*--write/);
@@ -593,7 +595,7 @@ describe('capability-map.js --check e --write', () => {
     });
 
     it('--check com cabeçalho inválido sai 2 e cita o arquivo', () => {
-        inRepo({ 'docs/capacidades/ferramentas.md': doc({ id: 'ferramentas', tipo: 'talvez', modulos: '\n  - scripts/capability-map.js' }) }, run => {
+        inRepo({ 'docs/capacidades/ferramentas.md': doc({ id: 'ferramentas', tipo: 'talvez', modulos: MODULES }) }, run => {
             const result = run('--check');
             assert.equal(result.status, 2);
             assert.match(result.stderr, /ferramentas\.md.*tipo/);
@@ -601,7 +603,7 @@ describe('capability-map.js --check e --write', () => {
     });
 
     it('--of com duas donas sai 1, cita as duas e não imprime id', () => {
-        const other = doc({ id: 'outra', flags: '[]', modulos: '\n  - scripts/capability-map.js' });
+        const other = doc({ id: 'outra', flags: '[]', modulos: MODULES });
         inRepo({ 'docs/capacidades/outra.md': other }, run => {
             const result = run('--of', 'scripts/capability-map.js');
             assert.equal(result.status, 1);
