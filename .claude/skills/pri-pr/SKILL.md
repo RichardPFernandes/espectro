@@ -31,7 +31,7 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    dentro do PR, **antes do push**. Depois do merge a worktree é apagada: o que ficar
    para "marcar depois" se perde. Leia a linha da fatia em `roadmap/fase-*/FASE.md`
    (colunas `Nível`, `AUTORIZO` e `Issue no Linear`).
-   - **Depois do merge, nunca commite nesta branch** (o hook `pri-fluxo.mjs` nega
+   - **Depois do merge, nunca commite nesta branch** (numa sessão com `.prisma/level`, o hook `pri-fluxo.mjs` nega
      `git commit` e `git push` quando o PR dela já foi mesclado ou fechado). Se só
      depois do merge ficar claro que a fatia fechou, crie uma branch nova a partir de
      `origin/main` e abra um PR só com a linha do `FASE.md`.

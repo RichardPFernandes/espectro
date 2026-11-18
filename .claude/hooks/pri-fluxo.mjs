@@ -52,15 +52,19 @@ export function prStateDaBranch(root) {
     const branch = git(root, 'branch', '--show-current');
     if (!branch || !git(root, 'remote', 'get-url', 'origin')) return null;
     try {
-        const out = execFileSync('gh', ['pr', 'view', branch, '--json', 'state,number'],
-            { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 8000 });
-        return JSON.parse(out);
+        // Pela branch de origem (não pelo nome, que o gh leria como número de PR se fosse
+        // numérico); o mais recente vale, inclusive se houver um aberto depois de um fechado.
+        const out = execFileSync('gh', ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1',
+            '--json', 'state,number'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 8000 });
+        return JSON.parse(out)[0] || null;
     } catch { return null; }
 }
 
 export function branchJaMesclada(input, deps = {}) {
     const root = devRoot(input.cwd || process.cwd());
     if (!root) return null;
+    // Apagar a branch remota depois do merge é limpeza, não trabalho novo.
+    if (/\bgit\s+push\b[^\n;&|]*\s(?:--delete|-d)\b/.test(String(input.tool_input?.command || ''))) return null;
     const pr = (deps.prState || prStateDaBranch)(root);
     if (!pr || !['MERGED', 'CLOSED'].includes(pr.state)) return null;
     const estado = pr.state === 'MERGED' ? 'mesclado' : 'fechado';
@@ -88,7 +92,7 @@ export function isPrCreate(command) {
 }
 
 // `git commit` ou `git push` como comando, com as mesmas regras de segmento.
-const GIT_WRITE = /^\s*\(?\s*(?:\w+=\S+\s+)*git\s+(?:-C\s+\S+\s+|-c\s+\S+\s+)*(?:commit|push)\b/;
+const GIT_WRITE = /^\s*\(?\s*(?:\w+=\S+\s+)*git\s+(?:-C\s+\S+\s+|-c\s+\S+\s+)*(?:commit|push)(?=\s|$)/;
 export function isGitWrite(command) {
     return String(command || '').split(/\n|&&|\|\||;|\|/).some((seg) => GIT_WRITE.test(seg));
 }

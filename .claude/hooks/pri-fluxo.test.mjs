@@ -120,5 +120,21 @@ test('git commit e git push negam quando o PR da branch já foi mesclado ou fech
 
 test('isGitWrite pega commit e push, não status nem texto', () => {
     for (const c of ['git commit -m x', 'git -C /w push', 'git -c a=b commit -q', 'A=1 git push']) assert.equal(isGitWrite(c), true, c);
-    for (const c of ['git status', 'echo "git commit"', 'git log --grep commit']) assert.equal(isGitWrite(c), false, c);
+    for (const c of ['git status', 'echo "git commit"', 'git log --grep commit', 'git commit-tree x', 'git push-x']) assert.equal(isGitWrite(c), false, c);
+});
+
+test('git push --delete da branch mesclada passa (limpeza)', () => {
+    const dir = repo();
+    const merged = { prState: () => ({ state: 'MERGED', number: 7 }) };
+    const bash = (command) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', cwd: dir, tool_input: { command } });
+    assert.equal(decide(bash('git push origin --delete pri-9'), {}, merged), null);
+    assert.notEqual(decide(bash('git push origin pri-9'), {}, merged), null);
+});
+
+test('settings.json leva o hook a gh pr create, git commit e git push', () => {
+    const settings = JSON.parse(fs.readFileSync(path.join(path.dirname(HOOK), '..', 'settings.json'), 'utf8'));
+    const bash = settings.hooks.PreToolUse.filter((h) => h.matcher === 'Bash').flatMap((h) => h.hooks)
+        .filter((h) => h.command.includes('pri-fluxo.mjs'));
+    const ifs = bash.map((h) => h.if);
+    for (const rule of ['Bash(gh pr create *)', 'Bash(git commit *)', 'Bash(git push *)']) assert.ok(ifs.includes(rule), rule);
 });
