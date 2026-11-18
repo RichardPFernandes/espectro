@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { checkTree, guardEnabled, runGit } = require('./return-point');
+const { checkTree, guardEnabled, runGit, lastGreen, mark } = require('./return-point');
 
 const GIT_ENV = {
     ...process.env,
@@ -175,4 +175,82 @@ test('guardEnabled: 1, true e sim ligam; o resto desliga', () => {
     for (const v of ['1', 'true', 'sim', 'TRUE', ' Sim ']) assert.equal(guardEnabled({ PRISMA_CHECKOUT_GUARD: v }), true, v);
     for (const v of [undefined, '', '0', 'false', 'não', 'yes', 'on', '2']) assert.equal(guardEnabled({ PRISMA_CHECKOUT_GUARD: v }), false, String(v));
     assert.equal(guardEnabled({}), false);
+});
+
+// Marca de último verde e log (F1.2, AC-03).
+const at = iso => () => new Date(iso);
+const readLog = root => fs.readFileSync(path.join(root, 'logs', 'return-point.jsonl'), 'utf8')
+    .split('\n').filter(Boolean).map(l => JSON.parse(l));
+const okHealth = async () => ({ ok: true, items: [{ name: 'dashboard', status: 'ok' }] });
+const badHealth = () => ({ ok: false, items: [{ name: 'dashboard', status: 'falha' }] });
+
+test('lastGreen sem tag verde devolve null', () => {
+    const root = cloneOnMain();
+    assert.equal(lastGreen({ root, git }), null);
+});
+
+test('mark com checagem que passa cria a tag anotada no HEAD e uma linha no log', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') });
+    assert.equal(r.ok, true);
+    assert.equal(r.tag, 'verde/20261118-090507');
+    assert.equal(r.head, head);
+    assert.deepEqual(r.items, [{ name: 'dashboard', status: 'ok' }]);
+    assert.equal(sh(root, 'cat-file', '-t', 'refs/tags/verde/20261118-090507'), 'tag');
+    assert.equal(sh(root, 'rev-parse', 'verde/20261118-090507^{commit}'), head);
+    const note = JSON.parse(sh(root, 'tag', '-l', '--format=%(contents)', 'verde/20261118-090507'));
+    assert.deepEqual(note, { at: '2026-11-18T09:05:07.000Z', head, ok: true, items: r.items });
+    assert.deepEqual(readLog(root), [{ at: '2026-11-18T09:05:07.000Z', head, tag: 'verde/20261118-090507', ok: true, items: r.items }]);
+    assert.equal(lastGreen({ root, git }), 'verde/20261118-090507');
+});
+
+test('mark com checagem que reprova não cria tag, grava a linha e devolve ok false', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await mark({ root, git, health: badHealth, now: at('2026-11-18T09:05:07Z') });
+    assert.equal(r.ok, false);
+    assert.equal(r.tag, null);
+    assert.equal(sh(root, 'tag', '-l', 'verde/*'), '');
+    assert.deepEqual(readLog(root), [{ at: '2026-11-18T09:05:07.000Z', head, tag: null, ok: false, items: r.items }]);
+    assert.equal(lastGreen({ root, git }), null);
+});
+
+test('duas marcas seguidas: lastGreen devolve a segunda e o log tem duas linhas', async () => {
+    const root = cloneOnMain();
+    await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') });
+    await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:08Z') });
+    assert.equal(lastGreen({ root, git }), 'verde/20261118-090508');
+    assert.deepEqual(readLog(root).map(l => l.tag), ['verde/20261118-090507', 'verde/20261118-090508']);
+});
+
+test('colisão de nome é erro e não sobrescreve a tag original', async () => {
+    const root = cloneOnMain();
+    await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') });
+    const before = sh(root, 'rev-parse', 'refs/tags/verde/20261118-090507');
+    sh(root, 'commit', '--quiet', '--allow-empty', '-m', 'terceiro');
+    await assert.rejects(
+        mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') }),
+        /verde\/20261118-090507/,
+    );
+    assert.equal(sh(root, 'rev-parse', 'refs/tags/verde/20261118-090507'), before);
+});
+
+test('o log não tem caminho absoluto nem grava fora da raiz', async () => {
+    const root = cloneOnMain();
+    const parent = path.dirname(root);
+    const siblings = fs.readdirSync(parent).sort();
+    await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') });
+    await mark({ root, git, health: badHealth, now: at('2026-11-18T09:05:08Z') });
+    const raw = fs.readFileSync(path.join(root, 'logs', 'return-point.jsonl'), 'utf8');
+    assert.ok(!raw.includes(root), 'log cita a raiz');
+    assert.ok(!raw.includes(os.tmpdir()), 'log cita o tmpdir');
+    assert.ok(!/"\/(Users|home|private|tmp|var)\//.test(raw), 'log tem caminho absoluto');
+    assert.deepEqual(fs.readdirSync(parent).sort(), siblings);
+});
+
+test('mark não publica a tag na origem', async () => {
+    const root = cloneOnMain();
+    await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') });
+    assert.equal(sh(root, 'ls-remote', '--tags', 'origin'), '');
 });
