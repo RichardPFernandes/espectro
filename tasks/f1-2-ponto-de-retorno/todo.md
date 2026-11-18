@@ -33,7 +33,7 @@ Repositórios de teste: temporários, com origem `--bare` local, `GIT_CONFIG_GLO
   - Arquivos: `scripts/lib/return-point.js`, `scripts/lib/return-point.test.js`.
   - Depende de: T1.
 
-- [ ] **T3: checagem de saúde (AC-03)** · S
+- [x] **T3: checagem de saúde (AC-03)** · S
   - Fazer: `health({ root, baseUrl, fetch, lockStatus })` com quatro itens, cada um `pass|fail|desconhecido`: árvore (`checkTree`); dashboard (`GET /api/version`: `current.sha` igual ao HEAD e `drift: false`; sem resposta = `fail`); trava (`watcher-lock.status(root)` legível); tick (`GET /api/watcher/status`: `error` nulo e `last_run` sem queda desde a subida; sem tick desde a subida = `desconhecido`). `ok` = nenhum `fail`. URL padrão `http://127.0.0.1:${PORT||3333}`, só loopback.
   - Teste que falha antes: servidor HTTP falso em loopback cobrindo os quatro itens em pass, fail e desconhecido; URL fora de loopback é recusada.
   - Arquivos: `scripts/lib/return-point.js`, `scripts/lib/return-point.test.js`.
