@@ -94,8 +94,10 @@ os comandos só rodam quando chamados, e a conferência só vale com a flag
 `PRISMA_CHECKOUT_GUARD` ([registro de flags](flags.md)).
 
 Árvore válida é árvore limpa, contando arquivo não rastreado, com o HEAD
-alcançável pela `origin/main` local. Nenhum comando faz `fetch`, `stash`,
-`reset` ou `clean`.
+alcançável pela `origin/main` local. Nenhum comando faz `stash`, `reset` ou
+`clean`, nem `fetch` direto. O `mark` consulta o `/api/version` do dashboard,
+e esse endpoint faz `git fetch origin main` no checkout da plataforma (ou
+reaproveita um fetch recente).
 
 Comandos, na raiz da plataforma:
 
@@ -141,14 +143,18 @@ padrão é `REPO_PATH`. Saída: 0 sucesso, 1 recusa ou reprovação, 2 uso errad
 Com `PRISMA_CHECKOUT_GUARD=1` (também `true` ou `sim`), árvore suja ou fora da
 main faz o seguinte:
 
-- o dashboard não abre a porta e sai com 2; o motivo e até 10 caminhos vão para
-  o stderr. A raiz conferida é `PRISMA_ROOT` ou a pasta acima de `dashboard/`;
+- o dashboard não abre a porta e sai com 2; os motivos, cada raiz recusada e
+  até 10 caminhos no total vão para o stderr. A raiz conferida é sempre a de
+  onde o código do dashboard roda (a pasta acima de `dashboard/`); se
+  `PRISMA_ROOT` apontar para outra pasta (comparada pelo caminho real), as duas
+  são conferidas;
 - o watcher-manager não inicia o tick e para o laço. `/api/watcher/status`
   mostra `error: 'checkout_guard'` e `guard: { reasons, paths }`. A raiz
   conferida é a de onde o código do tick roda.
 
 HEAD destacado numa tag verde passa no guard. Sem a flag, a subida e o tick não
-rodam nenhum comando novo.
+rodam nenhum comando novo. Rodar `node scripts/readmine-watcher.js` direto não
+passa pelo guard, que só existe no watcher-manager e na subida do dashboard.
 
 Ficam com o Richard, cada uma com AUTORIZO e rollback:
 

@@ -417,13 +417,38 @@ function instance() {
 }
 
 // Guard do checkout (F1.2, PRI-379): com PRISMA_CHECKOUT_GUARD ligada, confere a árvore em
-// root. null = flag desligada (sem rodar git) ou árvore ok; senão { reasons, paths }.
+// root (ou em cada uma de roots). null = flag desligada (sem rodar git) ou árvores ok; senão
+// { reasons (sem repetição), paths (até MAX_PATHS no total), byRoot: [{ root, reasons, paths }] }
+// só com as raízes recusadas. Cada git tem o prazo curto do guard (GUARD_GIT_TIMEOUT_MS).
 // Exportado para a subida do dashboard, que não importa scripts/lib/ (PRI-104).
-function checkoutGuard({ root, env = process.env, git } = {}) {
+function checkoutGuard({ root, roots, env = process.env, git } = {}) {
     const returnPoint = require('./lib/return-point');
     if (!returnPoint.guardEnabled(env)) return null;
-    const tree = returnPoint.checkTree({ root, ...(git ? { git } : {}) });
-    return tree.ok ? null : { reasons: tree.reasons, paths: tree.paths };
+    const byRoot = [];
+    let room = returnPoint.MAX_PATHS;
+    for (const r of roots || [root]) {
+        const tree = returnPoint.checkTree({ root: r, timeoutMs: returnPoint.GUARD_GIT_TIMEOUT_MS, ...(git ? { git } : {}) });
+        if (tree.ok) continue;
+        const paths = tree.paths.slice(0, room);
+        room -= paths.length;
+        byRoot.push({ root: r, reasons: tree.reasons, paths });
+    }
+    if (!byRoot.length) return null;
+    return {
+        reasons: [...new Set(byRoot.flatMap(x => x.reasons))],
+        paths: byRoot.flatMap(x => x.paths),
+        byRoot,
+    };
+}
+
+// Raízes que a subida do dashboard confere: sempre a do código em execução e, se
+// PRISMA_ROOT apontar para outra pasta (comparadas pelo realpath), também ela. Caminho que
+// não resolve conta como diferente: o guard confere e recusa (not_git).
+function bootGuardRoots({ codeRoot, env = process.env } = {}) {
+    const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+    const roots = [path.resolve(codeRoot)];
+    if (env.PRISMA_ROOT && real(env.PRISMA_ROOT) !== real(roots[0])) roots.push(path.resolve(env.PRISMA_ROOT));
+    return roots;
 }
 
 module.exports = {
@@ -435,6 +460,7 @@ module.exports = {
     onLine: fn => instance().onLine(fn),
     createWatcherManager,
     checkoutGuard,
+    bootGuardRoots,
     createRedactor,
     parseEnvFile,
     levelOf,

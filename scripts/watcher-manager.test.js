@@ -227,7 +227,8 @@ test('guard: flag ausente não chama git e o tick segue igual ao de hoje', async
     const root = guardRepo();
     fs.writeFileSync(path.join(root, 'solto.txt'), 'sujo\n');
     const git = countingGit();
-    const m = manager(fake('guard-off', `console.log('tick ok');`), { prismaRoot: root, git });
+    // env explícita: o teste não depende da flag exportada no shell.
+    const m = manager(fake('guard-off', `console.log('tick ok');`), { prismaRoot: root, git, env: { PRISMA_CHECKOUT_GUARD: '' } });
     await m.start();
     await until(() => m.status().ticks >= 2);
     await m.stop();
@@ -314,4 +315,117 @@ test('checkoutGuard: flag ligada e árvore ok devolve null', () => {
     const git = countingGit();
     assert.strictEqual(checkoutGuard({ root, env: { PRISMA_CHECKOUT_GUARD: 'sim' }, git }), null);
     assert.ok(git.calls > 0);
+});
+
+// ------------------------------------------------------------ guard: segunda leva da G3 (PRI-379)
+const { bootGuardRoots } = require('./watcher-manager');
+const { GUARD_GIT_TIMEOUT_MS } = require('./lib/return-point');
+function recordingGit() {
+    const g = (args, opts = {}) => { g.seen.push({ args, timeout: opts.timeout }); return runGit(args, { ...opts, env: GUARD_GIT_ENV }); };
+    g.seen = [];
+    return g;
+}
+
+test('bootGuardRoots: sem PRISMA_ROOT confere só a raiz do código', () => {
+    const codeRoot = fs.mkdtempSync(path.join(tmp, 'code-'));
+    assert.deepStrictEqual(bootGuardRoots({ codeRoot, env: {} }), [codeRoot]);
+    assert.deepStrictEqual(bootGuardRoots({ codeRoot, env: { PRISMA_ROOT: '' } }), [codeRoot]);
+});
+
+test('bootGuardRoots: PRISMA_ROOT igual à raiz do código (realpath ou symlink) confere uma raiz', () => {
+    const codeRoot = fs.mkdtempSync(path.join(tmp, 'code-'));
+    const link = path.join(tmp, `code-link-${++n}`);
+    fs.symlinkSync(codeRoot, link);
+    assert.deepStrictEqual(bootGuardRoots({ codeRoot, env: { PRISMA_ROOT: fs.realpathSync(codeRoot) } }), [codeRoot]);
+    assert.deepStrictEqual(bootGuardRoots({ codeRoot, env: { PRISMA_ROOT: `${codeRoot}/` } }), [codeRoot]);
+    assert.deepStrictEqual(bootGuardRoots({ codeRoot, env: { PRISMA_ROOT: link } }), [codeRoot]);
+});
+
+test('bootGuardRoots: PRISMA_ROOT diferente confere as duas, a do código primeiro', () => {
+    const codeRoot = fs.mkdtempSync(path.join(tmp, 'code-'));
+    const other = fs.mkdtempSync(path.join(tmp, 'other-'));
+    assert.deepStrictEqual(bootGuardRoots({ codeRoot, env: { PRISMA_ROOT: other } }), [codeRoot, other]);
+});
+
+test('checkoutGuard com roots: só a raiz recusada aparece, com os caminhos dela', () => {
+    const clean = guardRepo();
+    const dirty = guardRepo();
+    fs.writeFileSync(path.join(dirty, 'solto.txt'), 'sujo\n');
+    const r = checkoutGuard({ roots: [clean, dirty], env: { PRISMA_CHECKOUT_GUARD: '1' }, git: countingGit() });
+    assert.deepStrictEqual(r.reasons, ['dirty']);
+    assert.deepStrictEqual(r.paths, ['solto.txt']);
+    assert.deepStrictEqual(r.byRoot, [{ root: dirty, reasons: ['dirty'], paths: ['solto.txt'] }]);
+});
+
+test('checkoutGuard com roots: motivos sem repetição e até 10 caminhos no total', () => {
+    const a = guardRepo();
+    const b = guardRepo();
+    guardSh(b, 'switch', '--quiet', '-c', 'fora');
+    fs.writeFileSync(path.join(b, 'c.txt'), 'fora\n');
+    guardSh(b, 'add', 'c.txt');
+    guardSh(b, 'commit', '--quiet', '-m', 'fora');
+    for (let i = 0; i < 7; i++) {
+        fs.writeFileSync(path.join(a, `a${i}.txt`), 'x\n');
+        fs.writeFileSync(path.join(b, `b${i}.txt`), 'x\n');
+    }
+    const r = checkoutGuard({ roots: [a, b], env: { PRISMA_CHECKOUT_GUARD: '1' }, git: countingGit() });
+    assert.deepStrictEqual(r.reasons, ['dirty', 'off_main']);
+    assert.strictEqual(r.paths.length, 10);
+    assert.deepStrictEqual(r.byRoot.map(x => [x.root, x.reasons, x.paths.length]), [[a, ['dirty'], 7], [b, ['dirty', 'off_main'], 3]]);
+    assert.deepStrictEqual(r.paths, [...r.byRoot[0].paths, ...r.byRoot[1].paths]);
+});
+
+test('checkoutGuard: cada git do guard recebe o prazo GUARD_GIT_TIMEOUT_MS', () => {
+    const root = guardRepo();
+    const git = recordingGit();
+    assert.strictEqual(checkoutGuard({ root, env: { PRISMA_CHECKOUT_GUARD: '1' }, git }), null);
+    assert.ok(git.seen.length > 0);
+    assert.deepStrictEqual([...new Set(git.seen.map(c => c.timeout))], [GUARD_GIT_TIMEOUT_MS]);
+});
+
+test('guard do tick: cada git recebe o prazo GUARD_GIT_TIMEOUT_MS', async () => {
+    const root = guardRepo();
+    const git = recordingGit();
+    const m = manager(fake('guard-timeout', `console.log('tick ok');`), { prismaRoot: root, git, env: { PRISMA_CHECKOUT_GUARD: '1' } });
+    await m.start();
+    await until(() => m.status().ticks >= 1);
+    await m.stop();
+    assert.ok(git.seen.length > 0);
+    assert.deepStrictEqual([...new Set(git.seen.map(c => c.timeout))], [GUARD_GIT_TIMEOUT_MS]);
+});
+
+test('guard do tick: árvore limpa numa branch fora da main recusa com off_main', async () => {
+    const root = guardRepo();
+    guardSh(root, 'switch', '--quiet', '-c', 'fora');
+    fs.writeFileSync(path.join(root, 'b.txt'), 'fora\n');
+    guardSh(root, 'add', 'b.txt');
+    guardSh(root, 'commit', '--quiet', '-m', 'fora');
+    const marker = path.join(tmp, `guard-spawn-${++n}`);
+    const m = manager(fake('guard-off-main', `require('fs').writeFileSync(${JSON.stringify(marker)}, 'x');`),
+        { prismaRoot: root, git: countingGit(), env: { PRISMA_CHECKOUT_GUARD: '1' } });
+    const st = await m.start();
+    await new Promise(r => setTimeout(r, 250));
+    assert.ok(!fs.existsSync(marker), 'nenhum spawn');
+    assert.strictEqual(st.error, 'checkout_guard');
+    assert.deepStrictEqual(st.guard, { reasons: ['off_main'], paths: [] });
+    assert.strictEqual(m.status().state, 'stopped');
+});
+
+test('guard: HEAD destacado numa tag verde/* alcançável pela origin/main passa e o tick roda', async () => {
+    const root = guardRepo();
+    guardSh(root, 'tag', '-a', 'verde/20260101-000000', '-m', 'verde');
+    fs.writeFileSync(path.join(root, 'b.txt'), 'dois\n');
+    guardSh(root, 'add', 'b.txt');
+    guardSh(root, 'commit', '--quiet', '-m', 'dois');
+    guardSh(root, 'push', '--quiet', 'origin', 'main');
+    guardSh(root, 'fetch', '--quiet', 'origin');
+    guardSh(root, 'switch', '--quiet', '--detach', 'verde/20260101-000000');
+    const env = { PRISMA_CHECKOUT_GUARD: '1' };
+    assert.strictEqual(checkoutGuard({ root, env, git: countingGit() }), null);
+    const m = manager(fake('guard-verde', `console.log('tick ok');`), { prismaRoot: root, git: countingGit(), env });
+    await m.start();
+    await until(() => texts(m).includes('tick ok'));
+    assert.strictEqual(m.status().error, null);
+    assert.strictEqual(m.status().guard, null);
+    await m.stop();
 });

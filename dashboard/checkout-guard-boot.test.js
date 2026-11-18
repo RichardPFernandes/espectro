@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 
 const GIT_ENV = {
     GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1',
@@ -25,11 +25,11 @@ function sh(cwd, ...args) {
     if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
 }
 
-function dirtyRepo() {
-    const origin = path.join(base, 'origin.git');
-    const root = path.join(base, 'work');
-    sh(base, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
-    sh(base, 'init', '--quiet', '--initial-branch=main', root);
+function dirtyRepo(dir = base) {
+    const origin = path.join(dir, 'origin.git');
+    const root = path.join(dir, 'work');
+    sh(dir, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
+    sh(dir, 'init', '--quiet', '--initial-branch=main', root);
     fs.writeFileSync(path.join(root, 'a.txt'), 'um\n');
     sh(root, 'add', 'a.txt');
     sh(root, 'commit', '--quiet', '-m', 'um');
@@ -87,4 +87,68 @@ test('flag ligada e árvore suja: o dashboard sai com 2, cita o motivo e não ab
     assert.match(r.stderr, /solto\.txt/);
     assert.doesNotMatch(r.stdout, /\[dashboard\] http:\/\//);
     assert.equal(await portOpen(port), false);
+});
+
+// AC-06 na subida: sem a flag, nenhum git do guard roda. Um shim de `git` no início do PATH
+// registra cwd e argumentos e repassa ao git real. O servidor sobe numa porta livre e é
+// encerrado pelo PID que este teste criou.
+test('flag ausente: a subida não roda nenhum git do guard e abre a porta (AC-06)', async () => {
+    const dir = fs.mkdtempSync(path.join(base, 'ac06-'));
+    const root = dirtyRepo(dir);
+    const consumer = fs.mkdtempSync(path.join(dir, 'consumer-'));
+    const home = fs.mkdtempSync(path.join(dir, 'home-'));
+    const memory = fs.mkdtempSync(path.join(dir, 'memory-'));
+    const realGit = spawnSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+    assert.ok(realGit, 'git real não encontrado');
+    const shimDir = fs.mkdtempSync(path.join(dir, 'shim-'));
+    const log = path.join(shimDir, 'calls.log');
+    fs.writeFileSync(path.join(shimDir, 'git'), `#!/bin/sh\nprintf '%s\\t%s\\n' "$(pwd -P)" "$*" >> '${log}'\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+    const PATH = `${shimDir}${path.delimiter}${process.env.PATH}`;
+    // O shim está no caminho e registra: confere antes de subir o servidor.
+    assert.equal(spawnSync('git', ['--version'], { cwd: dir, env: { PATH }, encoding: 'utf8' }).status, 0);
+    assert.match(fs.readFileSync(log, 'utf8'), /\t--version\n/);
+    fs.writeFileSync(log, '');
+
+    let port = await freePort();
+    if (port === 3333) port = await freePort();
+    assert.notEqual(port, 3333);
+    const child = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+        cwd: consumer,
+        env: {
+            PATH,
+            HOME: home,
+            TMPDIR: process.env.TMPDIR || os.tmpdir(),
+            NODE_OPTIONS: process.env.NODE_OPTIONS || '',
+            ...GIT_ENV,
+            PRISMA_ROOT: root,
+            REPO_PATH: consumer,
+            MEMORY_DIR: memory,
+            PORT: String(port),
+            HOST: '127.0.0.1',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', d => { out += d; });
+    child.stderr.on('data', d => { err += d; });
+    try {
+        await new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error(`sem listen em 20s\n${out}\n${err}`)), 20000);
+            child.stdout.on('data', () => { if (out.includes(`[dashboard] http://localhost:${port}`)) { clearTimeout(t); resolve(); } });
+            child.once('exit', (code, sig) => { clearTimeout(t); reject(new Error(`saiu antes do listen: ${code} ${sig}\n${out}\n${err}`)); });
+        });
+        assert.equal(await portOpen(port), true);
+    } finally {
+        if (child.exitCode === null && child.signalCode === null) {
+            const exited = new Promise(resolve => child.once('exit', resolve));
+            process.kill(child.pid, 'SIGTERM');
+            const t = setTimeout(() => { try { process.kill(child.pid, 'SIGKILL'); } catch {} }, 5000);
+            await exited;
+            clearTimeout(t);
+        }
+    }
+    const calls = fs.readFileSync(log, 'utf8');
+    assert.doesNotMatch(calls, /status --porcelain/, calls);
+    assert.doesNotMatch(calls, /merge-base --is-ancestor/, calls);
 });

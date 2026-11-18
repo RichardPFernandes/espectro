@@ -3861,12 +3861,17 @@ if (require.main === module) {
     // COORD_STATUS_PATH ficam num arquivo temporário (coordination.js).
     applyCoordinationDefault(process.env);
     // Guard do checkout (F1.2, PRI-379): com PRISMA_CHECKOUT_GUARD ligada, árvore do Prisma
-    // suja ou fora da main não sobe (sai com 2, sem abrir a porta). Flag ausente: nada roda.
-    const guardRoot = path.resolve(process.env.PRISMA_ROOT || path.join(__dirname, '..'));
-    const guardRefused = defaultWatcherManager.checkoutGuard({ root: guardRoot, env: process.env });
+    // suja ou fora da main não sobe (sai com 2, sem abrir a porta). Confere sempre a raiz de
+    // onde este código roda e, se PRISMA_ROOT apontar para outra, também ela. Flag ausente:
+    // nada roda.
+    const guardRoots = defaultWatcherManager.bootGuardRoots({ codeRoot: path.resolve(__dirname, '..'), env: process.env });
+    const guardRefused = defaultWatcherManager.checkoutGuard({ roots: guardRoots, env: process.env });
     if (guardRefused) {
-        console.error(`[dashboard] subida recusada pelo guard do checkout (PRISMA_CHECKOUT_GUARD): ${guardRefused.reasons.join(', ')} em ${guardRoot}`);
-        for (const p of guardRefused.paths) console.error(`[dashboard]   ${p}`);
+        console.error(`[dashboard] subida recusada pelo guard do checkout (PRISMA_CHECKOUT_GUARD): ${guardRefused.reasons.join(', ')}`);
+        for (const r of guardRefused.byRoot) {
+            console.error(`[dashboard]   em ${r.root}: ${r.reasons.join(', ')}`);
+            for (const p of r.paths) console.error(`[dashboard]     ${p}`);
+        }
         process.exit(2);
     }
     const PORT = Number(process.env.PORT) || 3333;
