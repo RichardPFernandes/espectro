@@ -26,6 +26,7 @@ execuções.
 - [x] Sonda da CLI rodada uma vez com a CLI real.
 - [x] Uma fatia real passou pelo `/pri-*` abrindo pela spec viva e fechando com ela atualizada (F0.11 a F0.13); `tasks/` só com o que está em curso (F0.14).
 - [x] Tabela-ponte publicada: cada página do canvas de design e cada macrofase da arquitetura tem um destino (F0.10).
+- [ ] Conhecimento durável: a fatia que muda uma capacidade `sem-spec` faz nascer a spec viva dela no mesmo PR, e a decisão de arquitetura tomada vira ADR em `docs/adr/` (F0.15).
 
 ## Fatias
 
@@ -45,6 +46,7 @@ execuções.
 | F0.12 | Três specs vivas completas (`spec`, `grafo`, `estado`), seção "Delta de capacidade" no modelo de SPEC e aviso no `processo-check` (C2) | 3 | Leve | Não | F0.11 | D5 | concluída | PRI-402 |
 | F0.13 | Fluxo `/pri-*` amarrado à spec viva: a fatia abre pela capacidade, a mudança traz o delta e o PR só sai com a spec viva conferida | 2 | Leve | Não | F0.4, F0.12 | D5 | concluída | PRI-409 |
 | F0.14 | Arrumar a casa: `tasks/` de issue fechada para `docs/historico/`, `docs/prisma/` marcado como histórico e uma só descrição do fluxo de desenvolvimento (C3) | 1 | Leve | Não | F0.11 | D5 | concluída | PRI-411 |
+| F0.15 | Conhecimento durável: a spec viva nasce na primeira fatia que muda a capacidade `sem-spec`, e a decisão de arquitetura vira ADR (sem tipo RFC) | 2 | Leve | Não | F0.13 | D5 | em andamento | PRI-412 |
 
 ## Sementes das fatias ainda não iniciadas
 
@@ -94,3 +96,13 @@ execuções.
 - **Não inclui.** Mover código; apagar histórico.
 - AC-01: pastas de `tasks/` de issue fechada estão em `docs/historico/`, como já foi feito com a PRI-233; `docs/prisma/` está marcado como histórico.
 - AC-02: `AGENTS.md`, `README.md` e as skills descrevem o mesmo fluxo de desenvolvimento, sem contradição.
+
+### F0.15 — Conhecimento durável
+
+- **Intenção.** O que uma fatia decide e muda fica num lugar durável e achável: a spec viva cobre a capacidade tocada e a decisão de arquitetura vira ADR. Em 18/11, F1.2, F1.6 e F0.9 mudaram comportamento em capacidade `sem-spec` e nenhuma spec viva nasceu.
+- **Não inclui.** Escrever de uma vez as 13 specs que faltam; criar o tipo RFC (a SPEC Alto e as propostas da Mesa fazem esse papel); mudar `.claude/commands/` ou qualquer coisa que rode numa Run.
+- AC-01: a F0.15 está nesta página, com linha na tabela, semente e critério de saída ajustado; o `roadmap-lint` fica verde.
+- AC-02: mudança de comportamento em capacidade `sem-spec` faz nascer a spec viva dela (uma página, no molde das três existentes) no mesmo PR; o `/pri-start` avisa, o revisor do `/pri-check` cobra e o `processo-check` avisa.
+- AC-03: `docs/adr/` existe, com README, modelo curto e de 5 a 8 decisões já tomadas, cada uma citando a fonte.
+- AC-04: o `/pri-pr` pergunta se a fatia tomou decisão de arquitetura; se tomou, o ADR entra no PR, e a Evidência traz a linha "ADR: número ou nenhum".
+- AC-05: `AGENTS.md`, `CLAUDE.md` e `docs/fluxo-dev.md` dizem em uma linha onde mora cada coisa: SPEC da fatia, spec viva, ADR e `DECISOES.md`.
