@@ -80,10 +80,10 @@ const sl = (id, status, dias, extra = {}) => ({ id, phase: 1, name: id, dias, ni
 const modelo = slices => ({ phases: [{ n: 1, name: 'Um', file: 'x', status: 'em andamento', start: '2026-11-23', end: '2027-01-15', slices }] });
 const attr = (html, id) => new RegExp(`<li data-id="${id}" data-status="([^"]+)"`).exec(html)?.[1];
 
-test('página do repo real: toda fatia com o status da tabela e #alto só com as Alto', () => {
+test('página do repo real: toda fatia viva com o status da tabela e #alto só com as Alto vivas', () => {
     const model = loadRoadmap(REPO);
     const html = render(model, OPTS);
-    const slices = model.phases.flatMap(p => p.slices);
+    const slices = model.phases.flatMap(p => p.slices).filter(s => s.status !== 'removida');
     for (const s of slices) assert.strictEqual(attr(html, s.id), s.status, s.id);
     const alto = /<section id="alto"[\s\S]*?<\/section>/.exec(html)[0];
     assert.deepStrictEqual([...alto.matchAll(/<td>(F\d+\.\d+)<\/td>/g)].map(m => m[1]), slices.filter(s => s.alto).map(s => s.id));
@@ -134,4 +134,17 @@ test('main: grava index.html em diretório novo e em caminho .html, sem git, com
         assert.match(fs.readFileSync(f, 'utf8'), /^<!doctype html>[\s\S]*commit 1234567/);
     }
     fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test('removida não aparece na lista, no grafo nem na tabela de Alto; o card só cita o ID', () => {
+    const fx = (id, status, alto = false) => ({ id, name: `nome ${id}`, dias: 2, nivel: alto ? 'Alto' : 'Leve', autorizo: alto ? 'Sim' : 'Não', alto, status, deps: [], issue: '', phase: 0 });
+    const model = { phases: [{ n: 0, name: 'Zero', status: 'em andamento', start: '2026-11-16', end: '2026-12-01',
+        slices: [fx('F0.1', 'concluída'), fx('F0.5', 'removida', true), fx('F0.8', 'não iniciada', true)] }] };
+    const html = render(model, { today: '2026-11-18', commit: 'abcdef1', generatedAt: 'x' });
+    assert.ok(!html.includes('data-id="F0.5"'), 'lista');
+    assert.ok(!html.includes('<title>F0.5'), 'grafo');
+    assert.ok(!/<td>F0\.5<\/td>/.test(html), 'tabela de Alto');
+    assert.ok(/<td>F0\.8<\/td>/.test(html), 'Alto vivo segue na tabela');
+    assert.match(html, /Removidas: F0\.5/);
+    assert.match(html, /<summary>2 fatias<\/summary>/);
 });
