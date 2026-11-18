@@ -433,13 +433,15 @@ function taskIdOf(runDir) {
 
 /**
  * Checkout principal dono do run: <root>/memory/runs/<task> ou
- * <root>/.claude/worktrees/<id>/memory/runs/<task> → <root>. Fora desse layout, a raiz
- * deste repositório.
+ * <root>/.claude/worktrees/<id>/memory/runs/<task> → <root>. Run fora desse layout (os
+ * testes criam runs no TMPDIR) → a pasta que contém o run, para nunca gravar no checkout de
+ * quem roda a suíte (PRI-372). Sem run, a raiz deste repositório.
  */
 function mainRootOf(runDir) {
     const abs = path.resolve(String(runDir || '.'));
     const marker = `${path.sep}memory${path.sep}runs`;
     const i = abs.indexOf(marker);
+    if (i === -1 && runDir) return path.dirname(abs);
     let root = i === -1 ? (process.env.REPO_PATH || process.cwd()) : abs.slice(0, i);
     const wt = root.indexOf(`${path.sep}.claude${path.sep}worktrees${path.sep}`);
     if (wt !== -1) root = root.slice(0, wt);
