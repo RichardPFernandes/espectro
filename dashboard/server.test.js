@@ -1136,7 +1136,7 @@ test('POST /pre-build/retry: recompila no worktree do ticket e grava o resultado
 });
 
 // ---------------------------------------------------------------------------------
-// Bolinhas das etapas: /test, /verify e /commit não gravam em history (ticket 43812)
+// Bolinhas das etapas: /test, /verify e /commit não gravam em history (ticket 13812)
 
 test('nodes: run commitado marca todas as etapas; node_end dos events conta como concluído', async () => {
     const endOf = node => [{ type: 'node_start', node }, { type: 'node_end', node }];

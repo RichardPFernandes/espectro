@@ -255,11 +255,11 @@ test('spec antiga sem IDs: plan-scorer segue na heurística de antes (modo legac
 test('registro v2: só ticket_id/spec_hash/ac_ids — sem texto do critério', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ac-reg-'));
     const registryPath = path.join(dir, 'ac-registry.json');
-    const acs = acRegistry.extractACs(VALID, '43646');
+    const acs = acRegistry.extractACs(VALID, '10005');
     assert.deepStrictEqual(acs.acIds, ['AC-01', 'AC-02', 'AC-03']);
-    acRegistry.updateRegistry('43646', acs, { registryPath, specContent: VALID });
-    const entry = JSON.parse(fs.readFileSync(registryPath, 'utf8')).tasks['43646'];
-    assert.strictEqual(entry.ticket_id, '43646');
+    acRegistry.updateRegistry('10005', acs, { registryPath, specContent: VALID });
+    const entry = JSON.parse(fs.readFileSync(registryPath, 'utf8')).tasks['10005'];
+    assert.strictEqual(entry.ticket_id, '10005');
     assert.strictEqual(entry.spec_hash, acRegistry.specHash(VALID));
     assert.deepStrictEqual(entry.ac_ids, ['AC-01', 'AC-02', 'AC-03']);
     assert.ok(!('criteria' in entry) && !('legacy' in entry), 'texto fica só na spec');

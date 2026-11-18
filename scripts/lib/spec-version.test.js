@@ -25,9 +25,9 @@ const ENV = { ...process.env, BITBUCKET_API_TOKEN: SECRET_TOKEN, REDMINE_API_KEY
 // Spec como o /fetch-ticket cria (template, ACs ainda vazios)...
 const TEMPLATE_SPEC = `---
 spec_template_version: 1
-ticket: 43700
+ticket: 10004
 ---
-# Ticket #43700 — Desconto por volume
+# Ticket #10004 — Desconto por volume
 
 ## Contexto
 Hoje o relatório de fretes não mostra o desconto por volume.
@@ -41,9 +41,9 @@ Hoje o relatório de fretes não mostra o desconto por volume.
 // ...e como fica depois que um humano preenche (antes do /plan).
 const FILLED_SPEC = `---
 spec_template_version: 1
-ticket: 43700
+ticket: 10004
 ---
-# Ticket #43700 — Desconto por volume
+# Ticket #10004 — Desconto por volume
 
 ## Contexto
 Hoje o relatório de fretes não mostra o desconto por volume.
@@ -69,19 +69,19 @@ const cli = (script, args) => spawnSync(process.execPath, [path.join(LIB, script
 /** Run como o /fetch-ticket deixa: state.json + spec do template, sem bloco spec ainda. */
 function seedFetchedRun({ spec = TEMPLATE_SPEC, state = {} } = {}) {
     const root = path.join(sandbox, `repo-${++seq}`);
-    const taskId = `43700-desconto-${seq}`;
+    const taskId = `10004-desconto-${seq}`;
     const dir = path.join(root, 'memory', 'runs', taskId);
     fs.mkdirSync(dir, { recursive: true });
     fs.mkdirSync(path.join(root, 'memory', 'spec'), { recursive: true });
-    const specFile = path.join(root, 'memory', 'spec', '43700-spec.md');
+    const specFile = path.join(root, 'memory', 'spec', '10004-spec.md');
     fs.writeFileSync(specFile, spec);
     fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
         task_id: taskId, node: 'plan', history: ['fetch_ticket'], status: 'in_progress',
         started_at: '2026-10-01T10:00:00.000Z', ac_ids: [],
-        redmine_ticket: { id: 43700, subject: 'Desconto por volume', tracker: 'Melhoria', base_branch: 'development' },
+        redmine_ticket: { id: 10004, subject: 'Desconto por volume', tracker: 'Melhoria', base_branch: 'development' },
         ...state,
     }, null, 2));
-    return { root, taskId, dir, specFile, changelog: path.join(root, 'memory', 'spec', '43700-spec-changelog.json') };
+    return { root, taskId, dir, specFile, changelog: path.join(root, 'memory', 'spec', '10004-spec-changelog.json') };
 }
 
 const stateOf = dir => readJson(path.join(dir, 'state.json'));
@@ -95,7 +95,7 @@ function seedPlannedRun() {
     assert.strictEqual(out.status, 0, out.stderr);
     const st = stateOf(r.dir);
     fs.writeFileSync(path.join(r.dir, 'plan.md'), `# Plano\n\n${sv.prLine(st)}\nACs: AC-01, AC-02, AC-03\n\n## Plano de execução\n1. Desconto. Critérios: AC-01, AC-02, AC-03\n`);
-    fs.writeFileSync(path.join(r.dir, 'handoff.md'), '# Handoff\n\n- Spec: memory/spec/43700-spec.md\n- ACs: AC-01, AC-02, AC-03\n');
+    fs.writeFileSync(path.join(r.dir, 'handoff.md'), '# Handoff\n\n- Spec: memory/spec/10004-spec.md\n- ACs: AC-01, AC-02, AC-03\n');
     return { ...r, baselineOut: out.stdout };
 }
 
@@ -150,7 +150,7 @@ test('PRI-177: escrita atômica segue cadeia de symlinks relativos até o change
     fs.symlinkSync('changelog.json', hop);
     fs.symlinkSync(path.relative(path.dirname(r.changelog), hop), r.changelog);
     const entry = { version: 1, hash: 'a'.repeat(64), by: 'qa_retry', at: '2026-10-16T10:00:00.000Z' };
-    assert.strictEqual(sv.appendRebaseline(r.root, 'memory/spec/43700-spec-changelog.json', entry).ok, true);
+    assert.strictEqual(sv.appendRebaseline(r.root, 'memory/spec/10004-spec-changelog.json', entry).ok, true);
     assert.ok(fs.lstatSync(r.changelog).isSymbolicLink());
     assert.ok(fs.lstatSync(hop).isSymbolicLink());
     assert.deepStrictEqual(readJson(target).rebaselines, [entry]);
@@ -161,7 +161,7 @@ test('PRI-177: link quebrado do changelog falha sem substituir link ou criar des
     const r = seedFetchedRun();
     fs.symlinkSync('ausente.json', r.changelog);
     const entry = { version: 1, hash: 'a'.repeat(64), hash_scope: 'contract_sections_v1' };
-    assert.throws(() => sv.appendVersion(r.root, 'memory/spec/43700-spec-changelog.json', entry), { code: 'ENOENT' });
+    assert.throws(() => sv.appendVersion(r.root, 'memory/spec/10004-spec-changelog.json', entry), { code: 'ENOENT' });
     assert.strictEqual(fs.readlinkSync(r.changelog), 'ausente.json');
     assert.ok(!fs.existsSync(path.join(path.dirname(r.changelog), 'ausente.json')));
     assert.ok(!fs.readdirSync(path.dirname(r.changelog)).some(name => name.endsWith('.tmp')));
@@ -177,8 +177,8 @@ test('1. spec nova: fetch-ticket grava spec v1 + hash do HASH_SCOPE; /plan sela 
     assert.strictEqual(st.spec.hash, sh.contractHash(TEMPLATE_SPEC));
     assert.strictEqual(st.spec.hash_scope, 'contract_sections_v1');
     assert.strictEqual(st.spec.status, 'draft');
-    assert.strictEqual(st.spec.path, 'memory/spec/43700-spec.md');
-    assert.strictEqual(st.spec.id, '43700');
+    assert.strictEqual(st.spec.path, 'memory/spec/10004-spec.md');
+    assert.strictEqual(st.spec.id, '10004');
     assert.ok(!fs.existsSync(r.changelog), 'changelog só nasce na selagem');
     // init é idempotente
     assert.strictEqual(cli('spec-version.js', ['init', r.dir]).status, 0);
@@ -188,7 +188,7 @@ test('1. spec nova: fetch-ticket grava spec v1 + hash do HASH_SCOPE; /plan sela 
     fs.writeFileSync(r.specFile, FILLED_SPEC);
     const base = cli('spec-authority.js', ['baseline', r.dir]);
     assert.strictEqual(base.status, 0, base.stderr);
-    assert.match(base.stdout, /spec v1 selada — declare no topo do plan\.md: Spec: memory\/spec\/43700-spec\.md · spec_version=1 · spec_hash=[0-9a-f]{12}/);
+    assert.match(base.stdout, /spec v1 selada — declare no topo do plan\.md: Spec: memory\/spec\/10004-spec\.md · spec_version=1 · spec_hash=[0-9a-f]{12}/);
     const sealed = stateOf(r.dir);
     const hash = sh.contractHash(FILLED_SPEC);
     assert.strictEqual(sealed.spec.version, 1);
@@ -199,7 +199,7 @@ test('1. spec nova: fetch-ticket grava spec v1 + hash do HASH_SCOPE; /plan sela 
     assert.strictEqual(sealed.spec_hash_scope, 'contract_sections_v1');
     assert.strictEqual(sealed.spec_hash_version, 1);
     const log = readJson(r.changelog);
-    assert.strictEqual(log.spec_id, '43700');
+    assert.strictEqual(log.spec_id, '10004');
     assert.deepStrictEqual(log.versions.map(v => [v.version, v.reason, v.approval_ref, v.diff_summary]), [[1, 'initial', null, null]]);
     assert.strictEqual(log.versions[0].hash, hash);
     // o mesmo hash por todas as portas de entrada (AC-02)
@@ -387,16 +387,16 @@ test('7. run legado (sem bloco "spec"): nada quebra — hash legado, sem versão
     assert.strictEqual(sa.enforceSpecIntegrity(st, { root: r.root, taskId: r.taskId, node: 'review' }).proceed, true);
     assert.deepStrictEqual(sv.stampFor(st, st.spec_hash), { spec_version: null, spec_hash: st.spec_hash, mismatch: false, message: null });
     assert.deepStrictEqual(sv.checkArtifacts({ state: st, currentHash: st.spec_hash, planContent: '# x' }), { artifacts: [], warnings: [], failures: [] });
-    assert.strictEqual(sv.commitMessage(st, '43700 - Desconto por volume'), '43700 - Desconto por volume');
+    assert.strictEqual(sv.commitMessage(st, '10004 - Desconto por volume'), '10004 - Desconto por volume');
     assert.strictEqual(sv.prLine(st), null);
     assert.strictEqual(sv.describe(st, { root: r.root }).status, 'UNVERSIONED');
     assert.strictEqual(cli('spec-version.js', ['show', r.dir]).status, 1);
-    assert.strictEqual(cli('spec-version.js', ['commit-message', r.dir, '43700 - X']).stdout.trim(), '43700 - X');
+    assert.strictEqual(cli('spec-version.js', ['commit-message', r.dir, '10004 - X']).stdout.trim(), '10004 - X');
     const facts = kg.taskFacts({ taskId: r.taskId, state: { ...st, pull_request: { 'app-back': { url: 'https://bitbucket.org/w/app-back/pull-requests/9' } } } });
     assert.strictEqual(facts.nodes['PR-app-back-9'].spec_version, null);
     // Verify num run legado roda sem erro de versão
     fs.writeFileSync(path.join(r.dir, 'plan.md'), '# Plano\n\n## Plano de execução\n1. Critérios: AC-01, AC-02, AC-03\n');
-    fs.writeFileSync(path.join(r.dir, 'handoff.md'), '- Spec: memory/spec/43700-spec.md\n- ACs: AC-01, AC-02, AC-03\n');
+    fs.writeFileSync(path.join(r.dir, 'handoff.md'), '- Spec: memory/spec/10004-spec.md\n- ACs: AC-01, AC-02, AC-03\n');
     const res = sa.verifyRun(r.dir, st);
     assert.ok(!res.failures.some(f => /VERSION|MID_RUN/.test(f.code)));
     assert.strictEqual(res.spec_version, null);
@@ -440,23 +440,23 @@ test('8. acceptance-evidence.json registra spec_version e spec_hash corretos (e 
 // 9 ───────────────────────────────────────────────────────────────────────────────
 test('9. commit message contém a spec_version correta; PR leva a linha de metadados e o KG o dado da aresta PR→SpecVersion', () => {
     const r = seedPlannedRun();
-    const msg = cli('spec-version.js', ['commit-message', r.dir, '43700 - Desconto por volume']);
-    assert.strictEqual(msg.stdout.trim(), '43700 - Desconto por volume [spec_version=1]');
+    const msg = cli('spec-version.js', ['commit-message', r.dir, '10004 - Desconto por volume']);
+    assert.strictEqual(msg.stdout.trim(), '10004 - Desconto por volume [spec_version=1]');
     assert.strictEqual(approveChange(r, ADD_AC04).specVersion.version, 2);
     const st = stateOf(r.dir);
-    assert.strictEqual(sv.commitMessage(st, '43700 - Desconto por volume'), '43700 - Desconto por volume [spec_version=2]');
-    assert.strictEqual(sv.commitMessage(st, '43700 - Desconto por volume [spec_version=1]'), '43700 - Desconto por volume [spec_version=2]', 'tag antiga é trocada, nunca duplicada');
-    assert.strictEqual(cli('spec-version.js', ['pr-line', r.dir]).stdout.trim(), `Spec: memory/spec/43700-spec.md · spec_version=2 · spec_hash=${st.spec.hash.slice(0, 12)}`);
+    assert.strictEqual(sv.commitMessage(st, '10004 - Desconto por volume'), '10004 - Desconto por volume [spec_version=2]');
+    assert.strictEqual(sv.commitMessage(st, '10004 - Desconto por volume [spec_version=1]'), '10004 - Desconto por volume [spec_version=2]', 'tag antiga é trocada, nunca duplicada');
+    assert.strictEqual(cli('spec-version.js', ['pr-line', r.dir]).stdout.trim(), `Spec: memory/spec/10004-spec.md · spec_version=2 · spec_hash=${st.spec.hash.slice(0, 12)}`);
     // rascunho (não selado) não leva tag
     const draft = seedFetchedRun();
     cli('spec-version.js', ['init', draft.dir]);
-    assert.strictEqual(sv.commitMessage(stateOf(draft.dir), '43700 - X'), '43700 - X');
+    assert.strictEqual(sv.commitMessage(stateOf(draft.dir), '10004 - X'), '10004 - X');
     // knowledge graph: PR com a versão gravada pelo /commit
     const facts = kg.taskFacts({ taskId: r.taskId, state: { ...st, pull_request: { 'app-back': { url: 'https://bitbucket.org/w/app-back/pull-requests/77', ...sv.prSpecRef(st) } } } });
     assert.deepStrictEqual(
         (({ spec_id, spec_version, spec_hash }) => ({ spec_id, spec_version, spec_hash }))(facts.nodes['PR-app-back-77']),
-        { spec_id: '43700', spec_version: 2, spec_hash: st.spec.hash });
-    assert.strictEqual(facts.nodes['memory/spec/43700-spec.md'].spec_version, 2);
+        { spec_id: '10004', spec_version: 2, spec_hash: st.spec.hash });
+    assert.strictEqual(facts.nodes['memory/spec/10004-spec.md'].spec_version, 2);
 });
 
 // 10 ──────────────────────────────────────────────────────────────────────────────
@@ -466,7 +466,7 @@ test('10. spec-changelog.json nunca sobrescreve entradas anteriores', () => {
     approveChange(r, ADD_AC04);
     const log = readJson(r.changelog);
     assert.strictEqual(JSON.stringify(log.versions[0]), v1Entry, 'v1 intacta depois da v2');
-    const rel = 'memory/spec/43700-spec-changelog.json';
+    const rel = 'memory/spec/10004-spec-changelog.json';
     const entry = { version: 2, hash: 'a'.repeat(64), hash_scope: 'contract_sections_v1', created_at: '2026-10-01T13:00:00Z', reason: 'x', approval_ref: null, diff_summary: null };
     assert.match(sv.appendVersion(r.root, rel, entry).error, /versão 2 já registrada/);
     assert.match(sv.appendVersion(r.root, rel, { ...entry, version: 5 }).error, /fora de sequência \(esperada 3\)/);
@@ -476,7 +476,7 @@ test('10. spec-changelog.json nunca sobrescreve entradas anteriores', () => {
     const st = stateOf(r.dir);
     const corrected = fs.readFileSync(r.specFile, 'utf8').replace('- AC-02: O relatório exibe o desconto aplicado por frete.', '- AC-02: O relatório exibe o desconto aplicado por frete.\n  - Nota de correção (2026-10-02): vale também para o PDF.');
     fs.writeFileSync(r.specFile, corrected);
-    sa.applyBaseline(st, { root: r.root, specPath: 'memory/spec/43700-spec.md', by: 'qa_retry', taskId: r.taskId });
+    sa.applyBaseline(st, { root: r.root, specPath: 'memory/spec/10004-spec.md', by: 'qa_retry', taskId: r.taskId });
     const after = readJson(r.changelog);
     assert.deepStrictEqual(after.versions, log.versions);
     assert.strictEqual(after.rebaselines.length, 1);

@@ -70,7 +70,7 @@ test('Redmine falso: lista, detalhe, 404 fora do fixture, PUT registra nota sem 
     assert.strictEqual(list.ok, true);
     assert.deepStrictEqual((await list.json()).issues.map(t => t.id), [99999]);
     assert.strictEqual((await (await f('https://redmine.x/issues/99999.json?include=journals')).json()).issue.id, 99999);
-    const missing = await f('https://redmine.x/issues/43000.json');
+    const missing = await f('https://redmine.x/issues/13000.json');
     assert.strictEqual(missing.status, 404);
     assert.strictEqual(missing.ok, false);
     const put = await f('https://redmine.x/issues/99999.json', { method: 'PUT', body: JSON.stringify({ issue: { notes: '[Watcher] teste\nlinha 2' } }) });
