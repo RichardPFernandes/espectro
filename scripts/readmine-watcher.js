@@ -6133,6 +6133,15 @@ function writeWatcherModeFile() {
 }
 
 async function main() {
+    // PRI-381 (F1.5): valor inválido de WATCHER_CLI_RESULT_JSON falha na subida, antes da trava,
+    // de lease ou despacho; senão só lançaria no buildClaudeArgs, com o nó já em running.
+    try {
+        cliResult.cliResultJsonEnabled(process.env);
+    } catch (e) {
+        console.error(e.message);
+        process.exitCode = 1;
+        return;
+    }
     // PRI-181 c0b: valor efetivo da flag a cada tick (sem dado de ticket). Fica em main(),
     // depois do ramo --health-check, para não sujar testes, node-dispatcher nem o JSON do health.
     console.log(QA_DIAGNOSTICO ? '[qa-diagnostico] LIGADO' : '[qa-diagnostico] desligado (C0)');

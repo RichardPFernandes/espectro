@@ -7,6 +7,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 process.env.REPO_PATH = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-result-dispatch-repo-'));
 const { buildClaudeArgs } = require('../readmine-watcher');
@@ -45,6 +46,32 @@ test('buildClaudeArgs: flag on acrescenta --output-format json ao fim do argv', 
 
 test('buildClaudeArgs: valor inválido da flag é erro, não vira off', () => {
     assert.throws(() => buildClaudeArgs({ ...base, env: { WATCHER_CLI_RESULT_JSON: '1' } }), /WATCHER_CLI_RESULT_JSON/);
+});
+
+// Achado 3 da G3: o valor inválido lançava só no buildClaudeArgs, com o lease já tomado e o nó
+// em running. Agora o watcher falha na subida: sai com 1 e a mensagem de cliResultJsonEnabled,
+// antes da trava de instância e de qualquer escrita no REPO_PATH. Processo real, consumidor e
+// HOME descartáveis, Redmine inalcançável (127.0.0.1:9).
+test('subida do watcher: valor inválido da flag sai com erro antes da trava, de lease ou despacho', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-result-boot-'));
+    try {
+        const repo = path.join(tmp, 'consumer');
+        fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+        fs.mkdirSync(path.join(tmp, 'home'));
+        const r = spawnSync(process.execPath, [path.join(PRISMA_ROOT, 'scripts', 'readmine-watcher.js')], {
+            cwd: tmp, encoding: 'utf8', timeout: 60000,
+            env: { PATH: process.env.PATH, HOME: path.join(tmp, 'home'), LANG: 'C', LC_ALL: 'C', TMPDIR: tmp,
+                REPO_PATH: repo, REDMINE_URL: 'http://127.0.0.1:9', REDMINE_API_KEY: 'k', REDMINE_MIN_INTERVAL_MS: '0',
+                REDMINE_RETRY_BASE_DELAY_MS: '0', REDMINE_RETRY_MAX_ATTEMPTS: '1', DISABLE_AUTO_CLEANUP: 'true',
+                WATCHER_CLI_RESULT_JSON: 'talvez' },
+        });
+        assert.strictEqual(r.status, 1, `saída: ${r.stdout}${r.stderr}`);
+        assert.ok(r.stderr.includes('WATCHER_CLI_RESULT_JSON deve ser on ou off (veio "talvez")'), r.stderr);
+        assert.deepStrictEqual(fs.readdirSync(path.join(repo, '.git')), [], 'sem trava de instância');
+        assert.deepStrictEqual(fs.readdirSync(repo), ['.git'], 'nada escrito no consumidor (runtime, modo, runs)');
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
 });
 
 // Objeto `type: "result"` da CLI numa linha, como sai em stdout, e com o prefixo do log.
