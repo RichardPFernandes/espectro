@@ -144,7 +144,7 @@ function dashboardItem(v, head) {
 }
 
 // A trava do watcher e os agentes moram no repo do consumidor (REPO_PATH), não na raiz do
-// Prisma. lockStatus injetado vale (chamado com o repo); nulo, ou ausente sem repo, = sem trava.
+// Prisma. lockStatus injetado vale (chamado com o repo); ausente sem repo = trava reprova.
 const NO_REPO = 'repo do consumidor não informado (--repo ou REPO_PATH)';
 function resolveLockStatus(repo, lockStatus) {
     if (lockStatus !== undefined) return lockStatus;
@@ -152,9 +152,10 @@ function resolveLockStatus(repo, lockStatus) {
 }
 
 // "Legível" = status() não lança e a trava está livre, viva ou velha com conteúdo; arquivo
-// corrompido aparece como stale sem lock (watcher-lock.readLock) e reprova.
+// corrompido aparece como stale sem lock (watcher-lock.readLock) e reprova. Sem repo do
+// consumidor a trava não é conferida e reprova (a SPEC exige a trava legível para marcar).
 function lockItem(lockStatus, repo) {
-    if (!lockStatus) return { name: 'trava', status: 'desconhecido', reason: NO_REPO };
+    if (!lockStatus) return { name: 'trava', status: repo ? 'desconhecido' : 'fail', reason: NO_REPO };
     let st;
     try { st = lockStatus(repo); } catch { return { name: 'trava', status: 'fail', reason: 'status da trava ilegível' }; }
     const s = st?.lock_state;

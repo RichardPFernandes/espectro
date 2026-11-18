@@ -365,13 +365,13 @@ test('health: arquivo de trava corrompido reprova pela trava padrão', async () 
     assert.equal(byName(r).trava.status, 'fail');
 });
 
-test('health: sem repo do consumidor a trava fica desconhecida, com o motivo, e não reprova', async () => {
+test('health: sem repo do consumidor a trava reprova, com o motivo', async () => {
     const root = cloneOnMain();
     const head = sh(root, 'rev-parse', 'HEAD');
     const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() });
-    assert.equal(byName(r).trava.status, 'desconhecido');
+    assert.equal(byName(r).trava.status, 'fail');
     assert.equal(byName(r).trava.reason, 'repo do consumidor não informado (--repo ou REPO_PATH)');
-    assert.equal(r.ok, true);
+    assert.equal(r.ok, false);
 });
 
 test('health: lockStatus nulo deixa a trava desconhecida mesmo com repo', async () => {
@@ -419,7 +419,7 @@ test('health: last_run com limite de quedas antes da subida não reprova', async
     const root = cloneOnMain();
     const head = sh(root, 'rev-parse', 'HEAD');
     const last_run = { started_at: '2026-11-17T08:10:00.000Z', ended_at: '2026-11-17T08:20:00.000Z', uptime_ms: 600000, reason: 'restart_limit' };
-    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ last_run }) });
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ last_run }) }, { repo: root });
     assert.equal(byName(r).tick.status, 'pass');
     assert.equal(r.ok, true);
 });
@@ -427,7 +427,7 @@ test('health: last_run com limite de quedas antes da subida não reprova', async
 test('health: sem tick desde a subida fica desconhecido e não reprova', async () => {
     const root = cloneOnMain();
     const head = sh(root, 'rev-parse', 'HEAD');
-    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ ticks: 0, running: false, state: 'stopped', phase: null }) });
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ ticks: 0, running: false, state: 'stopped', phase: null }) }, { repo: root });
     assert.equal(byName(r).tick.status, 'desconhecido');
     assert.equal(r.ok, true);
 });
@@ -459,7 +459,7 @@ test('health: localhost e ::1 são aceitos; URL padrão usa 127.0.0.1 e PORT', a
         return { ok: true, status: 200, json: async () => body };
     };
     for (const baseUrl of ['http://localhost:4000', 'http://[::1]:4000']) {
-        const r = await health({ root, baseUrl, fetch, git });
+        const r = await health({ root, repo: root, baseUrl, fetch, git });
         assert.equal(r.ok, true, baseUrl);
     }
     const saved = process.env.PORT;

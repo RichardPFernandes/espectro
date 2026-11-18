@@ -178,12 +178,25 @@ test('mark: com o dashboard falso em ordem cria a tag e sai com 0', async () => 
     assert.ok(!r.stdout.includes(root) && !r.stdout.includes(os.tmpdir()));
 });
 
-test('mark: sem --repo nem REPO_PATH a trava sai desconhecida', async () => {
+test('mark: sem --repo nem REPO_PATH a trava reprova, sai com 1 e não cria tag', async () => {
     const root = cloneOnMain();
-    const r = await cli(['mark', '--root', root, '--json']);
-    const trava = JSON.parse(r.stdout).items.find(i => i.name === 'trava');
-    assert.equal(trava.status, 'desconhecido');
-    assert.match(trava.reason, /--repo ou REPO_PATH/);
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const srv = await fakeDashboard({
+        '/api/version': { status: 'ok', started_at: '2026-11-18T08:00:00.000Z', current: { sha: head }, drift: false },
+        '/api/watcher/status': { running: true, state: 'running', error: null, restarts: 0, ticks: 2, phase: 'idle', last_run: null },
+    });
+    let r;
+    try { r = await cli(['mark', '--root', root, '--json'], { port: srv.port }); } finally { await srv.close(); }
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.ok, false);
+    const trava = out.items.find(i => i.name === 'trava');
+    assert.equal(trava.status, 'fail');
+    assert.match(trava.reason, /repo do consumidor não informado \(--repo ou REPO_PATH\)/);
+    assert.equal(sh(root, 'tag', '-l', 'verde/*'), '');
+    const log = fs.readFileSync(path.join(root, 'logs', 'return-point.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+    assert.equal(log.length, 1);
+    assert.equal(log[0].ok, false);
 });
 
 test('back: volta ao último verde, sai com 0 e diz para reiniciar o dashboard', async () => {
