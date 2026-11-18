@@ -24,7 +24,7 @@ Contexto comum para cada subagente: leia `tasks/f0-8-merge-automatico-leve/SPEC.
   - Arquivos: `.github/scripts/merge-leve.mjs`, `.github/scripts/merge-leve-cli.test.mjs`
   - Depende de: T1
 
-- [ ] **T3: workflow `merge-leve.yml` (AC-01, AC-04; item c da SPEC)** · S
+- [x] **T3: workflow `merge-leve.yml` (AC-01, AC-04; item c da SPEC)** · S
   - Fazer: `.github/workflows/merge-leve.yml`.
     - `on: workflow_run`, com `workflows: [Tests, processo-check]` e `types: [completed]`. Sem `pull_request_target` e sem `workflow_dispatch`.
     - `permissions: {}` no topo. No job: `contents: write`, `pull-requests: write`, `actions: write`, `checks: read`, `statuses: read`.
@@ -36,7 +36,7 @@ Contexto comum para cada subagente: leia `tasks/f0-8-merge-automatico-leve/SPEC.
   - Arquivos: `.github/workflows/merge-leve.yml`, `.github/scripts/merge-leve-workflow.test.mjs`
   - Depende de: T2
 
-- [ ] **Ponto de controle (depois de T3):** `node --test .github/scripts/*.test.mjs` verde; merge em simulação coberto de ponta a ponta pelo teste do T2.
+- [x] **Ponto de controle (depois de T3):** `node --test .github/scripts/*.test.mjs` verde; merge em simulação coberto de ponta a ponta pelo teste do T2.
 
 - [ ] **T4: resumo diário na issue fixa (AC-03)** · M
   - Fazer: em `merge-leve-lib.mjs`, `buildDailySummary({ merged, skipped, date })` devolve markdown, ou `null` quando as duas listas estão vazias. `.github/scripts/merge-leve-resumo.mjs` exporta `run({ env, gh, config, now })`:
