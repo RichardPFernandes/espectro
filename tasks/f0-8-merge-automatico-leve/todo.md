@@ -38,7 +38,7 @@ Contexto comum para cada subagente: leia `tasks/f0-8-merge-automatico-leve/SPEC.
 
 - [x] **Ponto de controle (depois de T3):** `node --test .github/scripts/*.test.mjs` verde; merge em simulação coberto de ponta a ponta pelo teste do T2.
 
-- [ ] **T4: resumo diário na issue fixa (AC-03)** · M
+- [x] **T4: resumo diário na issue fixa (AC-03)** · M
   - Fazer: em `merge-leve-lib.mjs`, `buildDailySummary({ merged, skipped, date })` devolve markdown, ou `null` quando as duas listas estão vazias. `.github/scripts/merge-leve-resumo.mjs` exporta `run({ env, gh, config, now })`:
     - `merged`: PRs fechados nas últimas 24 h com `merged_by.login === 'github-actions[bot]'` (número, título, `PRI-NNN` tirado do título).
     - `skipped`: PRs abertos com `processo:leve` e fora de draft que `evaluatePr` recusa, com os motivos.
