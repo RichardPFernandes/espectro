@@ -60,6 +60,12 @@ O resultado esperado: cada push que de fato não aconteceu sai com código difer
   da PRI-94 em `dom06-dispatch-env.test.js`, que passa a esperar o commit novo no remote e dois
   efeitos `fulfilled` de push. Falha observável: outro teste de `scripts/lib/dom06-*.test.js` muda
   ou fica vermelho.
+- **AC-9. Forma que a chave não representa não roda.** Com mais de um refspec depois do remote, ou
+  com `--tags`, `--all`, `--mirror`, `--follow-tags` ou `--prune`, o script sai 2 antes de
+  autorizar, sem chamar `git push` e sem gravar efeito, e diz que a forma não é suportada.
+  `--delete`/`-d <branch>` é tratado como o refspec `:<branch>` (remoção, sem resolver commit local).
+  Falha observável: uma dessas formas sai 0 com `DUPLICATE`, chama o git ou grava efeito; ou
+  `--delete` de branch ausente localmente sai ≠ 0 sem remover a branch do remote.
 - **AC-8. Testes sem push real.** Os testes novos usam repos temporários e remotes locais (bare) em
   diretório temporário, com nomes neutros (`repo-a`, `repo-b`, `TICKET-X`). Falha observável: teste
   que usa rede, remote corporativo, número de ticket ou nome de repo do consumidor.
@@ -76,6 +82,8 @@ O resultado esperado: cada push que de fato não aconteceu sai com código difer
 - Q1: commit novo no mesmo repo é efeito novo (AC-3).
 - Q2: sem flag. A barreira é o bump com AUTORIZO e readback; a volta é reverter o commit ou
   voltar o checkout ao commit anterior.
+- AC-9 (Richard, 18/11/2026, depois da revisão G3): as formas de push que a chave não representa
+  falham fechado nesta fatia, para entrar no mesmo bump.
 
 **Perguntar antes**
 - Qualquer mudança em `.claude/commands/commit.md` (o AC-29 fixa o hash dele) ou no formato do

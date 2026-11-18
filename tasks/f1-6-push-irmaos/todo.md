@@ -28,6 +28,13 @@ Testes: `npm run test:changed -- origin/main` na raiz. Nada de push em remote re
   remote corrigido roda o git e grava `fulfilled`; sem `DOM06_ATTEMPT_FILE` e com Attempt revogado
   → rc 1 sem git (garantia atual). Atualizar a linha do push em `docs/capacidades/autorizacao.md`.
 
+- [x] **T4. Formas não suportadas falham fechado.** AC-9 (decisão do Richard, 18/11/2026).
+  Mais de um refspec, `--tags`, `--all`, `--mirror`, `--follow-tags`, `--prune` → rc 2 antes de
+  autorizar, sem git push nem efeito. `--delete`/`-d <branch>` vira `:<branch>`. Pular o valor de
+  `--recurse-submodules`. Cabeçalho: "não chama `git push`". Testes: cada forma recusada; `--delete`
+  e `:branch` removem a branch do remote e gravam `fulfilled`. Falha antes: `--tags` repetido dá
+  `DUPLICATE` com rc 0.
+
 ## Checkpoint
 
 - [ ] `npm test` e `npm run check` na raiz verdes.

@@ -332,3 +332,78 @@ test('AC-7: com Attempt revogado, sai 1 sem chamar o git e sem efeito', () => {
     assert.deepStrictEqual(pushEffects(attemptFile), []);
     assert.ok(!remoteHasBranch(remote));
 });
+
+test('AC-9: forma que a chave não representa sai 2 antes de autorizar, sem git push e sem efeito', () => {
+    const caseDir = newCase('nao-suportada');
+    const remote = makeRemote(caseDir, 'repo-a');
+    const repoA = cloneOf(caseDir, remote, 'repo-a');
+    git(repoA, 'push', '-q', 'origin', BRANCH);
+    git(repoA, 'branch', 'outra');
+    git(repoA, 'tag', 'v1');
+    const remoteRefs = () => git(caseDir, '--git-dir', remote, 'for-each-ref', '--format=%(refname)');
+    const refsBefore = remoteRefs();
+    const attemptFile = admit(caseDir);
+    // `--tags` duas vezes: antes do AC-9 a segunda saía 0 com DUPLICATE.
+    const forms = [
+        ['push', '--tags', 'origin'],
+        ['push', '--tags', 'origin'],
+        ['push', '--branches', 'origin'],
+        ['push', '--all', 'origin'],
+        ['push', '--mirror', 'origin'],
+        ['push', '--follow-tags', 'origin', BRANCH],
+        ['push', '--prune', 'origin', BRANCH],
+        ['push', 'origin', BRANCH, 'outra'],
+        ['push', '--delete', 'origin', BRANCH, 'outra'],
+        ['-C', repoA, 'push', '-u', 'origin', BRANCH, 'outra'],
+    ];
+
+    for (const args of forms) {
+        const r = pushEffect(repoA, attemptFile, args);
+        assert.strictEqual(r.status, 2, `${args.join(' ')}: ${r.stderr}`);
+        assert.match(r.stderr, /não suportada/, args.join(' '));
+        assert.match(r.stderr, /git push não rodou/, args.join(' '));
+    }
+    assert.deepStrictEqual(pushesLogged(), []);
+    assert.deepStrictEqual(pushEffects(attemptFile), []);
+    assert.strictEqual(remoteRefs(), refsBefore, 'o remote não mudou');
+});
+
+test('AC-9: o valor de --recurse-submodules não conta como refspec', () => {
+    const caseDir = newCase('recurse-submodules');
+    const remote = makeRemote(caseDir, 'repo-a');
+    const repoA = cloneOf(caseDir, remote, 'repo-a');
+    const attemptFile = admit(caseDir);
+
+    const r = pushEffect(repoA, attemptFile, ['push', '--recurse-submodules', 'check', '-u', 'origin', BRANCH]);
+
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(remoteHasBranch(remote));
+    assert.deepStrictEqual(pushEffects(attemptFile).map(e => e.status), ['fulfilled']);
+});
+
+// Branch já no remote e apagada no clone: a remoção não resolve commit local.
+for (const [nome, args] of [
+    ['--delete <branch>', ['push', '--delete', 'origin', BRANCH]],
+    ['-d <branch>', ['push', 'origin', '-d', BRANCH]],
+    [':<branch>', ['push', 'origin', `:${BRANCH}`]],
+]) {
+    test(`AC-9: ${nome} remove do remote a branch ausente localmente e grava fulfilled`, () => {
+        const caseDir = newCase(`remocao-${nome.replace(/\W+/g, '')}`);
+        const remote = makeRemote(caseDir, 'repo-a');
+        const repoA = cloneOf(caseDir, remote, 'repo-a');
+        git(repoA, 'push', '-q', 'origin', BRANCH);
+        git(repoA, 'checkout', '-q', '-b', 'outra');
+        git(repoA, 'branch', '-q', '-D', BRANCH);
+        assert.ok(remoteHasBranch(remote));
+        const attemptFile = admit(caseDir);
+
+        const r = pushEffect(repoA, attemptFile, args);
+
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.ok(!remoteHasBranch(remote), 'a branch saiu do remote');
+        const effects = pushEffects(attemptFile);
+        assert.deepStrictEqual(effects.map(e => e.status), ['fulfilled']);
+        assert.ok(effects[0].idempotency_key.includes(`${repoA}@delete`), effects[0].idempotency_key);
+        assert.strictEqual(pushesLogged().length, 1);
+    });
+}
