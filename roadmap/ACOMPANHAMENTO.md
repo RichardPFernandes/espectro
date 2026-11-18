@@ -9,9 +9,9 @@
 | # | Métrica | Onde já é medida | O que falta | Fatia que destrava |
 | -- | -- | -- | -- | -- |
 | 1 | Custo por ticket entregue (USD imputado e tokens), com n | Relatório semanal do dashboard: custo por ticket entregue, somando recusas de QA; o "Copiar resumo" traz a linha da série e a fonte do custo (JSON da CLI ou transcript, com a diferença), a versão da CLI e o hash dos prompts por run | Ligar `WATCHER_CLI_RESULT_JSON` no consumidor (Alto, AUTORIZO próprio); até lá, a fonte é o transcript | F1.5 |
-| 2 | Primeira passada e custo do retrabalho por nó | O weekly mostra primeira passada por run e retries por nó; a capa do relatório semanal traz a primeira passada por run e o retrabalho em USD imputado, com n | Custo do retrabalho; levar à capa | F1.4 |
+| 2 | Primeira passada e custo do retrabalho por nó | O weekly mostra primeira passada por run e retries por nó; a capa do relatório semanal traz a primeira passada por run e o retrabalho em USD imputado, com n | Nada; o retrabalho por nó segue na seção da F1.4 do relatório | F1.4 |
 | 3 | Runs bloqueadas pelo teto e runs acima de N vezes a mediana | Não medida | Teto de turnos; alerta de anomalia | F1.3 e F3.4 |
-| 4 | Estoque desligado: flags por estado, flags vencidas, itens construídos e desligados (9 em 15/11) | Relatório semanal do dashboard, lido do registro de flags (`docs/flags.md`): itens desligados, flags por padrão, vencidas e sem verificação no consumidor, com n | Registro de flags; até lá, contar à mão | F1.1 |
+| 4 | Estoque desligado: flags por estado, flags vencidas, itens construídos e desligados (9 em 15/11) | Relatório semanal do dashboard, lido do registro de flags (`docs/flags.md`): itens desligados, flags por padrão, vencidas e sem verificação no consumidor, com n | Nada; manter a coluna "Item desligado" do registro em dia | F1.1 |
 | 5 | Fluxo: frentes ativas, issues abertas × fechadas, escopo do cycle no início × no fim | Linear, à mão | Nada; registrar toda segunda | — |
 
 - A partir da F3.6 entram no mesmo quadro: gates por run e espera mediana.
@@ -43,6 +43,6 @@ agregados: nenhum ticket, nome ou conteúdo de run do consumidor entra aqui.
 Como preencher:
 
 - Métrica ainda sem fatia entregue: escreva "sem medição".
-- "Runs bloqueadas pelo teto" só tem valor depois da F1.3; "Itens desligados" é contado à
-  mão até a F1.1.
+- "Runs bloqueadas pelo teto" só tem valor depois da F1.3; "Itens desligados" sai do
+  registro de flags (`docs/flags.md`), pelo relatório semanal.
 - Piloto em curso vai na nota: qual flag, quantas runs, data de decisão.
