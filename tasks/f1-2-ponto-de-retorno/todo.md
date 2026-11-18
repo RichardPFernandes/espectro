@@ -39,7 +39,7 @@ Repositórios de teste: temporários, com origem `--bare` local, `GIT_CONFIG_GLO
   - Arquivos: `scripts/lib/return-point.js`, `scripts/lib/return-point.test.js`.
   - Depende de: T2.
 
-- [ ] **T4: volta ao último verde e CLI (AC-01)** · M
+- [x] **T4: volta ao último verde e CLI (AC-01)** · M
   - Fazer: `back({ root, to, lockStatus, watcherStatus })`: recusa sem tag verde, com árvore suja, trava `held`, agente vivo ou watcher rodando, sem mudar nada e com motivo; senão `git switch --detach <tag>`. Avisa quando `scripts/package-lock.json` ou `dashboard/package-lock.json` diferem entre o HEAD de antes e a tag, e diz que o dashboard precisa reiniciar. CLI `scripts/return-point.js <status|mark|back> [--root <dir>] [--to verde/<id>] [--json]`: exit 0 em sucesso, 1 em recusa ou reprovação, 2 em uso errado.
   - Teste que falha antes: em repo temporário, marcar, avançar dois commits, `back` deixa HEAD na tag; cada recusa sai com 1 e HEAD igual; `--to` escolhe outra tag; lock diferente gera aviso; a CLI roda como processo filho com `--root`.
   - Arquivos: `scripts/lib/return-point.js`, `scripts/return-point.js`, `scripts/lib/return-point.test.js`, `scripts/return-point.test.js`.
