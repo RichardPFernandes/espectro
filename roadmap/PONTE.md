@@ -37,7 +37,7 @@ Atualize a linha no mesmo PR que cria, fecha ou remove a fatia citada.
 | Providers, modelos e plataforma | visão, sem agenda | PRI-256 | Vizinhas: F4.2 (modelo por fase), F5.1 e F5.2 (roteamento em sombra e ligado), sem tela |
 | Infraestrutura e DevOps | visão, sem agenda | PRI-260 | — |
 | Governança e segurança | visão, sem agenda | PRI-254 | Vizinhas: F4.3 (dashboard preso a loopback) e F6.7 (aprovador identificado) |
-| Specs, SDD e conhecimento | visão, sem agenda | PRI-255 | Vizinhas: F6.13 e F6.14 levam o conhecimento para o Obsidian, não para uma tela |
+| Specs, SDD e conhecimento | visão, sem agenda | PRI-255 | Vizinhas: F0.16 abre `docs/` no Obsidian (absorveu a F6.13) e F6.14 exporta para um vault, não para uma tela |
 | Home, notificações e relatórios | na fatia F4.5, F4.6 e F3.6 | PRI-251, PRI-151 | Recorte: a fila vira a tela inicial (F4.5), aviso por webhook e resumo diário (F4.6), métricas de gate no weekly (F3.6). Vizinha: F1.5 (custo por ticket no weekly). A PRI-251 também cita onboarding, que não tem fatia |
 | Skills — avaliação e evolução | Fase 6 com gatilho (F6.12) | PRI-346, PRI-344, PRI-299 | Gatilho: PRI-299 e PRI-344 autorizadas |
 | Capabilities — histórico de mudanças | visão, sem agenda | PRI-356 | Vizinha: o writer de Self-SDD (PRI-349), que fica congelado (D5, F2.5) |
