@@ -1,0 +1,47 @@
+name: merge-leve
+
+# Merge automático do Leve (F0.8, PRI-410; SPEC item c). Roda ao fim do Tests e
+# do processo-check de um PR. O workflow_run sempre executa o arquivo da main,
+# e o checkout é só de /.github/ da main: a lista mergeLeve e o script nunca vêm
+# do PR, cujos arquivos chegam pela API. Sem MERGE_LEVE=on, só simula e escreve
+# no resumo do job o que mesclaria (AC-04).
+on:
+  workflow_run:
+    workflows: [Tests, processo-check]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: merge-leve-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  merge-leve:
+    name: merge-leve
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+      # Só para disparar o roadmap-pages quando o PR mesclado toca o roadmap.
+      actions: write
+      checks: read
+      statuses: read
+    steps:
+      # Sem ref: o checkout é da main.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Avaliar e mesclar (ou simular)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MERGE_LEVE: ${{ vars.MERGE_LEVE }}
+        run: node .github/scripts/merge-leve.mjs

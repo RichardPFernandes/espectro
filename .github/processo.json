@@ -38,5 +38,46 @@
     "**/__snapshots__/**",
     "**/fixtures/**/*golden*.json",
     "scripts/harness/**/artifacts/**"
-  ]
+  ],
+  "mergeLeve": {
+    "allowedPaths": [
+      "ROADMAP.md",
+      "README.md",
+      "roadmap/**/*.md",
+      "docs/**/*.md",
+      "tasks/**/*.md",
+      "scripts/**/*.test.js",
+      "dashboard/**/*.test.js"
+    ],
+    "deniedPaths": [
+      "tasks/**/SPEC*.md",
+      "tasks/**/plan.md",
+      "tasks/**/todo.md",
+      "roadmap/DECISOES.md",
+      ".github/**",
+      ".claude/**",
+      "**/.*/**",
+      "**/CLAUDE.md",
+      "**/CLAUDE.local.md",
+      "**/AGENTS.md",
+      "docs/capacidades/**",
+      "docs/flags.md",
+      "docs/handoff-contract.md",
+      "docs/migrations/**",
+      "templates/**",
+      "**/fixtures/**",
+      "**/package*.json",
+      "**/npm-shrinkwrap.json",
+      "**/yarn.lock",
+      "**/pnpm-lock.yaml"
+    ],
+    "removableExtensions": [
+      ".md"
+    ],
+    "requiredChecks": [
+      "Node 22",
+      "Node 24",
+      "processo-check"
+    ]
+  }
 }
