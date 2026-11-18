@@ -23,7 +23,7 @@ execuções.
 - [x] O log do CI lista os testes que falharam; todo `*.test.js` roda ou está numa lista de exclusão com motivo.
 - [x] `npm run demo` na raiz roda um ciclo simulado; README com "Veja funcionando".
 - [x] Regras de fluxo aprovadas no `CLAUDE.md` e no `AGENTS.md`.
-- [ ] Sonda da CLI rodada uma vez com a CLI real.
+- [x] Sonda da CLI rodada uma vez com a CLI real.
 - [ ] Uma fatia real passou pelo `/pri-*` abrindo pela spec viva e fechando com ela atualizada (F0.11 a F0.13); `tasks/` só com o que está em curso (F0.14).
 - [x] Tabela-ponte publicada: cada página do canvas de design e cada macrofase da arquitetura tem um destino (F0.10).
 
@@ -36,7 +36,7 @@ execuções.
 | F0.3 | Um comando na raiz e "Veja funcionando" no README | 3 | Leve | Não | — | — | concluída | PRI-376 |
 | F0.4 | Regras de fluxo no Acordo e entrada do agente mais enxuta | 1 | Leve | Não | — | D12 | concluída | PRI-376 |
 | F0.5 | (removida em 2026-11-16: a premissa caiu) Poda dos prompts dos nós | 2 | Alto | Sim | — | O preâmbulo não é idêntico nos 11 comandos e é quase todo instrução; o ganho seria de cerca de 0,5 KB em 125 KB. Um teste fixa o hash de `implement.md`, `review.md` e `commit.md` (`scripts/lib/decomposition-watcher.test.js`). Reabrir só com medição de duplicação interna | removida | PRI-376 |
-| F0.6 | Sonda de fumaça da CLI contra mudança no modo `-p` | 2 | Leve | Não | — | — | em andamento | PRI-376 |
+| F0.6 | Sonda de fumaça da CLI contra mudança no modo `-p` | 2 | Leve | Não | — | — | concluída | PRI-376 |
 | F0.7 | ESLint só de erros no JavaScript de produção e teto de linhas nos três arquivos grandes | 2 | Leve | Não | F0.2 | — | não iniciada | sem issue |
 | F0.8 | Merge automático do Leve com CI verde e lista de caminhos | 2 | Alto | Sim | F0.2, F0.4 | D12 | não iniciada | sem issue |
 | F0.9 | Bloco de Estado e relatório semanal automáticos | 3 | Médio | Não | F0.4 | — | em andamento | PRI-399 |
