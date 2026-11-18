@@ -254,3 +254,188 @@ test('mark não publica a tag na origem', async () => {
     await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') });
     assert.equal(sh(root, 'ls-remote', '--tags', 'origin'), '');
 });
+
+// Checagem de saúde (F1.2, AC-03). Servidor falso em loopback, porta 0; nunca o dashboard real.
+const http = require('node:http');
+const { health } = require('./return-point');
+const { LOCK_NAME } = require('./watcher-lock');
+
+const BOOT = '2026-11-18T08:00:00.000Z';
+// Rotas do servidor falso: valor = { code, body } ou 'hang' (nunca responde).
+function fakeDashboard(routes) {
+    const server = http.createServer((req, res) => {
+        const r = routes[req.url];
+        if (r === 'hang') return;
+        if (!r) { res.writeHead(404); return res.end(); }
+        res.writeHead(r.code || 200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(r.body));
+    });
+    return new Promise(resolve => server.listen(0, '127.0.0.1', () => {
+        const close = () => new Promise(done => { server.closeAllConnections(); server.close(() => done()); });
+        resolve({ baseUrl: `http://127.0.0.1:${server.address().port}`, close });
+    }));
+}
+const versionOk = head => ({ body: { status: 'ok', started_at: BOOT, current: { sha: head }, drift: false } });
+const watcherOk = (extra = {}) => ({ body: { running: true, state: 'running', error: null, restarts: 0, ticks: 2, phase: 'idle', last_run: null, ...extra } });
+const byName = r => Object.fromEntries(r.items.map(i => [i.name, i]));
+
+async function healthWith(root, routes, extra = {}) {
+    const srv = await fakeDashboard(routes);
+    try { return await health({ root, baseUrl: srv.baseUrl, git, ...extra }); } finally { await srv.close(); }
+}
+
+test('health: tudo em ordem passa os quatro itens, com o fetch e a trava padrão', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.items.map(i => [i.name, i.status]), [['arvore', 'pass'], ['dashboard', 'pass'], ['trava', 'pass'], ['tick', 'pass']]);
+    for (const i of r.items) assert.equal(typeof i.reason, 'string');
+    const raw = JSON.stringify(r);
+    assert.ok(!raw.includes(root) && !raw.includes(os.tmpdir()), 'itens citam caminho absoluto');
+});
+
+test('health: árvore suja reprova o item arvore', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    fs.writeFileSync(path.join(root, 'novo.txt'), 'x\n');
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() });
+    assert.equal(r.ok, false);
+    assert.equal(byName(r).arvore.status, 'fail');
+    assert.match(byName(r).arvore.reason, /dirty/);
+    assert.ok(!byName(r).arvore.reason.includes('novo.txt'), 'motivo cita caminho');
+});
+
+test('health: dashboard com SHA diferente do HEAD reprova', async () => {
+    const root = cloneOnMain();
+    const r = await healthWith(root, { '/api/version': versionOk('f'.repeat(40)), '/api/watcher/status': watcherOk() });
+    assert.equal(r.ok, false);
+    assert.equal(byName(r).dashboard.status, 'fail');
+});
+
+test('health: dashboard com drift reprova', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const v = versionOk(head); v.body.drift = true;
+    const r = await healthWith(root, { '/api/version': v, '/api/watcher/status': watcherOk() });
+    assert.equal(byName(r).dashboard.status, 'fail');
+});
+
+test('health: /api/version com HTTP 500 reprova o dashboard', async () => {
+    const root = cloneOnMain();
+    const r = await healthWith(root, { '/api/version': { code: 500, body: { error: 'x' } }, '/api/watcher/status': watcherOk() });
+    assert.equal(byName(r).dashboard.status, 'fail');
+});
+
+test('health: dashboard sem resposta reprova e o tick fica desconhecido', async () => {
+    const root = cloneOnMain();
+    const srv = await fakeDashboard({});
+    await srv.close(); // porta fechada: conexão recusada
+    const r = await health({ root, baseUrl: srv.baseUrl, git });
+    assert.equal(r.ok, false);
+    assert.equal(byName(r).dashboard.status, 'fail');
+    assert.equal(byName(r).tick.status, 'desconhecido');
+});
+
+test('health: dashboard que não responde no prazo reprova', async () => {
+    const root = cloneOnMain();
+    const r = await healthWith(root, { '/api/version': 'hang', '/api/watcher/status': 'hang' }, { timeoutMs: 200 });
+    assert.equal(byName(r).dashboard.status, 'fail');
+    assert.equal(byName(r).tick.status, 'desconhecido');
+});
+
+test('health: trava ilegível (lockStatus lança) reprova', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const lockStatus = () => { throw new Error('EACCES /algum/caminho'); };
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() }, { lockStatus });
+    assert.equal(r.ok, false);
+    assert.equal(byName(r).trava.status, 'fail');
+    assert.ok(!byName(r).trava.reason.includes('/algum/caminho'), 'motivo cita caminho');
+});
+
+test('health: arquivo de trava corrompido reprova pela trava padrão', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    fs.writeFileSync(path.join(root, '.git', LOCK_NAME), 'não é json');
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() });
+    assert.equal(byName(r).trava.status, 'fail');
+});
+
+test('health: tick com error reprova', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ error: 'restart_limit_reached', running: false, state: 'stopped' }) });
+    assert.equal(r.ok, false);
+    assert.equal(byName(r).tick.status, 'fail');
+    assert.match(byName(r).tick.reason, /restart_limit_reached/);
+});
+
+test('health: tick que caiu desde a subida do laço (restarts > 0) reprova', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ restarts: 1 }) });
+    assert.equal(byName(r).tick.status, 'fail');
+});
+
+test('health: last_run encerrado por limite de quedas depois da subida reprova', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const last_run = { started_at: '2026-11-18T08:10:00.000Z', ended_at: '2026-11-18T08:20:00.000Z', uptime_ms: 600000, reason: 'restart_limit' };
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ last_run }) });
+    assert.equal(byName(r).tick.status, 'fail');
+});
+
+test('health: last_run com limite de quedas antes da subida não reprova', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const last_run = { started_at: '2026-11-17T08:10:00.000Z', ended_at: '2026-11-17T08:20:00.000Z', uptime_ms: 600000, reason: 'restart_limit' };
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ last_run }) });
+    assert.equal(byName(r).tick.status, 'pass');
+    assert.equal(r.ok, true);
+});
+
+test('health: sem tick desde a subida fica desconhecido e não reprova', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ ticks: 0, running: false, state: 'stopped', phase: null }) });
+    assert.equal(byName(r).tick.status, 'desconhecido');
+    assert.equal(r.ok, true);
+});
+
+test('health: primeiro tick ainda em curso fica desconhecido', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk({ ticks: 1, phase: 'tick' }) });
+    assert.equal(byName(r).tick.status, 'desconhecido');
+});
+
+test('health: URL fora de loopback é recusada sem request', async () => {
+    const root = cloneOnMain();
+    const calls = [];
+    const fetch = async url => { calls.push(url); throw new Error('não devia chamar'); };
+    for (const baseUrl of ['http://example.com:3333', 'http://10.0.0.1:3333', 'http://127.0.0.1.example.com', 'file:///etc/passwd']) {
+        await assert.rejects(health({ root, baseUrl, fetch, git }), /loopback/, baseUrl);
+    }
+    assert.deepEqual(calls, []);
+});
+
+test('health: localhost e ::1 são aceitos; URL padrão usa 127.0.0.1 e PORT', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const calls = [];
+    const fetch = async url => {
+        calls.push(String(url));
+        const body = String(url).endsWith('/api/version') ? versionOk(head).body : watcherOk().body;
+        return { ok: true, status: 200, json: async () => body };
+    };
+    for (const baseUrl of ['http://localhost:4000', 'http://[::1]:4000']) {
+        const r = await health({ root, baseUrl, fetch, git });
+        assert.equal(r.ok, true, baseUrl);
+    }
+    const saved = process.env.PORT;
+    process.env.PORT = '45678';
+    try { await health({ root, fetch, git }); } finally { if (saved === undefined) delete process.env.PORT; else process.env.PORT = saved; }
+    assert.deepEqual(calls.slice(-2), ['http://127.0.0.1:45678/api/version', 'http://127.0.0.1:45678/api/watcher/status']);
+    assert.equal(calls.length, 6);
+});

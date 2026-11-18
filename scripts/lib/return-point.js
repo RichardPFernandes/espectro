@@ -104,4 +104,91 @@ async function mark({ root, health, now = () => new Date(), git = runGit }) {
     return { ok, tag, head, items };
 }
 
-module.exports = { checkTree, guardEnabled, runGit, lastGreen, mark, MAX_PATHS };
+// ---------------------------------------------------------------- checagem de saúde
+// Quatro itens, cada um pass|fail|desconhecido com motivo curto e sem caminho; ok = nenhum
+// fail. Só GET em loopback (outra URL é erro antes de qualquer request), com prazo curto.
+const LOOPBACK = new Set(['127.0.0.1', '[::1]', 'localhost']);
+const HEALTH_TIMEOUT_MS = 2000;
+const CODE_RE = /^[a-z0-9_]{1,40}$/;
+
+function loopbackUrl(baseUrl) {
+    let u;
+    try { u = new URL(baseUrl); } catch { throw new Error('health: URL inválida; só loopback'); }
+    if (u.protocol !== 'http:' || !LOOPBACK.has(u.hostname)) throw new Error('health: URL recusada; só loopback (127.0.0.1, ::1, localhost)');
+    return u.origin;
+}
+
+// GET JSON; qualquer falha (recusa, prazo, HTTP != 2xx, corpo inválido) vira { error }.
+async function getJson(fetchFn, url, timeoutMs) {
+    try {
+        const res = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs) });
+        if (!res.ok) return { error: `HTTP ${res.status}` };
+        return { body: await res.json() };
+    } catch (e) {
+        return { error: e?.name === 'TimeoutError' ? 'sem resposta no prazo' : 'sem resposta' };
+    }
+}
+
+function treeItem(t) {
+    return { name: 'arvore', status: t.ok ? 'pass' : 'fail', reason: t.ok ? 'limpa e na main' : t.reasons.join(',') };
+}
+
+function dashboardItem(v, head) {
+    const fail = reason => ({ name: 'dashboard', status: 'fail', reason });
+    if (v.error) return fail(v.error);
+    const b = v.body;
+    if (!b || b.status !== 'ok' || !b.current?.sha) return fail('versão indisponível');
+    if (!head || b.current.sha !== head) return fail('SHA em execução difere do HEAD');
+    if (b.drift !== false) return fail('drift entre execução e disco');
+    return { name: 'dashboard', status: 'pass', reason: 'em execução no HEAD, sem drift' };
+}
+
+// "Legível" = status() não lança e a trava está livre, viva ou velha com conteúdo; arquivo
+// corrompido aparece como stale sem lock (watcher-lock.readLock) e reprova.
+function lockItem(lockStatus, root) {
+    let st;
+    try { st = lockStatus(root); } catch { return { name: 'trava', status: 'fail', reason: 'status da trava ilegível' }; }
+    const s = st?.lock_state;
+    if (s === 'free' || ((s === 'held' || s === 'stale') && st.lock && typeof st.lock === 'object')) {
+        return { name: 'trava', status: 'pass', reason: `legível (${s})` };
+    }
+    return { name: 'trava', status: 'fail', reason: s === 'stale' ? 'arquivo da trava corrompido' : 'estado da trava desconhecido' };
+}
+
+// Subida = boot do dashboard (/api/version started_at; o watcher-manager nasce com ele, e
+// `ticks` conta desde então). Queda = `error` do laço, `restarts` (crash desde o start do
+// laço) ou `last_run` encerrado por restart_limit depois da subida. Sem tick concluído
+// desde a subida: desconhecido.
+function tickItem(w, bootAt) {
+    const item = (status, reason) => ({ name: 'tick', status, reason });
+    if (w.error || !w.body || typeof w.body !== 'object') return item('desconhecido', 'status do watcher indisponível');
+    const b = w.body;
+    if (b.error != null) return item('fail', `erro ${CODE_RE.test(String(b.error)) ? b.error : 'do laço'}`);
+    if (Number(b.restarts) > 0) return item('fail', `${Number(b.restarts)} queda(s) desde o start do laço`);
+    const lr = b.last_run;
+    if (lr?.reason === 'restart_limit') {
+        const boot = Date.parse(bootAt);
+        const ended = Date.parse(lr.ended_at);
+        if (!Number.isFinite(boot) || !Number.isFinite(ended) || ended >= boot) return item('fail', 'laço parou por limite de quedas desde a subida');
+    }
+    const done = (Number.isInteger(b.ticks) ? b.ticks : 0) - (b.phase === 'tick' ? 1 : 0);
+    if (done <= 0) return item('desconhecido', 'sem tick concluído desde a subida');
+    return item('pass', 'sem queda desde a subida');
+}
+
+async function health({ root, baseUrl, fetch: fetchFn = globalThis.fetch, lockStatus, git = runGit, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+    const origin = loopbackUrl(baseUrl ?? `http://127.0.0.1:${process.env.PORT || 3333}`);
+    const lock = lockStatus || (r => require('./watcher-lock').status(r));
+    const tree = checkTree({ root, git });
+    const version = await getJson(fetchFn, `${origin}/api/version`, timeoutMs);
+    const watcher = await getJson(fetchFn, `${origin}/api/watcher/status`, timeoutMs);
+    const items = [
+        treeItem(tree),
+        dashboardItem(version, tree.head),
+        lockItem(lock, root),
+        tickItem(watcher, version.body?.started_at),
+    ];
+    return { ok: items.every(i => i.status !== 'fail'), items };
+}
+
+module.exports = { checkTree, guardEnabled, runGit, lastGreen, mark, health, MAX_PATHS };
