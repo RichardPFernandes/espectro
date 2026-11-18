@@ -93,6 +93,24 @@ test('cabeçalho com sufixo vale; "## " dentro de bloco de código não encerra 
     assert.match(run({ labels: ['processo:medio'], body: '## Evidências antigas\nx' }).errors.join('\n'), /Falta a seção/);
 });
 
+test('leve: renomear SPEC/handoff/evidence para docs/historico/ passa; added e rename para fora continuam barrados', () => {
+    const moved = (to, from) => ({ ...file(to, 0, 'renamed'), previous_filename: from });
+    const ok = run({ labels: ['processo:leve'], files: [
+        moved('docs/historico/pri-9/handoff.yaml', 'tasks/pri-9/handoff.yaml'),
+        moved('docs/historico/pri-9/SPEC.md', 'tasks/pri-9/SPEC.md'),
+        moved('docs/historico/pri-9/evidence-1.md', 'tasks/pri-9/evidence-1.md'),
+    ] });
+    assert.equal(ok.ok, true, ok.errors.join('\n'));
+    const added = run({ labels: ['processo:leve'], files: [file('docs/historico/pri-9/handoff.yaml', 5, 'added')] });
+    assert.equal(added.ok, false);
+    assert.match(added.errors.join('\n'), /docs\/historico\/pri-9\/handoff\.yaml/);
+    const copied = run({ labels: ['processo:leve'], files: [file('docs/historico/pri-9/handoff.yaml', 5, 'copied')] });
+    assert.equal(copied.ok, false);
+    const out = run({ labels: ['processo:leve'], files: [moved('x/handoff.yml', 'tasks/pri-9/handoff.yml')] });
+    assert.equal(out.ok, false);
+    assert.match(out.errors.join('\n'), /x\/handoff\.yml/);
+});
+
 test('rótulo sem diferenciar maiúsculas; nome proibido sem diferenciar maiúsculas; renamed/copied contam como adição', () => {
     assert.equal(run({ labels: ['Processo:Medio'] }).ok, true);
     assert.match(run({ labels: ['processo:leve', 'PROCESSO:LEVE'] }).info.join(), /nível: leve/);
