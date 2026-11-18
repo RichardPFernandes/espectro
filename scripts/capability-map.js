@@ -12,13 +12,14 @@
 // se houver problema. Os três comandos saem 2 em erro de uso ou de cabeçalho. O cabeçalho é
 // um subconjunto de YAML lido aqui mesmo (o repo não tem biblioteca de YAML): texto simples,
 // lista em linha ([a, b]) ou lista em bloco ("- a"). Qualquer outra forma é erro, e campo
-// fora dos sete conhecidos também. Como em YAML, " #" começa um comentário: o texto depois
+// fora dos nove conhecidos também (dois são opcionais: depende_de e adrs, ausentes = []). Como em YAML, " #" começa um comentário: o texto depois
 // dele some. Um padrão de `modulos` é um caminho exato ou um prefixo terminado em "*"; não há
 // precedência entre padrões. Os links conferidos são os inline, [t](alvo): link por
 // referência ([t]: alvo) e HTML (<a href>) não são conferidos.
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { fail, readFields } = require('./lib/front-matter');
 
 const ROOT = path.resolve(__dirname, '..');
 const CAPABILITIES_PATH = 'docs/capacidades';
@@ -38,66 +39,22 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage'])
 
 const TEXT_FIELDS = ['id', 'tipo', 'resumo', 'situacao', 'spec'];
 const LIST_FIELDS = ['flags', 'modulos'];
+// Opcionais: ausentes valem []. Cada item segue o padrão do campo (só o formato; a existência
+// do ID não é conferida aqui).
+const OPTIONAL_LIST_FIELDS = {
+    depende_de: /^[a-z][a-z0-9-]*$/,
+    adrs: /^ADR-\d{4}$/,
+};
 const ENUMS = {
     tipo: ['base', 'capacidade', 'fluxo'],
     situacao: ['ligada', 'parcial', 'desligada', 'sem-chamador'],
     spec: ['sem-spec', 'rascunho', 'viva'],
 };
 
-function fail(message) {
-    throw new Error(`cabeçalho: ${message}`);
-}
-
-// Texto simples: sem aspas, sem mapa, sem bloco e sem ": " no meio (deixaria de ser YAML).
-function plainText(raw, where) {
-    const value = raw.trim();
-    if (!value || /^["'{[|>&*!]/.test(value) || /:(\s|$)/.test(value)) {
-        fail(`${where}: forma não suportada (use texto simples, [a, b] ou lista com "- ")`);
-    }
-    return value;
-}
-
-function inlineList(raw, where) {
-    if (!raw.endsWith(']')) fail(`${where}: lista em linha sem "]"`);
-    const inner = raw.slice(1, -1).trim();
-    return inner ? inner.split(',').map(item => plainText(item, where)) : [];
-}
-
-// Lê as linhas entre os dois "---" e devolve { campo: texto | lista }, sem validar campos.
-function readFields(text) {
-    const lines = text.split('\n').map(line => line.trimEnd());
-    const end = lines.indexOf('---', 1);
-    if (lines[0] !== '---' || end === -1) fail('o arquivo não começa com um bloco entre duas linhas "---"');
-
-    const fields = {};
-    let block = null;
-    for (let index = 1; index < end; index += 1) {
-        const where = `linha ${index + 1}`;
-        const line = lines[index].replace(/(?:^|\s)#.*$/, '');
-        if (!line.trim()) continue;
-
-        const item = /^\s+-\s+(.+)$/.exec(line);
-        if (item) {
-            if (!block) fail(`${where}: item de lista fora de uma lista`);
-            fields[block] = [...(fields[block] || []), plainText(item[1], where)];
-            continue;
-        }
-        const pair = /^([a-z_]+):(?:\s+(.*))?$/.exec(line);
-        if (!pair) fail(`${where}: forma não suportada (use "campo: valor")`);
-        const [, key, raw = ''] = pair;
-        if (key in fields) fail(`${where}: campo repetido: ${key}`);
-
-        block = raw ? null : key;
-        if (!raw) fields[key] = null;
-        else fields[key] = raw.startsWith('[') ? inlineList(raw, where) : plainText(raw, where);
-    }
-    return fields;
-}
-
 function parseHeader(text) {
     const fields = readFields(text);
     for (const field of Object.keys(fields)) {
-        if (![...TEXT_FIELDS, ...LIST_FIELDS].includes(field)) fail(`campo desconhecido: ${field}`);
+        if (![...TEXT_FIELDS, ...LIST_FIELDS, ...Object.keys(OPTIONAL_LIST_FIELDS)].includes(field)) fail(`campo desconhecido: ${field}`);
     }
     for (const field of [...TEXT_FIELDS, ...LIST_FIELDS]) {
         if (!(field in fields)) fail(`campo ausente: ${field}`);
@@ -116,7 +73,18 @@ function parseHeader(text) {
     for (const pattern of fields.modulos) {
         if (pattern.slice(0, -1).includes('*')) fail(`modulos: "${pattern}" só aceita "*" no fim (caminho exato ou prefixo)`);
     }
-    return Object.fromEntries([...TEXT_FIELDS, ...LIST_FIELDS].map(field => [field, fields[field]]));
+    for (const [field, pattern] of Object.entries(OPTIONAL_LIST_FIELDS)) {
+        if (!(field in fields)) {
+            fields[field] = [];
+            continue;
+        }
+        if (fields[field] === null) fail(`campo vazio: ${field}`);
+        if (!Array.isArray(fields[field])) fail(`${field} deve ser uma lista ([a, b] ou itens com "- ")`);
+        for (const item of fields[field]) {
+            if (!pattern.test(item)) fail(`${field}: "${item}" fora do formato ${pattern.source}`);
+        }
+    }
+    return Object.fromEntries([...TEXT_FIELDS, ...LIST_FIELDS, ...Object.keys(OPTIONAL_LIST_FIELDS)].map(field => [field, fields[field]]));
 }
 
 // Uma capacidade por docs/capacidades/<id>.md, em ordem de id. O README é a página de entrada.
@@ -365,6 +333,6 @@ function main(args) {
 }
 
 module.exports = {
-    parseHeader, readCapabilities, matches, ownersOf, isCovered, checkMap, summary, renderTable, applyTable, checkTable, writeTable, checkLinks,
+    parseHeader, readFields, readCapabilities, matches, ownersOf, isCovered, checkMap, summary, renderTable, applyTable, checkTable, writeTable, checkLinks,
 };
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

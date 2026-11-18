@@ -47,6 +47,8 @@ execuções.
 | F0.13 | Fluxo `/pri-*` amarrado à spec viva: a fatia abre pela capacidade, a mudança traz o delta e o PR só sai com a spec viva conferida | 2 | Leve | Não | F0.4, F0.12 | D5 | concluída | PRI-409 |
 | F0.14 | Arrumar a casa: `tasks/` de issue fechada para `docs/historico/`, `docs/prisma/` marcado como histórico e uma só descrição do fluxo de desenvolvimento (C3) | 1 | Leve | Não | F0.11 | D5 | concluída | PRI-411 |
 | F0.15 | Conhecimento durável: a spec viva nasce na primeira fatia que muda a capacidade `sem-spec`, e a decisão de arquitetura vira ADR (sem tipo RFC) | 2 | Leve | Não | F0.13 | D5 | concluída | PRI-412 |
+| F0.16 | Grafo do conhecimento: ligações por ID entre specs vivas, ADRs e SPECs conferidas pela CI, delta ADICIONA/MUDA/REMOVE, EARS leve e `docs/` aberto no Obsidian (absorve a F6.13) | 3 | Leve | Não | F0.15 | Pedido do Richard em 18/11 | em andamento | PRI-413 |
+| F0.17 | Spec que não mente: requisito rastreado até o teste e portão de drift bloqueante | 3 | Leve | Não | F0.16 | Pedido do Richard em 18/11 | não iniciada | PRI-414 |
 
 ## Sementes das fatias ainda não iniciadas
 
@@ -106,3 +108,22 @@ execuções.
 - AC-03: `docs/adr/` existe, com README, modelo curto e de 5 a 8 decisões já tomadas, cada uma citando a fonte.
 - AC-04: o `/pri-pr` pergunta se a fatia tomou decisão de arquitetura; se tomou, o ADR entra no PR, e a Evidência traz a linha "ADR: número ou nenhum".
 - AC-05: `AGENTS.md`, `CLAUDE.md` e `docs/fluxo-dev.md` dizem em uma linha onde mora cada coisa: SPEC da fatia, spec viva, ADR e `DECISOES.md`.
+
+### F0.16 — Grafo do conhecimento
+
+- **Intenção.** Cada spec viva, ADR e SPEC de fatia diz com quem se liga, a CI confere as ligações e o Richard abre `docs/` no Obsidian e vê o grafo. Absorve a F6.13 (lente da spec viva).
+- **Não inclui.** Rastreio requisito → teste e portão de drift (F0.17); escrever as 13 specs que faltam; o exportador do produto (`PRISMA_OBSIDIAN`, F6.14).
+- AC-01: F0.16 e F0.17 estão nesta página e a F6.13 está marcada como absorvida; o `roadmap-lint` fica verde.
+- AC-02: ligações no front-matter, só com IDs (`depende_de`, `adrs`, `capacidades`, `substitui`, `substituida_por`), e `status` de ADR em MADR.
+- AC-03: um script gera a seção "Ligações" com links relativos nos dois sentidos; a CI falha com ID inexistente, lados divergentes ou seção desatualizada.
+- AC-04: delta ADICIONA/MUDA/REMOVE por R-ID ou I-ID, com validador no PR.
+- AC-05: EARS leve na coluna Comportamento, documentada no modelo, sem reescrever as specs existentes.
+- AC-06: `docs/README.md` explica como abrir `docs/` no Obsidian; `.obsidian/` não entra no repo.
+
+### F0.17 — Spec que não mente
+
+- **Intenção.** Spec viva que diverge do código faz teste ou CI falhar, em vez de mentir em silêncio.
+- **Não inclui.** Detectar drift de comportamento por análise semântica; escrever as specs que faltam.
+- AC-01: cada R-ID e I-ID das specs vivas é citado no teste que o prova; ID inexistente reprova.
+- AC-02: `spec`, `grafo` e `estado` ficam rastreadas, ou com a lacuna listada como desconhecida, nunca como zero.
+- AC-03: código de capacidade com spec viva muda sem delta e sem "Nenhum" justificado: o `processo-check` avisa e passa a reprovar por variável do repo, com data de virada em `docs/flags.md`.

@@ -55,7 +55,65 @@ describe('cabeçalho de uma capacidade', () => {
             spec: 'sem-spec',
             flags: ['SPEC_DRAFT_AUTOGEN', 'SPEC_AUTO_REPAIR'],
             modulos: ['scripts/lib/spec-*', 'scripts/invalidate.js'],
+            depende_de: [],
+            adrs: [],
         });
+    });
+
+    it('depende_de e adrs são opcionais: ausentes viram lista vazia', () => {
+        const header = map.parseHeader(doc());
+        assert.deepEqual(header.depende_de, []);
+        assert.deepEqual(header.adrs, []);
+    });
+
+    it('lê depende_de e adrs em linha e em bloco', () => {
+        const inline = map.parseHeader(doc({ depende_de: '[estado, cas-1]', adrs: '[ADR-0001, ADR-0012]' }));
+        assert.deepEqual(inline.depende_de, ['estado', 'cas-1']);
+        assert.deepEqual(inline.adrs, ['ADR-0001', 'ADR-0012']);
+        const block = map.parseHeader(doc({ depende_de: '\n  - estado\n  - cas', adrs: '\n  - ADR-0003' }));
+        assert.deepEqual(block.depende_de, ['estado', 'cas']);
+        assert.deepEqual(block.adrs, ['ADR-0003']);
+    });
+
+    it('aceita depende_de e adrs em lista vazia', () => {
+        const header = map.parseHeader(doc({ depende_de: '[]', adrs: '[]' }));
+        assert.deepEqual([header.depende_de, header.adrs], [[], []]);
+    });
+
+    it('recusa depende_de e adrs escalares, com mensagem de cabeçalho', () => {
+        for (const field of ['depende_de', 'adrs']) {
+            assert.throws(
+                () => map.parseHeader(doc({ [field]: 'estado' })),
+                error => error.message.startsWith('cabeçalho: ') && new RegExp(`${field} deve ser uma lista`).test(error.message),
+            );
+        }
+    });
+
+    it('recusa depende_de com item fora do padrão de id de capacidade', () => {
+        for (const bad of ['Estado', 'cas_1', '1cas']) {
+            assert.throws(
+                () => map.parseHeader(doc({ depende_de: `[estado, ${bad}]` })),
+                error => error.message.startsWith('cabeçalho: ') && error.message.includes(`depende_de: "${bad}"`),
+            );
+        }
+    });
+
+    it('recusa adrs com item fora do padrão ADR-NNNN', () => {
+        for (const bad of ['ADR-1', 'adr-0001', 'ADR-00012', '0001']) {
+            assert.throws(
+                () => map.parseHeader(doc({ adrs: `[ADR-0001, ${bad}]` })),
+                error => error.message.startsWith('cabeçalho: ') && error.message.includes(`adrs: "${bad}"`),
+            );
+        }
+    });
+
+    it('depende_de e adrs vazios em bloco (sem itens) são campo vazio', () => {
+        assert.throws(() => map.parseHeader(doc({ depende_de: '\n' })), /campo vazio: depende_de/);
+    });
+
+    it('readFields é exportado e devolve os campos sem validar', () => {
+        assert.equal(typeof map.readFields, 'function');
+        assert.deepEqual(map.readFields('---\ndepende_de: [a, b]\nqualquer: x\n---\n'), { depende_de: ['a', 'b'], qualquer: 'x' });
     });
 
     it('aceita lista em linha vazia', () => {
@@ -463,10 +521,12 @@ describe('capability-map.js --of (AC-06)', () => {
 // --check e --write de ponta a ponta (AC-03 a AC-05): o script é copiado para um repo mínimo,
 // onde a raiz é a pasta acima de scripts/, e roda como processo, para valer o código de saída.
 describe('capability-map.js --check e --write', () => {
+    const MODULES = '\n  - scripts/capability-map.js\n  - scripts/lib/front-matter.js';
     const MARKERS = '<!-- capacidades:inicio -->\n<!-- capacidades:fim -->';
-    const FERRAMENTAS = doc({ id: 'ferramentas', flags: '[]', modulos: '\n  - scripts/capability-map.js' });
+    const FERRAMENTAS = doc({ id: 'ferramentas', flags: '[]', modulos: MODULES });
     const MINIMAL = {
         'scripts/capability-map.js': fs.readFileSync(CLI, 'utf8'),
+        'scripts/lib/front-matter.js': fs.readFileSync(path.join(__dirname, 'lib/front-matter.js'), 'utf8'),
         'docs/capacidades/ferramentas.md': FERRAMENTAS,
         'docs/capacidades/README.md': `# Mapa\n\n## Capacidades\n\n${MARKERS}\n`,
     };
@@ -495,7 +555,7 @@ describe('capability-map.js --check e --write', () => {
             const result = run('--check');
             assert.equal(result.status, 0);
             assert.equal(result.stderr, '');
-            assert.match(result.stdout, /1 arquivos, cada um com uma capacidade dona/);
+            assert.match(result.stdout, /2 arquivos, cada um com uma capacidade dona/);
         });
     });
 
@@ -511,14 +571,14 @@ describe('capability-map.js --check e --write', () => {
             const result = run('--check');
             assert.equal(result.status, 1);
             assert.match(result.stderr, /^scripts\/novo\.js: sem capacidade dona/);
-            assert.match(result.stdout, /faltam 1 de 2 arquivos/);
+            assert.match(result.stdout, /faltam 1 de 3 arquivos/);
         });
     });
 
     it('--check com tabela defasada sai 1 e manda rodar --write', () => {
         inRepo({}, (run, dir) => {
             run('--write');
-            fs.writeFileSync(path.join(dir, 'docs/capacidades/ferramentas.md'), doc({ id: 'ferramentas', flags: '[]', situacao: 'desligada', modulos: '\n  - scripts/capability-map.js' }));
+            fs.writeFileSync(path.join(dir, 'docs/capacidades/ferramentas.md'), doc({ id: 'ferramentas', flags: '[]', situacao: 'desligada', modulos: MODULES }));
             const result = run('--check');
             assert.equal(result.status, 1);
             assert.match(result.stderr, /README\.md: a tabela de capacidades está defasada.*--write/);
@@ -535,7 +595,7 @@ describe('capability-map.js --check e --write', () => {
     });
 
     it('--check com cabeçalho inválido sai 2 e cita o arquivo', () => {
-        inRepo({ 'docs/capacidades/ferramentas.md': doc({ id: 'ferramentas', tipo: 'talvez', modulos: '\n  - scripts/capability-map.js' }) }, run => {
+        inRepo({ 'docs/capacidades/ferramentas.md': doc({ id: 'ferramentas', tipo: 'talvez', modulos: MODULES }) }, run => {
             const result = run('--check');
             assert.equal(result.status, 2);
             assert.match(result.stderr, /ferramentas\.md.*tipo/);
@@ -543,7 +603,7 @@ describe('capability-map.js --check e --write', () => {
     });
 
     it('--of com duas donas sai 1, cita as duas e não imprime id', () => {
-        const other = doc({ id: 'outra', flags: '[]', modulos: '\n  - scripts/capability-map.js' });
+        const other = doc({ id: 'outra', flags: '[]', modulos: MODULES });
         inRepo({ 'docs/capacidades/outra.md': other }, run => {
             const result = run('--of', 'scripts/capability-map.js');
             assert.equal(result.status, 1);
