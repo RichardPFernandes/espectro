@@ -67,6 +67,7 @@ const dom06 = require('./lib/dom06-attempt');
 const decompositionRuntime = require('./lib/decomposition-runtime');
 const decompositionVisit = require('./lib/decomposition-visit');
 const subagentBlock = require('./lib/subagent-block');
+const cliResult = require('./lib/cli-result');
 const phaseEffort = require('./lib/phase-effort');
 const handoffLint = require('./lib/handoff-lint');
 const planImplementChain = require('./lib/plan-implement-chain');
@@ -4347,6 +4348,34 @@ function resolveHandoffNote(nodes) {
     return handoffLint.handoffNote({ nodes, enabled: true, table: loaded.table, prismaRoot: PRISMA_ROOT });
 }
 
+// Argv da CLI `claude` do despacho, sem efeito colateral além de checar os worktrees irmãos.
+// PRI-381 (F1.5, AC-04): com WATCHER_CLI_RESULT_JSON=on, acrescenta `--output-format json` ao
+// fim; desligada, o argv é o de antes (teste golden em lib/cli-result-dispatch.test.js).
+function buildClaudeArgs({ prompt, sessionName, sessionId, nodes, routing = null, ticketId, effortArgs = [], env = process.env }) {
+    const args = [
+        '-p', prompt,
+        '--name', sessionName,
+        '--session-id', sessionId,
+        '--permission-mode', 'acceptEdits',
+        '--allowedTools', 'mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob',
+        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled(env), chain: subagentBlock.planImplementChainEnabled(env) }),
+        // Sem isto, Claude ficava confinado ao cwd (worktree do consumidor) e não
+        // enxergava os worktrees irmãos mesmo com branch/worktree já criados pelo
+        // watcher, apesar da instrução em plan.md/commit.md dizer pra tratá-los
+        // simetricamente (ver decision 2026-09-02-push-pr-siblings.md — corrigiu a
+        // instrução, não este despacho).
+        '--add-dir', PRISMA_ROOT,
+        ...siblingAddDirArgs(ticketId),
+    ];
+    // PRI-233 T7: só com resolução ok (Run ON); sem routing o argv é o do AS-IS.
+    // PRI-311 (S5.2b, B8): `--agents` só em Attempt com papel e com subagent_roles na policy.
+    if (routing) args.push(...modelRouting.routedArgs([], routing, { agentsJson: routing.agentsJson || null }));
+    // PRI-353: esforço fixo por fase, só com WATCHER_PHASE_EFFORT ligada (desligada = argv inalterado).
+    args.push(...effortArgs);
+    if (cliResult.cliResultJsonEnabled(env)) args.push('--output-format', 'json');
+    return args;
+}
+
 async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null, routing = null }) {
     const qaSection = isRecusaQA
         ? `\n\nEste ticket voltou como Recusa QA — é retrabalho, não trabalho novo. ` +
@@ -4379,27 +4408,8 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     const logPath = logPathFor(ticket.id);
     // Id de sessão fixado pelo watcher só pra achar o transcript depois (custo por nó).
     const sessionId = crypto.randomUUID();
-    const args = [
-        '-p', prompt,
-        '--name', sessionName,
-        '--session-id', sessionId,
-        '--permission-mode', 'acceptEdits',
-        '--allowedTools', 'mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob',
-        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled(), chain: subagentBlock.planImplementChainEnabled() }),
-        // Sem isto, Claude ficava confinado ao cwd (worktree do consumidor) e não
-        // enxergava os worktrees irmãos mesmo com branch/worktree já criados pelo
-        // watcher, apesar da instrução em plan.md/commit.md dizer pra tratá-los
-        // simetricamente (ver decision 2026-09-02-push-pr-siblings.md — corrigiu a
-        // instrução, não este despacho).
-        '--add-dir', PRISMA_ROOT,
-        ...siblingAddDirArgs(ticket.id),
-    ];
-    // PRI-233 T7: só com resolução ok (Run ON); sem routing o argv é o do AS-IS.
-    // PRI-311 (S5.2b, B8): `--agents` só em Attempt com papel e com subagent_roles na policy.
-    if (routing) args.push(...modelRouting.routedArgs([], routing, { agentsJson: routing.agentsJson || null }));
-    // PRI-353: esforço fixo por fase, só com WATCHER_PHASE_EFFORT ligada (desligada = argv inalterado).
     const phaseEffortResolved = resolvePhaseEffort(nodes, routing);
-    args.push(...phaseEffortResolved.args);
+    const args = buildClaudeArgs({ prompt, sessionName, sessionId, nodes, routing, ticketId: ticket.id, effortArgs: phaseEffortResolved.args });
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
     const costRun = startCostRun(ticket.id, {
@@ -6209,4 +6219,6 @@ module.exports = {
     fetchTicketById, postRedmineNote, BASE_BY_LIBERACAO,
     // Log de agente em tempo real (dashboard GET /api/runs/:taskId/agent-log[/stream]).
     logPathFor, logRun,
+    // PRI-381 (F1.5): argv do despacho (teste golden da flag WATCHER_CLI_RESULT_JSON).
+    buildClaudeArgs,
 };
