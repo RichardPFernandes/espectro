@@ -87,7 +87,7 @@ export function loadCapabilityMap({ script = path.join(HERE, '..', '..', 'script
 }
 
 // IDs de AC da SPEC (`- AC-01: ...`, `AC-2: ...`, `**AC-3**`), sem blocos de código, comentários HTML
-// e ACs marcados "(removido". Dado do PR: só regex linear (sem \s* encadeado), nunca interpretado.
+// e ACs marcados "(removido". Dado do PR: só regex, nunca interpretado; linha com mais de 500 caracteres é ignorada, o que limita o custo da regex.
 // Linhas acima de 500 caracteres são ignoradas. Devolve [{ id, n }], n = número como string sem zeros à esquerda.
 export function specAcIds(content) {
     const text = String(content ?? '').replace(/\r\n?/g, '\n').replace(/<!--[\s\S]*?(?:-->|$)/g, '');

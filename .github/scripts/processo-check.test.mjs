@@ -274,7 +274,7 @@ test('CLI: lê a SPEC de --root e avisa; SPEC com status removed não conta', ()
     assert.doesNotMatch(removed.stdout, /AVISO: SPEC|SPEC alterada/);
 });
 
-test('aviso de SPEC: linha de 200.000 espaços não trava (regex linear) e o AC seguinte é achado', () => {
+test('aviso de SPEC: linha gigante é descartada pelo corte de 500 caracteres, sem travar, e o AC seguinte é achado', () => {
     const t0 = performance.now();
     const acs = specAcIds(`${' '.repeat(200000)}\n- AC-1: x\n`);
     assert.ok(performance.now() - t0 < 500, `levou ${performance.now() - t0} ms`);
