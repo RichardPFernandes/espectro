@@ -13,9 +13,9 @@ executa uma troca.
 Desde 2026-11-05 às 20:53 o app-back roda o dashboard a partir do checkout de
 trabalho `~/Workspace/prisma`, e não de uma revisão fixada. O Richard ratificou
 esse modo em sessão em 2026-11-06 ([PRI-263](https://linear.app/prisma-app/issue/PRI-263)).
-Isso diverge da DB-13 da PRI-181 (pin explícito aprovado). A divergência fica
-registrada para reconciliação (AGENTS.md, regra 8), e este documento não revoga
-a DB-13.
+Isso divergia da DB-13 da PRI-181 (pin explícito aprovado). A D3 de 2026-11-17
+fechou a divergência: o modo checkout fica, com ponto de retorno (ver «Decisão:
+DB-13 × checkout»).
 
 | Item | Observado em 2026-11-06 | Observado em 2026-11-15, 15:14–15:27 (PRI-364) |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ Consequências, enquanto este modo valer:
 2. Conforme a decisão registrada na PRI-263, um merge na main só deve deixar a
    main em estado que rode no app-back sozinho, sem a fatia seguinte. Quando a
    fatia não atender isso, ela precisa de contenção declarada na própria spec.
-   O gate formal continua dependendo da reconciliação da DB-13.
+   O gate formal é o ponto de retorno da D3 (ver «Ponto de retorno»).
 3. Alterações não commitadas no checkout estão em uso. O drift observado em
    2026-11-06 está preservado na branch `fix/pri-263-drift-checkout-vivo`
    (`bdfae26`). Não limpar, resetar ou fazer stash sem antes preservar essas
