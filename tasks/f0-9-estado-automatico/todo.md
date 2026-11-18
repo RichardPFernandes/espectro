@@ -44,7 +44,7 @@ Nenhum dado do consumidor em teste ou fixture (use marcadores, como `90003-...`)
 ## Checkpoint: depois de T1–T3
 - [x] `npm run test:changed` verde; `node scripts/lib/flag-registry.test.js` verde
 
-- [ ] **T4: tela, "Copiar resumo" e docs (AC-03)** · M
+- [x] **T4: tela, "Copiar resumo" e docs (AC-03)** · M
   - O que: seção "As cinco métricas do acompanhamento" no topo da capa (aba Resumo), uma
     linha por métrica com valor, n e fonte; desconhecido com a classe `wr-none`. O front
     busca `/api/flags-summary` ao abrir o relatório e no ↻ (como `loadPatterns`); erro →
