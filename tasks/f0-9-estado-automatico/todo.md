@@ -31,7 +31,7 @@ secret de verdade.
 
 Depende de T1.
 
-- [ ] **O que:** `.github/scripts/estado-no-merge.mjs`, com `run({ env, event, linear, gh, summary, now })`
+- [x] **O que:** `.github/scripts/estado-no-merge.mjs`, com `run({ env, event, linear, gh, summary, now })`
   exportado e um `main` que monta as dependências reais (fetch em `https://api.linear.app/graphql`
   com `LINEAR_API_KEY`; API do GitHub com `GITHUB_TOKEN`; evento de `GITHUB_EVENT_PATH`, ou
   `--pr N` buscando o PR pela API; resumo em `GITHUB_STEP_SUMMARY`, ou stdout).
@@ -44,12 +44,12 @@ Depende de T1.
     (se `changed`). `estado`: `issueUpdate` só com `description`. `nada`: nenhuma mutação.
   - Erro numa issue não impede as outras; o processo sai 1 no fim se alguma falhou. O token nunca
     vai para o resumo nem para o log.
-- [ ] **Teste que falha antes:** `.github/scripts/estado-no-merge.test.mjs` com `linear` e `gh` falsos
+- [x] **Teste que falha antes:** `.github/scripts/estado-no-merge.test.mjs` com `linear` e `gh` falsos
   que registram chamadas: `off` → zero chamadas; `simular` → zero mutações e resumo com a decisão;
   `on` + Médio limpo → uma mutação com `stateId` do Done e descrição nova; `on` + Alto → zero
   mutações; `on` + filha aberta → mutação sem `stateId`; PR fechado sem merge → nada; erro do
   Linear numa issue → a outra ainda é processada e o código de saída é 1.
-- [ ] **Arquivos:** CLI e teste; um evento de exemplo em `.github/scripts/fixtures/` se ajudar. Escopo M.
+- [x] **Arquivos:** CLI e teste; um evento de exemplo em `.github/scripts/fixtures/` se ajudar. Escopo M.
 
 ## T3: workflow (AC-02)
 
