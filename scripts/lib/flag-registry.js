@@ -131,6 +131,31 @@ function checkFlagRegistry({ markdown, reads, flagReads, sourceExists, today }) 
     return { problems, flags: rows.length, desligados: rows.filter(r => r.desligado === 'sim').length };
 }
 
+// PRI-399 (F0.9, AC-03, métrica 4): resumo do registro para o relatório semanal. Pura.
+// "Consumidor" conta como não verificado quando começa com "não verificado" (com ou sem nota).
+// Vencida: data válida antes de hoje (UTC), a mesma régua do DATE_EXPIRED.
+function summarizeFlags(rows, today) {
+    const count = pred => rows.filter(pred).length;
+    const naoVerificado = count(r => /^não verificado\b/.test(r.consumidor || ''));
+    return {
+        n: rows.length,
+        padrao: { ligada: count(r => r.padrao === 'ligada'), desligada: count(r => r.padrao === 'desligada') },
+        consumidor: { nao_verificado: naoVerificado, outro: rows.length - naoVerificado },
+        vencidas: count(r => validDate(r.decidirAte) && r.decidirAte < today),
+        itens_desligados: count(r => r.desligado === 'sim'),
+        fonte: REGISTRY_REL,
+        hoje: today,
+    };
+}
+
+// Tabela quebrada, ausente ou vazia não vira contagem zero: devolve ok:false com o motivo.
+function summarizeFlagRegistry(markdown, today) {
+    const { rows, errors } = parseFlagRegistry(markdown);
+    if (errors.length) return { ok: false, error: `${REGISTRY_REL}: ${errors.join('; ')}` };
+    if (!rows.length) return { ok: false, error: `${REGISTRY_REL}: tabela sem linhas` };
+    return { ok: true, summary: summarizeFlags(rows, today) };
+}
+
 function sourceExistsIn(root) {
     return onde => {
         const [rel, key] = onde.split('#');
@@ -182,5 +207,5 @@ function inspectRepo(root, { today = todayUtc(), contractPath } = {}) {
 
 module.exports = {
     REGISTRY_REL, COLUMNS, parseFlagRegistry, flagShapedReads, checkFlagRegistry, inspectRepo, todayUtc,
-    readsOf, unreadExampleVars,
+    readsOf, unreadExampleVars, summarizeFlags, summarizeFlagRegistry,
 };
