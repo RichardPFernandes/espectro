@@ -143,11 +143,20 @@ function dashboardItem(v, head) {
     return { name: 'dashboard', status: 'pass', reason: 'em execução no HEAD, sem drift' };
 }
 
+// A trava do watcher e os agentes moram no repo do consumidor (REPO_PATH), não na raiz do
+// Prisma. lockStatus injetado vale (chamado com o repo); nulo, ou ausente sem repo, = sem trava.
+const NO_REPO = 'repo do consumidor não informado (--repo ou REPO_PATH)';
+function resolveLockStatus(repo, lockStatus) {
+    if (lockStatus !== undefined) return lockStatus;
+    return repo ? r => require('./watcher-lock').status(r) : null;
+}
+
 // "Legível" = status() não lança e a trava está livre, viva ou velha com conteúdo; arquivo
 // corrompido aparece como stale sem lock (watcher-lock.readLock) e reprova.
-function lockItem(lockStatus, root) {
+function lockItem(lockStatus, repo) {
+    if (!lockStatus) return { name: 'trava', status: 'desconhecido', reason: NO_REPO };
     let st;
-    try { st = lockStatus(root); } catch { return { name: 'trava', status: 'fail', reason: 'status da trava ilegível' }; }
+    try { st = lockStatus(repo); } catch { return { name: 'trava', status: 'fail', reason: 'status da trava ilegível' }; }
     const s = st?.lock_state;
     if (s === 'free' || ((s === 'held' || s === 'stale') && st.lock && typeof st.lock === 'object')) {
         return { name: 'trava', status: 'pass', reason: `legível (${s})` };
@@ -176,19 +185,98 @@ function tickItem(w, bootAt) {
     return item('pass', 'sem queda desde a subida');
 }
 
-async function health({ root, baseUrl, fetch: fetchFn = globalThis.fetch, lockStatus, git = runGit, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
-    const origin = loopbackUrl(baseUrl ?? `http://127.0.0.1:${process.env.PORT || 3333}`);
-    const lock = lockStatus || (r => require('./watcher-lock').status(r));
+const defaultBaseUrl = () => `http://127.0.0.1:${process.env.PORT || 3333}`;
+
+async function health({ root, repo, baseUrl, fetch: fetchFn = globalThis.fetch, lockStatus, git = runGit, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+    const origin = loopbackUrl(baseUrl ?? defaultBaseUrl());
     const tree = checkTree({ root, git });
     const version = await getJson(fetchFn, `${origin}/api/version`, timeoutMs);
     const watcher = await getJson(fetchFn, `${origin}/api/watcher/status`, timeoutMs);
     const items = [
         treeItem(tree),
         dashboardItem(version, tree.head),
-        lockItem(lock, root),
+        lockItem(resolveLockStatus(repo, lockStatus), repo),
         tickItem(watcher, version.body?.started_at),
     ];
     return { ok: items.every(i => i.status !== 'fail'), items };
 }
 
-module.exports = { checkTree, guardEnabled, runGit, lastGreen, mark, health, MAX_PATHS };
+// ---------------------------------------------------------------- volta ao último verde
+// Recusa (sem mudar nada, com todos os motivos) se não há alvo verde, a árvore está suja,
+// não há repo do consumidor, a trava tem dono vivo ou não se lê, há agente vivo ou o laço do
+// watcher está ativo no dashboard (sem resposta dele, vale só a trava). Senão, HEAD destacado
+// na tag. Nunca stash, reset, clean, nem mover branch ou tag. Fora da main não impede: depois
+// de uma volta o HEAD fica destacado, e uma nova volta tem de seguir possível.
+const DEP_LOCKS = ['scripts/package-lock.json', 'dashboard/package-lock.json'];
+const GREEN_RE = /^verde\/[0-9A-Za-z._-]+$/;
+
+// Mesmo critério do painel Versão (dashboard/version.js): laço ativo = running ou estado != stopped.
+const watcherActive = w => !!(w && (w.running || (w.state && w.state !== 'stopped')));
+
+async function defaultWatcherStatus() {
+    const r = await getJson(globalThis.fetch, `${loopbackUrl(defaultBaseUrl())}/api/watcher/status`, HEALTH_TIMEOUT_MS);
+    return r.error ? null : r.body;
+}
+
+async function back({ root, to, repo, lockStatus, watcherStatus = defaultWatcherStatus, git = runGit } = {}) {
+    const run = args => git(args, { cwd: root });
+    const reasons = [];
+    const refuse = (code, message) => reasons.push({ code, message });
+
+    let tag = null;
+    if (to != null) {
+        if (!GREEN_RE.test(String(to))) refuse('to_invalid', `--to ${to} não é uma tag verde/*`);
+        else if (run(['rev-parse', '--verify', '--quiet', `refs/tags/${to}^{commit}`]).status !== 0) refuse('to_missing', `a tag ${to} não existe`);
+        else tag = to;
+    } else {
+        tag = lastGreen({ root, git });
+        if (!tag) refuse('no_green', 'não há tag verde/*; rode mark antes');
+    }
+
+    const tree = checkTree({ root, git });
+    if (tree.reasons.includes('not_git')) refuse('not_git', 'a raiz não é um repositório git');
+    if (tree.reasons.includes('dirty')) refuse('dirty', 'árvore suja (arquivo modificado ou não rastreado)');
+
+    const lock = resolveLockStatus(repo, lockStatus);
+    if (!lock) {
+        refuse('no_repo', NO_REPO);
+    } else {
+        let st = null;
+        try { st = lock(repo); } catch { st = null; }
+        if (!st || typeof st !== 'object') refuse('lock_unreadable', 'não foi possível ler a trava do watcher');
+        else {
+            if (st.lock_state === 'held') refuse('lock_held', 'a trava do watcher tem dono vivo; pare o watcher antes');
+            const n = Array.isArray(st.agents) ? st.agents.length : 0;
+            if (n > 0) refuse('agents_alive', `${n} agente(s) destacado(s) vivo(s) no consumidor; espere terminarem`);
+        }
+    }
+
+    let w = null;
+    try { w = await watcherStatus(); } catch { w = null; }
+    if (watcherActive(w)) refuse('watcher_running', 'o laço do watcher está ativo no dashboard; pare o watcher antes');
+
+    const from = tree.head;
+    const result = { ok: false, tag, from, head: from, reasons, paths: tree.paths, warnings: [], restart: false };
+    if (reasons.length) return result;
+
+    const d = run(['diff', '--name-only', '-z', from, `refs/tags/${tag}`, '--', ...DEP_LOCKS]);
+    if (d.status !== 0) {
+        result.warnings.push({ code: 'deps_lock_unknown', paths: [], message: 'não foi possível comparar os locks de dependência' });
+    } else {
+        const changed = d.stdout.split('\0').filter(Boolean);
+        if (changed.length) {
+            result.warnings.push({ code: 'deps_lock_changed', paths: changed, message: `${changed.join(', ')} difere(m) entre o HEAD de antes e ${tag}: as dependências mudaram; reinstale antes de reiniciar o dashboard` });
+        }
+    }
+
+    const sw = run(['switch', '--quiet', '--detach', `refs/tags/${tag}`]);
+    const after = run(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+    result.head = after.status === 0 ? after.stdout.trim() : null;
+    if (sw.status !== 0) {
+        reasons.push({ code: 'switch_failed', message: 'git switch --detach falhou' });
+        return result;
+    }
+    return { ...result, ok: true, restart: result.head !== from };
+}
+
+module.exports = { checkTree, guardEnabled, runGit, lastGreen, mark, health, back, MAX_PATHS };

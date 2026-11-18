@@ -48,7 +48,9 @@ function cloneOnMain() {
     sh(base, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
     sh(base, 'init', '--quiet', '--initial-branch=main', seed);
     fs.writeFileSync(path.join(seed, 'a.txt'), 'um\n');
-    fs.writeFileSync(path.join(seed, '.gitignore'), 'ignorado.log\n');
+    // logs/*.jsonl ignorado como no .gitignore do repo (**/logs/**/*.jsonl): o log do mark
+    // não suja a árvore para o back.
+    fs.writeFileSync(path.join(seed, '.gitignore'), 'ignorado.log\n**/logs/**/*.jsonl\n');
     sh(seed, 'add', '.');
     sh(seed, 'commit', '--quiet', '-m', 'primeiro');
     fs.writeFileSync(path.join(seed, 'a.txt'), 'dois\n');
@@ -284,10 +286,11 @@ async function healthWith(root, routes, extra = {}) {
     try { return await health({ root, baseUrl: srv.baseUrl, git, ...extra }); } finally { await srv.close(); }
 }
 
+// A trava padrão é lida no repo do consumidor (`repo`); aqui o próprio clone faz esse papel.
 test('health: tudo em ordem passa os quatro itens, com o fetch e a trava padrão', async () => {
     const root = cloneOnMain();
     const head = sh(root, 'rev-parse', 'HEAD');
-    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() });
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() }, { repo: root });
     assert.equal(r.ok, true);
     assert.deepEqual(r.items.map(i => [i.name, i.status]), [['arvore', 'pass'], ['dashboard', 'pass'], ['trava', 'pass'], ['tick', 'pass']]);
     for (const i of r.items) assert.equal(typeof i.reason, 'string');
@@ -358,8 +361,34 @@ test('health: arquivo de trava corrompido reprova pela trava padrão', async () 
     const root = cloneOnMain();
     const head = sh(root, 'rev-parse', 'HEAD');
     fs.writeFileSync(path.join(root, '.git', LOCK_NAME), 'não é json');
-    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() });
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() }, { repo: root });
     assert.equal(byName(r).trava.status, 'fail');
+});
+
+test('health: sem repo do consumidor a trava fica desconhecida, com o motivo, e não reprova', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() });
+    assert.equal(byName(r).trava.status, 'desconhecido');
+    assert.equal(byName(r).trava.reason, 'repo do consumidor não informado (--repo ou REPO_PATH)');
+    assert.equal(r.ok, true);
+});
+
+test('health: lockStatus nulo deixa a trava desconhecida mesmo com repo', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() }, { repo: root, lockStatus: null });
+    assert.equal(byName(r).trava.status, 'desconhecido');
+});
+
+test('health: a trava padrão é lida no repo do consumidor, não na raiz', async () => {
+    const root = cloneOnMain();
+    const head = sh(root, 'rev-parse', 'HEAD');
+    fs.writeFileSync(path.join(root, '.git', LOCK_NAME), 'não é json'); // raiz com trava ruim
+    const repo = tmp();
+    fs.mkdirSync(path.join(repo, '.git')); // consumidor com trava livre
+    const r = await healthWith(root, { '/api/version': versionOk(head), '/api/watcher/status': watcherOk() }, { repo });
+    assert.equal(byName(r).trava.status, 'pass');
 });
 
 test('health: tick com error reprova', async () => {
@@ -438,4 +467,176 @@ test('health: localhost e ::1 são aceitos; URL padrão usa 127.0.0.1 e PORT', a
     try { await health({ root, fetch, git }); } finally { if (saved === undefined) delete process.env.PORT; else process.env.PORT = saved; }
     assert.deepEqual(calls.slice(-2), ['http://127.0.0.1:45678/api/version', 'http://127.0.0.1:45678/api/watcher/status']);
     assert.equal(calls.length, 6);
+});
+
+// Volta ao último verde (F1.2, AC-01). Trava e status do watcher injetados; nenhum dashboard real.
+const { back } = require('./return-point');
+const freeLock = () => ({ lock_state: 'free', lock: null, agents: [] });
+const stopped = async () => ({ running: false, state: 'stopped' });
+const quiet = { lockStatus: freeLock, watcherStatus: stopped };
+
+// Avança n commits; `file` novo entra no índice antes do commit.
+function advance(root, n, file = 'a.txt') {
+    for (let i = 0; i < n; i++) {
+        fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+        fs.writeFileSync(path.join(root, file), `avanço ${i} ${sh(root, 'rev-parse', 'HEAD')}\n`);
+        sh(root, 'add', file);
+        sh(root, 'commit', '--quiet', '-m', `avanço ${i}`);
+    }
+}
+
+// HEAD, branch atual e todas as refs: "nada mudou" é isto igual antes e depois.
+function snapshot(root) {
+    const sym = spawnSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: root, env: GIT_ENV, encoding: 'utf8' });
+    return { head: sh(root, 'rev-parse', 'HEAD'), branch: sym.stdout.trim(), refs: sh(root, 'for-each-ref', '--format=%(refname) %(objectname)') };
+}
+
+async function markedAndAdvanced() {
+    const root = cloneOnMain();
+    const green = sh(root, 'rev-parse', 'HEAD');
+    const m = await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') });
+    advance(root, 2);
+    return { root, green, tag: m.tag };
+}
+
+async function assertRefused(root, opts, code) {
+    const before = snapshot(root);
+    const r = await back({ root, git, ...opts });
+    assert.equal(r.ok, false);
+    assert.ok(r.reasons.some(x => x.code === code), `esperava ${code}, veio ${JSON.stringify(r.reasons)}`);
+    for (const x of r.reasons) assert.equal(typeof x.message, 'string');
+    assert.deepEqual(snapshot(root), before);
+    assert.equal(r.head, before.head);
+    return r;
+}
+
+test('back leva o HEAD destacado ao último verde, sem mover branch nem tag', async () => {
+    const { root, green, tag } = await markedAndAdvanced();
+    const before = snapshot(root);
+    assert.deepEqual(checkTree({ root, git }).reasons, ['off_main']); // fora da main não impede a volta
+    const r = await back({ root, git, repo: tmp(), ...quiet });
+    assert.equal(r.ok, true);
+    assert.equal(r.tag, tag);
+    assert.equal(r.from, before.head);
+    assert.equal(r.head, green);
+    assert.equal(r.restart, true);
+    assert.deepEqual(r.reasons, []);
+    assert.deepEqual(r.warnings, []);
+    const after = snapshot(root);
+    assert.equal(after.head, green);
+    assert.equal(after.branch, '', 'HEAD devia ficar destacado');
+    assert.equal(after.refs, before.refs, 'branch ou tag mudou');
+});
+
+test('back --to escolhe outra tag verde, e uma nova volta parte de HEAD destacado', async () => {
+    const root = cloneOnMain();
+    const first = sh(root, 'rev-parse', 'HEAD');
+    await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') });
+    advance(root, 1);
+    const second = sh(root, 'rev-parse', 'HEAD');
+    await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:08Z') });
+    advance(root, 1);
+    const r1 = await back({ root, git, to: 'verde/20261118-090507', ...quiet });
+    assert.equal(r1.ok, true);
+    assert.equal(sh(root, 'rev-parse', 'HEAD'), first);
+    const r2 = await back({ root, git, ...quiet });
+    assert.equal(r2.ok, true);
+    assert.equal(r2.tag, 'verde/20261118-090508');
+    assert.equal(sh(root, 'rev-parse', 'HEAD'), second);
+});
+
+test('back avisa, sem recusar, quando os locks de dependência diferem', async () => {
+    const root = cloneOnMain();
+    const green = sh(root, 'rev-parse', 'HEAD');
+    await mark({ root, git, health: okHealth, now: at('2026-11-18T09:05:07Z') });
+    advance(root, 1, 'scripts/package-lock.json');
+    advance(root, 1, 'dashboard/package-lock.json');
+    const r = await back({ root, git, ...quiet });
+    assert.equal(r.ok, true);
+    assert.equal(sh(root, 'rev-parse', 'HEAD'), green);
+    const w = r.warnings.find(x => x.code === 'deps_lock_changed');
+    assert.ok(w, JSON.stringify(r.warnings));
+    assert.deepEqual(w.paths.slice().sort(), ['dashboard/package-lock.json', 'scripts/package-lock.json']);
+    assert.match(w.message, /package-lock\.json/);
+});
+
+test('back recusa sem tag verde', async () => {
+    const root = cloneOnMain();
+    await assertRefused(root, quiet, 'no_green');
+});
+
+test('back recusa --to fora de verde/* e --to inexistente', async () => {
+    const { root } = await markedAndAdvanced();
+    sh(root, 'tag', 'outra/20261118-090507', 'HEAD~1');
+    await assertRefused(root, { ...quiet, to: 'outra/20261118-090507' }, 'to_invalid');
+    await assertRefused(root, { ...quiet, to: '--orphan' }, 'to_invalid');
+    await assertRefused(root, { ...quiet, to: 'verde/20000101-000000' }, 'to_missing');
+});
+
+test('back recusa árvore suja e devolve os caminhos', async () => {
+    const { root } = await markedAndAdvanced();
+    fs.writeFileSync(path.join(root, 'solto.txt'), 'x\n');
+    const r = await assertRefused(root, quiet, 'dirty');
+    assert.deepEqual(r.paths, ['solto.txt']);
+});
+
+test('back recusa trava com dono vivo', async () => {
+    const { root } = await markedAndAdvanced();
+    await assertRefused(root, { ...quiet, lockStatus: () => ({ lock_state: 'held', lock: { pid: 1 }, agents: [] }) }, 'lock_held');
+});
+
+test('back recusa agente destacado vivo', async () => {
+    const { root } = await markedAndAdvanced();
+    await assertRefused(root, { ...quiet, lockStatus: () => ({ lock_state: 'free', lock: null, agents: [{ pid: 1 }] }) }, 'agents_alive');
+});
+
+test('back recusa trava ilegível', async () => {
+    const { root } = await markedAndAdvanced();
+    await assertRefused(root, { ...quiet, lockStatus: () => { throw new Error('EACCES'); } }, 'lock_unreadable');
+});
+
+test('back recusa watcher rodando segundo o dashboard', async () => {
+    const { root } = await markedAndAdvanced();
+    await assertRefused(root, { ...quiet, watcherStatus: async () => ({ running: true, state: 'running' }) }, 'watcher_running');
+    await assertRefused(root, { ...quiet, watcherStatus: async () => ({ running: false, state: 'stopping' }) }, 'watcher_running');
+});
+
+test('back recusa sem repo do consumidor, com o motivo', async () => {
+    const { root } = await markedAndAdvanced();
+    const r = await assertRefused(root, { watcherStatus: stopped }, 'no_repo');
+    assert.equal(r.reasons.find(x => x.code === 'no_repo').message, 'repo do consumidor não informado (--repo ou REPO_PATH)');
+});
+
+test('back junta todos os motivos de recusa', async () => {
+    const root = cloneOnMain();
+    fs.writeFileSync(path.join(root, 'solto.txt'), 'x\n');
+    const r = await assertRefused(root, { watcherStatus: async () => ({ running: true, state: 'running' }) }, 'no_green');
+    assert.deepEqual(r.reasons.map(x => x.code), ['no_green', 'dirty', 'no_repo', 'watcher_running']);
+});
+
+test('back com o dashboard sem resposta confere só a trava', async () => {
+    const { root, green } = await markedAndAdvanced();
+    const r = await back({ root, git, lockStatus: freeLock, watcherStatus: async () => null });
+    assert.equal(r.ok, true);
+    assert.equal(sh(root, 'rev-parse', 'HEAD'), green);
+});
+
+test('back lê a trava padrão no repo do consumidor', async () => {
+    const { root, green } = await markedAndAdvanced();
+    const repo = tmp();
+    fs.mkdirSync(path.join(repo, '.git'));
+    fs.writeFileSync(path.join(repo, '.git', LOCK_NAME), JSON.stringify({ version: 1, role: 'loop', pid: process.pid, hostname: os.hostname(), acquired_at: new Date().toISOString() }));
+    await assertRefused(root, { repo, watcherStatus: stopped }, 'lock_held');
+    fs.unlinkSync(path.join(repo, '.git', LOCK_NAME));
+    const r = await back({ root, git, repo, watcherStatus: stopped });
+    assert.equal(r.ok, true);
+    assert.equal(sh(root, 'rev-parse', 'HEAD'), green);
+});
+
+test('back não tem caminho absoluto no resultado', async () => {
+    const { root } = await markedAndAdvanced();
+    const repo = tmp();
+    fs.mkdirSync(path.join(repo, '.git'));
+    const raw = JSON.stringify(await back({ root, git, repo, watcherStatus: stopped }));
+    assert.ok(!raw.includes(root) && !raw.includes(repo) && !raw.includes(os.tmpdir()), raw);
 });
