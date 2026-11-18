@@ -21,7 +21,9 @@ Hoje só o SQL de banco espera um humano: o `authorization.js` abre o pedido
 dashboard, que não tem login. O `dom06-attempt.js` admite cada Attempt com dono e snapshot presos
 e só deixa um efeito correr com autoridade válida, que vem da admissão e não de uma pessoa: a
 mesma chave de idempotência não repete o efeito e resultado incerto nunca é repetido sozinho. O
-`git-push-effect.sh` é o push do `/commit` sob essa autoridade, sem aprovação humana própria; a
+`git-push-effect.sh` é o push do `/commit` sob essa autoridade, sem aprovação humana própria: a
+chave leva o repo real e o commit enviado (repos irmãos e commit novo são efeitos distintos), e um
+push que falha grava `failed` e sai com o código do git, sem virar entrega; a
 autorização humana do Attempt (`escalation`) ainda é só reservada. O `human-input-intent.js` lê a
 mensagem humana antes de destravar uma task `blocked`.
 

@@ -267,3 +267,68 @@ test('AC-3: HEAD:<branch>, <origem>:<branch> e --force-with-lease levam o sha da
     assert.ok(keys[1].includes(`${repoA}@${c2}`), keys[1]);
     assert.ok(keys[2].includes(`${repoA}@${c3}`), keys[2]);
 });
+
+test('AC-6: push que falha sai ≠ 0, grava failed com repo e rc, e a nova tentativa roda o git', () => {
+    const caseDir = newCase('falha');
+    const remote = makeRemote(caseDir, 'repo-a');
+    const repoA = cloneOf(caseDir, remote, 'repo-a');
+    const sha = git(repoA, 'rev-parse', 'HEAD');
+    git(repoA, 'remote', 'set-url', 'origin', path.join(caseDir, 'nao-existe.git'));
+    const attemptFile = admit(caseDir);
+
+    const failed = pushEffect(repoA, attemptFile, ['push', '-u', 'origin', BRANCH]);
+
+    assert.notStrictEqual(failed.status, 0, failed.stderr);
+    assert.doesNotMatch(failed.stderr, /já cumprido/);
+    let effects = pushEffects(attemptFile);
+    assert.strictEqual(effects.length, 1, JSON.stringify(effects));
+    assert.strictEqual(effects[0].status, 'failed');
+    assert.ok(effects[0].detail.includes(repoA), effects[0].detail);
+    assert.ok(effects[0].detail.includes(`rc ${failed.status}`), effects[0].detail);
+    assert.ok(effects[0].idempotency_key.includes(`${repoA}@${sha}`), effects[0].idempotency_key);
+    assert.ok(!remoteHasBranch(remote));
+
+    git(repoA, 'remote', 'set-url', 'origin', remote);
+    const retry = pushEffect(repoA, attemptFile, ['push', '-u', 'origin', BRANCH]);
+
+    assert.strictEqual(retry.status, 0, retry.stderr);
+    assert.doesNotMatch(retry.stderr, /já cumprido/);
+    assert.ok(remoteHasBranch(remote), 'a nova tentativa chegou ao remote');
+    effects = pushEffects(attemptFile);
+    assert.deepStrictEqual(effects.map(e => e.status), ['failed', 'fulfilled']);
+    assert.strictEqual(effects[1].idempotency_key, effects[0].idempotency_key);
+    assert.strictEqual(pushesLogged().length, 2, 'o git rodou nas duas tentativas');
+});
+
+test('AC-7: sem DOM06_ATTEMPT_FILE, sai 1 sem chamar o git', () => {
+    const caseDir = newCase('sem-attempt');
+    const remote = makeRemote(caseDir, 'repo-a');
+    const repoA = cloneOf(caseDir, remote, 'repo-a');
+
+    const r = spawnSync(script, ['push', '-u', 'origin', BRANCH], {
+        cwd: repoA,
+        encoding: 'utf8',
+        env: { PATH: `${binDir}:${process.env.PATH}`, ...GIT_ENV },
+    });
+
+    assert.strictEqual(r.status, 1, r.stderr);
+    assert.match(r.stderr, /AUTHORITY_INVALID/);
+    assert.deepStrictEqual(pushesLogged(), []);
+    assert.ok(!remoteHasBranch(remote));
+});
+
+test('AC-7: com Attempt revogado, sai 1 sem chamar o git e sem efeito', () => {
+    const caseDir = newCase('revogado');
+    const remote = makeRemote(caseDir, 'repo-a');
+    const repoA = cloneOf(caseDir, remote, 'repo-a');
+    const attemptFile = admit(caseDir);
+    dom06.revoke(attemptFile, { reason: 'teste' });
+
+    const r = pushEffect(repoA, attemptFile, ['push', '-u', 'origin', BRANCH]);
+
+    assert.strictEqual(r.status, 1, r.stderr);
+    assert.match(r.stderr, /AUTHORITY_REVOKED/);
+    assert.deepStrictEqual(pushesLogged(), []);
+    assert.deepStrictEqual(pushEffects(attemptFile), []);
+    assert.ok(!remoteHasBranch(remote));
+});

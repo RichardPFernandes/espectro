@@ -6,6 +6,7 @@
 # são efeitos distintos; cwd, `-C` e symlink para o mesmo repo, a mesma chave.
 # A chave leva também o commit enviado (origem do último refspec; sem refspec,
 # HEAD): commit novo no mesmo repo é efeito novo; o mesmo commit não vai duas vezes.
+# Push que falha grava `failed` e sai com o rc do git; a nova tentativa roda de novo.
 #
 # Uso (DOM06_ATTEMPT_FILE vem do ambiente do despacho):
 #   scripts/git-push-effect.sh [-C <dir>] push -u origin <branch>
@@ -93,5 +94,16 @@ if [[ "$auth_line" == DUPLICATE* ]]; then
 fi
 rm -f "$tmp"
 
+# Push que falha não é entrega: grava `failed` (repo e rc) e sai com o rc do git.
+# Só `fulfilled` deduplica, então a nova tentativa com a mesma chave roda o git.
+set +e
 git -C "$dir" "${args[@]}"
+push_rc=$?
+set -e
+if [[ "$push_rc" != 0 ]]; then
+  node "$authorize_js" record --attempt "$attempt_file" --obligation push --key "$key" --status failed \
+    --detail "push falhou: repo $repo, commit $sha, rc $push_rc ($key)" >/dev/null || true
+  echo "ERROR: git push falhou em $repo (rc $push_rc); efeito gravado como failed." >&2
+  exit "$push_rc"
+fi
 node "$authorize_js" record --attempt "$attempt_file" --obligation push --key "$key" --status fulfilled --detail "$key" >/dev/null
