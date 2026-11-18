@@ -237,7 +237,7 @@ function mergeRun(ct, { node, agent, alsoCovers = [], metrics, run = {}, outcome
         entry.cli_cost_usd = roundUsd(addNullable(entry.cli_cost_usd, cliUsd));
         if (cliUsd == null) entry.runs_without_cli_cost = (entry.runs_without_cli_cost || 0) + 1;
     }
-    entry.attempts =[...(prev?.attempts || []), attemptRecord({ ...run, agent }, node, alsoCovers, metrics, outcome)];
+    entry.attempts = [...(prev?.attempts || []), attemptRecord({ ...run, agent }, node, alsoCovers, metrics, outcome)];
     return recomputeTotals({ ...base, nodes: { ...base.nodes, [node]: entry } });
 }
 
