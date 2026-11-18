@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // estado-no-merge (F0.9 AC-02): no merge de um PR, atualiza a issue do Linear citada em "Refs PRI-N".
-// Leve/Médio sem outro PR aberto nem filha aberta → Done + Estado/Próximo passo; com pendência → só
+// Leve/Médio sem outro PR aberto, filha aberta nem AC desmarcado na descrição (D-PRI-399-01) → Done + Estado/Próximo passo; com pendência → só
 // Estado/Próximo passo; Alto → nada. Modo pela variável ESTADO_NO_MERGE: ausente/off | simular | on.
 //
 // Uso:
@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { loadConfig } from './processo-lib.mjs';
-import { parseRefs, levelFromLabels, decide, rewriteEstado, estadoText } from './estado-no-merge-lib.mjs';
+import { parseRefs, levelFromLabels, decide, rewriteEstado, estadoText, uncheckedAcs } from './estado-no-merge-lib.mjs';
 
 const MODES = new Set(['off', 'simular', 'on']);
 const OPEN_EXCLUDED = new Set(['completed', 'canceled']);
@@ -150,7 +150,7 @@ export async function run({ env, event, linear, gh, summary, now = () => new Dat
                 }
             }
         }
-        const d = decide({ level, otherOpenPrs, unreadablePrs, openChildren });
+        const d = decide({ level, otherOpenPrs, unreadablePrs, openChildren, uncheckedAcs: uncheckedAcs(issue.description) });
         if (d.acao === 'nada') return `${id}: nada — ${d.motivo}.`;
 
         const input = {};

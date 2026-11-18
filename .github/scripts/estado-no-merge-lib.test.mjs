@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig } from './processo-lib.mjs';
-import { parseRefs, levelFromLabels, decide, pendenciaText, rewriteEstado, estadoText } from './estado-no-merge-lib.mjs';
+import { parseRefs, levelFromLabels, decide, pendenciaText, rewriteEstado, estadoText, uncheckedAcs } from './estado-no-merge-lib.mjs';
 
 const { levels } = loadConfig();
 
@@ -109,4 +109,46 @@ test('estadoText: frases de Done e de pendência', () => {
         estado: 'PR #214 mesclado em 2026-11-18.',
         proximo: 'falta PR #220, filha PRI-500.',
     });
+});
+
+// D-PRI-399-01: AC desmarcado na descrição da issue é pendência; não fecha cedo.
+test('uncheckedAcs: aceita - e *, ignora [x] e [X], sem repetição e na ordem', () => {
+    const desc = [
+        '## Pronto quando',
+        '- [ ] AC-03: falta isto',
+        '- [x] AC-01: feito',
+        '* [X] AC-02: feito',
+        '  * [ ] AC-05: aninhado',
+        '- [ ] AC-03: repetido',
+        'texto com - [ ] AC-09 no meio da linha não conta',
+        '- [ ] AC-7a não é ID',
+    ].join('\n');
+    assert.deepEqual(uncheckedAcs(desc), ['AC-03', 'AC-05']);
+});
+
+test('uncheckedAcs: sem linhas de AC ou descrição nula → lista vazia', () => {
+    assert.deepEqual(uncheckedAcs('**Estado:** x\n- [ ] tarefa sem ID'), []);
+    assert.deepEqual(uncheckedAcs(null), []);
+    assert.deepEqual(uncheckedAcs(undefined), []);
+});
+
+test('decide: Médio sem PR nem filha mas com AC desmarcado → estado com pendência AC', () => {
+    const r = decide({ level: 'medio', otherOpenPrs: [216], openChildren: [], uncheckedAcs: ['AC-03'] });
+    assert.equal(r.acao, 'estado');
+    assert.deepEqual(r.pendencias, [{ tipo: 'pr', n: 216 }, { tipo: 'ac', id: 'AC-03' }]);
+    assert.equal(pendenciaText(r.pendencias[1]), 'AC-03');
+    assert.equal(estadoText({ pr: 215, data: '2026-11-18', acao: r.acao, pendencias: r.pendencias }).proximo, 'falta PR #216, AC-03.');
+    const s = decide({ level: 'medio', uncheckedAcs: ['AC-03'] });
+    assert.equal(s.acao, 'estado');
+    assert.match(s.motivo, /AC-03/);
+});
+
+test('decide: todos os ACs marcados (lista vazia) ou sem linhas de AC → done', () => {
+    assert.equal(decide({ level: 'medio', uncheckedAcs: [] }).acao, 'done');
+    assert.equal(decide({ level: 'leve', uncheckedAcs: uncheckedAcs('- [x] AC-01: ok\n* [X] AC-02: ok') }).acao, 'done');
+    assert.equal(decide({ level: 'medio', uncheckedAcs: uncheckedAcs('sem AC aqui') }).acao, 'done');
+});
+
+test('decide: Alto com AC desmarcado continua nada', () => {
+    assert.equal(decide({ level: 'alto', uncheckedAcs: ['AC-01'] }).acao, 'nada');
 });

@@ -349,6 +349,34 @@ test('o valor dos tokens nunca aparece no resumo, mesmo em mensagem de erro', as
     assert.doesNotMatch(r.summary, /lin_api_SEGREDO|ghs_TOKEN/);
 });
 
+// D-PRI-399-01: AC desmarcado na descrição segura o Done.
+const DESC_AC = `${DESC}\n\n## Pronto quando\n- [x] AC-01: feito\n- [ ] AC-03: falta\n`;
+
+test('on + Médio sem PR nem filha mas com AC desmarcado: mutação sem stateId, AC-03 no Próximo passo', async () => {
+    const r = await exec({ mode: 'on', event: { pull_request: pull() }, issues: { 'PRI-1': issue('PRI-1', { description: DESC_AC }) } });
+    assert.equal(r.code, 0);
+    assert.equal(r.calls.mutations.length, 1);
+    const { input } = r.calls.mutations[0];
+    assert.equal(input.stateId, undefined);
+    assert.match(input.description, /^\*\*Estado:\*\* PR #50 mesclado em 2026-11-17\.$/m);
+    assert.match(input.description, /^\*\*Próximo passo:\*\* falta AC-03\.$/m);
+    assert.match(input.description, /^- \[ \] AC-03: falta$/m);
+    assert.match(r.summary, /PRI-1: estado.*AC-03/);
+});
+
+test('on + Médio com todos os ACs marcados: Done', async () => {
+    const desc = `${DESC}\n\n## Pronto quando\n- [x] AC-01: feito\n* [X] AC-02: feito\n`;
+    const r = await exec({ mode: 'on', event: { pull_request: pull() }, issues: { 'PRI-1': issue('PRI-1', { description: desc }) } });
+    assert.equal(r.calls.mutations.length, 1);
+    assert.equal(r.calls.mutations[0].input.stateId, DONE_ID);
+});
+
+test('on + Alto com AC desmarcado: continua sem mutação', async () => {
+    const r = await exec({ mode: 'on', event: { pull_request: pull({ labels: [{ name: 'processo:alto' }] }) }, issues: { 'PRI-1': issue('PRI-1', { description: DESC_AC }) } });
+    assert.equal(r.code, 0);
+    assert.deepEqual(r.calls.mutations, []);
+});
+
 test('CLI com --fake e o evento de exemplo, em simular: imprime a decisão sem rede', () => {
     const fixtures = path.join(HERE, 'fixtures');
     const res = spawnSync(process.execPath, [
@@ -359,5 +387,6 @@ test('CLI com --fake e o evento de exemplo, em simular: imprime a decisão sem r
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /PRI-399.*done/);
     assert.match(res.stdout, /PRI-400.*estado/);
+    assert.match(res.stdout, /PRI-401.*estado.*AC-03/);
     assert.match(fs.readFileSync(path.join(fixtures, 'estado-no-merge-fake.json'), 'utf8'), /PRI-399/);
 });

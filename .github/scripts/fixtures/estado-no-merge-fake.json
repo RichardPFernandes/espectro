@@ -20,6 +20,15 @@
       "team": { "states": [{ "id": "st-done", "name": "Done", "type": "completed" }] },
       "children": [],
       "attachments": [{ "url": "https://github.com/acme/prisma/pull/216" }]
+    },
+    "PRI-401": {
+      "id": "uuid-401",
+      "identifier": "PRI-401",
+      "description": "**Estado:** em curso.\n**Próximo passo:** entregar o AC-03.\n\n## Pronto quando\n- [x] AC-01: entregue no PR #215.\n* [X] AC-02: entregue no PR #215.\n- [ ] AC-03: fica para o próximo PR.",
+      "state": { "type": "started", "name": "In Progress" },
+      "team": { "states": [{ "id": "st-done", "name": "Done", "type": "completed" }] },
+      "children": [],
+      "attachments": [{ "url": "https://github.com/acme/prisma/pull/215" }]
     }
   },
   "pulls": {
@@ -31,7 +40,7 @@
       "merged": true,
       "merged_at": "2026-11-18T15:00:00Z",
       "title": "feat(ci): estado no merge, F0.9 (Refs PRI-399)",
-      "body": "**Nível:** médio\n**Issue:** Refs PRI-399\nTambém Refs PRI-400.",
+      "body": "**Nível:** médio\n**Issue:** Refs PRI-399\nTambém Refs PRI-400 e Refs PRI-401.",
       "labels": [{ "name": "processo:medio" }],
       "base": { "ref": "main", "repo": { "full_name": "acme/prisma" } },
       "head": { "repo": { "full_name": "acme/prisma" } }
