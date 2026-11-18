@@ -3,6 +3,7 @@
 > **Fatia:** [F0.8](../../roadmap/fase-0-destravar/FASE.md) · **Issue:** PRI-410 · **Nível:** Alto (muda uma regra fixa do Acordo e dá a um bot o poder de mesclar na `main`)
 > **AUTORIZO:** pendente · **Flag:** variável de repositório `MERGE_LEVE` (ausente = só simula)
 > **Decisões citadas:** D12 · **Código lido em:** `main` `bc9407a`
+> **SPEC aprovada** pelo Richard em 18/11/2026 (D-PRI-410-01). O AUTORIZO de `MERGE_LEVE=on` continua pendente.
 
 ## Contexto (AS-IS)
 
