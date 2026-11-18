@@ -35,7 +35,7 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 | F1.5 | Linha de base: custo por ticket | 3 | Médio | Não | F1.4 | D1, D6 | em andamento | PRI-381; PRI-82 relacionada; reclassificada de Leve para Médio em 17/11 (D-PRI-381-01, na Mesa de Decisões), o 1º PR foi Leve |
 | F1.6 | Push dos repos irmãos: pulado não vira sucesso | 2 | Alto | A confirmar | — | — | não iniciada | PRI-179 |
 | F1.7 | Causa das recusas de QA: as recusas repetem causa? É a metade da F5.3 que não espera a Fase 5 | 2 | Leve | Não | — | D13 | não iniciada | sem issue; PRI-86 relacionada |
-| F1.8 | Causa das falhas de despacho em rajada ([`DADOS.md`](../DADOS.md), item 6), só leitura | 2 | Leve | Não | — | D13 | não iniciada | sem issue |
+| F1.8 | Causa das falhas de despacho em rajada ([`DADOS.md`](../DADOS.md), item 6), só leitura | 2 | Leve | Não | — | D13 | concluída | PRI-407 |
 | F1.9 | Varredura de dado do consumidor no repo público: estado atual e histórico do Git | 2 | Leve | Não | — | D8 | concluída | PRI-401 |
 
 Com a F1.6 e as fatias F1.7 a F1.9, a fase soma 23 dias. Cada semana conta 4 dias de fatia
