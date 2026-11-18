@@ -36,6 +36,9 @@ dele divergir de `git branch --show-current`. Comece com a árvore limpa
   `git diff --name-status -M origin/main...HEAD` (nas linhas `R`, o nome antigo e o novo),
   rode `node scripts/capability-map.js --of <caminho>`. Capacidade que o diff toca e não está em
   `capacidades` do `.prisma/context.json` entra na lista (e no contexto).
+- Capacidade `sem-spec` com comportamento mudado: a página `docs/capacidades/<id>.md` precisa
+  estar no diff como spec viva (`spec: viva`, requisitos `<ID>-Rnn`, invariantes, até 80 linhas)
+  e o mapa regenerado (`node scripts/capability-map.js --write`). Sem isso, o revisor cobra.
 - Delta. Com SPEC (Alto, ou Médio que escreveu uma): é a seção "Delta de capacidade" da
   `<pasta>/SPEC.md`; confira que ela vale para o diff final. Sem SPEC (Leve, ou Médio que
   dispensou a SPEC) e com o PR ainda por abrir, escreva o rascunho do delta em `~/Workspace/prisma-evidence/<issue>/delta.md` (uma linha por
@@ -59,7 +62,8 @@ pedido é focado:
 - por capacidade, se o diff muda comportamento descrito na spec viva (requisito ou
   invariante) e a página dela não foi atualizada, ou se o delta diz "Nenhum" e o diff
   mostra o contrário: é Required, com `arquivo:linha` do código e o ID da spec; comportamento
-  novo que a spec viva não descreve também conta;
+  novo que a spec viva não descreve também conta. Capacidade `sem-spec` cujo comportamento o
+  diff muda, sem a spec viva nascer no PR, é Required;
 - quebra de invariante (flag desligada, separação plataforma/consumidor, nada de
   dado corporativo, segredo);
 - regressão e teste ausente.

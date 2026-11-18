@@ -17,7 +17,8 @@
 ## Evidência
 <!-- A evidência mora aqui. Não existe evidence.md separado. -->
 <!-- Uma linha por capacidade tocada: a spec viva atualizada neste PR ou o motivo de não mudar. Cada AC da
-     SPEC alterada no PR também entra aqui; o processo-check avisa, sem reprovar, se faltar. -->
+     SPEC alterada no PR também entra aqui; o processo-check avisa, sem reprovar, se faltar.
+     Mais uma linha "ADR: NNNN" (decisão de arquitetura deste PR) ou "ADR: nenhum". -->
 | AC | Resultado | Prova |
 | -- | -- | -- |
 | AC-1 | PASS / FAIL | <saída de teste, print, link do CI> |

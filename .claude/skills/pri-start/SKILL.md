@@ -44,6 +44,12 @@ Primeiro passo do fluxo de desenvolvimento (seção "Fluxo de desenvolvimento" d
      os requisitos (`<ID>-Rnn`) e invariantes (`<ID>-Inn`) são o contrato do que a
      mudança pode alterar; com `sem-spec`, a página traz só o cabeçalho e a spec dela
      nasce com a mudança (README de capacidades).
+   - **Aviso `sem-spec`.** Para cada capacidade `sem-spec` da lista, a resposta avisa: se a
+     fatia muda o comportamento dela, a spec viva (uma página, no molde de
+     `docs/capacidades/estado.md`) nasce no mesmo PR; só código sem mudança de
+     comportamento dispensa, com o motivo na Evidência. Inclua a tarefa no plano ou nos ACs.
+   - **Decisão de arquitetura.** Se a fatia vai tomar uma (contrato, dono, fronteira
+     plataforma/consumidor ou regra do processo), diga que o ADR entra no PR (`docs/adr/`).
    - **Lista incompleta.** Se os arquivos só aparecem durante o build, grave o que se sabe.
      O `/pri-check` reconfere a lista contra o diff.
    - **Nenhuma.** Se a issue não toca capacidade, a lista fica vazia e a resposta diz o
