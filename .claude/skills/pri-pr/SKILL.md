@@ -26,6 +26,10 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    - No Leve, também não pode haver `tasks/**/SPEC*`, e o limite é de 400 linhas,
      sem contar lockfiles, snapshots e fixtures gerados (`.github/processo.json`).
    - Se passar do nível, peça reclassificação. Não divida o PR em silêncio.
+   - **Capacidades.** Use a lista do `.prisma/context.json`, já reconferida pelo
+     `/pri-check`. Para cada capacidade com spec `viva` cujo código está no diff, a página
+     `docs/capacidades/<id>.md` precisa estar no diff; senão, a Evidência diz por que o
+     comportamento não mudou (é o que o `processo-check` avisa).
 2. **Fatia do roadmap.** Só se o `fatia` do `.prisma/context.json` não for `null`. O
    merge é do Richard e acontece depois da sessão, então o estado da fatia precisa ir
    dentro do PR, **antes do push**. Depois do merge a worktree é apagada: o que ficar
@@ -85,9 +89,18 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    `.github/pull_request_template.md`, sem deixar marcador `<...>`:
    - **Nível** e **Issue:** `Refs PRI-NNN`, mais o ID da fatia se houver.
    - **O que muda:** 2 a 3 linhas do ponto de vista de quem usa.
+   - **Delta de capacidade.** Leve: copie o `~/Workspace/prisma-evidence/<issue>/delta.md`
+     do `/pri-check`, ajustado ao diff final. Médio e Alto: uma linha "ver
+     `tasks/<pasta>/SPEC.md`, seção Delta de capacidade". Sem mudança de comportamento
+     descrito: "Nenhum" e o motivo.
    - **Evidência:** uma linha por AC, com o resultado (PASS, FAIL ou UNKNOWN) e a prova.
      A prova de testes é o run da CI no SHA final (link); o pré-voo local entra só
      como apoio. A revisão independente entra como linha própria, com o veredito.
+     Mais uma linha por capacidade tocada, `Capacidade <id>`, com PASS e a spec viva
+     atualizada neste PR (os IDs que mudaram) ou, sem mudança de comportamento, o motivo
+     de a página não mudar. Sem capacidade tocada, uma linha só: "Capacidade: nenhuma" e
+     o motivo. Se o PR altera uma SPEC, cada AC dela também tem a sua linha (o
+     `processo-check` avisa, sem reprovar, quando falta).
    - **Alto:** antes de criar o PR, rode a parte "Pedido" do `/pri-autorizo`, copie o
      `pedido.md` dele para o corpo e cite a
      SPEC (`tasks/<pasta>/SPEC.md`). Sem `## Rollback`, `## Readback` e a SPEC citada,
