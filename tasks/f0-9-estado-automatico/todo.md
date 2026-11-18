@@ -18,7 +18,7 @@ Nenhum dado do consumidor em teste ou fixture (use marcadores, como `90003-...`)
   - Arquivos: `scripts/lib/flag-registry.js`, `scripts/flags-read.js`, teste.
   - Depende de: nada
 
-- [ ] **T2: rota `GET /api/flags-summary` no dashboard (AC-03, métrica 4)** · S
+- [x] **T2: rota `GET /api/flags-summary` no dashboard (AC-03, métrica 4)** · S
   - O que: o servidor chama `scripts/flags-read.js` por `execFile` (opção
     `flagsReadScript` para teste, como `effortMissReadScript`), devolve o `summary`; falha →
     502 `{ status: "UNKNOWN" }` sem vazar caminho. Só leitura.
