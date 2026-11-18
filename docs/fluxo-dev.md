@@ -32,7 +32,7 @@ flowchart TD
     EV --> NA{Alto?}
     NA -->|sim| AP["/pri-autorizo (Pedido)<br/>go/no-go, Rollback e Readback<br/>em pedido.md"] --> G
     NA -->|não| G{{"hook: gh pr create só com<br/>check.json PASS no HEAD"}}
-    G --> PR["/pri-pr<br/>PR draft + processo:nível<br/>Evidência com o link da CI"]
+    G --> PR["/pri-pr<br/>PR draft, ou pronto no Leve elegível<br/>+ processo:nível<br/>Evidência com o link da CI"]
     PR --> CI{{"CI: Tests + processo-check<br/>Alto também exige Rollback,<br/>Readback e SPEC citada"}}
 
     CI --> NB{Nível}

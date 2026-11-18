@@ -1,6 +1,6 @@
 ---
 name: pri-pr
-description: Abre o PR draft de uma issue PRI no formato do Acordo v2 (template, rótulo processo, Evidência AC × prova, Refs) e atualiza o bloco de Estado da issue.
+description: Abre o PR de uma issue PRI (draft, salvo o Leve elegível ao merge automático) no formato do Acordo v2 (template, rótulo processo, Evidência AC × prova, Refs) e atualiza o bloco de Estado da issue.
 disable-model-invocation: true
 model: sonnet
 argument-hint: "PRI-NNN"
@@ -109,24 +109,43 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
      o `processo-check` falha.
    - **Fica ligado?** Comportamento novo nasce atrás de flag desligada. Diga qual flag e
      qual o gatilho, ou "não se aplica" quando a mudança não tem comportamento de Run.
-5. **Criar o PR:**
+5. **Criar o PR.** Médio e Alto sempre em `--draft`. No Leve, confira a lista
+   `mergeLeve` da `main` com a mesma função do merge automático (AC-06), com os
+   arquivos no scratchpad:
 
    ```bash
-   gh pr create --draft --base main --label processo:<nivel> \
+   git -c core.quotePath=false diff -M --name-status origin/main...HEAD > <scratch>/ns.txt
+   git show origin/main:.github/processo.json > <scratch>/cfg.json
+   node .github/scripts/merge-leve.mjs --paths <scratch>/ns.txt --config <scratch>/cfg.json
+   ```
+
+   Se imprimir `elegível`, crie o PR sem `--draft`: o bot pode mesclá-lo quando os
+   checks ficarem verdes. Com `draft: <motivos>` ou erro, crie com `--draft`.
+
+   ```bash
+   gh pr create [--draft] --base main --label processo:<nivel> \
      --title "<tipo>(<escopo>): <resumo>, <Fx.y> (Refs PRI-NNN)" --body-file <arquivo>
    ```
+
+   Sem `--draft` só no Leve elegível; todo o resto leva `--draft`.
 
    Termine o corpo com a linha de atribuição pedida pela sessão.
 6. **Conferir os checks:** rode `gh pr checks <n> --watch` em segundo plano. A suíte
    da CI leva até 15 minutos. Se o `processo-check` falhar, corrija o corpo ou o
    rótulo. Não afrouxe a regra. Com a CI verde, ponha o link do run na Evidência
-   (`gh pr edit <n> --body-file <arquivo>`).
+   (`gh pr edit <n> --body-file <arquivo>`). No Leve aberto fora de draft é
+   diferente: o bot pode mesclar assim que a CI fica verde, então a linha de testes
+   da Evidência já nasce, no passo 4, com
+   `https://github.com/<owner>/<repo>/commit/<sha>/checks` do SHA final (o HEAD do
+   push). Não edite o corpo depois para acrescentar o link.
 7. **Linear.** Ao abrir o PR, edite o bloco de Estado no topo da issue (Estado,
    Próximo passo, Decisão pendente, Ligado ao fechar, Nível) com o link do PR. Não poste
    status em comentário. Comentário é só para decisão ou bloqueio, em 3 linhas.
-   - **Estado:** `PR #<n> aberto em draft em AAAA-MM-DD` mais o que ele entrega (os
-     ACs). Se o PR marca a fatia `concluída`, diga que o `FASE.md` vai no PR.
-   - **Próximo passo:** o que falta depois dele. Leve e Médio: "Richard mescla o PR #<n>".
+   - **Estado:** `PR #<n> aberto em draft em AAAA-MM-DD` (no Leve fora de draft,
+     `PR #<n> aberto pronto em AAAA-MM-DD`) mais o que ele entrega (os ACs). Se o PR
+     marca a fatia `concluída`, diga que o `FASE.md` vai no PR.
+   - **Próximo passo:** o que falta depois dele. Leve e Médio: "Richard mescla o PR #<n>";
+     no Leve fora de draft, "merge automático pelo bot ou Richard".
      Se há ACs de outro PR, nomeie o próximo AC. Alto: o AUTORIZO e o `readback`.
    - **Decisão pendente** não muda: continua manual. Ajuste só "Ligado ao fechar" se o
      escopo do PR mudou.
@@ -136,5 +155,6 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
      linhas do `/pri-autorizo` (Bloqueio / AUTORIZO / Efeito), com o link do PR. Depois do AUTORIZO e do bump, o próximo
      passo é `/pri-autorizo PRI-NNN readback`.
    - A fila In Review tem limite de 3 itens.
-8. **Nunca** marque o PR como ready, nunca mescle, nunca use `Fixes` e nunca mova a
-   issue para Done.
+8. **Nunca** marque como ready o PR que nasceu em draft, nunca mescle, nunca use
+   `Fixes` e nunca mova a issue para Done. Para segurar um Leve elegível, o agente ou
+   o Richard converte o PR para draft (`gh pr ready --undo <n>`), e o bot não mescla.

@@ -484,7 +484,14 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
 - **Relatório semanal** (antiga Métricas; chave `metricas`): contadores por status, runs ativos por etapa, mediana do tempo por etapa
   (estimada pelo `agent_log`), retrabalho (`state.retries`) e PRs por estado (real do
   Bitbucket onde já foi consultado; senão, o do `state.json`).
-  A capa traz a **linha de base do retrabalho** (F1.4): por nó, quanto passa de primeira e o que
+  A capa abre com **as cinco métricas do acompanhamento** (F0.9) de `roadmap/ACOMPANHAMENTO.md`,
+  uma linha por métrica com valor, n e fonte: custo por ticket entregue, primeira passada e custo
+  do retrabalho, runs bloqueadas pelo teto (não medida até a F1.3/F3.4), estoque desligado e fluxo
+  (Linear, à mão). O estoque desligado vem do registro de flags (`docs/flags.md`) por
+  `GET /api/flags-summary`, só leitura, que chama `scripts/flags-read.js --json`; a tela lê a rota
+  ao abrir o relatório e a cada **↻**. Métrica sem medição, ou a rota com erro (502
+  `{ status: "UNKNOWN" }`), aparece como "desconhecido", nunca zero.
+  Depois vem a **linha de base do retrabalho** (F1.4): por nó, quanto passa de primeira e o que
   as tentativas além da primeira custam em USD (sempre "imputado", preço de tabela), tokens e
   tempo de parede, com n e período; ao lado, o modelo observado nos runs, o esforço (só quando o
   run o grava) e os runs concluídos por semana. Sem dado, "desconhecido", nunca zero.
@@ -495,8 +502,9 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
   sem custo da CLI, e senão do leitor de transcript (`totals.cost_usd`), como antes da flag. A linha
   **Fonte do custo** diz quantos runs usaram cada fonte e a diferença CLI − transcript somada nos
   runs com as duas. **Versão da CLI** e **Hash dos prompts** (8 caracteres) saem distintos nos runs
-  da janela, com "+N desconhecido" para run que não os grava. O "Copiar resumo" traz essas linhas e
-  a linha pronta para a série de `roadmap/ACOMPANHAMENTO.md`.
+  da janela, com "+N desconhecido" para run que não os grava. O "Copiar resumo" traz essas linhas, o
+  bloco das cinco métricas (valor, `n =` e `fonte:`) e a linha pronta para a série de
+  `roadmap/ACOMPANHAMENTO.md`, com as sete colunas e a semana da janela.
 - **Tickets e PRs:** um cartão por ticket do Redmine, com status, responsável, % e
   estimativa; os PRs do Bitbucket por repositório, com estado real e aprovações; e os runs
   do agente. Ao abrir a aba (ou em **↻ Atualizar**), busca Redmine e Bitbucket em lote,
