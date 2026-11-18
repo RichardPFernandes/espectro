@@ -2,7 +2,7 @@
 // PRI-311 (PRI-287 S5.2b): Run decomposta no watcher real, modo destacado (sem --follow).
 // AC-26: ciclo completo de duas subtarefas + integração; AC-22: ordem, uma por tick, transição
 // implement → review pelo watcher só com a agregação, Review sem agregação → blocked, Review
-// como gate com manifesto (H7); AC-29: implement.md/review.md/commit.md iguais aos de 2024597.
+// como gate com manifesto (H7); AC-29: implement.md/review.md iguais aos de 2024597; commit.md fixado na PRI-405.
 //
 // Cada tick roda o watcher desta revisão num processo próprio, com um consumidor sintético
 // (repo git com origin bare local) e um `claude` stub no PATH, que faz o trabalho do comando
@@ -378,14 +378,14 @@ test('B2: plano intercalado → NOT_DECOMPOSABLE gravado e o Implement segue com
     assert.notStrictEqual(readState(repo, id).status, 'running', 'o wrapper destacado não devolveu o lease em 60 s');
 });
 
-test('AC-29: implement.md, review.md e commit.md byte a byte iguais aos de 2024597', () => {
+test('AC-29: implement.md e review.md iguais aos de 2024597; commit.md fixado na PRI-405', () => {
     const expected = {
         'implement.md': 'c58ad7440dc8a1ee0392355a1d88808944b0642545134dcd7f550512ef1c668b',
         'review.md': '0f56df42319fbd05ae9ecad1a78ee91e8ae0ede329a2f9e23bfac3903c87a89d',
-        'commit.md': '85886ccca6116c84efdfa20f8614630ade280d4804e66ab910585c0425d92cce',
+        'commit.md': '846bc168bcc4aea237cc596edcb7394feb87a66818e38aee5a0d1aba1c534841', // PRI-405: exemplos neutros
     };
     for (const [file, sha] of Object.entries(expected)) {
         const got = crypto.createHash('sha256').update(fs.readFileSync(path.join(PRISMA_ROOT, '.claude', 'commands', file))).digest('hex');
-        assert.strictEqual(got, sha, `${file} mudou em relação a 2024597`);
+        assert.strictEqual(got, sha, `${file} mudou em relação ao hash fixado (2024597; commit.md na PRI-405)`);
     }
 });

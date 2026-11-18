@@ -19,7 +19,7 @@ execuções.
 
 ## Critério de saída
 
-- [ ] Estado atual da `main` sem caminho pessoal nem número de ticket do tracker corporativo; `SECURITY.md` e `dependabot.yml` no repo.
+- [x] Estado atual da `main` sem caminho pessoal nem número de ticket do tracker corporativo; `SECURITY.md` e `dependabot.yml` no repo.
 - [x] O log do CI lista os testes que falharam; todo `*.test.js` roda ou está numa lista de exclusão com motivo.
 - [x] `npm run demo` na raiz roda um ciclo simulado; README com "Veja funcionando".
 - [x] Regras de fluxo aprovadas no `CLAUDE.md` e no `AGENTS.md`.
@@ -31,7 +31,7 @@ execuções.
 
 | ID | Fatia | Dias | Nível | AUTORIZO | Depende de | Decisão | Status | Issue no Linear |
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
-| F0.1 | Higiene do repo público: caminhos pessoais, tickets do tracker, `SECURITY.md`, Dependabot | 2 | Leve | Não | — | D8 | em andamento | PRI-376 (limite de issues do plano) |
+| F0.1 | Higiene do repo público: caminhos pessoais, tickets do tracker, `SECURITY.md`, Dependabot | 2 | Leve | Não | — | D8 | concluída | PRI-376 (limite de issues do plano); PRI-405 (Médio, testes e prompts) |
 | F0.2 | CI mostra qual teste falhou; lista de testes por glob | 2 | Leve | Não | — | — | concluída | PRI-376 |
 | F0.3 | Um comando na raiz e "Veja funcionando" no README | 3 | Leve | Não | — | — | concluída | PRI-376 |
 | F0.4 | Regras de fluxo no Acordo e entrada do agente mais enxuta | 1 | Leve | Não | — | D12 | concluída | PRI-376 |
