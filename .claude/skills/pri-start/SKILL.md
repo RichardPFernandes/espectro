@@ -26,8 +26,8 @@ Primeiro passo do fluxo de desenvolvimento (seção "Fluxo de desenvolvimento" d
    resto. Leve não tem pasta nem SPEC: os ACs ficam na issue.
    - **Linha da fatia.** Com fatia, leia a linha dela em `roadmap/fase-*/FASE.md`. Se a
      coluna `Issue no Linear` não traz esta issue, ou o `Nível` não bate com o rótulo
-     `Processo`, avise e anote no contexto (`"linha_fatia": "corrigir"`). Não edite a
-     `main`: a correção vai no PR da fatia, pelo `/pri-pr`.
+     `Processo`, avise na resposta. Não edite a `main`: a correção vai no PR da fatia,
+     pelo `/pri-pr`, que refaz a checagem.
 6. **Grave o contexto** (o diretório `.prisma/` é ignorado pelo git):
    - `.prisma/level`: `leve`, `medio` ou `alto` (é o que o hook lê);
    - `.prisma/context.json`: `{"issue": "PRI-NNN", "fatia": "F1.2" | null, "nivel": "...", "branch": "<git branch --show-current>", "pasta": "..." | null}`.
