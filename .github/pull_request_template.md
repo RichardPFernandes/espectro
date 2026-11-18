@@ -5,7 +5,7 @@
 <2–3 linhas, do ponto de vista de quem usa>
 
 ## Delta de capacidade
-<!-- Leve: o delta mora aqui. Médio e Alto: "ver tasks/<pasta>/SPEC.md, seção Delta de capacidade".
+<!-- Sem SPEC (Leve, ou Médio que a dispensou): o delta mora aqui. Com SPEC: "ver tasks/<pasta>/SPEC.md, seção Delta de capacidade".
      Uma linha por requisito ou invariante da spec viva que muda (Adicionado | Modificado | Removido,
      com o ID, como `estado` ESTADO-R03). Sem mudança de comportamento descrito: "Nenhum" e o motivo. -->
 <Nenhum, ou as linhas do delta>

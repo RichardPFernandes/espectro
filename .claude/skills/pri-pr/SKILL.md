@@ -27,7 +27,7 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
      sem contar lockfiles, snapshots e fixtures gerados (`.github/processo.json`).
    - Se passar do nível, peça reclassificação. Não divida o PR em silêncio.
    - **Capacidades.** Use a lista do `.prisma/context.json`, já reconferida pelo
-     `/pri-check`. Para cada capacidade com spec `viva` cujo código está no diff, a página
+     `/pri-check`. Para cada capacidade com spec que não seja `sem-spec` cujo código está no diff, a página
      `docs/capacidades/<id>.md` precisa estar no diff; senão, a Evidência diz por que o
      comportamento não mudou (é o que o `processo-check` avisa).
 2. **Fatia do roadmap.** Só se o `fatia` do `.prisma/context.json` não for `null`. O
@@ -89,8 +89,9 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    `.github/pull_request_template.md`, sem deixar marcador `<...>`:
    - **Nível** e **Issue:** `Refs PRI-NNN`, mais o ID da fatia se houver.
    - **O que muda:** 2 a 3 linhas do ponto de vista de quem usa.
-   - **Delta de capacidade.** Leve: copie o `~/Workspace/prisma-evidence/<issue>/delta.md`
-     do `/pri-check`, ajustado ao diff final. Médio e Alto: uma linha "ver
+   - **Delta de capacidade.** Sem SPEC (Leve, ou Médio que dispensou a SPEC): copie o
+     `~/Workspace/prisma-evidence/<issue>/delta.md` do `/pri-check`, ajustado ao diff
+     final. Com SPEC (Alto, ou Médio que a escreveu): uma linha "ver
      `tasks/<pasta>/SPEC.md`, seção Delta de capacidade". Sem mudança de comportamento
      descrito: "Nenhum" e o motivo.
    - **Evidência:** uma linha por AC, com o resultado (PASS, FAIL ou UNKNOWN) e a prova.

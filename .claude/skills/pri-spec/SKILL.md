@@ -13,8 +13,9 @@ com os ajustes abaixo. Onde os dois divergem, valem os ajustes. A pasta vem de
 `$ARGUMENTS`; o contexto (issue e nível) vem de `.prisma/context.json`. Sem esse
 arquivo, rode `/pri-start` antes.
 
-- **Nível.** Leve não tem SPEC: pare (o delta de capacidade vai no corpo do PR, pelo `/pri-pr`). No Médio, escreva a SPEC só se a issue não
-  bastar como contrato; se bastar, diga isso e siga para o `/pri-plan`.
+- **Nível.** Leve não tem SPEC: pare. No Médio, escreva a SPEC só se a issue não
+  bastar como contrato; se bastar, diga isso e siga para o `/pri-plan`. Sem SPEC, o
+  delta de capacidade vai no corpo do PR, pelo `/pri-pr`.
 - **Onde.** Grave em `<pasta>/SPEC.md`, e o mapa de módulos, se houver, também na
   pasta. Nada na raiz, em `docs/` ou em `spec/`.
 - **Tamanho.** Até 1 página no Médio; de 1 a 2 páginas no Alto.

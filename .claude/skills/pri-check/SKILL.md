@@ -33,12 +33,12 @@ dele divergir de `git branch --show-current`. Comece com a árvore limpa
 **Antes do revisor: capacidades e delta.**
 
 - Reconfira a lista do `/pri-start` contra o diff: para cada arquivo de
-  `git diff --name-only -M origin/main...HEAD` (nome novo e antigo), rode
-  `node scripts/capability-map.js --of <caminho>`. Capacidade que o diff toca e não está em
+  `git diff --name-status -M origin/main...HEAD` (nas linhas `R`, o nome antigo e o novo),
+  rode `node scripts/capability-map.js --of <caminho>`. Capacidade que o diff toca e não está em
   `capacidades` do `.prisma/context.json` entra na lista (e no contexto).
-- Delta. Médio e Alto: é a seção "Delta de capacidade" da `<pasta>/SPEC.md`; confira que
-  ela vale para o diff final. Leve: não há SPEC e o PR ainda não existe, então escreva o
-  rascunho do delta em `~/Workspace/prisma-evidence/<issue>/delta.md` (uma linha por
+- Delta. Com SPEC (Alto, ou Médio que escreveu uma): é a seção "Delta de capacidade" da
+  `<pasta>/SPEC.md`; confira que ela vale para o diff final. Sem SPEC (Leve, ou Médio que
+  dispensou a SPEC) e com o PR ainda por abrir, escreva o rascunho do delta em `~/Workspace/prisma-evidence/<issue>/delta.md` (uma linha por
   requisito ou invariante que muda, com o ID, ou "Nenhum" e o motivo). O `/pri-pr` copia
   esse texto para o corpo do PR.
 
