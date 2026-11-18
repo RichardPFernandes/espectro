@@ -51,7 +51,7 @@ sem pkill/killall por nome; sem force push; commit com "Refs PRI-405".
   T1. Ao fim das três, o grep do AC-01 na árvore toda (com A, B e C aplicados juntos numa
   conferência local) só devolve as durações e o hash.
 
-- [ ] **T4 · PR D, prompts (AC-03).** Nesta branch. Em `.claude/commands/commit.md`,
+- [x] **T4 · PR D, prompts (AC-03).** Nesta branch. Em `.claude/commands/commit.md`,
   `fetch-ticket.md` e `plan.md`: trocar os 9 números pelo `mapa.tsv` e o título real do exemplo
   de título de PR por um neutro (`Título do ticket`). Teste que falha antes: depois da troca, o
   AC-29 de `scripts/lib/decomposition-watcher.test.js` falha no `commit.md`; atualizar só o
