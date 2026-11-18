@@ -190,3 +190,80 @@ test('AC-5: fora de repo git, sai ≠ 0 sem chamar git push e sem efeito', () =>
     assert.deepStrictEqual(pushesLogged(), []);
     assert.deepStrictEqual(dom06.readAttempt(attemptFile).effects || [], []);
 });
+
+const remoteHead = remote => spawnSync(realGit, ['--git-dir', remote, 'rev-parse', '--verify', '--quiet', `refs/heads/${BRANCH}`],
+    { env: { PATH: process.env.PATH, ...GIT_ENV }, encoding: 'utf8' }).stdout.trim();
+
+test('AC-3: commit novo no mesmo repo faz push novo; o remote avança e há dois efeitos', () => {
+    const caseDir = newCase('commit-novo');
+    const remote = makeRemote(caseDir, 'repo-a');
+    const repoA = cloneOf(caseDir, remote, 'repo-a');
+    const attemptFile = admit(caseDir);
+
+    const first = pushEffect(repoA, attemptFile, ['push', '-u', 'origin', BRANCH]);
+    const firstSha = git(repoA, 'rev-parse', 'HEAD');
+    git(repoA, 'commit', '-q', '--allow-empty', '-m', 'segundo commit');
+    const secondSha = git(repoA, 'rev-parse', 'HEAD');
+    const second = pushEffect(repoA, attemptFile, ['push', '-u', 'origin', BRANCH]);
+
+    assert.strictEqual(first.status, 0, first.stderr);
+    assert.strictEqual(second.status, 0, second.stderr);
+    assert.doesNotMatch(second.stderr, /já cumprido/);
+    assert.strictEqual(remoteHead(remote), secondSha, 'o remote avançou para o commit novo');
+    const effects = pushEffects(attemptFile);
+    assert.strictEqual(effects.length, 2, JSON.stringify(effects));
+    assert.ok(effects.every(e => e.status === 'fulfilled'));
+    assert.ok(effects[0].idempotency_key.includes(firstSha), effects[0].idempotency_key);
+    assert.ok(effects[1].idempotency_key.includes(secondSha), effects[1].idempotency_key);
+    assert.strictEqual(pushesLogged().length, 2);
+});
+
+test('AC-3: repetição idêntica não roda o git, sai 0 e a linha de pulo cita repo e commit', () => {
+    const caseDir = newCase('repeticao');
+    const remote = makeRemote(caseDir, 'repo-a');
+    const repoA = cloneOf(caseDir, remote, 'repo-a');
+    const sha = git(repoA, 'rev-parse', 'HEAD');
+    const attemptFile = admit(caseDir);
+
+    const first = pushEffect(repoA, attemptFile, ['push', '-u', 'origin', BRANCH]);
+    const again = pushEffect(repoA, attemptFile, ['push', '-u', 'origin', BRANCH]);
+
+    assert.strictEqual(first.status, 0, first.stderr);
+    assert.strictEqual(again.status, 0, again.stderr);
+    assert.match(again.stderr, /já cumprido/);
+    assert.ok(again.stderr.includes(repoA), again.stderr);
+    assert.ok(again.stderr.includes(sha), again.stderr);
+    assert.strictEqual(pushEffects(attemptFile).length, 1);
+    assert.strictEqual(pushesLogged().length, 1, 'o git não rodou de novo');
+});
+
+test('AC-3: HEAD:<branch>, <origem>:<branch> e --force-with-lease levam o sha da origem do refspec', () => {
+    const caseDir = newCase('refspec');
+    const remote = makeRemote(caseDir, 'repo-a');
+    const repoA = cloneOf(caseDir, remote, 'repo-a');
+    const c1 = git(repoA, 'rev-parse', 'HEAD');
+    git(repoA, 'branch', 'base');
+    git(repoA, 'commit', '-q', '--allow-empty', '-m', 'segundo commit');
+    const c2 = git(repoA, 'rev-parse', 'HEAD');
+    const attemptFile = admit(caseDir);
+
+    const byBase = pushEffect(repoA, attemptFile, ['push', 'origin', `base:${BRANCH}`]);
+    assert.strictEqual(byBase.status, 0, byBase.stderr);
+    assert.strictEqual(remoteHead(remote), c1);
+
+    const byHead = pushEffect(repoA, attemptFile, ['push', 'origin', `HEAD:${BRANCH}`]);
+    assert.strictEqual(byHead.status, 0, byHead.stderr);
+    assert.strictEqual(remoteHead(remote), c2);
+
+    git(repoA, 'commit', '-q', '--amend', '--allow-empty', '-m', 'segundo commit reescrito');
+    const c3 = git(repoA, 'rev-parse', 'HEAD');
+    const byLease = pushEffect(repoA, attemptFile, ['push', '--force-with-lease', 'origin', BRANCH]);
+    assert.strictEqual(byLease.status, 0, byLease.stderr);
+    assert.strictEqual(remoteHead(remote), c3);
+
+    const keys = pushEffects(attemptFile).map(e => e.idempotency_key);
+    assert.strictEqual(keys.length, 3, JSON.stringify(keys));
+    assert.ok(keys[0].includes(`${repoA}@${c1}`), keys[0]);
+    assert.ok(keys[1].includes(`${repoA}@${c2}`), keys[1]);
+    assert.ok(keys[2].includes(`${repoA}@${c3}`), keys[2]);
+});

@@ -4,6 +4,8 @@
 # Repetir a mesma chave não faz um segundo push.
 # A chave leva o caminho real do repo (PRI-179): o mesmo push em repos irmãos
 # são efeitos distintos; cwd, `-C` e symlink para o mesmo repo, a mesma chave.
+# A chave leva também o commit enviado (origem do último refspec; sem refspec,
+# HEAD): commit novo no mesmo repo é efeito novo; o mesmo commit não vai duas vezes.
 #
 # Uso (DOM06_ATTEMPT_FILE vem do ambiente do despacho):
 #   scripts/git-push-effect.sh [-C <dir>] push -u origin <branch>
@@ -44,7 +46,36 @@ if ! toplevel="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || [[ -z 
   exit 1
 fi
 
-key="push:${repo}:${args[*]}"
+# Commit enviado: origem do último refspec depois do remote (sem `+`, antes de
+# `:`); sem refspec, HEAD. Refspec de remoção (`:branch`) vira `delete`.
+positional=()
+only_positional=0
+skip_next=0
+for a in "${args[@]:1}"; do
+  if [[ "$skip_next" == 1 ]]; then skip_next=0; continue; fi
+  if [[ "$only_positional" == 0 ]]; then
+    case "$a" in
+      --) only_positional=1; continue ;;
+      -o|--push-option|--repo|--receive-pack|--exec) skip_next=1; continue ;;
+      -*) continue ;;
+    esac
+  fi
+  positional+=("$a")
+done
+src="HEAD"
+if [[ ${#positional[@]} -ge 2 ]]; then
+  refspec="${positional[${#positional[@]}-1]}"
+  refspec="${refspec#+}"
+  src="${refspec%%:*}"
+fi
+if [[ -z "$src" ]]; then
+  sha="delete"
+elif ! sha="$(git -C "$dir" rev-parse --verify --quiet "${src}^{commit}")" || [[ -z "$sha" ]]; then
+  echo "ERROR: $src não resolve para um commit em $repo; git push não rodou." >&2
+  exit 1
+fi
+
+key="push:${repo}@${sha}:${args[*]}"
 tmp="$(mktemp)"
 set +e
 auth_line="$(node "$authorize_js" authorize --attempt "$attempt_file" --obligation push --key "$key" 2>"$tmp")"
@@ -56,7 +87,7 @@ if [[ "$auth_rc" != 0 ]]; then
   exit 1
 fi
 if [[ "$auth_line" == DUPLICATE* ]]; then
-  echo "push já cumprido neste Attempt ($key); git push não rodou de novo." >&2
+  echo "push já cumprido neste Attempt: repo $repo, commit $sha já entregue ($key); git push não rodou de novo." >&2
   rm -f "$tmp"
   exit 0
 fi

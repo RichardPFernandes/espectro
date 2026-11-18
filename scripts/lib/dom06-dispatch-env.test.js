@@ -228,11 +228,15 @@ function assertAdmittedCapture(t, scenario, dir) {
     assert.ok(capture.attempt_file_path.startsWith(repo + path.sep), 'Attempt mora no consumidor sintético (REPO_PATH)');
 }
 
-// Efeitos de um Attempt admitido: um push só (o commit feito depois do primeiro
-// push não chega ao remote), um POST de PR e um PUT por obrigação do Redmine.
+// Efeitos de um Attempt admitido: dois pushes (o commit feito depois do primeiro
+// push é efeito novo e chega ao remote, PRI-179), um POST de PR e um PUT por
+// obrigação do Redmine.
 function assertEffectsOnce(id, { dir, worktree, remote }, first) {
-    assert.strictEqual(remoteHead(remote, id), first, 'o remote ficou no commit do primeiro push');
-    assert.notStrictEqual(git(worktree, 'rev-parse', 'HEAD'), first, 'o segundo push tinha um commit novo para levar');
+    const head = git(worktree, 'rev-parse', 'HEAD');
+    assert.notStrictEqual(head, first, 'o segundo push tinha um commit novo para levar');
+    assert.strictEqual(remoteHead(remote, id), head, 'o remote ficou no commit novo');
+    const pushes = (attempts(dir)[0].effects || []).filter(e => e.obligation_id === 'push');
+    assert.deepStrictEqual(pushes.map(e => e.status), ['fulfilled', 'fulfilled']);
     const posts = calls.filter(c => c.method === 'POST' && c.path === `/2.0/repositories/${WS}/app-back/pullrequests`
         && JSON.parse(c.body).source.branch.name === String(id));
     assert.strictEqual(posts.length, 1);
@@ -279,7 +283,10 @@ test('AC5: 401 do Bitbucket revoga o Attempt; o PR repetido e o Redmine não che
     const r = await dispatch(id, { scenario: 'follow-revogado', follow: true, flow: 'commit', bbRepo: REVOKED_REPO });
     assert.strictEqual(r.result?.action, 'dispatched', r.output);
     assertAdmittedCapture(t, 'follow-revogado', run.dir);
-    assert.strictEqual(remoteHead(run.remote, id), first, 'só o primeiro push, anterior à revogação, chegou ao remote');
+    // Os dois pushes vêm antes da revogação (401 no PR): o commit novo chega ao remote (PRI-179).
+    const head = git(run.worktree, 'rev-parse', 'HEAD');
+    assert.notStrictEqual(head, first);
+    assert.strictEqual(remoteHead(run.remote, id), head, 'os pushes anteriores à revogação chegaram ao remote');
     const bb = calls.filter(c => c.path.startsWith(`/2.0/repositories/${WS}/${REVOKED_REPO}/`));
     assert.deepStrictEqual(bb.map(c => `${c.method} ${c.path}`), [`GET /2.0/repositories/${WS}/${REVOKED_REPO}/effective-default-reviewers`]);
     assert.deepStrictEqual(calls.filter(c => c.path === `/redmine/issues/${id}.json`), []);
