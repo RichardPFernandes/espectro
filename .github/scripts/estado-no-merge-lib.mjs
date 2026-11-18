@@ -1,0 +1,112 @@
+// Estado no merge (F0.9 AC-02): decide o que fazer com a issue do Linear quando um PR é mesclado.
+// Funções puras, sem rede nem disco. A CLI (estado-no-merge.mjs) busca os dados e escreve.
+
+/**
+ * IDs `PRI-N` citados como `Refs PRI-N` (ou `Refs: PRI-N`) no título e no corpo do PR.
+ * Sem distinção de caixa, em ordem de aparição, sem repetição. `Fixes`/`Closes` não contam.
+ * @param {string} [title]
+ * @param {string} [body]
+ * @returns {string[]} IDs normalizados em maiúsculas, ex.: ['PRI-399']
+ */
+export function parseRefs(title, body) {
+    const text = `${title ?? ''}\n${body ?? ''}`;
+    const out = new Set();
+    for (const m of text.matchAll(/\brefs:?[ \t]+pri-(\d+)\b/gi)) out.add(`PRI-${m[1]}`);
+    return [...out];
+}
+
+/**
+ * Nível do PR pelo rótulo `processo:*`.
+ * @param {Array<string|{name: string}>} [labels] lista de nomes ou objetos `{ name }` (evento do GitHub)
+ * @param {Record<string, string>} levels mapa `levels` do `.github/processo.json`
+ * @returns {string|null} 'leve' | 'medio' | 'alto', ou null sem rótulo de nível ou com mais de um
+ */
+export function levelFromLabels(labels, levels) {
+    const keys = Object.keys(levels ?? {});
+    const names = (labels ?? []).map((l) => String(typeof l === 'string' ? l : l?.name ?? '').toLowerCase());
+    const found = [...new Set(names.filter((n) => keys.includes(n)))];
+    return found.length === 1 ? levels[found[0]] : null;
+}
+
+/**
+ * IDs dos ACs desmarcados na descrição da issue (D-PRI-399-01): linhas `- [ ] AC-NN` ou `* [ ] AC-NN`,
+ * em qualquer lugar da descrição; `[x]`/`[X]` contam como entregues. Em ordem, sem repetição.
+ * @param {string} [description]
+ * @returns {string[]} ex.: ['AC-03']
+ */
+export function uncheckedAcs(description) {
+    const out = new Set();
+    for (const m of String(description ?? '').matchAll(/^[ \t]*[-*][ \t]+\[( |x|X)\][ \t]+(AC-\d+)\b/gm)) {
+        if (m[1] === ' ') out.add(m[2]);
+    }
+    return [...out];
+}
+
+/**
+ * @typedef {{ tipo: 'pr', n: number, repo?: string } | { tipo: 'pr-ilegivel', url: string } | { tipo: 'filha', id: string } | { tipo: 'ac', id: string }} Pendencia
+ *   `pr`: outro PR aberto anexado à issue (`repo` só quando não é o repo do workflow);
+ *   `pr-ilegivel`: PR anexado que não deu para ler (UNKNOWN não vira fechado); `filha`: issue filha aberta;
+ *   `ac`: linha de AC desmarcada na descrição da issue.
+ */
+
+/**
+ * Decide a ação sobre uma issue.
+ * @param {{ level: string|null, otherOpenPrs?: Array<number|{ n: number, repo: string }>, unreadablePrs?: string[], openChildren?: string[], uncheckedAcs?: string[] }} input
+ *   otherOpenPrs: outros PRs abertos anexados (número, ou `{ n, repo }` de outro repo);
+ *   unreadablePrs: URLs de PRs anexados sem leitura; openChildren: IDs das filhas abertas;
+ *   uncheckedAcs: IDs dos ACs desmarcados na descrição (sem linhas de AC, lista vazia e vale a regra de PR/filha).
+ * @returns {{ acao: 'nada'|'done'|'estado', motivo: string, pendencias: Pendencia[] }}
+ *   'nada': alto ou sem nível, não escreve; 'done': mover para Done e reescrever Estado;
+ *   'estado': só reescrever Estado e Próximo passo com as pendências.
+ */
+export function decide({ level, otherOpenPrs = [], unreadablePrs = [], openChildren = [], uncheckedAcs = [] }) {
+    if (level === 'alto') return { acao: 'nada', motivo: 'nível alto: Done só com aceite do Richard', pendencias: [] };
+    if (level !== 'leve' && level !== 'medio') return { acao: 'nada', motivo: 'sem rótulo de nível único (processo:*)', pendencias: [] };
+    const pendencias = [
+        ...otherOpenPrs.map((p) => (typeof p === 'number' ? { tipo: 'pr', n: p } : { tipo: 'pr', n: p.n, repo: p.repo })),
+        ...unreadablePrs.map((url) => ({ tipo: 'pr-ilegivel', url })),
+        ...openChildren.map((id) => ({ tipo: 'filha', id })),
+        ...uncheckedAcs.map((id) => ({ tipo: 'ac', id })),
+    ];
+    if (pendencias.length === 0) return { acao: 'done', motivo: `nível ${level} sem PR aberto, filha aberta nem AC desmarcado`, pendencias };
+    return { acao: 'estado', motivo: `nível ${level} com pendência: ${pendencias.map(pendenciaText).join(', ')}`, pendencias };
+}
+
+/** @param {Pendencia} p */
+export function pendenciaText(p) {
+    if (p.tipo === 'pr') return `PR ${p.repo ?? ''}#${p.n}`;
+    if (p.tipo === 'pr-ilegivel') return `PR ${p.url} sem leitura`;
+    if (p.tipo === 'ac') return p.id;
+    return `filha ${p.id}`;
+}
+
+const LINES = [['estado', 'Estado'], ['proximo', 'Próximo passo']];
+
+/**
+ * Troca o texto depois de `**Estado:**` e `**Próximo passo:**` (primeira ocorrência de cada, em
+ * início de linha, com prefixo de lista opcional, que é preservado). O resto fica intacto.
+ * @param {string} description
+ * @param {{ estado: string, proximo: string }} values
+ * @returns {{ text: string, changed: boolean, missing: string[] }} missing: rótulos das linhas não achadas
+ */
+export function rewriteEstado(description, { estado, proximo }) {
+    const values = { estado, proximo };
+    let text = String(description ?? '');
+    const missing = [];
+    for (const [key, label] of LINES) {
+        const re = new RegExp(`^([ \\t]*(?:[-*+][ \\t]+)?\\*\\*${label}:\\*\\*)[^\\r\\n]*`, 'm');
+        if (!re.test(text)) { missing.push(label); continue; }
+        text = text.replace(re, (_, head) => `${head} ${values[key]}`);
+    }
+    return { text, changed: text !== String(description ?? ''), missing };
+}
+
+/**
+ * Frases de Estado e Próximo passo.
+ * @param {{ pr: number, data: string, acao: 'done'|'estado', pendencias?: Pendencia[] }} input data em AAAA-MM-DD
+ * @returns {{ estado: string, proximo: string }}
+ */
+export function estadoText({ pr, data, acao, pendencias = [] }) {
+    if (acao === 'done') return { estado: `PR #${pr} mesclado em ${data}; issue em Done pela Action.`, proximo: 'nenhum.' };
+    return { estado: `PR #${pr} mesclado em ${data}.`, proximo: `falta ${pendencias.map(pendenciaText).join(', ')}.` };
+}
