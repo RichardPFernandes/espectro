@@ -52,10 +52,13 @@ const { projectCostTracking } = require('./cost-projection');
 const { buildWouldRouteMetrics } = require('./would-route-metrics');
 const routingProjection = require('./routing-projection');
 const uiVerifyProjection = require('./ui-verify-projection');
+const { runJsonReader } = require('./json-reader');
 // Leitor de roteamento por processo (G3: o dashboard não importa scripts/lib).
 const ROUTING_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'routing-read.js');
 // Leitor por processo do registro effort_miss (PRI-353, mesma fronteira G3).
 const EFFORT_MISS_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'effort-miss-read.js');
+// Leitor por processo do registro de flags docs/flags.md (PRI-399, F0.9 métrica 4, mesma fronteira G3).
+const FLAGS_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'flags-read.js');
 // Tira PR de Draft ("Marcar como pronto" no painel de preview).
 const { markPrReady } = require('../scripts/check-pr-status');
 // Lista/detalha/aprova PRs do Bitbucket, pra aba "PRs" (GET/POST /api/prs*).
@@ -1453,24 +1456,8 @@ function createDashboard(options = {}) {
     // nunca zero. A projeção vem do leitor por processo (scripts/effort-miss-read.js): o dashboard
     // não importa scripts/lib (G3). Texto livre passa por redact() como o resto.
     const effortMissReadScript = options.effortMissReadScript || EFFORT_MISS_READ_SCRIPT;
-    function runEffortMissRead(input) {
-        return new Promise(resolve => {
-            const child = execFile(process.execPath, [effortMissReadScript, '--json'],
-                { cwd: repoRoot, env: consumerEnv, timeout: 20000, maxBuffer: 8 * 1024 * 1024 },
-                (err, stdout) => {
-                    let out = null;
-                    try { out = JSON.parse(stdout); } catch { out = null; }
-                    if (err || !out || out.ok !== true) {
-                        console.error(`[dashboard] effort-miss-read: ${redact(out?.error || err?.message || 'sem saída')}`);
-                        return resolve(null);
-                    }
-                    resolve(out.projection);
-                });
-            child.on('error', () => resolve(null));
-            child.stdin.on('error', () => {});
-            child.stdin.end(JSON.stringify(input));
-        });
-    }
+    const runEffortMissRead = input => runJsonReader({ script: effortMissReadScript, field: 'projection', label: 'effort-miss-read',
+        cwd: repoRoot, env: consumerEnv, redact, input, maxBuffer: 8 * 1024 * 1024 });
     app.get('/api/effort-misses', async (req, res) => {
         syncWatchedRoots();
         const reg = readRegistry();
@@ -1485,6 +1472,15 @@ function createDashboard(options = {}) {
         const projection = await runEffortMissRead({ entries });
         if (!projection) return res.status(502).json({ status: 'UNKNOWN', total: null, error: 'leitor do registro effort_miss indisponível' });
         res.json(JSON.parse(redact(JSON.stringify(projection))));
+    });
+
+    // PRI-399 (F0.9 AC-03, métrica 4): resumo do registro de flags (docs/flags.md), só leitura.
+    // Vem do leitor por processo (scripts/flags-read.js), pela fronteira G3. Falha é UNKNOWN, nunca zero.
+    const flagsReadScript = options.flagsReadScript || FLAGS_READ_SCRIPT;
+    app.get('/api/flags-summary', async (req, res) => {
+        const summary = await runJsonReader({ script: flagsReadScript, field: 'summary', label: 'flags-read', cwd: repoRoot, env: consumerEnv, redact });
+        if (!summary) return res.status(502).json({ status: 'UNKNOWN', error: 'leitor do registro de flags indisponível' });
+        res.json(summary);
     });
 
     // Força a varredura dos arquivados (botão Atualizar). Respeita o cache por ticket.
