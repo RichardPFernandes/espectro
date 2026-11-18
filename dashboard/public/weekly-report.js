@@ -580,6 +580,35 @@
     return L.join('\n');
   }
 
+  // ---------------------------------------------------------------- cinco métricas (F0.9, PRI-399, AC-03)
+  // As cinco de roadmap/ACOMPANHAMENTO.md, cada uma com valor, n e fonte. Sem medição: conhecida false, valor
+  // "desconhecido" e n null, nunca zero. O valor já vem no texto da célula da série (com o "n = ").
+  // flags = resumo de GET /api/flags-summary (docs/flags.md); null quando o leitor falhou.
+  const UNKNOWN_METRIC = { valor: 'desconhecido', n: null, conhecida: false };
+  function fiveMetrics(M, flags) {
+    const T = M.perTicket, a = T.rows[0];
+    const m1 = { id: 'm1', nome: 'Custo por ticket entregue', fonte: `cost_tracking dos runs (F1.5); ${costSourceText(M.costSource)}`,
+      ...(a.n && (a.usd.median != null || a.tokens.median != null) ? { valor: seriesLine(T), n: a.n, conhecida: true } : UNKNOWN_METRIC) };
+    const B = M.baseline, fp = M.cur.firstPass;
+    const usds = B.rows.map(x => x.usd), knownUsd = usds.filter(u => u.v != null), unk = sum(usds.map(u => u.unknown));
+    const rework = !knownUsd.length ? 'retrabalho desconhecido'
+      : `retrabalho ${imputed(sum(knownUsd.map(u => u.v)))}${unk ? ` +${plural(unk, 'desconhecido', 'desconhecidos')}` : ''} em ${plural(B.runs, 'run', 'runs')} com cost_tracking`;
+    const m2 = { id: 'm2', nome: 'Primeira passada e custo do retrabalho', fonte: 'state.json dos runs concluídos (retries, loop_count); retrabalho: tentativas além da primeira no cost_tracking (F1.4)',
+      ...(fp != null ? { valor: `${Math.round(fp * 100)} % de primeira, sem retry nem loop (n = ${M.cur.firstPassRuns}); ${rework}`, n: M.cur.firstPassRuns, conhecida: true } : UNKNOWN_METRIC) };
+    const m3 = { id: 'm3', nome: 'Runs bloqueadas pelo teto e acima de N× a mediana', fonte: 'não medida, F1.3/F3.4', ...UNKNOWN_METRIC };
+    const okFlags = flags && Number.isFinite(flags.n) && flags.n > 0 && flags.padrao && flags.consumidor;
+    const m4 = { id: 'm4', nome: 'Estoque desligado', fonte: okFlags ? `${flags.fonte || 'docs/flags.md'}, lido em ${flags.hoje}` : 'docs/flags.md (registro de flags indisponível)',
+      ...(okFlags ? { valor: `${plural(flags.itens_desligados, 'item desligado', 'itens desligados')}; ${flags.padrao.desligada} ${flags.padrao.desligada === 1 ? 'flag desligada' : 'flags desligadas'} e ${flags.padrao.ligada} ${flags.padrao.ligada === 1 ? 'ligada' : 'ligadas'} por padrão, ${plural(flags.vencidas, 'vencida', 'vencidas')}, ${flags.consumidor.nao_verificado} sem verificação no consumidor (n = ${plural(flags.n, 'flag', 'flags')})`, n: flags.n, conhecida: true } : UNKNOWN_METRIC) };
+    const m5 = { id: 'm5', nome: 'Fluxo: frentes ativas, issues abertas × fechadas, escopo do cycle', fonte: 'Linear, à mão', ...UNKNOWN_METRIC };
+    return [m1, m2, m3, m4, m5];
+  }
+  // Linha da série semanal do ACOMPANHAMENTO: Semana | Custo por ticket entregue | Primeira passada | Runs bloqueadas pelo
+  // teto | Itens desligados | Frentes ativas | Nota. Métrica desconhecida vira "sem medição"; a Nota fica vazia.
+  function seriesRow(metrics, semana) {
+    const cell = id => { const m = metrics.find(x => x.id === id); return m && m.conhecida ? String(m.valor).replace(/\|/g, '\\|') : 'sem medição'; };
+    return `| ${[semana, ...['m1', 'm2', 'm3', 'm4', 'm5'].map(cell), ''].join(' | ')} |`;
+  }
+
   // ---------------------------------------------------------------- Aprendizado (Learning embutido)
   const PERIODS = { '30': 30, '7': 7, all: null };
   function median(xs) {
@@ -670,7 +699,7 @@
   }
 
   const pub = { DAY, TZ, money, tok, pct1, modelName, msLabel, weekStart, rangeLabel, isoWeek, windowOf, inWindow, aggregate, delta, series, ticks,
-    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, nodeModels, nodeModelsText, costSource, costSourceText, configSeen, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
+    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, fiveMetrics, seriesRow, nodeModels, nodeModelsText, costSource, costSourceText, configSeen, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
   if (typeof module !== 'undefined' && module.exports) { module.exports = pub; return; }
 
   // ================================================================ navegador

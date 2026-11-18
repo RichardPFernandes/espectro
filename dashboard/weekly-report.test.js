@@ -690,3 +690,55 @@ test('fonte do custo e configuração: nada gravado é desconhecido, nunca zero'
     // JSON da CLI ilegível em todos os nós (cli_cost_usd null): fonte transcript, não zero.
     assert.deepStrictEqual(W.costSource([ctRun(2, { plan: cliNd(1, null) })]), { cli: 0, transcript: 1, none: 0, both: 0, diff: null });
 });
+
+// ---------------------------------------------------------------- F0.9 · as cinco métricas do ACOMPANHAMENTO (AC-03)
+const FLAGS = { n: 12, padrao: { ligada: 3, desligada: 9 }, consumidor: { nao_verificado: 4, outro: 8 }, vencidas: 2, itens_desligados: 9, fonte: 'docs/flags.md', hoje: '2026-11-16' };
+const byId = (rows, id) => rows.find(x => x.id === id);
+
+test('fiveMetrics: sem runs e sem flags, as cinco são desconhecidas, sem nenhum "0" nem número inventado', () => {
+    const rows = W.fiveMetrics(report([]), null);
+    assert.deepStrictEqual(rows.map(x => x.id), ['m1', 'm2', 'm3', 'm4', 'm5']);
+    for (const x of rows) {
+        assert.strictEqual(x.conhecida, false, x.id);
+        assert.strictEqual(x.n, null, x.id);
+        assert.strictEqual(x.valor, 'desconhecido', x.id);
+        assert.ok(x.nome && x.fonte, x.id);
+        assert.doesNotMatch(JSON.stringify(x), /\b0\b|US\$ 0,00/, x.id);
+    }
+    assert.match(byId(rows, 'm3').fonte, /não medida, F1\.3\/F3\.4/);
+    assert.match(byId(rows, 'm5').fonte, /Linear, à mão/);
+    assert.match(byId(rows, 'm4').fonte, /docs\/flags\.md/);
+});
+
+test('fiveMetrics: com runs e flags, valor, n e fonte em cada métrica medida; M3 e M5 seguem desconhecidas', () => {
+    const M = report([
+        run(1, IN, { ticket: '90003-a', usd: 2 }),
+        run(2, IN, { ticket: '90003-b', usd: 4, loops: 1, nodes: { implement: nd([att(3), att(1.5)]) } }),
+        run(3, IN, { ticket: '90003-c', usd: 6, retries: { plan: 1 } }),
+    ]);
+    const rows = W.fiveMetrics(M, FLAGS);
+    for (const x of rows) assert.ok(x.fonte, x.id);
+    const m1 = byId(rows, 'm1'), m2 = byId(rows, 'm2'), m4 = byId(rows, 'm4');
+    assert.deepStrictEqual([m1.conhecida, m1.n, m1.valor], [true, 3, 'US$ 4,00 imputado, mediana · 1 mil tokens, mediana (n = 3)']);
+    assert.match(m1.fonte, /transcript em 3 runs/);
+    assert.deepStrictEqual([m2.conhecida, m2.n], [true, 3]);
+    assert.strictEqual(m2.valor, '33 % de primeira, sem retry nem loop (n = 3); retrabalho US$ 1,50 imputado +1 desconhecido em 3 runs com cost_tracking');
+    assert.deepStrictEqual([m4.conhecida, m4.n], [true, 12]);
+    assert.strictEqual(m4.valor, '9 itens desligados; 9 flags desligadas e 3 ligadas por padrão, 2 vencidas, 4 sem verificação no consumidor (n = 12 flags)');
+    assert.match(m4.fonte, /^docs\/flags\.md, lido em 2026-11-16$/);
+    for (const id of ['m3', 'm5']) assert.deepStrictEqual([byId(rows, id).conhecida, byId(rows, id).n, byId(rows, id).valor], [false, null, 'desconhecido']);
+});
+
+test('seriesRow: linha da série semanal com as 7 colunas e "sem medição" onde não há dado', () => {
+    const cells = l => l.replace(/^\| | \|$/g, '').split(' | ');
+    const empty = W.seriesRow(W.fiveMetrics(report([]), null), '2026-11-16');
+    assert.deepStrictEqual(cells(empty), ['2026-11-16', 'sem medição', 'sem medição', 'sem medição', 'sem medição', 'sem medição', '']);
+    const M = report([run(1, IN, { ticket: '90003-a', usd: 2 })]);
+    const full = cells(W.seriesRow(W.fiveMetrics(M, FLAGS), '2026-11-16'));
+    assert.strictEqual(full.length, 7);
+    assert.strictEqual(full[1], 'US$ 2,00 imputado, mediana · 1 mil tokens, mediana (n = 1)');
+    assert.match(full[2], /^100 % de primeira.*\(n = 1\)/);
+    assert.strictEqual(full[3], 'sem medição');
+    assert.match(full[4], /^9 itens desligados.*\(n = 12 flags\)$/);
+    assert.strictEqual(full[5], 'sem medição');
+});
