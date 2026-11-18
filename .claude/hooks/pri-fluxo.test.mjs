@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { decide, isPrCreate, GRAFO } from './pri-fluxo.mjs';
+import { decide, isPrCreate, isGitWrite, GRAFO } from './pri-fluxo.mjs';
 
 const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), 'pri-fluxo.mjs');
 const g = (cwd, ...a) => execFileSync('git', ['-C', cwd, ...a], { encoding: 'utf8' }).trim();
@@ -102,4 +102,23 @@ test('matcher do UserPromptExpansion em settings.json cobre exatamente o GRAFO',
     const cmds = fs.readdirSync(path.join(path.dirname(HOOK), '..', 'commands')).map((f) => f.replace(/\.md$/, ''));
     assert.deepEqual(cmds.filter((c) => re.test(c)).sort(), [...GRAFO].sort());
     for (const c of ['agent-skills:plan', 'pri-plan']) assert.equal(re.test(c), false, c);
+});
+
+test('git commit e git push negam quando o PR da branch já foi mesclado ou fechado', () => {
+    const dir = repo();
+    const bash = (command) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', cwd: dir, tool_input: { command } });
+    const merged = { prState: () => ({ state: 'MERGED', number: 7 }) };
+    assert.match(reason(decide(bash('git commit -m x'), {}, merged)), /PR #7 desta branch já foi mesclado.*branch nova a partir de origin\/main/);
+    assert.match(reason(decide(bash('cd x && git push -u origin HEAD'), {}, { prState: () => ({ state: 'CLOSED', number: 8 }) })), /fechado/);
+    assert.equal(decide(bash('git commit -m x'), {}, { prState: () => ({ state: 'OPEN', number: 9 }) }), null);
+    assert.equal(decide(bash('git commit -m x'), {}, { prState: () => null }), null);
+    // Fora da sessão de dev, nada é consultado.
+    assert.equal(decide({ ...bash('git commit -m x'), cwd: repo({ level: null }) }, {}, merged), null);
+    // Sem remote origin, o padrão não chama o gh e não bloqueia.
+    assert.equal(decide(bash('git commit -m x'), {}), null);
+});
+
+test('isGitWrite pega commit e push, não status nem texto', () => {
+    for (const c of ['git commit -m x', 'git -C /w push', 'git -c a=b commit -q', 'A=1 git push']) assert.equal(isGitWrite(c), true, c);
+    for (const c of ['git status', 'echo "git commit"', 'git log --grep commit']) assert.equal(isGitWrite(c), false, c);
 });

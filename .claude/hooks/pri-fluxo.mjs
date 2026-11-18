@@ -4,6 +4,8 @@
 // /pri-start). Sem o arquivo, nada é bloqueado — o watcher e o piloto que rodam
 // o grafo neste repo não são afetados.
 //  - PreToolUse Bash `gh pr create`: exige check.json do /pri-check no HEAD.
+//  - PreToolUse Bash `git commit`/`git push`: nega se o PR da branch já foi
+//    mesclado ou fechado (o commit ficaria só na worktree e se perderia).
 //  - PreToolUse Write|Edit|NotebookEdit em subagente revisor: nega escrita.
 //  - UserPromptExpansion de comando do grafo do consumidor: bloqueia.
 import fs from 'node:fs';
@@ -44,6 +46,28 @@ export function prGate(input, env = process.env) {
     return null;
 }
 
+// Estado do PR da branch atual pelo gh: 'MERGED' | 'CLOSED' | 'OPEN' | null.
+// Sem remote `origin` ou sem gh, null: o hook não bloqueia sem saber.
+export function prStateDaBranch(root) {
+    const branch = git(root, 'branch', '--show-current');
+    if (!branch || !git(root, 'remote', 'get-url', 'origin')) return null;
+    try {
+        const out = execFileSync('gh', ['pr', 'view', branch, '--json', 'state,number'],
+            { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 8000 });
+        return JSON.parse(out);
+    } catch { return null; }
+}
+
+export function branchJaMesclada(input, deps = {}) {
+    const root = devRoot(input.cwd || process.cwd());
+    if (!root) return null;
+    const pr = (deps.prState || prStateDaBranch)(root);
+    if (!pr || !['MERGED', 'CLOSED'].includes(pr.state)) return null;
+    const estado = pr.state === 'MERGED' ? 'mesclado' : 'fechado';
+    return deny(`O PR #${pr.number} desta branch já foi ${estado}: um commit aqui fica só na worktree e se perde. ` +
+        'Crie uma branch nova a partir de origin/main e abra outro PR (por exemplo, para marcar a fatia no FASE.md).');
+}
+
 export function revisorSomenteLeitura(input) {
     if (!REVISORES.test(String(input.agent_type || ''))) return null;
     if (!devRoot(input.cwd || process.cwd())) return null;
@@ -63,10 +87,20 @@ export function isPrCreate(command) {
     return String(command || '').split(/\n|&&|\|\||;|\|/).some((seg) => PR_CREATE.test(seg));
 }
 
-export function decide(input, env = process.env) {
+// `git commit` ou `git push` como comando, com as mesmas regras de segmento.
+const GIT_WRITE = /^\s*\(?\s*(?:\w+=\S+\s+)*git\s+(?:-C\s+\S+\s+|-c\s+\S+\s+)*(?:commit|push)\b/;
+export function isGitWrite(command) {
+    return String(command || '').split(/\n|&&|\|\||;|\|/).some((seg) => GIT_WRITE.test(seg));
+}
+
+export function decide(input, env = process.env, deps = {}) {
     if (input.hook_event_name === 'UserPromptExpansion') return grafoForaDoDev(input);
     if (input.hook_event_name !== 'PreToolUse') return null;
-    if (input.tool_name === 'Bash') return isPrCreate(input.tool_input?.command) ? prGate(input, env) : null;
+    if (input.tool_name === 'Bash') {
+        const command = input.tool_input?.command;
+        if (isPrCreate(command)) return prGate(input, env);
+        return isGitWrite(command) ? branchJaMesclada(input, deps) : null;
+    }
     if (['Write', 'Edit', 'NotebookEdit'].includes(input.tool_name)) return revisorSomenteLeitura(input);
     return null;
 }

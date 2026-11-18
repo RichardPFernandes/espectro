@@ -24,6 +24,11 @@ Primeiro passo do fluxo de desenvolvimento (seção "Fluxo de desenvolvimento" d
    outra issue, pare.
 5. **Pasta.** Use `tasks/fN-M-<nome>/` para fatia do roadmap e `tasks/pri-NNN/` para o
    resto. Leve não tem pasta nem SPEC: os ACs ficam na issue.
+   - **Achar a fatia.** Sem ID de fatia no argumento, procure a issue na coluna
+     `Issue no Linear` de `roadmap/fase-*/FASE.md` e no título da issue (`Roadmap Fx.y`).
+     Achou uma linha só, use esse ID como `fatia`. Achou mais de uma, como a PRI-376 na
+     Fase 0, pergunte qual. Sem fatia, o `/pri-pr` não marca o roadmap; por isso o C1
+     (F0.11) precisou de um PR à parte.
    - **Linha da fatia.** Com fatia, leia a linha dela em `roadmap/fase-*/FASE.md`. Se a
      coluna `Issue no Linear` não traz esta issue, ou o `Nível` não bate com o rótulo
      `Processo`, avise na resposta. Não edite a `main`: a correção vai no PR da fatia,
