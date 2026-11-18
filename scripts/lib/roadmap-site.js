@@ -98,7 +98,7 @@ details ul{padding-left:1.1rem;margin:.5rem 0 0}li{margin:.2rem 0}
 .hoje{position:absolute;top:0;bottom:0;width:2px;background:var(--hj)}
 svg{display:block;min-width:640px;width:100%;height:auto}.n rect{fill:color-mix(in srgb,var(--c) 18%,var(--bg));stroke:var(--c);stroke-width:1.5}.n.s0 rect{stroke-dasharray:4 2}.n text,.cl{fill:var(--fg);font:10px system-ui,sans-serif;text-anchor:middle;dominant-baseline:central}
 .e{fill:none;stroke:var(--mut);opacity:.45}.lg{margin:.5rem 0}.lg span{margin:0 .5rem .25rem 0}
-table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:.3rem .5rem;text-align:left}`;
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:.3rem .5rem;text-align:left}th,td:not(:nth-child(2)):not(:nth-child(7)){white-space:nowrap}`;
 
 function progress(slices) {
     const sum = pred => slices.filter(pred).reduce((t, s) => t + (s.dias || 0), 0);
@@ -140,16 +140,16 @@ function renderTimeline(phases, today) {
 
 function renderGraph(phases) {
     const at = new Map(), W = 84, rows = Math.max(1, ...phases.map(p => p.slices.length));
-    phases.forEach((p, i) => p.slices.forEach((s, j) => at.set(s.id, { x: 16 + i * W, y: 30 + j * 28, s })));
+    phases.forEach((p, i) => p.slices.forEach((s, j) => at.set(s.id, { x: 48 + i * W, y: 30 + j * 28, s })));
     const edges = [...at.values()].flatMap(({ x, y, s }) => s.deps.filter(d => at.has(d)).map(d => {
-        const f = at.get(d), same = f.x === x, x0 = same ? f.x : f.x + 54, c = same ? -40 : 30;
-        return `<path class="e" d="M${x0} ${f.y + 11}C${x0 + c} ${f.y + 11} ${x - (same ? 40 : 30)} ${y + 11} ${x} ${y + 11}"/>`;
+        const f = at.get(d), same = f.x === x, x0 = same ? f.x : f.x + 54, c = same ? -24 : 30;
+        return `<path class="e" d="M${x0} ${f.y + 11}C${x0 + c} ${f.y + 11} ${x - (same ? 24 : 30)} ${y + 11} ${x} ${y + 11}"/>`;
     }));
     const nodes = [...at.values()].map(({ x, y, s }) => `<g class="n ${cls(s.status)}"><title>${esc(`${s.id} · ${s.name} · ${s.status}`)}</title><rect x="${x}" y="${y}" width="54" height="22" rx="5"/><text x="${x + 27}" y="${y + 11}">${esc(s.id)}</text></g>`);
-    const heads = phases.map((p, i) => `<text class="cl" x="${16 + i * W + 27}" y="12">F${p.n}</text>`);
+    const heads = phases.map((p, i) => `<text class="cl" x="${48 + i * W + 27}" y="12">F${p.n}</text>`);
     const legend = STATUS_VOCAB.map(t => `<span class="${cls(t)}">${t}</span>`).join('');
     return `<div class="lg">${legend} (borda tracejada: não iniciada)</div>
-<div class="rola"><svg viewBox="0 0 ${32 + phases.length * W} ${40 + rows * 28}" role="img" aria-label="Grafo de dependências entre fatias">${heads.join('')}${edges.join('')}${nodes.join('')}</svg></div>`;
+<div class="rola"><svg viewBox="0 0 ${64 + phases.length * W} ${40 + rows * 28}" role="img" aria-label="Grafo de dependências entre fatias">${heads.join('')}${edges.join('')}${nodes.join('')}</svg></div>`;
 }
 
 /** Monta a página. @returns {string} HTML */
