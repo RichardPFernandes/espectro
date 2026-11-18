@@ -16,7 +16,7 @@ O teste `scripts/lib/flag-registry.test.js` roda no CI e falha quando:
 - **Padrão:** estado do recurso quando a variável está ausente. `DISABLE_AUTO_CLEANUP` é "ligada" porque, sem a variável, a limpeza roda.
 - **Consumidor:** estado no consumidor corporativo. O `.env` dele não é lido aqui (dado do consumidor não acompanha o código), então vale `não verificado`, que não é "desligada". Só entra valor quando um documento do repo o afirma.
 - **Decidir até:** data (AAAA-MM-DD, em UTC) em que a flag liga de vez, é removida ou é renovada por decisão do Richard. Para flag permanente, é a próxima reconfirmação (seis meses). Passou da data sem decisão, o CI fica vermelho.
-- **Item desligado:** `sim` para o que foi construído e está desligado (métrica "itens construídos e desligados" do [`ACOMPANHAMENTO.md`](../roadmap/ACOMPANHAMENTO.md)). Hoje são 12. O roadmap não lista quais; esta lista foi reconstruída do código e dos documentos do roadmap, e quem discordar corrige a coluna.
+- **Item desligado:** `sim` para o que foi construído e está desligado (métrica "itens construídos e desligados" do [`ACOMPANHAMENTO.md`](../roadmap/ACOMPANHAMENTO.md)). Hoje são 11. O roadmap não lista quais; esta lista foi reconstruída do código e dos documentos do roadmap, e quem discordar corrige a coluna.
 
 ## Limites da detecção
 
@@ -68,4 +68,4 @@ do Acordo; este registro só diz quando a decisão é devida.
 | roteamento | `.claude/model-routing.json#mode` | desligada | PRI-233 | `mode: "OFF"` no `app-back/.claude/model-routing.json` (docs/consumer-operations.md, linha "Roteamento no app-back"); neste repo o arquivo está em `mode: "ON"` (piloto no Espectro) | AUTORIZO próprio para ligar no consumidor | o piloto de roteamento reprova | 2027-05-17 | não |
 | classificador Jev | `scripts/lib/classifier-selection.js` | desligada | PRI-205, PRI-321, PRI-291 | não verificado (a escolha mora em registro do consumidor, fora do git) | há dado que justifique e a calibração passa (F6.8) | congelado (D5); remover se não houver dado | 2027-01-15 | sim |
 | writer de Self-SDD | `scripts/lib/sdd-writer.js` | desligada | PRI-349 | não roda: sem chamador fora dos testes (roadmap/BASE.md, fato 16) | a PRI-349 e filhas dão a ele um chamador (D5) | só por decisão do Richard (D5) | 2027-01-15 | sim |
-| `ESTADO_NO_MERGE` | `.github/workflows/estado-no-merge.yml` | desligada | PRI-399 | não se aplica: CI deste repo | o Richard grava `simular`, confere o resumo do job num merge e grava `on` | move issue errada ou reescreve Estado fora do bloco | 2026-12-18 | sim |
+| `ESTADO_NO_MERGE` | `.github/workflows/estado-no-merge.yml` | desligada | PRI-399 | não se aplica: CI deste repo | ligada pelo Richard em 2026-11-18 (`on`, depois de um `simular` por dispatch); a decisão até a data é manter de vez ou remover | move issue errada ou reescreve Estado fora do bloco | 2026-12-18 | não |
