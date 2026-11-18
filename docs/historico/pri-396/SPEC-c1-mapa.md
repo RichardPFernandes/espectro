@@ -1,6 +1,6 @@
 # SPEC C1: mapa de capacidades do Espectro
 
-> **Fatia:** C1 de [`PROPOSTA.md`](PROPOSTA.md), fora das fases do roadmap (pedido do Richard em 16/11) · **Issue:** [PRI-396](https://linear.app/prisma-app/issue/PRI-396) · **Nível:** Médio (cria um teste que reprova todo PR com arquivo de código sem capacidade; reclassificado pelo Richard em 16/11)
+> **Fatia:** C1 de [`PROPOSTA.md`](../../../tasks/spec-viva-do-espectro/PROPOSTA.md), fora das fases do roadmap (pedido do Richard em 16/11) · **Issue:** [PRI-396](https://linear.app/prisma-app/issue/PRI-396) · **Nível:** Médio (cria um teste que reprova todo PR com arquivo de código sem capacidade; reclassificado pelo Richard em 16/11)
 > **AUTORIZO:** não precisa · **Flag:** nenhuma (não muda código executado numa Run)
 > **Decisões citadas:** D5, D-SDD-02 (Mesa de Decisões) · **Código lido em:** `main` `73a5dba` mais os commits da PRI-393 (`e83144c`)
 

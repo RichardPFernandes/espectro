@@ -1,5 +1,5 @@
 // Ligações da Run decomposta no watcher e nos caminhos de saída (PRI-311 / PRI-287 S5.2a;
-// adendo tasks/pri-287-s5/SPEC-s5.2.md v2.1, H0–H6). Sem engine novo: funções chamadas pelo
+// adendo docs/historico/pri-287/SPEC-s5.2.md v2.1, H0–H6). Sem engine novo: funções chamadas pelo
 // despacho do watcher, por releaseLease (--follow) e pelo wrapper destacado
 // (node-lease.js release). O DOM-06 (dom06-attempt.js) continua o escritor do Attempt e o
 // state-writer o do state.json. Este módulo lê o workspace (workspace-manifest.js), decide, e

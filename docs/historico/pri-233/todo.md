@@ -255,7 +255,7 @@ e `effort_router_plugin`. Com o snapshot OFF, o código atual segue intocado.
 | MINOR-5: ticket novo recusado não aparece no Dashboard | **Pendente, registrado.** O aviso sai no Redmine e na notificação local. |
 | MINOR-6: docs e comentários desatualizados | **Corrigido** (matriz de evidência, este arquivo, comentário da T7 no watcher). |
 | NIT: `effort_applied` calculado tarde | **Corrigido.** |
-| Pedido: teste real do CLI | **Feito.** 1ª rodada: skill solta no projeto. 2ª rodada: plugin de marketplace, skill na conta e o router real como plugin em pasta na conta `personal`. A 2ª rodada corrigiu a regra de `pluginConfigs`: só com `options` é neutralizável. Ver AC-08 em [`tasks/evidence.md`](../../../tasks/evidence.md). |
+| Pedido: teste real do CLI | **Feito.** 1ª rodada: skill solta no projeto. 2ª rodada: plugin de marketplace, skill na conta e o router real como plugin em pasta na conta `personal`. A 2ª rodada corrigiu a regra de `pluginConfigs`: só com `options` é neutralizável. Ver AC-08 em [`evidence.md`](evidence.md). |
 
 ## Fase 3: override, visibilidade e fechamento
 
@@ -308,7 +308,7 @@ revisor (Arquiteto), e entregar o handoff a partir de
 `templates/handoff.yaml.template`.
 
 **Critérios de aceite:**
-- [x] Matriz AC-01 a AC-13 em [evidence.md](../../../tasks/evidence.md), na revisão `ea9e42d`: 9 automatizados (AC-11 parcial), 3 só em unidade (AC-02/06/08) e 1 pendente (AC-09). Nada foi declarado como aceito.
+- [x] Matriz AC-01 a AC-13 em [evidence.md](evidence.md), na revisão `ea9e42d`: 9 automatizados (AC-11 parcial), 3 só em unidade (AC-02/06/08) e 1 pendente (AC-09). Nada foi declarado como aceito.
 - [x] Nenhum teste removido ou pulado. Os testes existentes que mudaram estão listados no AC-13 (contagem de regras e 5 correções de corrida, sem asserção alterada).
 - [x] Handoff `PARTIAL` em `~/Workspace/prisma-evidence/2026-11-06-pri-233/handoff.yaml`: `validate-handoff.js --check-paths --base <worktree>` = VÁLIDO; `--pre-done` = exit 3 (o Done depende do Richard). Logs e TAPs no mesmo diretório.
 - [ ] Verify, revisão Codex (G3), PR Draft: pendentes (ver evidence.md).

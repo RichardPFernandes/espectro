@@ -18,8 +18,9 @@
 6. Dados, credenciais, fixtures não admitidas, histórico e knowledge do consumidor
    não acompanham o transporte de código. Referências de configuração não são
    valores de segredo ou autorização de acesso.
-7. Mudanças seguem Plan → Implement → Review independente → Test → Verify →
-   Commit, com instruções locais aplicáveis e evidência atribuível à versão na
+7. Mudanças seguem o fluxo `/pri-start` → (Médio e Alto) `/pri-spec` (no Médio, só se precisar) e `/pri-plan` →
+   `/pri-build` → `/pri-check` (revisão independente) → `/pri-pr`, descrito no
+   `CLAUDE.md` e em `docs/fluxo-dev.md`, com evidência atribuível à versão na
    seção Evidência do PR. Não transformar UNKNOWN ou ausência de prova em
    aprovação ou zero.
 8. Impacto além da baseline retorna à reconciliação pertinente. Os candidatos

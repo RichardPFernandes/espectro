@@ -1,7 +1,7 @@
 # Proposta: spec viva do Espectro, por capacidade
 
 > **Status:** fatias C1 a C4 aprovadas pelo Richard em 16/11/2026 (D-SDD-02). P2, P3 e P4 seguem
-> sem resposta. Este arquivo é o mapa das fatias. SPEC da C1: [`SPEC-c1-mapa.md`](SPEC-c1-mapa.md),
+> sem resposta. Este arquivo é o mapa das fatias. SPEC da C1: [`SPEC-c1-mapa.md`](../../docs/historico/pri-396/SPEC-c1-mapa.md),
 > issue PRI-396. As outras SPECs nascem quando cada fatia começar.
 > **Origem:** pedido do Richard em 16/11 ("não entendo o sistema, não consigo navegar no
 > conhecimento"). Base: quatro estudos do mesmo dia (arquitetura atual, SDD no mercado,

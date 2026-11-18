@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Tarefa 0 da PRI-311 (PRI-287 S5.2a): prova do mecanismo U10 — fixar o modelo do subagente
 // por papel no despacho, sem depender do frontmatter que o LLM aciona. Adendo
-// tasks/pri-287-s5/SPEC-s5.2.md v2.1, seção "Tarefa 0".
+// docs/historico/pri-287/SPEC-s5.2.md v2.1, seção "Tarefa 0".
 //
 // STATUS: verificação pontual. Sem estado de Run, sem Attempt, sem RoutingDecision, fora do
 // watcher e do DOM-06, e FORA do harness (loopback-only): faz chamadas reais ao provider.
