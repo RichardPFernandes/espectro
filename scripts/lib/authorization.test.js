@@ -27,9 +27,9 @@ const SECRET = 'SENTINEL-senha-do-banco-NAO-VAZA-123';
 const DB_USER = 'usuario_qa_sentinel';
 const DB_HOST = 'host-sentinel.qa.interno';
 const SQL = "ALTER TABLE f_solicitacao_autorizacao DROP CONSTRAINT IF EXISTS f_check;\nALTER TABLE f_solicitacao_autorizacao ADD CONSTRAINT f_check CHECK (tipo IN ('A','SERVICO_ADICIONAL'));\n";
-const entry = (alias, extra = {}) => ({ label: alias, host: DB_HOST, port: 5432, database: 'embarc_db_stage', user: DB_USER, env: 'qa', secret: { keychain: `prisma-db-${alias}`, account: alias }, ...extra });
+const entry = (alias, extra = {}) => ({ label: alias, host: DB_HOST, port: 5432, database: 'app_db_stage', user: DB_USER, env: 'qa', secret: { keychain: `prisma-db-${alias}`, account: alias }, ...extra });
 const TARGETS = {
-    'qa-app': entry('qa-app', { label: 'QA – embarc' }),
+    'qa-app': entry('qa-app', { label: 'QA – app' }),
     'prod-app': entry('prod-app', { env: 'production' }),
     'prd-app': entry('prd-app', { env: 'prd' }),
     'live-app': entry('live-app', { env: 'live' }),
@@ -442,13 +442,13 @@ test('db-targets --from-properties: lê o .properties (ISO-8859-1/CRLF), mostra 
     const PROP_SECRET = 'SENTINEL-props-çã"\\x';
     const props = path.join(tmp, 'application.properties');
     fs.writeFileSync(props, Buffer.from([
-        '# comentário', 'quarkus.datasource.db-kind=postgresql', 'quarkus.datasource.jdbc.url=jdbc:postgresql://192.168.10.234/embarc_db_stage',
+        '# comentário', 'quarkus.datasource.db-kind=postgresql', 'quarkus.datasource.jdbc.url=jdbc:postgresql://192.0.2.24/app_db_stage',
         `quarkus.datasource.username=${DB_USER}`, `quarkus.datasource.password=${PROP_SECRET.replace(/\\/g, '\\\\')}`,
         'quarkus.datasource.portal.jdbc.url=jdbc:postgresql://outro/portal', 'quarkus.datasource.portal.password=nao-e-esta', '',
     ].join('\r\n'), 'latin1'));
     const run = args => new Promise(resolve => execFile(process.execPath, [path.join(__dirname, 'db-targets.js'), ...args], { env: { PATH: '/usr/bin:/bin', HOME: tmp } },
         (err, stdout, stderr) => resolve({ code: err ? err.code : 0, out: stdout + stderr })));
-    const base = ['add', 'qa-app', `--from-properties=${props}`, '--env=qa', '--label=QA – embarc_db_stage', `--config-dir=${cfg}`];
+    const base = ['add', 'qa-app', `--from-properties=${props}`, '--env=qa', '--label=QA – app_db_stage', `--config-dir=${cfg}`];
     assert.strictEqual((await run(base)).code, 1, 'sem TTY e sem --yes: não grava');
     assert.ok(!fs.existsSync(argvLog), 'nada chamado sem confirmação');
     const r = await run([...base, '--yes']);
@@ -464,7 +464,7 @@ test('db-targets --from-properties: lê o .properties (ISO-8859-1/CRLF), mostra 
     assert.match(stdin, /add-generic-password -s "prisma-db-qa-app" -a "qa-app" .*-T "" -w /);
     assert.ok(!stdin.includes('nao-e-esta'), 'datasource nomeado (portal) ignorado');
     const saved = prismaConfig.readSecureJson('db-targets.json', { dir: cfg })['qa-app'];
-    assert.deepStrictEqual([saved.host, saved.port, saved.database, saved.user, saved.env], ['192.168.10.234', 5432, 'embarc_db_stage', DB_USER, 'qa']);
+    assert.deepStrictEqual([saved.host, saved.port, saved.database, saved.user, saved.env], ['192.0.2.24', 5432, 'app_db_stage', DB_USER, 'qa']);
     assert.ok(!JSON.stringify(saved).includes('SENTINEL'));
     assert.strictEqual((await run(['add', 'x', '--host=h', '--db=d', '--user=u', '--env=qa', '--password=x', `--config-dir=${cfg}`])).code, 2);
 });

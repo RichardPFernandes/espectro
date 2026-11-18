@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Abre um PR no Bitbucket Cloud via API, sempre com o mesmo request testado e
-# validado ao vivo (ticket #43509, 2026-09-11): Authorization: Bearer com API
+# validado ao vivo (ticket #10009, 2026-09-11): Authorization: Bearer com API
 # token da Atlassian (ATATT...). Basic Auth com esse tipo de token pode
 # retornar 401/403 dependendo do endpoint; Bearer é o que funciona pros
 # escopos de repository/pullrequest que os tokens deste projeto têm.
@@ -29,7 +29,7 @@
 #                           grafo nunca passa isto).
 #   --title-prefix <texto>  prefixa o título com "[<texto>] " (ex:
 #                           --title-prefix HIGH-RISK => "[HIGH-RISK] Problema
-#                           #43425 - ...") — usado pelo /commit quando
+#                           #10006 - ...") — usado pelo /commit quando
 #                           state.json.risk_level == "high".
 #
 # Reviewers default: PR criado pela API NÃO recebe os default reviewers do repo

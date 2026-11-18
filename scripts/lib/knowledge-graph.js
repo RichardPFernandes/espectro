@@ -350,7 +350,7 @@ function edgesOf(graph, pred) {
     return graph.edges.filter(pred);
 }
 
-// Subgrafo de um ticket (aceita "43425", "TASK-43425" ou o task-id "43425-slug").
+// Subgrafo de um ticket (aceita "10006", "TASK-10006" ou o task-id "10006-slug").
 function subgraphForTicket(graph, idLike) {
     const ticketId = ticketIdOf(String(idLike).replace(/^TASK-/i, ''), null);
     if (!ticketId) return { nodes: {}, edges: [] };

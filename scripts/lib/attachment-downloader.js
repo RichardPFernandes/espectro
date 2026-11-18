@@ -100,7 +100,7 @@ function sameOrigin(a, b) {
 }
 
 // O Redmine monta content_url com o host_name da configuração dele, que pode não ser
-// o endereço por onde a API é acessada (aqui: IP interno 192.168.10.205:3000 vs
+// o endereço por onde a API é acessada (aqui: IP interno da rede, porta 3000, vs
 // REDMINE_URL público). Então a URL é remontada sobre REDMINE_URL pela rota padrão
 // /attachments/download/:id/:filename — a credencial só vai pra REDMINE_URL, e o host
 // do content_url nunca é usado. Sem id numérico, só aceita content_url da mesma origem.

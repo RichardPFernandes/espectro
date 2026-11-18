@@ -73,9 +73,9 @@ if (a.type === 'FACT' && !(a.basis === 'SYSTEM_PREDICATE' && PRED_RE.test(a.pred
 
 - **AC-01 (QRD-AC-07):** sem spec/nota/journal → versão válida com `missing[]`, hipóteses WEAK/UNKNOWN, nenhuma
   categoria por default.
-- **AC-02 (QRD-AC-08):** fixtures #43782/#43608 sintéticas → preparação bloqueada em `platform_signals`; causa
+- **AC-02 (QRD-AC-08):** fixtures #10014/#10011 sintéticas → preparação bloqueada em `platform_signals`; causa
   de produto UNKNOWN sem rótulo humano.
-- **AC-03 (QRD-AC-09):** #42359 sintética → `db_migration` no máximo MODERATE; `request_effect`,
+- **AC-03 (QRD-AC-09):** #10007 sintética → `db_migration` no máximo MODERATE; `request_effect`,
   `human_gate_required=true`; nenhum `pending_authorization`, nenhum despacho.
 - **AC-04 (QRD-AC-11):** citação íntegra de afirmação falsa e nota que manda declarar FACT não produzem FACT;
   só `SYSTEM_PREDICATE` produz; adjudicação humana é ADJUDICATION; JSON fora do schema não publica.

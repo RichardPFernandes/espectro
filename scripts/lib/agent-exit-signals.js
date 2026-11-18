@@ -4,7 +4,7 @@
 //
 // UNAVAILABLE_SIGNATURES: o CLAUDE (não a tarefa) está indisponível agora — limite de
 // conta/uso, erro de autenticação. Encontrado ao vivo validando o orquestrador (ticket
-// #43425). `\b429\b` isolado foi removido depois de um falso positivo real ("14:19:15,429",
+// #10006). `\b429\b` isolado foi removido depois de um falso positivo real ("14:19:15,429",
 // milissegundos num log de build do Quarkus): todo padrão aqui precisa de contexto textual
 // específico o bastante para não colidir com números soltos em log de build/teste.
 //

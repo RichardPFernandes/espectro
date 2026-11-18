@@ -10,7 +10,7 @@
 // `--settings` não estão provados no CLI, ela fica no AS-IS (decisão D1 da SPEC).
 
 // Nós que nunca abrem subagente: no plan, um Explore em Opus custou 2,5× a sessão
-// inteira (#43590) lendo arquivos Java completos. O review ainda pode chamar o
+// inteira (#10010) lendo arquivos Java completos. O review ainda pode chamar o
 // subagente de domínio (security-reviewer/schema-guardian) — ver review.md.
 const NO_SUBAGENT_NODES = new Set(['plan']);
 
