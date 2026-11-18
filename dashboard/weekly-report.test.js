@@ -594,14 +594,99 @@ test('nodeModelsText: "nó Modelo (n)" separado por " · " e "desconhecido" quan
     assert.strictEqual(W.nodeModelsText([]), 'desconhecido');
 });
 
-test('buildReport e copyText: nodeModels respeita a janela e o texto diz que versão da CLI, hash e JSON da CLI são desconhecidos', () => {
+test('buildReport e copyText: nodeModels respeita a janela; run de antes da flag deixa versão da CLI e hash desconhecidos e a fonte é o transcript', () => {
     const all = [withModels(1, { plan: ['claude-opus-5-5'] }), { ...withModels(2, { plan: ['claude-sonnet-5-5'] }), updatedAt: OLD }];
     const M = W.buildReport(all, env(), { win: 'cur', now: NOW });
     assert.deepStrictEqual(M.nodeModels.map(x => [x.key, x.models.map(m => m.id)]), [['plan', ['claude-opus-5-5']]]);
     const t = W.copyText(M, '');
     assert.match(t, /^Modelo por nó \(observado nos runs da janela\): plan Opus 5\.5 \(1\)\.$/m);
-    assert.match(t, /^Versão da CLI e hash dos prompts por run: desconhecido \(o run ainda não grava; F1\.5 AC-05\)\.$/m);
-    assert.match(t, /^Fonte do custo: leitor de transcript; o JSON da CLI ainda não é gravado, então não há diferença a mostrar \(F1\.5 AC-04\)\.$/m);
+    assert.match(t, /^Versão da CLI \(observada nos runs da janela\): desconhecido\.$/m);
+    assert.match(t, /^Hash dos prompts \(observado nos runs da janela\): desconhecido\.$/m);
+    assert.match(t, /^Fonte do custo: JSON da CLI em 0 runs, transcript em 1 run; diferença CLI − transcript desconhecida \(nenhum run com as duas fontes\)\.$/m);
     assert.ok(t.indexOf('Linha para a série semanal') < t.indexOf('Modelo por nó') && t.indexOf('Fonte do custo') < t.indexOf('PRs por estado'));
     assert.match(W.copyText(W.buildReport([], env(), { win: 'cur', now: NOW }), ''), /^Modelo por nó \(observado nos runs da janela\): desconhecido\.$/m);
+});
+
+// ---------------------------------------------------------------- F1.5 · fonte do custo e configuração por run (AC-04, AC-05)
+// Formato gravado pela T3 só com WATCHER_CLI_RESULT_JSON ligada: cost.cli_usd, cli_version e prompt_hashes no Attempt;
+// cli_cost_usd e runs_without_cli_cost no nó; nos totais, só se algum nó tem cli_cost_usd (nó sem o campo conta todos os runs).
+const HA = 'a1b2c3d4'.padEnd(64, '0'), HB = 'b2c3d4e5'.padEnd(64, '0');
+const cliAtt = (usd, cli, { version = '2.1.3', hashes = { plan: HA } } = {}) => ({ ...att(usd), cost: { usd, cli_usd: cli }, cli_version: version, prompt_hashes: hashes });
+const cliNd = (usd, cli, opts = {}) => nd([cliAtt(usd, cli, opts)], { cost_usd: usd, cli_cost_usd: cli, runs_without_cli_cost: cli == null ? 1 : 0 });
+function ctRun(id, nodes, iso = IN) { // totais como recomputeTotals (scripts/lib/cost-tracking.js)
+    const r = run(id, iso, { nodes });
+    const ns = Object.values(nodes), t = r.state.cost_tracking.totals;
+    t.cost_usd = Math.round(ns.reduce((a, n) => a + n.cost_usd, 0) * 1e6) / 1e6;
+    if (ns.some(n => Object.hasOwn(n, 'cli_cost_usd'))) {
+        const tracked = ns.filter(n => Object.hasOwn(n, 'cli_cost_usd'));
+        t.cli_cost_usd = tracked.some(n => n.cli_cost_usd != null) ? Math.round(tracked.reduce((a, n) => a + (n.cli_cost_usd || 0), 0) * 1e6) / 1e6 : null;
+        t.runs_without_cli_cost = ns.reduce((a, n) => a + (Object.hasOwn(n, 'cli_cost_usd') ? n.runs_without_cli_cost || 0 : n.runs || 0), 0);
+    }
+    return r;
+}
+const report = all => W.buildReport(all, env(), { win: 'cur', now: NOW });
+const line = (t, label) => (t.split('\n').find(l => l.startsWith(`${label}: `)) || '').slice(label.length + 2);
+
+test('fonte do custo: run só com transcript usa totals.cost_usd e não tem diferença a mostrar', () => {
+    const M = report([run(1, IN, { usd: 2 })]);
+    assert.strictEqual(M.cur.cost, 2);
+    assert.deepStrictEqual(M.costSource, { cli: 0, transcript: 1, none: 0, both: 0, diff: null });
+    assert.strictEqual(line(W.copyText(M, ''), 'Fonte do custo'), 'JSON da CLI em 0 runs, transcript em 1 run; diferença CLI − transcript desconhecida (nenhum run com as duas fontes).');
+    assert.strictEqual(line(W.copyText(M, ''), 'Versão da CLI (observada nos runs da janela)'), 'desconhecido.');
+});
+
+test('fonte do custo: run com as duas fontes usa o JSON da CLI e soma a diferença CLI − transcript', () => {
+    const M = report([ctRun(1, { plan: cliNd(1, 1.25) }), ctRun(2, { plan: cliNd(1.5, 1.2), implement: cliNd(0.5, 0.7) })]);
+    assert.strictEqual(M.cur.cost, 3.15); // 1,25 + 1,90 do JSON da CLI, não 3,00 do transcript
+    assert.deepStrictEqual({ ...M.costSource, diff: Math.round(M.costSource.diff * 100) / 100 }, { cli: 2, transcript: 0, none: 0, both: 2, diff: 0.15 });
+    const t = W.copyText(M, '');
+    assert.strictEqual(line(t, 'Fonte do custo'), 'JSON da CLI em 2 runs, transcript em 0 runs; diferença CLI − transcript +US$ 0,15 em 2 runs com as duas fontes.');
+    assert.strictEqual(Math.round(rowOf(M.perTicket, 'all').usd.median * 1000) / 1000, 1.575); // custo por ticket também vem da CLI
+    assert.strictEqual(W.costSourceText(W.costSource([ctRun(3, { plan: cliNd(2, 1.5) })])), 'JSON da CLI em 1 run, transcript em 0 runs; diferença CLI − transcript −US$ 0,50 em 1 run com as duas fontes');
+});
+
+test('fonte do custo: run misto (nó sem custo da CLI) cai para o transcript', () => {
+    const preFlag = nd(null, { cost_usd: 0.5, runs: 2 }); // nó só com runs de antes da flag: sem os campos
+    const M = report([
+        ctRun(1, { plan: cliNd(1, 1.25), implement: preFlag }), // totais acusam runs sem custo da CLI
+        ctRun(2, { plan: cliNd(1, 1.25), implement: cliNd(0.5, null) }), // nó com runs_without_cli_cost
+    ]);
+    assert.strictEqual(M.list[0].state.cost_tracking.totals.runs_without_cli_cost, 2);
+    assert.strictEqual(M.cur.cost, 3); // 1,50 + 1,50 do transcript
+    assert.deepStrictEqual(M.costSource, { cli: 0, transcript: 2, none: 0, both: 0, diff: null });
+    // Totais acusando runs sem custo da CLI bastam, mesmo com os nós limpos.
+    const r = ctRun(3, { plan: cliNd(1, 1.25) });
+    r.state.cost_tracking.totals.runs_without_cli_cost = 1;
+    assert.deepStrictEqual(W.costSource([r]), { cli: 0, transcript: 1, none: 0, both: 0, diff: null });
+});
+
+test('versão da CLI e hash dos prompts: distintos na janela, hash em 8 caracteres, "+N desconhecido" por run', () => {
+    const M = report([
+        ctRun(1, { plan: cliNd(1, 1, { hashes: { plan: HA, implement: HB } }) }),
+        ctRun(2, { plan: cliNd(1, 1, { version: '2.1.4', hashes: { plan: HA, implement: 'UNKNOWN' } }) }),
+        ctRun(3, { plan: cliNd(1, 1, { version: null }) }),
+        run(4, IN), // antes da flag: nada gravado
+        { ...ctRun(5, { plan: cliNd(1, 1, { version: '9.9.9', hashes: { plan: 'f'.repeat(64) } }) }), updatedAt: OLD }, // fora da janela
+    ]);
+    assert.deepStrictEqual(M.config, { versions: ['2.1.3', '2.1.4'], versionsUnknown: 2, hashes: ['a1b2c3d4', 'b2c3d4e5'], hashesUnknown: 2 });
+    const t = W.copyText(M, '');
+    assert.strictEqual(line(t, 'Versão da CLI (observada nos runs da janela)'), '2.1.3, 2.1.4 +2 desconhecidos.');
+    assert.strictEqual(line(t, 'Hash dos prompts (observado nos runs da janela)'), 'a1b2c3d4, b2c3d4e5 +2 desconhecidos.');
+});
+
+test('fonte do custo e configuração: nada gravado é desconhecido, nunca zero', () => {
+    for (const all of [[], [run(1, IN, { usd: null })]]) {
+        const M = report(all);
+        assert.strictEqual(M.cur.cost, null);
+        assert.strictEqual(M.costSource.diff, null);
+        const t = W.copyText(M, '');
+        assert.strictEqual(line(t, 'Fonte do custo'), 'desconhecido (nenhum run da janela com custo medido).');
+        assert.strictEqual(line(t, 'Versão da CLI (observada nos runs da janela)'), 'desconhecido.');
+        assert.strictEqual(line(t, 'Hash dos prompts (observado nos runs da janela)'), 'desconhecido.');
+        assert.doesNotMatch(t, /US\$ 0,00/);
+    }
+    assert.deepStrictEqual(W.costSource([run(1, IN, { usd: null })]), { cli: 0, transcript: 0, none: 1, both: 0, diff: null });
+    assert.deepStrictEqual(W.configSeen([run(1, IN, { usd: null })]), { versions: [], versionsUnknown: 1, hashes: [], hashesUnknown: 1 });
+    // JSON da CLI ilegível em todos os nós (cli_cost_usd null): fonte transcript, não zero.
+    assert.deepStrictEqual(W.costSource([ctRun(2, { plan: cliNd(1, null) })]), { cli: 0, transcript: 1, none: 0, both: 0, diff: null });
 });

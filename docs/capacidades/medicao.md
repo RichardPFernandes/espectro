@@ -4,9 +4,10 @@ tipo: capacidade
 resumo: Mede e guarda o que as Runs deixam, como custo por nó, transcrições, comparação de Runs, padrões de falha e rastreio ticket → PR.
 situacao: ligada
 spec: sem-spec
-flags: []
+flags: [WATCHER_CLI_RESULT_JSON]
 modulos:
   - scripts/lib/cost-tracking.js
+  - scripts/lib/cli-result.js
   - scripts/lib/claude-usage.js
   - scripts/lib/transcript-writer.js
   - scripts/lib/run-comparator.js
@@ -26,7 +27,8 @@ em `memory/patterns.md`, e o `run-comparator.js` compara duas Runs.
 
 As transcrições têm conteúdo sensível e ficam só em disco local. `TRANSCRIPTS_DISABLED=true`
 desliga a gravação; essa flag é lida no `readmine-watcher.js`, da capacidade `ciclo-da-run`.
-Todas as flags estão em [`docs/flags.md`](../flags.md).
+`WATCHER_CLI_RESULT_JSON` (desligada) faz o custo vir também do JSON da CLI; as funções
+puras dessa leitura estão em `cli-result.js` (PRI-381, F1.5). Todas as flags estão em [`docs/flags.md`](../flags.md).
 
 ## Por onde começar
 

@@ -91,7 +91,15 @@
 
   // ---------------------------------------------------------------- leitura de um run
   function costOf(r) { const c = r?.state?.cost_tracking; return c && c.nodes && c.totals ? c : null; }
-  const usdOf = r => { const v = costOf(r)?.totals.cost_usd; return Number.isFinite(v) ? v : null; };
+  // F1.5 (PRI-381, AC-04): o USD do run vem do JSON da CLI (totals.cli_cost_usd) quando nenhum nó e nem os totais acusam
+  // run sem custo da CLI; senão, do leitor de transcript (totals.cost_usd). Sem WATCHER_CLI_RESULT_JSON o campo não existe.
+  const transcriptUsdOf = r => { const v = costOf(r)?.totals.cost_usd; return Number.isFinite(v) ? v : null; };
+  function cliUsdOf(r) {
+    const c = costOf(r), v = c?.totals.cli_cost_usd;
+    if (!Number.isFinite(v) || c.totals.runs_without_cli_cost > 0 || Object.values(c.nodes).some(n => n?.runs_without_cli_cost > 0)) return null;
+    return v;
+  }
+  const usdOf = r => cliUsdOf(r) ?? transcriptUsdOf(r);
   function tokensOf(r) {
     const t = costOf(r)?.totals;
     if (!t || (t.input_tokens == null && t.output_tokens == null)) return null;
@@ -410,9 +418,46 @@
     const a = T.rows[0];
     return `${a.usd.median == null ? 'USD sem medição' : `${money(a.usd.median)} imputado, mediana`} · ${a.tokens.median == null ? 'tokens sem medição' : `${tok(a.tokens.median)} tokens, mediana`} (n = ${a.n})`;
   }
-  // AC-05 (leitura): o run só grava o modelo de cada nó. Versão da CLI, hash dos prompts e JSON da CLI não são gravados: desconhecidos.
-  const CONFIG_UNKNOWN = 'desconhecido (o run ainda não grava; F1.5 AC-05)';
-  const COST_SOURCE = 'leitor de transcript; o JSON da CLI ainda não é gravado, então não há diferença a mostrar (F1.5 AC-04)';
+  // AC-04: quantos runs da janela usaram cada fonte do USD e a diferença (CLI − transcript) somada nos runs com as duas.
+  function costSource(list) {
+    const out = { cli: 0, transcript: 0, none: 0, both: 0, diff: null };
+    for (const r of list) {
+      const cli = cliUsdOf(r), tr = transcriptUsdOf(r);
+      if (cli != null) out.cli += 1; else if (tr != null) out.transcript += 1; else out.none += 1;
+      if (cli != null && tr != null) { out.both += 1; out.diff = (out.diff || 0) + cli - tr; }
+    }
+    return out;
+  }
+  const signedMoney = d => `${d >= 0 ? '+' : '−'}${money(Math.abs(d))}`;
+  function costSourceText(S) {
+    if (!S.cli && !S.transcript) return 'desconhecido (nenhum run da janela com custo medido)';
+    const diff = S.diff == null ? 'desconhecida (nenhum run com as duas fontes)' : `${signedMoney(S.diff)} em ${plural(S.both, 'run', 'runs')} com as duas fontes`;
+    return `JSON da CLI em ${plural(S.cli, 'run', 'runs')}, transcript em ${plural(S.transcript, 'run', 'runs')}${S.none ? `, ${S.none} sem medição` : ''}; diferença CLI − transcript ${diff}`;
+  }
+  // AC-05: versões da CLI e hashes dos prompts (8 caracteres) distintos nas tentativas dos runs da janela. Run sem a gravação
+  // (antes da flag, sem cost_tracking ou com tentativa sem o valor) conta como desconhecido, nunca some.
+  function configSeen(list) {
+    const versions = new Set(), hashes = new Set();
+    let versionsUnknown = 0, hashesUnknown = 0;
+    for (const r of list) {
+      const atts = Object.values(costOf(r)?.nodes || {}).flatMap(n => (Array.isArray(n?.attempts) ? n.attempts : []));
+      let vMiss = !atts.length, hMiss = !atts.length;
+      for (const a of atts) {
+        if (typeof a?.cli_version === 'string' && a.cli_version) versions.add(a.cli_version); else vMiss = true;
+        const hs = a?.prompt_hashes && typeof a.prompt_hashes === 'object' ? Object.values(a.prompt_hashes) : [];
+        if (!hs.length) hMiss = true;
+        for (const h of hs) if (typeof h === 'string' && /^[a-f0-9]{64}$/.test(h)) hashes.add(h.slice(0, 8)); else hMiss = true;
+      }
+      versionsUnknown += vMiss ? 1 : 0; hashesUnknown += hMiss ? 1 : 0;
+    }
+    return { versions: [...versions].sort(), versionsUnknown, hashes: [...hashes].sort(), hashesUnknown };
+  }
+  const seenText = (vals, unknown) => (vals.length ? `${vals.join(', ')}${unknown ? ` +${plural(unknown, 'desconhecido', 'desconhecidos')}` : ''}` : 'desconhecido');
+  // Linhas da configuração e da fonte (tela e texto copiado), na mesma ordem.
+  const configLines = M => [['Modelo por nó (observado nos runs da janela)', nodeModelsText(M.nodeModels)],
+    ['Versão da CLI (observada nos runs da janela)', seenText(M.config.versions, M.config.versionsUnknown)],
+    ['Hash dos prompts (observado nos runs da janela)', seenText(M.config.hashes, M.config.hashesUnknown)],
+    ['Fonte do custo', costSourceText(M.costSource)]];
   function nodeModels(list, nodes) {
     const acc = new Map();
     for (const r of list) for (const [k, n] of Object.entries(costOf(r)?.nodes || {})) {
@@ -478,7 +523,7 @@
       nodes: nodeCosts(list, env.nodes), stages: stageTokens(list, env.nodes), types: trackerCosts(list), projects: projectCosts(list, env),
       retries: retryRows(list, env.nodes), highlights: highlights(list, env), gates: openGates(all, env, now),
       baseline: { ...reworkBaseline(list, env.nodes), meta: baselineMeta(list, env, now, all) },
-      perTicket: ticketCosts(all, list, env), nodeModels: nodeModels(list, env.nodes),
+      perTicket: ticketCosts(all, list, env), nodeModels: nodeModels(list, env.nodes), costSource: costSource(list), config: configSeen(list),
       summary: summaryText({ isAll, range, cur, prev, scopeLabel, weeks }),
     };
   }
@@ -529,9 +574,7 @@
     L.push(`Custo por ticket entregue (${M.range}, n = ${plural(T.rows[0].n, 'ticket', 'tickets')} em ${plural(T.runs, 'run somado', 'runs somados')}): soma todos os runs do ticket e os ciclos de recusa de QA; sem meta definida (D6 em aberto).`);
     for (const x of T.rows) { const c = ticketCostCells(x); L.push(`  ${x.label} (n = ${x.n}): ${c.usd} · ${c.tokens} · ${c.ms}`); }
     L.push(`Linha para a série semanal (roadmap/ACOMPANHAMENTO.md): ${seriesLine(T)}`);
-    L.push(`Modelo por nó (observado nos runs da janela): ${nodeModelsText(M.nodeModels)}.`);
-    L.push(`Versão da CLI e hash dos prompts por run: ${CONFIG_UNKNOWN}.`);
-    L.push(`Fonte do custo: ${COST_SOURCE}.`);
+    for (const [dt, dd] of configLines(M)) L.push(`${dt}: ${dd}.`);
     L.push(`PRs por estado: ${PR_ORDER.map(s => `${s || 'desconhecido'} ${M.cur.prCounts[s]}`).join(', ')}.`);
     L.push('', 'Fonte: state.json dos runs (cost_tracking, retries, human_inputs), Bitbucket e Redmine. Números são sinal, não verdade contábil.');
     return L.join('\n');
@@ -627,7 +670,7 @@
   }
 
   const pub = { DAY, TZ, money, tok, pct1, modelName, msLabel, weekStart, rangeLabel, isoWeek, windowOf, inWindow, aggregate, delta, series, ticks,
-    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, nodeModels, nodeModelsText, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
+    nodeCosts, stageTokens, trackerCosts, projectCosts, imputed, reworkBaseline, reworkCells, qaRefusalsOf, ticketCosts, ticketCostCells, seriesLine, nodeModels, nodeModelsText, costSource, costSourceText, configSeen, baselineMeta, captureLabel, sinceLabel, retryRows, openGates, highlights, buildReport, summaryText, copyText, buildLearning, parsePatterns, patternDots, firstPass };
   if (typeof module !== 'undefined' && module.exports) { module.exports = pub; return; }
 
   // ================================================================ navegador
@@ -756,7 +799,7 @@
           ${N ? `<div class="wr-lb-row wr-tk-row wr-lb-head" aria-hidden="true">${cols.map(l => `<span>${l}</span>`).join('')}</div>${rows}` : '<p class="wr-empty">Nenhum ticket entregue na janela.</p>'}
           <span class="wr-foot"><span class="wr-foot-main">Ticket entregue = ticket com run concluído na janela. O custo soma todos os runs do ticket, de qualquer semana, e os ciclos de recusa de QA (o cost_tracking do run é cumulativo). Mediana e média só dos tickets com a medida completa; +N desconhecido são tickets com algum run sem a medida, nunca zero. USD imputado é preço de tabela, não desembolso. Concluído inclui run com PR aberto. Tempo = soma dos despachos dos nós, sem espera humana. Um ticket com run concluído em duas semanas aparece nas duas, com o custo acumulado.</span><span>Fonte: state.json · cost_tracking</span></span>
         </div>
-        <dl class="wr-lb-meta">${[['Modelo por nó (observado nos runs da janela)', nodeModelsText(M.nodeModels)], ['Versão da CLI e hash dos prompts por run', CONFIG_UNKNOWN], ['Fonte do custo', COST_SOURCE]]
+        <dl class="wr-lb-meta">${configLines(M)
           .map(([dt, dd]) => `<div><dt>${dt}</dt><dd${dd.startsWith('desconhecido') ? ' class="wr-none"' : ''}>${esc(dd)}</dd></div>`).join('')}</dl>
       </section>
       `;
