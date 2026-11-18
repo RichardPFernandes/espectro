@@ -44,7 +44,7 @@ execuções.
 | F0.11 | Mapa de capacidades: uma página de entrada, um arquivo por capacidade e todo arquivo de código com dono (C1 da spec viva) | 2 | Leve | Não | — | D5 | concluída | PRI-396 |
 | F0.12 | Três specs vivas completas (`spec`, `grafo`, `estado`), seção "Delta de capacidade" no modelo de SPEC e aviso no `processo-check` (C2) | 3 | Leve | Não | F0.11 | D5 | concluída | PRI-402 |
 | F0.13 | Fluxo `/pri-*` amarrado à spec viva: a fatia abre pela capacidade, a mudança traz o delta e o PR só sai com a spec viva conferida | 2 | Leve | Não | F0.4, F0.12 | D5 | não iniciada | sem issue |
-| F0.14 | Arrumar a casa: `tasks/` de issue fechada para `docs/historico/`, `docs/prisma/` marcado como histórico e uma só descrição do fluxo de desenvolvimento (C3) | 1 | Leve | Não | F0.11 | D5 | não iniciada | sem issue |
+| F0.14 | Arrumar a casa: `tasks/` de issue fechada para `docs/historico/`, `docs/prisma/` marcado como histórico e uma só descrição do fluxo de desenvolvimento (C3) | 1 | Leve | Não | F0.11 | D5 | em andamento | PRI-411 |
 
 ## Sementes das fatias ainda não iniciadas
 
