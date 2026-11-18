@@ -29,7 +29,7 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 | ID | Fatia | Dias | Nível | AUTORIZO | Depende de | Decisão | Status | Issue no Linear |
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
 | F1.1 | Registro de flags | 3 | Leve | Não | — | — | concluída | PRI-377 |
-| F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | não iniciada | PRI-379; inclui a PRI-372 |
+| F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | em andamento | PRI-379; inclui a PRI-372 |
 | F1.3 | Teto de turnos por run; inclui parar depois de N falhas seguidas do mesmo nó ([`DADOS.md`](../DADOS.md), item 6) | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | PRI-380; a PRI-392 (defeito do state-writer) é feita junto |
 | F1.4 | Linha de base: retrabalho | 2 | Leve | Não | — | D1 | concluída | PRI-378; base é a PRI-327 (Done) |
 | F1.5 | Linha de base: custo por ticket | 3 | Médio | Não | F1.4 | D1, D6 | concluída | PRI-381; PRI-82 relacionada; reclassificada de Leve para Médio em 17/11 (D-PRI-381-01, na Mesa de Decisões), o 1º PR foi Leve |

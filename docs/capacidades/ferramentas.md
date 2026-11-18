@@ -20,6 +20,7 @@ modulos:
   - scripts/export-runs.js
   - scripts/lib/runs-exporter.js
   - scripts/validate-handoff.js
+  - scripts/return-point.js
   - scripts/lib/maestro-guard-pre-done.js
   - scripts/src/platform/marker.js
 ---
@@ -30,8 +31,7 @@ Scripts que o dev ou o CI chamam à mão e que nenhum nó da Run precisa para an
 (ciclo simulado, sem credencial nem rede), as sondas e o harness, os exportadores, os
 validadores (`validate-handoff.js`, `roadmap-lint.js`), o gerador da página do roadmap
 (`roadmap-site.js`) e este mapa. A exceção é a limpeza de Runs: o watcher chama
-`cleanup-runs.js` ao subir, e `DISABLE_AUTO_CLEANUP=true` desliga isso.
-Se um script daqui passar a ser chamado por um nó, ele muda de capacidade.
+`cleanup-runs.js` ao subir, e `DISABLE_AUTO_CLEANUP=true` desliga isso. Se um script daqui passar a ser chamado por um nó, ele muda de capacidade.
 
 ## Por onde começar
 

@@ -30,6 +30,18 @@ dele divergir de `git branch --show-current`. Comece com a árvore limpa
 
 ## 2. Revisão independente (única rodada, regra 6)
 
+**Antes do revisor: capacidades e delta.**
+
+- Reconfira a lista do `/pri-start` contra o diff: para cada arquivo de
+  `git diff --name-status -M origin/main...HEAD` (nas linhas `R`, o nome antigo e o novo),
+  rode `node scripts/capability-map.js --of <caminho>`. Capacidade que o diff toca e não está em
+  `capacidades` do `.prisma/context.json` entra na lista (e no contexto).
+- Delta. Com SPEC (Alto, ou Médio que escreveu uma): é a seção "Delta de capacidade" da
+  `<pasta>/SPEC.md`; confira que ela vale para o diff final. Sem SPEC (Leve, ou Médio que
+  dispensou a SPEC) e com o PR ainda por abrir, escreva o rascunho do delta em `~/Workspace/prisma-evidence/<issue>/delta.md` (uma linha por
+  requisito ou invariante que muda, com o ID, ou "Nenhum" e o motivo). O `/pri-pr` copia
+  esse texto para o corpo do PR.
+
 Lance o revisor com o Agent tool, em contexto limpo e numa só mensagem:
 
 | Nível | Revisor |
@@ -39,9 +51,15 @@ Lance o revisor com o Agent tool, em contexto limpo e numa só mensagem:
 | Alto | `agent-skills:code-reviewer` e mais um, `agent-skills:security-auditor` (credencial, superfície externa) ou `agent-skills:test-engineer`, ambos com `model: "opus"` |
 
 O brief leva o comando do diff (`git diff -M origin/main...HEAD`), a SPEC ou os ACs
-da issue e as regras do `CLAUDE.md` e do `AGENTS.md`. O pedido é focado:
+da issue, as regras do `CLAUDE.md` e do `AGENTS.md`, a spec viva de cada capacidade da
+lista (`docs/capacidades/<id>.md`, a versão da `origin/main` e a do HEAD) e o delta. O
+pedido é focado:
 
 - cada AC atendido ou não, com `arquivo:linha`;
+- por capacidade, se o diff muda comportamento descrito na spec viva (requisito ou
+  invariante) e a página dela não foi atualizada, ou se o delta diz "Nenhum" e o diff
+  mostra o contrário: é Required, com `arquivo:linha` do código e o ID da spec; comportamento
+  novo que a spec viva não descreve também conta;
 - quebra de invariante (flag desligada, separação plataforma/consumidor, nada de
   dado corporativo, segredo);
 - regressão e teste ausente.

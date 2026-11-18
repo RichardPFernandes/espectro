@@ -100,6 +100,10 @@ function createWatcherManager(options = {}) {
     const gracefulMs = require('./lib/graceful-shutdown').resolveGracefulTimeoutMs();
     const stopGraceMs = options.stopGraceMs ?? Math.max(STOP_GRACE_MS, gracefulMs + 2000);
     const envFile = options.envFile === undefined ? path.join(repoRoot, '.env') : options.envFile;
+    // Guard do checkout (F1.2, PRI-379): com PRISMA_CHECKOUT_GUARD ligada, cada tick confere a
+    // árvore do Prisma (a mesma PRISMA_ROOT que o tick recebe). Flag ausente: nada roda.
+    const guardRoot = options.prismaRoot || PRISMA_ROOT;
+    const guardGit = options.git;
 
     const events = new EventEmitter();
     events.setMaxListeners(0);
@@ -112,6 +116,7 @@ function createWatcherManager(options = {}) {
     let child = null;
     let state = 'stopped'; // stopped | starting | running | restarting | stopping
     let error = null;
+    let guard = null; // { reasons, paths } da última recusa do guard do checkout
     let startedAt = null;
     let tickStartedAt = null;
     let nextTickAt = null;
@@ -194,9 +199,24 @@ function createWatcherManager(options = {}) {
 
     // --------------------------------------------------------------- ciclo
     const PRIVILEGED_ENV_RE = /^PRISMA_(DB_|APPROVERS|PSQL)/;
+    // Árvore recusada: não inicia o tick e para o laço (sem timer novo) até um start manual.
+    function guardRefused() {
+        const tree = checkoutGuard({ root: guardRoot, env: { ...process.env, ...options.env }, git: guardGit });
+        if (!tree) return false;
+        state = 'stopped';
+        error = 'checkout_guard';
+        guard = { reasons: tree.reasons, paths: tree.paths };
+        startedAt = null;
+        releaseLoopLock();
+        note(`watcher parado pelo guard do checkout (PRISMA_CHECKOUT_GUARD): ${tree.reasons.join(', ')} em ${guardRoot}${tree.paths.length ? ` — ${tree.paths.join(', ')}` : ''}. Deixe a árvore limpa na main e use Start.`, 'ERROR');
+        record('stop', { reason: 'checkout_guard' });
+        return true;
+    }
+
     function spawnTick() {
         timer = null;
         nextTickAt = null;
+        if (guardRefused()) return;
         let proc;
         try {
             // WATCHER_LOOP_STARTED_AT/WATCHER_TICK_INTERVAL_MS: o watcher grava uptime e
@@ -302,6 +322,7 @@ function createWatcherManager(options = {}) {
             }
             redact.reset(); // relê os secrets: o .env pode ter mudado desde o último start
             error = null;
+            guard = null;
             restarts = 0;
             restartTimes = [];
             startedAt = Date.now();
@@ -319,7 +340,7 @@ function createWatcherManager(options = {}) {
         if (stopPromise) return stopPromise;
         if (state === 'stopped') {
             // stop() depois do limite de reinícios só limpa o aviso.
-            if (error) { error = null; }
+            if (error) { error = null; guard = null; }
             return Promise.resolve(status());
         }
         state = 'stopping';
@@ -358,6 +379,7 @@ function createWatcherManager(options = {}) {
             restarts_last_hour: restartTimes.filter(t => now - t < RESTART_WINDOW_MS).length,
             max_restarts_per_hour: MAX_AUTO_RESTARTS,
             error,
+            guard,
             phase: child ? 'tick' : (state === 'running' || state === 'restarting') ? 'idle' : null,
             tick_started_at: tickStartedAt ? new Date(tickStartedAt).toISOString() : null,
             next_tick_at: nextTickAt ? new Date(nextTickAt).toISOString() : null,
@@ -394,6 +416,56 @@ function instance() {
     return singleton;
 }
 
+// Guard do checkout (F1.2, PRI-379): com PRISMA_CHECKOUT_GUARD ligada, confere a árvore em
+// root (ou em cada uma de roots). null = flag desligada (sem rodar git) ou árvores ok; senão
+// { reasons (sem repetição), paths (até MAX_PATHS no total), byRoot: [{ root, reasons, paths }] }
+// só com as raízes recusadas. Cada git tem o prazo curto do guard (GUARD_GIT_TIMEOUT_MS).
+// Exportado para a subida do dashboard, que não importa scripts/lib/ (PRI-104).
+function checkoutGuard({ root, roots, env = process.env, git } = {}) {
+    const returnPoint = require('./lib/return-point');
+    if (!returnPoint.guardEnabled(env)) return null;
+    const byRoot = [];
+    let room = returnPoint.MAX_PATHS;
+    for (const r of roots || [root]) {
+        const tree = returnPoint.checkTree({ root: r, timeoutMs: returnPoint.GUARD_GIT_TIMEOUT_MS, ...(git ? { git } : {}) });
+        if (tree.ok) continue;
+        const paths = tree.paths.slice(0, room);
+        room -= paths.length;
+        byRoot.push({ root: r, reasons: tree.reasons, paths });
+    }
+    if (!byRoot.length) return null;
+    return {
+        reasons: [...new Set(byRoot.flatMap(x => x.reasons))],
+        paths: byRoot.flatMap(x => x.paths),
+        byRoot,
+    };
+}
+
+// Raízes que a subida do dashboard confere: sempre a do código em execução e, se
+// PRISMA_ROOT apontar para outra pasta (comparadas pelo realpath), também ela. Caminho que
+// não resolve conta como diferente: o guard confere e recusa (not_git).
+function bootGuardRoots({ codeRoot, env = process.env } = {}) {
+    const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+    const roots = [path.resolve(codeRoot)];
+    if (env.PRISMA_ROOT && real(env.PRISMA_ROOT) !== real(roots[0])) roots.push(path.resolve(env.PRISMA_ROOT));
+    return roots;
+}
+
+// Subida do dashboard (F1.2, PRI-379): com PRISMA_CHECKOUT_GUARD ligada, árvore do Prisma
+// suja ou fora da main não sobe (sai com 2, sem abrir a porta). Confere sempre a raiz de
+// onde o código roda e, se PRISMA_ROOT apontar para outra, também ela. Flag ausente:
+// nada roda. log, exit e git são injetáveis para teste.
+function exitIfCheckoutRefused({ codeRoot, env = process.env, log = console.error, exit = process.exit, git } = {}) {
+    const refused = checkoutGuard({ roots: bootGuardRoots({ codeRoot, env }), env, git });
+    if (!refused) return;
+    log(`[dashboard] subida recusada pelo guard do checkout (PRISMA_CHECKOUT_GUARD): ${refused.reasons.join(', ')}`);
+    for (const r of refused.byRoot) {
+        log(`[dashboard]   em ${r.root}: ${r.reasons.join(', ')}`);
+        for (const p of r.paths) log(`[dashboard]     ${p}`);
+    }
+    exit(2);
+}
+
 module.exports = {
     start: opts => instance().start(opts),
     stop: opts => instance().stop(opts),
@@ -402,6 +474,9 @@ module.exports = {
     getLogBuffer: () => instance().getLogBuffer(),
     onLine: fn => instance().onLine(fn),
     createWatcherManager,
+    checkoutGuard,
+    bootGuardRoots,
+    exitIfCheckoutRefused,
     createRedactor,
     parseEnvFile,
     levelOf,
