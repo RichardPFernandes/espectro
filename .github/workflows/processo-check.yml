@@ -34,6 +34,7 @@ jobs:
             /.github/
             /docs/capacidades/
             /scripts/capability-map.js
+            /scripts/lib/front-matter.js
       # Código do PR: só para os testes do check e do hook.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -44,6 +45,7 @@ jobs:
             /.github/
             /docs/capacidades/
             /scripts/capability-map.js
+            /scripts/lib/front-matter.js
             /.claude/settings.json
             /.claude/hooks/
             /.claude/skills/
