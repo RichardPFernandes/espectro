@@ -55,7 +55,65 @@ describe('cabeçalho de uma capacidade', () => {
             spec: 'sem-spec',
             flags: ['SPEC_DRAFT_AUTOGEN', 'SPEC_AUTO_REPAIR'],
             modulos: ['scripts/lib/spec-*', 'scripts/invalidate.js'],
+            depende_de: [],
+            adrs: [],
         });
+    });
+
+    it('depende_de e adrs são opcionais: ausentes viram lista vazia', () => {
+        const header = map.parseHeader(doc());
+        assert.deepEqual(header.depende_de, []);
+        assert.deepEqual(header.adrs, []);
+    });
+
+    it('lê depende_de e adrs em linha e em bloco', () => {
+        const inline = map.parseHeader(doc({ depende_de: '[estado, cas-1]', adrs: '[ADR-0001, ADR-0012]' }));
+        assert.deepEqual(inline.depende_de, ['estado', 'cas-1']);
+        assert.deepEqual(inline.adrs, ['ADR-0001', 'ADR-0012']);
+        const block = map.parseHeader(doc({ depende_de: '\n  - estado\n  - cas', adrs: '\n  - ADR-0003' }));
+        assert.deepEqual(block.depende_de, ['estado', 'cas']);
+        assert.deepEqual(block.adrs, ['ADR-0003']);
+    });
+
+    it('aceita depende_de e adrs em lista vazia', () => {
+        const header = map.parseHeader(doc({ depende_de: '[]', adrs: '[]' }));
+        assert.deepEqual([header.depende_de, header.adrs], [[], []]);
+    });
+
+    it('recusa depende_de e adrs escalares, com mensagem de cabeçalho', () => {
+        for (const field of ['depende_de', 'adrs']) {
+            assert.throws(
+                () => map.parseHeader(doc({ [field]: 'estado' })),
+                error => error.message.startsWith('cabeçalho: ') && new RegExp(`${field} deve ser uma lista`).test(error.message),
+            );
+        }
+    });
+
+    it('recusa depende_de com item fora do padrão de id de capacidade', () => {
+        for (const bad of ['Estado', 'cas_1', '1cas']) {
+            assert.throws(
+                () => map.parseHeader(doc({ depende_de: `[estado, ${bad}]` })),
+                error => error.message.startsWith('cabeçalho: ') && error.message.includes(`depende_de: "${bad}"`),
+            );
+        }
+    });
+
+    it('recusa adrs com item fora do padrão ADR-NNNN', () => {
+        for (const bad of ['ADR-1', 'adr-0001', 'ADR-00012', '0001']) {
+            assert.throws(
+                () => map.parseHeader(doc({ adrs: `[ADR-0001, ${bad}]` })),
+                error => error.message.startsWith('cabeçalho: ') && error.message.includes(`adrs: "${bad}"`),
+            );
+        }
+    });
+
+    it('depende_de e adrs vazios em bloco (sem itens) são campo vazio', () => {
+        assert.throws(() => map.parseHeader(doc({ depende_de: '\n' })), /campo vazio: depende_de/);
+    });
+
+    it('readFields é exportado e devolve os campos sem validar', () => {
+        assert.equal(typeof map.readFields, 'function');
+        assert.deepEqual(map.readFields('---\ndepende_de: [a, b]\nqualquer: x\n---\n'), { depende_de: ['a', 'b'], qualquer: 'x' });
     });
 
     it('aceita lista em linha vazia', () => {

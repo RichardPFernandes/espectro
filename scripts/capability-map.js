@@ -12,7 +12,7 @@
 // se houver problema. Os três comandos saem 2 em erro de uso ou de cabeçalho. O cabeçalho é
 // um subconjunto de YAML lido aqui mesmo (o repo não tem biblioteca de YAML): texto simples,
 // lista em linha ([a, b]) ou lista em bloco ("- a"). Qualquer outra forma é erro, e campo
-// fora dos sete conhecidos também. Como em YAML, " #" começa um comentário: o texto depois
+// fora dos nove conhecidos também (dois são opcionais: depende_de e adrs, ausentes = []). Como em YAML, " #" começa um comentário: o texto depois
 // dele some. Um padrão de `modulos` é um caminho exato ou um prefixo terminado em "*"; não há
 // precedência entre padrões. Os links conferidos são os inline, [t](alvo): link por
 // referência ([t]: alvo) e HTML (<a href>) não são conferidos.
@@ -38,6 +38,12 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage'])
 
 const TEXT_FIELDS = ['id', 'tipo', 'resumo', 'situacao', 'spec'];
 const LIST_FIELDS = ['flags', 'modulos'];
+// Opcionais: ausentes valem []. Cada item segue o padrão do campo (só o formato; a existência
+// do ID não é conferida aqui).
+const OPTIONAL_LIST_FIELDS = {
+    depende_de: /^[a-z][a-z0-9-]*$/,
+    adrs: /^ADR-\d{4}$/,
+};
 const ENUMS = {
     tipo: ['base', 'capacidade', 'fluxo'],
     situacao: ['ligada', 'parcial', 'desligada', 'sem-chamador'],
@@ -97,7 +103,7 @@ function readFields(text) {
 function parseHeader(text) {
     const fields = readFields(text);
     for (const field of Object.keys(fields)) {
-        if (![...TEXT_FIELDS, ...LIST_FIELDS].includes(field)) fail(`campo desconhecido: ${field}`);
+        if (![...TEXT_FIELDS, ...LIST_FIELDS, ...Object.keys(OPTIONAL_LIST_FIELDS)].includes(field)) fail(`campo desconhecido: ${field}`);
     }
     for (const field of [...TEXT_FIELDS, ...LIST_FIELDS]) {
         if (!(field in fields)) fail(`campo ausente: ${field}`);
@@ -116,7 +122,18 @@ function parseHeader(text) {
     for (const pattern of fields.modulos) {
         if (pattern.slice(0, -1).includes('*')) fail(`modulos: "${pattern}" só aceita "*" no fim (caminho exato ou prefixo)`);
     }
-    return Object.fromEntries([...TEXT_FIELDS, ...LIST_FIELDS].map(field => [field, fields[field]]));
+    for (const [field, pattern] of Object.entries(OPTIONAL_LIST_FIELDS)) {
+        if (!(field in fields)) {
+            fields[field] = [];
+            continue;
+        }
+        if (fields[field] === null) fail(`campo vazio: ${field}`);
+        if (!Array.isArray(fields[field])) fail(`${field} deve ser uma lista ([a, b] ou itens com "- ")`);
+        for (const item of fields[field]) {
+            if (!pattern.test(item)) fail(`${field}: "${item}" fora do formato ${pattern.source}`);
+        }
+    }
+    return Object.fromEntries([...TEXT_FIELDS, ...LIST_FIELDS, ...Object.keys(OPTIONAL_LIST_FIELDS)].map(field => [field, fields[field]]));
 }
 
 // Uma capacidade por docs/capacidades/<id>.md, em ordem de id. O README é a página de entrada.
@@ -365,6 +382,6 @@ function main(args) {
 }
 
 module.exports = {
-    parseHeader, readCapabilities, matches, ownersOf, isCovered, checkMap, summary, renderTable, applyTable, checkTable, writeTable, checkLinks,
+    parseHeader, readFields, readCapabilities, matches, ownersOf, isCovered, checkMap, summary, renderTable, applyTable, checkTable, writeTable, checkLinks,
 };
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
