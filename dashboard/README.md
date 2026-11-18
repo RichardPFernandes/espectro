@@ -506,7 +506,7 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
   `memory/knowledge-graph.json` (`GET /api/graph`; gravado pelo watcher a cada tick e pelo
   `/commit` — ver `scripts/lib/knowledge-graph.js`). Um cartão por ticket com a spec, os
   arquivos tocados agrupados por repositório (`.java` primeiro) e os PRs com o status do
-  polling. O campo de busca aceita número do ticket (`43425`, `TASK-43425`, task-id) ou
+  polling. O campo de busca aceita número do ticket (`10006`, `TASK-10006`, task-id) ou
   caminho/nome de arquivo; clicar num arquivo lista todos os tickets que o tocaram, clicar
   no número recorta o ticket. Não é ao vivo: **↻ Atualizar** relê o arquivo. Na linha de
   comando, o mesmo com fallback no `git log`: `node scripts/trace.js <arquivo>`.
@@ -528,7 +528,7 @@ em até 10s.
 | `completed` | `committed`/`done`/`closed`/`archived` sem PR |
 | `unknown` | sem `state.json` legível (aparece em Ativos) |
 
-A diferença para "tem PR ⇒ concluído" é proposital: o #43452 está bloqueado com PR de
+A diferença para "tem PR ⇒ concluído" é proposital: o #10021 está bloqueado com PR de
 front aberto e, com essa regra, sumiria dentro de Concluídos enquanto espera você.
 
 `state.pull_request` aparece em vários formatos nos runs reais, e todos são aceitos:
@@ -612,7 +612,7 @@ Por baixo, é `scripts/watcher-manager.js`:
 | POST | `/api/redmine/comment` | `{ "taskId": "...", "action"?: "approve" \| "reject" }` (não aceita texto). Posta no ticket a nota `<SPEC_APPROVAL_KEYWORD>` (ou `<SPEC_REJECTION_KEYWORD>` com `reject`) + linha fixa de origem; `{ ok, ticketId, action }`. 404 run/ticket, 409 fora de `spec-pending-approval`/`spec-draft`/`spec-change-pending-approval`, `reject` fora de SPEC_CHANGE, ou SPEC_CHANGE ainda não publicada pelo watcher; 503 Redmine não configurado, 502 Redmine fora. |
 | GET  | `/api/runs/:taskId/screenshots` | `{ screenshots: [{ filename, size, mtime }] }` de `memory/runs/<taskId>/screenshots/` (só `.png/.jpg/.jpeg/.webp` regulares, sem symlink). Sem diretório (ou run desconhecido) => lista vazia. |
 | GET  | `/api/runs/:taskId/screenshots/:filename` | Serve a imagem com o Content-Type da extensão. Nome fora de `^[\w-]+\.(png\|jpg\|jpeg\|webp)$` ou com `../` => 400; inexistente => 404. |
-| GET  | `/api/graph?taskId=&file=` | Knowledge Graph: `{ version, updatedAt, exists, filter, nodes, edges, tickets: [{ id, title, redmine_url, specs[], files[], prs[] }] }`. Sem filtro, tudo; `taskId` (`43425`, `TASK-43425` ou task-id) recorta o ticket; `file` (caminho ou só o nome) devolve os tickets que tocaram o arquivo. Redigido. 500 se o JSON estiver malformado. |
+| GET  | `/api/graph?taskId=&file=` | Knowledge Graph: `{ version, updatedAt, exists, filter, nodes, edges, tickets: [{ id, title, redmine_url, specs[], files[], prs[] }] }`. Sem filtro, tudo; `taskId` (`10006`, `TASK-10006` ou task-id) recorta o ticket; `file` (caminho ou só o nome) devolve os tickets que tocaram o arquivo. Redigido. 500 se o JSON estiver malformado. |
 | GET  | `/api/watcher/status` | `{ running, state (stopped\|running\|restarting\|stopping), pid, uptime_ms, restarts, restarts_last_hour, max_restarts_per_hour, error, phase (tick\|idle), tick_started_at, next_tick_at, interval_ms, ticks, orphan_pid, last_run }`. |
 | POST | `/api/watcher/start` · `/stop` · `/restart` | Executa e devolve o status. `stop` volta depois que o processo saiu (≤ 5s + SIGKILL). |
 | GET  | `/api/watcher/log-stream` | SSE: `event: hello` `{ instance }`, depois o buffer inteiro e uma mensagem `data: { seq, ts, level, source, text }` por linha nova; `: ping` a cada 15s. |
