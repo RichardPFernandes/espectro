@@ -1,6 +1,6 @@
 ---
 name: pri-start
-description: Abre o trabalho numa issue PRI. Lê a issue e o nível, grava .prisma/level e .prisma/context.json, confere a branch e a fila In Review e diz o próximo comando.
+description: Abre o trabalho numa issue PRI. Lê a issue e o nível, lista as capacidades que ela toca com a spec viva de cada uma, grava .prisma/level e .prisma/context.json, confere a branch e a fila In Review e diz o próximo comando.
 disable-model-invocation: true
 model: sonnet
 argument-hint: PRI-NNN [Fx.y]
@@ -33,12 +33,28 @@ Primeiro passo do fluxo de desenvolvimento (seção "Fluxo de desenvolvimento" d
      coluna `Issue no Linear` não traz esta issue, ou o `Nível` não bate com o rótulo
      `Processo`, avise na resposta. Não edite a `main`: a correção vai no PR da fatia,
      pelo `/pri-pr`, que refaz a checagem.
-6. **Grave o contexto** (o diretório `.prisma/` é ignorado pelo git):
+6. **Capacidades (spec viva).** A fatia abre pela spec da capacidade que ela toca.
+   - **Achar.** Leia a tabela de `docs/capacidades/README.md`. Para cada caminho de
+     código que a issue ou seus ACs citam, rode `node scripts/capability-map.js --of <caminho>`
+     (sai 1 com "sem capacidade dona": docs, skills, `.github/` e modelos ficam fora do
+     mapa e não contam). Sem caminho citado, ache a capacidade pelo resumo da tabela. Na
+     dúvida entre duas, liste as duas.
+   - **Ler.** Para cada capacidade, anote `id`, a coluna Spec (`viva`, `rascunho` ou
+     `sem-spec`) e a página `docs/capacidades/<id>.md`. Leia a página: com spec `viva`,
+     os requisitos (`<ID>-Rnn`) e invariantes (`<ID>-Inn`) são o contrato do que a
+     mudança pode alterar; com `sem-spec`, a página traz só o cabeçalho e a spec dela
+     nasce com a mudança (README de capacidades).
+   - **Lista incompleta.** Se os arquivos só aparecem durante o build, grave o que se sabe.
+     O `/pri-check` reconfere a lista contra o diff.
+   - **Nenhuma.** Se a issue não toca capacidade, a lista fica vazia e a resposta diz o
+     motivo em uma linha (por exemplo, "só skills e `.github/`").
+7. **Grave o contexto** (o diretório `.prisma/` é ignorado pelo git):
    - `.prisma/level`: `leve`, `medio` ou `alto` (é o que o hook lê);
-   - `.prisma/context.json`: `{"issue": "PRI-NNN", "fatia": "F1.2" | null, "nivel": "...", "branch": "<git branch --show-current>", "pasta": "..." | null}`.
-     O `/pri-plan` acrescenta `plano_aprovado` no Médio e no Alto; rodar o `/pri-start`
-     de novo apaga o campo e o plano volta ao gate.
-7. **Responda em até 8 linhas:** issue, nível, ACs, pasta e o próximo comando.
+   - `.prisma/context.json`: `{"issue": "PRI-NNN", "fatia": "F1.2" | null, "nivel": "...", "branch": "<git branch --show-current>", "pasta": "..." | null, "capacidades": [{"id": "estado", "spec": "viva", "pagina": "docs/capacidades/estado.md"}]}`.
+     `capacidades` é `[]` quando nenhuma. O `/pri-plan` acrescenta `plano_aprovado` no
+     Médio e no Alto; rodar o `/pri-start` de novo apaga o campo e o plano volta ao gate.
+8. **Responda em até 8 linhas:** issue, nível, ACs, pasta, as capacidades com a página da
+   spec viva de cada uma (ou "nenhuma" e o motivo) e o próximo comando.
 
 | Nível | Fluxo |
 | -- | -- |
