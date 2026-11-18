@@ -99,7 +99,7 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    arquivos no scratchpad:
 
    ```bash
-   git diff -M --name-status origin/main...HEAD > <scratch>/ns.txt
+   git -c core.quotePath=false diff -M --name-status origin/main...HEAD > <scratch>/ns.txt
    git show origin/main:.github/processo.json > <scratch>/cfg.json
    node .github/scripts/merge-leve.mjs --paths <scratch>/ns.txt --config <scratch>/cfg.json
    ```
@@ -108,15 +108,21 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    checks ficarem verdes. Com `draft: <motivos>` ou erro, crie com `--draft`.
 
    ```bash
-   gh pr create --draft --base main --label processo:<nivel> \
+   gh pr create [--draft] --base main --label processo:<nivel> \
      --title "<tipo>(<escopo>): <resumo>, <Fx.y> (Refs PRI-NNN)" --body-file <arquivo>
    ```
+
+   Sem `--draft` só no Leve elegível; todo o resto leva `--draft`.
 
    Termine o corpo com a linha de atribuição pedida pela sessão.
 6. **Conferir os checks:** rode `gh pr checks <n> --watch` em segundo plano. A suíte
    da CI leva até 15 minutos. Se o `processo-check` falhar, corrija o corpo ou o
    rótulo. Não afrouxe a regra. Com a CI verde, ponha o link do run na Evidência
-   (`gh pr edit <n> --body-file <arquivo>`).
+   (`gh pr edit <n> --body-file <arquivo>`). No Leve aberto fora de draft é
+   diferente: o bot pode mesclar assim que a CI fica verde, então a linha de testes
+   da Evidência já nasce, no passo 4, com
+   `https://github.com/<owner>/<repo>/commit/<sha>/checks` do SHA final (o HEAD do
+   push). Não edite o corpo depois para acrescentar o link.
 7. **Linear.** Ao abrir o PR, edite o bloco de Estado no topo da issue (Estado,
    Próximo passo, Decisão pendente, Ligado ao fechar, Nível) com o link do PR. Não poste
    status em comentário. Comentário é só para decisão ou bloqueio, em 3 linhas.
