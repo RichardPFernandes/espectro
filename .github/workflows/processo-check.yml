@@ -24,7 +24,7 @@ jobs:
     steps:
       # O script, os limites e o template vêm da base do PR: um PR não afrouxa
       # a própria barreira. Os arquivos e o corpo do PR vêm da API.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base
@@ -36,7 +36,7 @@ jobs:
             /scripts/capability-map.js
             /scripts/lib/front-matter.js
       # Código do PR: só para os testes do check e do hook.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: head
           persist-credentials: false
