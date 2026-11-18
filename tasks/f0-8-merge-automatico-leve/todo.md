@@ -48,7 +48,7 @@ Contexto comum para cada subagente: leia `tasks/f0-8-merge-automatico-leve/SPEC.
   - Arquivos: `.github/scripts/merge-leve-lib.mjs`, `.github/scripts/merge-leve-resumo.mjs`, `.github/scripts/merge-leve-resumo.test.mjs`, `.github/workflows/merge-leve-resumo.yml`, `.github/scripts/merge-leve-workflow.test.mjs`
   - Depende de: T1 (e T3, pelo teste de workflow)
 
-- [ ] **T5: `/pri-pr` abre fora de draft só o Leve elegível (AC-06)** · S
+- [x] **T5: `/pri-pr` abre fora de draft só o Leve elegível (AC-06)** · S
   - Fazer: em `merge-leve.mjs`, um modo local `--paths <arquivo name-status> --config <arquivo>` que imprime `elegível` ou `draft: <motivos>` usando só `pathVerdict` (código de saída 0 nos dois casos; 2 em erro de execução). Em `.claude/skills/pri-pr/SKILL.md`:
     - Passo 5: no Leve, rodar `git diff -M --name-status origin/main...HEAD > <scratch>/ns.txt`, `git show origin/main:.github/processo.json > <scratch>/cfg.json` e o modo `--paths`. Se der `elegível`, `gh pr create` sem `--draft`; senão, com `--draft`. Médio e Alto sempre em `--draft`.
     - Passo 8: "nunca marque como ready" vale para o PR que nasceu em draft. Para segurar um Leve elegível, o agente ou o Richard converte para draft (`gh pr ready --undo <n>`).
