@@ -28,7 +28,7 @@ Nenhum dado do consumidor em teste ou fixture (use marcadores, como `90003-...`)
   - Arquivos: `dashboard/server.js`, `dashboard/flags-summary-api.test.js`.
   - Depende de: T1
 
-- [ ] **T3: modelo das cinco métricas no relatório (AC-03)** · S
+- [x] **T3: modelo das cinco métricas no relatório (AC-03)** · S
   - O que: `fiveMetrics(M, flags)` em `dashboard/public/weekly-report.js` (exportada), cinco
     linhas `{ id, nome, valor, n, fonte, conhecida }`: M1 de `M.perTicket` + `M.costSource`;
     M2 de `M.cur.firstPass`/`firstPassRuns` + soma de `M.baseline` (USD imputado, +N
@@ -42,7 +42,7 @@ Nenhum dado do consumidor em teste ou fixture (use marcadores, como `90003-...`)
   - Depende de: nada (usa o formato do `summary` de T1)
 
 ## Checkpoint: depois de T1–T3
-- [ ] `npm run test:changed` verde; `node scripts/lib/flag-registry.test.js` verde
+- [x] `npm run test:changed` verde; `node scripts/lib/flag-registry.test.js` verde
 
 - [ ] **T4: tela, "Copiar resumo" e docs (AC-03)** · M
   - O que: seção "As cinco métricas do acompanhamento" no topo da capa (aba Resumo), uma
