@@ -8,6 +8,8 @@ flags: []
 modulos:
   - scripts/capability-map.js
   - scripts/lib/front-matter.js
+  - scripts/knowledge-links.js
+  - scripts/lib/knowledge-links.js
   - scripts/demo.js
   - scripts/probes/*
   - scripts/harness/*
@@ -46,11 +48,13 @@ capacidade promete. As ferramentas deste mapa existem para que essa resposta sej
 | FERRAMENTAS-R04 | Quando `--check` roda, o padrão de `modulos` sem arquivo, a flag do cabeçalho que não aparece no código da capacidade e a tabela do README defasada contam como problema. | Mapa que aponta para nada mente. |
 | FERRAMENTAS-R05 | Enquanto o README tem os marcadores da tabela, `--write` reescreve só o que está entre eles; sem mudança, não grava. | A tabela é derivada; o resto do README é de quem escreve. |
 | FERRAMENTAS-R06 | Quando `--check` roda, o link relativo inline das páginas de `docs/capacidades/` que aponta para arquivo inexistente ou para fora do repo é problema. | Página navegável é parte do contrato. |
+| FERRAMENTAS-R07 | Quando `knowledge-links --check` roda, ID de capacidade ou de ADR que não existe, lados que divergem (`adrs` da capacidade e `capacidades` do ADR; `substitui` e `substituida_por`) e ADR com `status` fora do MADR ou `substituída` sem `substituida_por` são problema (exit 1). | Ligação só vale se os dois lados concordam. |
+| FERRAMENTAS-R08 | A seção `## Ligações` de cada página com ligação é gerada entre `<!-- ligacoes:inicio -->` e `<!-- ligacoes:fim -->`, com links relativos e só da página para a capacidade ou o ADR que ela cita; ausente ou diferente da esperada é problema, e `--write` a regenera sem tocar no resto, sem mudança não grava, e se há ID ou lado errado lista os problemas e sai 1 sem escrever. | O link funciona no GitHub e no Obsidian, e o grafo mostra o que o front-matter diz. |
 
 ## Invariantes
 
 - FERRAMENTAS-I01: nenhum nó da Run chama estes scripts, exceto `cleanup-runs.js`, que o watcher chama ao subir; quem passar a ser chamado por um nó muda de capacidade.
-- FERRAMENTAS-I02: `--check` e `--of` só leem; `--write` só toca na tabela do README.
+- FERRAMENTAS-I02: `--check` e `--of` só leem; `capability-map --write` só toca na tabela do README e `knowledge-links --write` só na seção `## Ligações`.
 
 ## Flags
 
