@@ -24,7 +24,7 @@ Um PR com `processo:leve`, fora de draft, com todos os checks verdes e só camin
 
 ## Decisões para o Richard (cada uma com recomendação)
 
-**(a) Texto da exceção.** Recomendo trocar a regra 10 do `CLAUDE.md` por: "Merge é sempre do Richard, com uma exceção: com `MERGE_LEVE` ligado, o bot do GitHub Actions mescla o PR `processo:leve`, fora de draft, que só toca caminhos da lista `mergeLeve` de `.github/processo.json` na `main` e tem todos os checks verdes. Agente nunca mescla. Fora disso, PR em draft. Use "Refs", nunca "Fixes"." No `AGENTS.md`, a linha de "O que nunca muda" passa a: "PR em draft e merge do Richard; a única exceção é o merge automático do Leve pelo bot (regra 10 do `CLAUDE.md`). Agente nunca mescla. Use "Refs", nunca "Fixes"." O `/pri-pr` abre fora de draft só o Leve que já cabe na lista.
+**(a) Texto da exceção.** Recomendo trocar a regra 10 do `CLAUDE.md` por: "Merge é sempre do Richard, com uma exceção: com `MERGE_LEVE` ligado, o bot do GitHub Actions mescla o PR `processo:leve`, fora de draft, que só toca caminhos da lista `mergeLeve` de `.github/processo.json` na `main` e tem todos os checks verdes. Agente nunca mescla. Fora disso, PR em draft. Use "Refs", nunca "Fixes"." No `AGENTS.md`, a linha de "O que nunca muda" passa a: "PR em draft e merge do Richard; a única exceção é o merge automático do Leve pelo bot (regra 10 do `CLAUDE.md`). Agente nunca mescla. Use "Refs", nunca "Fixes"." O `/pri-pr` confere a lista com a mesma função do workflow e abre fora de draft só o Leve que cabe nela; os demais abrem em draft, como hoje. O draft passa a ser a trava de cada PR: para segurar um Leve elegível, o Richard ou o agente converte o PR para draft, e o bot não mescla. Por isso não há rótulo `segurar`.
 
 **(b) Lista de caminhos.** Recomendo uma lista curta, em `.github/processo.json` (chave `mergeLeve`), lida da `main` na hora de avaliar. A negação vence a permissão.
 - Permitido: `ROADMAP.md`, `README.md`, `roadmap/**/*.md`, `docs/**/*.md`, `tasks/**/*.md`, `**/*.test.js`, `**/*.test.mjs`.
@@ -44,7 +44,8 @@ Um PR com `processo:leve`, fora de draft, com todos os checks verdes e só camin
 - AC-02: um PR que toca caminho fora da lista não mescla sozinho, mesmo com `processo:leve`. Falha observável: um PR de teste rotulado Leve que toca `scripts/` continua aberto, com o motivo no resumo do job.
 - AC-03: um resumo diário lista o que entrou. Falha observável: depois de um merge do bot, não aparece comentário na issue fixa no dia seguinte.
 - AC-04: sem `MERGE_LEVE=on`, nada é mesclado e o resumo do job diz o que seria mesclado. Falha observável: um merge feito pelo bot com a variável ausente.
-- AC-05: PR em draft, de fork, com check vermelho ou pendente, ou com o rótulo `segurar` não mescla.
+- AC-05: PR em draft, de fork ou com check vermelho ou pendente não mescla. Falha observável: um PR Leve elegível convertido para draft é mesclado.
+- AC-06: o `/pri-pr` abre fora de draft só o Leve que cabe na lista. Falha observável: um PR Leve que toca `scripts/` abre fora de draft, ou um Leve só de `docs/**/*.md` abre em draft.
 
 ## Delta de capacidade
 
@@ -52,7 +53,7 @@ Nenhum. `.github/` não tem capacidade dona (`node scripts/capability-map.js --o
 
 ## Como se demonstra
 
-- AC-01, AC-02, AC-05: testes da função pura de elegibilidade (`.github/scripts/merge-leve.test.mjs`), no mesmo molde do `processo-lib`; e, em simulação, as linhas "mesclaria" e "não: <motivo>" no resumo do job para dois PRs de teste.
+- AC-01, AC-02, AC-05, AC-06: testes da função pura (a mesma usada pelo workflow e pelo `/pri-pr`) de elegibilidade em `.github/scripts/merge-leve.test.mjs`, no mesmo molde do `processo-lib`; e, em simulação, as linhas "mesclaria" e "não: <motivo>" no resumo do job para dois PRs de teste.
 - AC-03: link do comentário na issue fixa (via `workflow_dispatch` antes do AUTORIZO e pelo cron depois).
 - AC-04: run em simulação sobre um PR elegível, com o PR ainda aberto.
 
