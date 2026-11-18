@@ -14,7 +14,7 @@ Testes: `npm run test:changed -- origin/main` na raiz. Nada de push em remote re
   efeitos; cwd, `-C` e caminho por symlink → mesma chave; diretório sem git → rc ≠ 0, git não
   roda, nenhum efeito. Falha antes: `repo-b` fica sem a branch.
 
-- [ ] **T2. Commit na chave e linha de pulo.** AC-3, AC-7.
+- [x] **T2. Commit na chave e linha de pulo.** AC-3, AC-7.
   Incluir o sha da origem do refspec (`HEAD` sem refspec) na chave; no `DUPLICATE`, imprimir
   linha com repo e commit. Testes: commit novo no mesmo repo → remote avança, dois efeitos;
   repetição idêntica → git não roda, rc 0, linha cita repo e sha; `HEAD:TICKET-X` e
