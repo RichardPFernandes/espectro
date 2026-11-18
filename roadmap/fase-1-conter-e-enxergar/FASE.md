@@ -32,7 +32,7 @@ piloto, no próprio Espectro, e seguem em paralelo (D11).
 | F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | não iniciada | PRI-379; inclui a PRI-372 |
 | F1.3 | Teto de turnos por run; inclui parar depois de N falhas seguidas do mesmo nó ([`DADOS.md`](../DADOS.md), item 6) | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | PRI-380; a PRI-392 (defeito do state-writer) é feita junto |
 | F1.4 | Linha de base: retrabalho | 2 | Leve | Não | — | D1 | concluída | PRI-378; base é a PRI-327 (Done) |
-| F1.5 | Linha de base: custo por ticket | 3 | Médio | Não | F1.4 | D1, D6 | em andamento | PRI-381; PRI-82 relacionada; reclassificada de Leve para Médio em 17/11 (D-PRI-381-01, na Mesa de Decisões), o 1º PR foi Leve |
+| F1.5 | Linha de base: custo por ticket | 3 | Médio | Não | F1.4 | D1, D6 | concluída | PRI-381; PRI-82 relacionada; reclassificada de Leve para Médio em 17/11 (D-PRI-381-01, na Mesa de Decisões), o 1º PR foi Leve |
 | F1.6 | Push dos repos irmãos: pulado não vira sucesso | 2 | Alto | A confirmar | — | — | não iniciada | PRI-179 |
 | F1.7 | Causa das recusas de QA: as recusas repetem causa? É a metade da F5.3 que não espera a Fase 5 | 2 | Leve | Não | — | D13 | não iniciada | sem issue; PRI-86 relacionada |
 | F1.8 | Causa das falhas de despacho em rajada ([`DADOS.md`](../DADOS.md), item 6), só leitura | 2 | Leve | Não | — | D13 | não iniciada | sem issue |
