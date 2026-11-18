@@ -358,7 +358,7 @@ test('aceite: vale pro ticket — ciclo novo com spec incompleta já aceita segu
     assert.strictEqual(redminePuts.length, 1);
 });
 
-test('resposta com a spec num comentário (caso #43584) completa a spec e segue sem aceite', async () => {
+test('resposta com a spec num comentário (caso #10003) completa a spec e segue sem aceite', async () => {
     redminePuts.length = 0;
     const desc = 'Favor adicionar o filtro default de unidade logada nas telas abaixo.\r\n\r\nTelas:\r\n- Torre de Controle de Viagens\r\n- Torre de Separação';
     addJournal(90009, '## Problema\r\nComentário do QA ANTES do pedido não conta como resposta, mesmo com cabeçalho.');

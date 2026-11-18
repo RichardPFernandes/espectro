@@ -19,8 +19,8 @@ function writeRun(taskId, state) {
     fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(state));
 }
 
-writeRun('43000-exemplo', {
-    task_id: '43000-exemplo', node: 'commit', status: 'completed',
+writeRun('13000-exemplo', {
+    task_id: '13000-exemplo', node: 'commit', status: 'completed',
     history: ['plan', 'implement', 'review', 'test', 'verify', 'commit'],
     started_at: '2026-09-01T10:00:00Z', updated_at: '2026-09-01T12:00:00Z',
 });
@@ -44,7 +44,7 @@ test('GET /api/export devolve o relatório com Content-Disposition: attachment',
     const body = await res.json();
     assert.strictEqual(body.version, 1);
     assert.strictEqual(body.summary.totalRuns, 1);
-    assert.strictEqual(body.runs[0].taskId, '43000-exemplo');
+    assert.strictEqual(body.runs[0].taskId, '13000-exemplo');
 });
 
 test('GET /api/export?pretty=1 indenta o JSON', async () => {

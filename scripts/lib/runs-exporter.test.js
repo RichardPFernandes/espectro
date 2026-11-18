@@ -112,9 +112,9 @@ test('avgTokensPerCycle vem da média de tokenUsage.totals (input+output)', asyn
 
 test('tokenUsage cai pro fallback memory/runs/<ticket>-cost.json quando state.json não tem cost_tracking', async () => {
     const repo = tmpRepo();
-    writeRun(repo, '43578-alguma-task', baseState({ task_id: '43578-alguma-task' }));
-    fs.writeFileSync(path.join(repo, 'memory', 'runs', '43578-cost.json'), JSON.stringify({
-        tasks: { '43578-alguma-task': { totals: { input_tokens: 500, output_tokens: 50, duration_ms: 3000 } } },
+    writeRun(repo, '13578-alguma-task', baseState({ task_id: '13578-alguma-task' }));
+    fs.writeFileSync(path.join(repo, 'memory', 'runs', '13578-cost.json'), JSON.stringify({
+        tasks: { '13578-alguma-task': { totals: { input_tokens: 500, output_tokens: 50, duration_ms: 3000 } } },
     }));
     const { report } = await exportRuns({ repoPath: repo });
     const run = report.runs[0];

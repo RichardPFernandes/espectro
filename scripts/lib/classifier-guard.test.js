@@ -79,7 +79,7 @@ for (const [name, text, category] of POSITIVE) {
 const NEGATIVE = [
     ['passo comum com caminhos e AC', 'Alterar backend/svc-a/src/main/java/X.java para cobrir AC-01 e AC-02'],
     ['versão, hora e data', 'Atualizar para v1.2.3 às 10:30:00 em 2026-11-06'],
-    ['número de ticket e contagens', 'Ticket #43608: 6 arquivos, 3 ACs'],
+    ['número de ticket e contagens', 'Ticket #10011: 6 arquivos, 3 ACs'],
     ['URL sem credencial', 'Ver https://example.com/docs/guia'],
     ['loopback', 'Subir em 127.0.0.1:3333 e ::1'],
     ['CPF com dígito errado', `documento ${CPF.slice(0, 9)}${(Number(CPF[9]) + 1) % 10}${CPF[10]}`],

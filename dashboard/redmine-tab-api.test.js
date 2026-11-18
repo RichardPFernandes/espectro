@@ -21,8 +21,8 @@ function writeRun(taskId, state) {
 }
 
 const list = [
-    { id: 43700, subject: 'Com run e PR', status: 'Em Desenvolvimento', priority: 'Urgente', updated_on: '2026-09-28T10:00:00Z' },
-    { id: 43701, subject: 'Sem run', status: 'Novo', priority: 'Normal', updated_on: '2026-09-27T10:00:00Z' },
+    { id: 10004, subject: 'Com run e PR', status: 'Em Desenvolvimento', priority: 'Urgente', updated_on: '2026-09-28T10:00:00Z' },
+    { id: 13701, subject: 'Sem run', status: 'Novo', priority: 'Normal', updated_on: '2026-09-27T10:00:00Z' },
 ];
 let listCalls = 0;
 const calls = { status: [], note: [] };
@@ -32,7 +32,7 @@ let dash, base;
 test.before(async () => {
     process.env.REDMINE_API_KEY = KEY;
     process.env.REDMINE_URL = 'http://redmine.test/';
-    writeRun('43700-com-pr', { redmine_ticket: { id: 43700 }, pull_request: { 'app-back': { url: 'https://bitbucket.org/ws/app-back/pull-requests/12', id: 12 } } });
+    writeRun('10004-com-pr', { redmine_ticket: { id: 10004 }, pull_request: { 'app-back': { url: 'https://bitbucket.org/ws/app-back/pull-requests/12', id: 12 } } });
     dash = createDashboard({
         memoryDir: runs,
         worktreesDir: path.join(tmp, 'wt'),
@@ -74,9 +74,9 @@ test('GET /api/tickets: enriquece com run vinculado, PR do state.json e link do 
     const r = await call('GET', '/api/tickets');
     assert.strictEqual(r.status, 200);
     const [a, b] = r.body;
-    assert.strictEqual(a.linkedRun.taskId, '43700-com-pr');
+    assert.strictEqual(a.linkedRun.taskId, '10004-com-pr');
     assert.strictEqual(a.prUrl, 'https://bitbucket.org/ws/app-back/pull-requests/12');
-    assert.strictEqual(a.url, 'http://redmine.test/issues/43700');
+    assert.strictEqual(a.url, 'http://redmine.test/issues/10004');
     assert.strictEqual(b.linkedRun, null);
     assert.strictEqual(b.prUrl, null);
     assert.ok(!r.text.includes(KEY));
@@ -89,13 +89,13 @@ test('GET /api/tickets/statuses não cai na rota :id', async () => {
 });
 
 test('GET /api/tickets/:id: { ticket, journals, linkedRun, prUrl }', async () => {
-    const r = await call('GET', '/api/tickets/43700');
+    const r = await call('GET', '/api/tickets/10004');
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.body.ticket.id, 43700);
-    assert.strictEqual(r.body.ticket.url, 'http://redmine.test/issues/43700');
+    assert.strictEqual(r.body.ticket.id, 10004);
+    assert.strictEqual(r.body.ticket.url, 'http://redmine.test/issues/10004');
     assert.strictEqual(r.body.ticket.journals, undefined);
     assert.strictEqual(r.body.journals[0].details[0].new_label, 'Recusada QA');
-    assert.strictEqual(r.body.linkedRun.taskId, '43700-com-pr');
+    assert.strictEqual(r.body.linkedRun.taskId, '10004-com-pr');
     assert.match(r.body.prUrl, /pull-requests\/12$/);
 });
 
@@ -107,39 +107,39 @@ test('GET /api/tickets/:id: 404 do Redmine vira 404; id não numérico => 400', 
 test('PUT /api/tickets/:id/status: repassa statusId/note e invalida o cache da lista', async () => {
     await call('GET', '/api/tickets');
     const before = listCalls;
-    const r = await call('PUT', '/api/tickets/43700/status', { statusId: 7, note: 'recusado' });
+    const r = await call('PUT', '/api/tickets/10004/status', { statusId: 7, note: 'recusado' });
     assert.strictEqual(r.status, 200);
     assert.deepStrictEqual(r.body, { ok: true });
-    assert.deepStrictEqual(calls.status.at(-1), { id: '43700', statusId: 7, note: 'recusado' });
+    assert.deepStrictEqual(calls.status.at(-1), { id: '10004', statusId: 7, note: 'recusado' });
     await call('GET', '/api/tickets');
     assert.strictEqual(listCalls, before + 1, 'lista deve ser rebuscada depois de escrever no Redmine');
 });
 
 test('PUT /api/tickets/:id/status: statusId inválido => 400', async () => {
-    const r = await call('PUT', '/api/tickets/43700/status', { statusId: 'x' });
+    const r = await call('PUT', '/api/tickets/10004/status', { statusId: 'x' });
     assert.strictEqual(r.status, 400);
 });
 
 test('POST /api/tickets/:id/note: repassa a nota', async () => {
-    const r = await call('POST', '/api/tickets/43701/note', { note: 'olá' });
+    const r = await call('POST', '/api/tickets/13701/note', { note: 'olá' });
     assert.strictEqual(r.status, 200);
-    assert.deepStrictEqual(calls.note.at(-1), { id: '43701', note: 'olá' });
+    assert.deepStrictEqual(calls.note.at(-1), { id: '13701', note: 'olá' });
 });
 
 test('escrita com erro do Redmine: status HTTP preservado e key nunca na resposta', async () => {
     writeError = Object.assign(new Error(`Redmine HTTP 422: Status is invalid (X-Redmine-API-Key: ${KEY})`), { status: 422 });
     try {
-        const r1 = await call('PUT', '/api/tickets/43700/status', { statusId: 2 });
+        const r1 = await call('PUT', '/api/tickets/10004/status', { statusId: 2 });
         assert.strictEqual(r1.status, 422);
         assert.ok(!r1.text.includes(KEY), r1.text);
         writeError = new Error(`rede caiu ${KEY}`);
-        const r2 = await call('POST', '/api/tickets/43700/note', { note: 'x' });
+        const r2 = await call('POST', '/api/tickets/10004/note', { note: 'x' });
         assert.strictEqual(r2.status, 502);
         assert.ok(!r2.text.includes(KEY), r2.text);
     } finally { writeError = null; }
 });
 
 test('rota de escrita recusa Origin externo (CSRF)', async () => {
-    const res = await fetch(base + '/api/tickets/43700/note', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://evil.example' }, body: JSON.stringify({ note: 'x' }) });
+    const res = await fetch(base + '/api/tickets/10004/note', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://evil.example' }, body: JSON.stringify({ note: 'x' }) });
     assert.strictEqual(res.status, 403);
 });
