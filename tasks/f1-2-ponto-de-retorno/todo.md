@@ -9,7 +9,7 @@ Repositórios de teste: temporários, com origem `--bare` local, `GIT_CONFIG_GLO
 
 ## PR A — PRI-372 (Médio, branch e worktree próprias)
 
-- [ ] **T0: testes em worktree não gravam no log de conflitos do checkout vivo (AC-05)** · S
+- [x] **T0: testes em worktree não gravam no log de conflitos do checkout vivo (AC-05)** · S
   - Fazer: criar a worktree `../pri-372-log-conflitos` com `git worktree add -b RichardPFernandes/pri-372-log-conflitos ../pri-372-log-conflitos origin/main`. Reproduzir: rodar `scripts/lib/dom06-decomposition.test.js` com `STATE_CONFLICTS_LOG` ausente e ver para onde `logPath()` (`scripts/cas.js:439-451`) resolve. Corrigir para que nenhum teste grave fora do TMPDIR, sem mudar o caminho do log no layout real do consumidor (`<root>/memory/runs/...` e `<root>/.claude/worktrees/<id>/memory/runs/...` continuam indo para `<root>/logs`).
   - Teste que falha antes: um teste que roda o caso do dom06 dentro de uma árvore temporária com layout `<tmp>/.claude/worktrees/x/` e confere que nada aparece em `<tmp>/logs/` nem no `logs/` do checkout onde a suíte roda.
   - Não apagar a linha de fixture que já está no log vivo; só citá-la no PR (AC da PRI-372).
