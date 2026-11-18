@@ -42,7 +42,7 @@ const run = (o = {}) => {
 test('config: mergeLeve traz a lista da SPEC e os checks obrigatórios', () => {
     assert.deepEqual(cfg.requiredChecks, ['Node 22', 'Node 24', 'processo-check']);
     assert.deepEqual(cfg.removableExtensions, ['.md']);
-    for (const p of ['ROADMAP.md', 'README.md', 'roadmap/**/*.md', 'docs/**/*.md', 'tasks/**/*.md', '**/*.test.js', '**/*.test.mjs']) {
+    for (const p of ['ROADMAP.md', 'README.md', 'roadmap/**/*.md', 'docs/**/*.md', 'tasks/**/*.md', 'scripts/**/*.test.js', 'dashboard/**/*.test.js']) {
         assert.ok(cfg.allowedPaths.includes(p), p);
     }
     for (const p of ['.github/**', '.claude/**', '**/CLAUDE.md', '**/CLAUDE.local.md', '**/AGENTS.md', '**/.*/**',
@@ -50,6 +50,25 @@ test('config: mergeLeve traz a lista da SPEC e os checks obrigatórios', () => {
         '**/fixtures/**', '**/package*.json']) {
         assert.ok(cfg.deniedPaths.includes(p), p);
     }
+    for (const p of ['**/*.test.js', '**/*.test.mjs']) assert.ok(!cfg.allowedPaths.includes(p), p);
+});
+
+// D-PRI-410-02 (Richard, 18/11): governança aprovada fica com o Richard;
+// teste só elegível em scripts/ e dashboard/.
+test('SPEC, plan, todo já aprovados e roadmap/DECISOES.md → negados', () => {
+    for (const f of ['tasks/f0-8-x/SPEC.md', 'tasks/pri-1/SPEC-c1-mapa.md', 'tasks/pri-1/plan.md', 'tasks/f0-8-x/todo.md', 'roadmap/DECISOES.md']) {
+        const v = pathVerdict([file(f)], cfg);
+        assert.equal(v.ok, false, f);
+        assert.match(v.motivos.join('\n'), /negado/, f);
+    }
+    assert.equal(pathVerdict([file('tasks/pri-1/notas.md')], cfg).ok, true);
+});
+
+test('teste fora de scripts/ e dashboard/ → fora da lista', () => {
+    for (const f of ['docs/x.test.js', 'harness/a.test.js', 'tools/a.test.mjs', 'scripts/lib/a.test.mjs']) {
+        assert.equal(pathVerdict([file(f)], cfg).ok, false, f);
+    }
+    assert.equal(pathVerdict([file('scripts/lib/a.test.js'), file('dashboard/lib/b.test.js')], cfg).ok, true);
 });
 
 test('só docs/x.md → elegível', () => {
@@ -60,10 +79,10 @@ test('só docs/x.md → elegível', () => {
 });
 
 test('teste e markdown da lista → elegível', () => {
-    const v = pathVerdict([file('ROADMAP.md'), file('roadmap/f0/FASE.md'), file('tasks/pri-1/plan.md'), file('scripts/lib/a.test.js'), file('.github/../x.test.mjs')], cfg);
+    const v = pathVerdict([file('ROADMAP.md'), file('roadmap/f0/FASE.md'), file('tasks/pri-1/notas.md'), file('scripts/lib/a.test.js'), file('.github/../x.test.mjs')], cfg);
     // `.github/../x.test.mjs` não é normalizado: começa por `.github/`, então é negado.
     assert.equal(v.ok, false);
-    assert.equal(pathVerdict([file('ROADMAP.md'), file('roadmap/f0/FASE.md'), file('tasks/pri-1/plan.md'), file('scripts/lib/a.test.js')], cfg).ok, true);
+    assert.equal(pathVerdict([file('ROADMAP.md'), file('roadmap/f0/FASE.md'), file('tasks/pri-1/notas.md'), file('scripts/lib/a.test.js')], cfg).ok, true);
 });
 
 test('scripts/a.js fora da lista → não mescla (AC-02)', () => {

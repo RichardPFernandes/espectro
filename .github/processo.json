@@ -43,10 +43,14 @@
       "roadmap/**/*.md",
       "docs/**/*.md",
       "tasks/**/*.md",
-      "**/*.test.js",
-      "**/*.test.mjs"
+      "scripts/**/*.test.js",
+      "dashboard/**/*.test.js"
     ],
     "deniedPaths": [
+      "tasks/**/SPEC*.md",
+      "tasks/**/plan.md",
+      "tasks/**/todo.md",
+      "roadmap/DECISOES.md",
       ".github/**",
       ".claude/**",
       "**/.*/**",
