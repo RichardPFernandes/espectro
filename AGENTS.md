@@ -54,7 +54,7 @@ consumidores (G0–G3, PRI-145). As regras curtas estão no topo do `CLAUDE.md`.
 O que nunca muda, em qualquer nível:
 
 - Comportamento novo entra com a flag desligada.
-- PR sempre em draft; o merge é do Richard. Use "Refs", nunca "Fixes".
+- PR em draft e merge do Richard; a única exceção é o merge automático do Leve pelo bot (regra 10 do `CLAUDE.md`). Agente nunca mescla. Use "Refs", nunca "Fixes".
 - AUTORIZO explícito antes de qualquer coisa que afete o consumidor: bump do
   checkout vivo, religar o polling, ligar flag, operação protegida.
 - Done só com evidência (no PR). Leve e Médio: a issue fecha quando o último
