@@ -12,8 +12,8 @@ modulos:
   - scripts/harness/*
   - scripts/cli-proof-inventory.js
   - scripts/lib/cli-proof-inventory.js
-  - scripts/run-architecture-cruise.js
-  - scripts/run-eslint-src.js
+  - scripts/run-*
+  - scripts/lib/lint-baseline.js
   - scripts/lib/roadmap-*
   - scripts/cleanup-*
   - scripts/obsidian-export.js
