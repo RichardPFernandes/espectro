@@ -22,7 +22,7 @@ Testes: `npm run test:changed -- origin/main` na raiz. Nada de push em remote re
   `scripts/lib/dom06-dispatch-env.test.js`: o remote fica no commit novo e há dois efeitos de push
   `fulfilled`; PR, Redmine e revogação iguais. Falha antes: o remote fica no commit antigo.
 
-- [ ] **T3. Falha gravada e spec viva.** AC-6, AC-7.
+- [x] **T3. Falha gravada e spec viva.** AC-6, AC-7.
   Se o `git push` sai ≠ 0: gravar efeito `failed` (repo e rc no detalhe) e sair com o rc do git.
   Testes: remote inexistente → rc ≠ 0, efeito `failed`, nenhum `fulfilled`; nova tentativa com
   remote corrigido roda o git e grava `fulfilled`; sem `DOM06_ATTEMPT_FILE` e com Attempt revogado
