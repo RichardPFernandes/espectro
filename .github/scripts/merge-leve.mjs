@@ -5,12 +5,14 @@
 // configuração do checkout local (a `main`; nada do PR, AC-01) e:
 //   - com MERGE_LEVE=on, mescla o elegível (squash, preso ao sha avaliado);
 //   - com qualquer outro valor ou ausente, só escreve o que faria (AC-04).
+// Modo local do /pri-pr (AC-06): `--paths <name-status> --config <processo.json>`
+// imprime `elegível` ou `draft: <motivos>` só com pathVerdict, sem rede nem token.
 // A rede entra pelo parâmetro `gh(method, path, body)`, que rejeita com
 // `err.status` em resposta não 2xx; os testes passam um falso.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { evaluatePr, loadConfig } from './merge-leve-lib.mjs';
+import { evaluatePr, loadConfig, pathVerdict } from './merge-leve-lib.mjs';
 import { matchesAny } from './processo-lib.mjs';
 
 const ROADMAP_PATHS = ['ROADMAP.md', 'roadmap/**'];
@@ -87,6 +89,44 @@ export async function run({ event, env = process.env, gh, config, log = console.
     }
 }
 
+// Saída de `git diff -M --name-status` no formato de arquivos da API do GitHub.
+// Cópia vira `added` do nome novo; letra desconhecida ou linha malformada vira
+// motivo de draft, nunca elegível.
+const NAME_STATUS = { A: 'added', M: 'modified', T: 'modified', D: 'removed' };
+export function parseNameStatus(text) {
+    const files = [];
+    const motivos = [];
+    for (const line of text.split('\n')) {
+        if (!line.trim()) continue;
+        const [code = '', ...names] = line.replace(/\r$/, '').split('\t');
+        const letter = code[0];
+        if ((letter === 'R' || letter === 'C') && names.length === 2) {
+            files.push(letter === 'R'
+                ? { filename: names[1], status: 'renamed', previous_filename: names[0] }
+                : { filename: names[1], status: 'added' });
+        } else if (NAME_STATUS[letter] && code.length === 1 && names.length === 1) {
+            files.push({ filename: names[0], status: NAME_STATUS[letter] });
+        } else {
+            motivos.push(`linha de name-status não reconhecida: ${line}`);
+        }
+    }
+    return { files, motivos };
+}
+
+export function localVerdict(nameStatus, processo) {
+    const cfg = processo?.mergeLeve;
+    if (!cfg) return 'draft: configuração da main sem mergeLeve';
+    const { files, motivos } = parseNameStatus(nameStatus);
+    const all = [...motivos, ...pathVerdict(files, cfg).motivos];
+    return all.length ? `draft: ${esc(all.join('; '))}` : 'elegível';
+}
+
+function argOf(argv, flag) {
+    const i = argv.indexOf(flag);
+    if (i < 0 || !argv[i + 1]) throw new Error(`falta ${flag} <arquivo>`);
+    return argv[i + 1];
+}
+
 export function makeGh(token, fetchImpl = fetch) {
     return async (method, url, body) => {
         const res = await fetchImpl(`https://api.github.com${url}`, {
@@ -106,6 +146,14 @@ export function makeGh(token, fetchImpl = fetch) {
 }
 
 async function main() {
+    const argv = process.argv.slice(2);
+    if (argv.length) {
+        if (!argv.includes('--paths')) throw new Error(`argumento desconhecido: ${argv[0]}`);
+        const nameStatus = fs.readFileSync(argOf(argv, '--paths'), 'utf8');
+        const processo = JSON.parse(fs.readFileSync(argOf(argv, '--config'), 'utf8'));
+        console.log(localVerdict(nameStatus, processo));
+        return;
+    }
     const env = process.env;
     if (!env.GITHUB_TOKEN) throw new Error('sem GITHUB_TOKEN');
     if (!env.GITHUB_EVENT_PATH) throw new Error('sem GITHUB_EVENT_PATH: rode no GitHub Actions');

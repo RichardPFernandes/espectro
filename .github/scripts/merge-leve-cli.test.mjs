@@ -3,6 +3,11 @@
 // `gh` falso que registra as chamadas: nenhuma rede.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { run } from './merge-leve.mjs';
 import { loadConfig } from './merge-leve-lib.mjs';
 
@@ -167,4 +172,71 @@ test('o que vem do PR é escapado: nome de arquivo com quebra de linha não forj
     assert.doesNotMatch(r.summary, /mesclaria #7/);
     assert.match(r.summary, /scripts\/a%0A- mesclaria #99%0D\.js/);
     assert.doesNotMatch(r.logs, /^- mesclaria #99/m);
+});
+
+// Modo local do /pri-pr (AC-06): `--paths <name-status> --config <processo.json>`
+// imprime `elegível` ou `draft: <motivos>` só com pathVerdict, sem rede nem token.
+const SCRIPT = fileURLToPath(new URL('./merge-leve.mjs', import.meta.url));
+const CONFIG_JSON = JSON.stringify(config);
+
+function local(nameStatus, { cfg = CONFIG_JSON, missing = false } = {}) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'merge-leve-'));
+    try {
+        const ns = path.join(dir, 'ns.txt');
+        const cf = path.join(dir, 'cfg.json');
+        if (!missing) fs.writeFileSync(ns, nameStatus);
+        fs.writeFileSync(cf, cfg);
+        const env = { ...process.env };
+        delete env.GITHUB_TOKEN;
+        delete env.GITHUB_EVENT_PATH;
+        delete env.MERGE_LEVE;
+        const r = spawnSync(process.execPath, [SCRIPT, '--paths', ns, '--config', cf], { encoding: 'utf8', env });
+        return { code: r.status, out: r.stdout.trim(), err: r.stderr };
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+}
+
+test('--paths só com docs/a.md imprime elegível, código 0 (AC-06)', () => {
+    const r = local('M\tdocs/a.md\n');
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.out, 'elegível');
+});
+
+test('--paths com scripts/a.js imprime draft: e o motivo, código 0 (AC-06)', () => {
+    const r = local('M\tdocs/a.md\nA\tscripts/a.js\n');
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /^draft: .*scripts\/a\.js: fora da lista mergeLeve/);
+});
+
+test('--paths: renomeação de .md dentro de docs é elegível; para fora da lista, draft', () => {
+    assert.equal(local('R100\tdocs/a.md\tdocs/b.md\n').out, 'elegível');
+    const r = local('R090\tdocs/a.md\tscripts/a.js\n');
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /^draft: .*scripts\/a\.js/);
+});
+
+test('--paths: removido fora de removableExtensions e cópia vão para draft', () => {
+    assert.match(local('D\tdocs/a.test.mjs\n').out, /^draft: .*removido/);
+    assert.match(local('C100\tdocs/a.md\tscripts/b.js\n').out, /^draft: .*scripts\/b\.js/);
+});
+
+test('--paths: letra desconhecida nunca vira elegível', () => {
+    const r = local('X\tdocs/a.md\n');
+    assert.notEqual(r.out, 'elegível');
+    assert.ok(r.code === 2 || /^draft: /.test(r.out), r.out);
+});
+
+test('--paths: diff vazio e config sem mergeLeve vão para draft', () => {
+    assert.match(local('').out, /^draft: /);
+    const r = local('M\tdocs/a.md\n', { cfg: JSON.stringify({ levels: config.levels }) });
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /^draft: .*mergeLeve/);
+});
+
+test('--paths: arquivo inexistente é erro de execução, código 2', () => {
+    const r = local('M\tdocs/a.md\n', { missing: true });
+    assert.equal(r.code, 2);
+    assert.equal(r.out, '');
+    assert.match(r.err, /erro de execução: .*ns\.txt/);
 });
