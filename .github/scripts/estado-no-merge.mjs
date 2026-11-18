@@ -6,7 +6,7 @@
 // Uso:
 //   ESTADO_NO_MERGE=simular node .github/scripts/estado-no-merge.mjs [--event payload.json | --pr N] [--fake rede.json]
 // Sem --event/--pr, lê GITHUB_EVENT_PATH (pull_request ou workflow_dispatch com inputs.pr).
-// --fake rede.json = { "issues": { "PRI-N": <issue> }, "pulls": { "N": <pull> } }: rede falsa, sem chamadas reais.
+// --fake rede.json = { "issues": { "PRI-N": <issue> }, "pulls": { "dono/repo#N": <pull> } }: rede falsa, sem chamadas reais.
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { loadConfig } from './processo-lib.mjs';
@@ -15,8 +15,23 @@ import { parseRefs, levelFromLabels, decide, rewriteEstado, estadoText } from '.
 const MODES = new Set(['off', 'simular', 'on']);
 const OPEN_EXCLUDED = new Set(['completed', 'canceled']);
 
+const REPO_RE = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+const PULL_URL_RE = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d+)(?:[/?#]|$)/i;
+
 const isoDate = (d) => (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10);
-const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** `https://github.com/<dono>/<repo>/pull/<n>` de qualquer repo → { repo: 'dono/repo', n }, ou null. */
+function parsePullUrl(url) {
+    const m = PULL_URL_RE.exec(String(url ?? ''));
+    if (!m || /^\.+$/.test(m[2])) return null;
+    return { repo: `${m[1]}/${m[2]}`, n: Number(m[3]) };
+}
+
+/** Mesmo PR pela identidade que a API resolve (id, ou html_url), não pelo número da URL. */
+function samePull(a, b) {
+    if (a?.id != null && b?.id != null) return a.id === b.id;
+    return Boolean(a?.html_url && b?.html_url) && a.html_url.toLowerCase() === b.html_url.toLowerCase();
+}
 
 /**
  * Processa o merge de um PR. Não lança: erros viram linhas do resumo e código 1.
@@ -24,7 +39,7 @@ const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * @param {Record<string, string|undefined>} deps.env ESTADO_NO_MERGE, GITHUB_REPOSITORY (tokens só para mascarar)
  * @param {object} deps.event payload com `pull_request` (só o número é usado), ou `inputs.pr` (workflow_dispatch)
  * @param {{ getIssue(id: string): Promise<object>, updateIssue(id: string, input: object): Promise<unknown> }} deps.linear
- * @param {{ getPull(n: number): Promise<object> }} deps.gh
+ * @param {{ getPull(repo: string, n: number): Promise<object> }} deps.gh repo = 'dono/repo'; lança em 404/403/rede
  * @param {(markdown: string) => void} deps.summary
  * @param {() => Date|string} [deps.now] data usada quando o PR não traz merged_at
  * @param {Record<string, string>} [deps.levels] mapa `levels` do processo.json
@@ -43,13 +58,20 @@ export async function run({ env, event, linear, gh, summary, now = () => new Dat
     const lines = [`## Estado no merge (modo: ${mode})`, ''];
     const finish = (code) => { summary(`${lines.join('\n')}\n`); return code; };
 
+    const repo = String(env.GITHUB_REPOSITORY ?? '').trim();
+    if (!REPO_RE.test(repo)) {
+        lines.push('- ERRO: GITHUB_REPOSITORY ausente ou inválido (esperado dono/repo); nada processado.');
+        return finish(1);
+    }
+    const repoLc = repo.toLowerCase();
+
     let pr;
     try {
         // Do evento só o número: num Re-run o payload é o original, então rótulos, título e corpo
         // podem estar velhos. A decisão vem sempre do PR buscado na API (como no processo-check).
         const n = Number(event?.pull_request?.number ?? event?.inputs?.pr ?? NaN);
         if (!Number.isInteger(n) || n <= 0) throw new Error('evento sem pull_request nem inputs.pr');
-        pr = await gh.getPull(n);
+        pr = await gh.getPull(repo, n);
     } catch (e) {
         lines.push(`- ERRO ao ler o PR: ${errMsg(e)}`);
         return finish(1);
@@ -57,6 +79,12 @@ export async function run({ env, event, linear, gh, summary, now = () => new Dat
 
     if (!pr.merged) {
         lines.push(`PR #${pr.number} não mesclado: nada a fazer.`);
+        return finish(0);
+    }
+    // O if do workflow só cobre o pull_request; o dispatch (e qualquer PR, que vem sempre da API) confere aqui.
+    const head = pr.head?.repo?.full_name;
+    if (pr.base?.ref !== 'main' || String(head ?? '').toLowerCase() !== repoLc) {
+        lines.push(`PR #${pr.number} fora do escopo (base ${pr.base?.ref ?? '?'}, head ${head ?? '?'}; exige base main e head em ${repo}): nada a fazer.`);
         return finish(0);
     }
     const level = levelFromLabels(pr.labels, levels ?? loadConfig().levels);
@@ -68,7 +96,6 @@ export async function run({ env, event, linear, gh, summary, now = () => new Dat
         return finish(0);
     }
 
-    const prRe = new RegExp(`^https://github\\.com/${escapeRe(env.GITHUB_REPOSITORY ?? '')}/pull/(\\d+)(?:[/?#]|$)`, 'i');
     let failed = false;
     for (const id of ids) {
         try {
@@ -84,15 +111,46 @@ export async function run({ env, event, linear, gh, summary, now = () => new Dat
         const issue = await linear.getIssue(id);
         if (issue.state?.type === 'canceled') return `${id}: nada — issue cancelada.`;
 
-        let otherOpenPrs = [];
+        const otherOpenPrs = [];
+        const unreadablePrs = [];
+        const falhas = [];
         let openChildren = [];
         if (level === 'leve' || level === 'medio') {
+            const cortadas = [issue.childrenHasNextPage && 'filhas', issue.attachmentsHasNextPage && 'anexos'].filter(Boolean);
+            if (cortadas.length) throw new Error(`mais de 100 ${cortadas.join(' e ')} no Linear (hasNextPage); sem paginação, não decide`);
             openChildren = (issue.children ?? []).filter((c) => !OPEN_EXCLUDED.has(c.state?.type)).map((c) => c.identifier);
-            const nums = [...new Set((issue.attachments ?? [])
-                .map((a) => prRe.exec(a.url ?? '')?.[1]).filter(Boolean).map(Number))].filter((n) => n !== pr.number);
-            for (const n of nums) if ((await gh.getPull(n)).state === 'open') otherOpenPrs.push(n);
+            const vistos = new Set();
+            const contados = new Set();
+            for (const a of issue.attachments ?? []) {
+                const ref = parsePullUrl(a.url);
+                if (!ref) continue;
+                const url = `https://github.com/${ref.repo}/pull/${ref.n}`;
+                if (vistos.has(url.toLowerCase())) continue;
+                vistos.add(url.toLowerCase());
+                if (ref.repo.toLowerCase() === repoLc && ref.n === pr.number) continue;
+                let p;
+                try {
+                    p = await gh.getPull(ref.repo, ref.n);
+                } catch (e) {
+                    unreadablePrs.push(url);
+                    falhas.push(`${url}: ${errMsg(e)}`);
+                    continue;
+                }
+                // Repo renomeado: a API segue o nome antigo e devolve o PR com a identidade de hoje.
+                if (samePull(p, pr)) continue;
+                const chave = String(p.id ?? p.html_url ?? url).toLowerCase();
+                if (contados.has(chave)) continue;
+                contados.add(chave);
+                if (p.state === 'open') {
+                    const dono = p.base?.repo?.full_name ?? ref.repo;
+                    otherOpenPrs.push(dono.toLowerCase() === repoLc ? (p.number ?? ref.n) : { n: p.number ?? ref.n, repo: dono });
+                } else if (p.state !== 'closed') {
+                    unreadablePrs.push(url);
+                    falhas.push(`${url}: estado ${JSON.stringify(p.state ?? null)} desconhecido`);
+                }
+            }
         }
-        const d = decide({ level, otherOpenPrs, openChildren });
+        const d = decide({ level, otherOpenPrs, unreadablePrs, openChildren });
         if (d.acao === 'nada') return `${id}: nada — ${d.motivo}.`;
 
         const input = {};
@@ -108,7 +166,8 @@ export async function run({ env, event, linear, gh, summary, now = () => new Dat
             input.stateId ? 'mover para Done' : d.acao === 'done' ? 'já em Done' : null,
             input.description !== undefined ? 'reescrever Estado e Próximo passo' : null,
         ].filter(Boolean).join(' e ') || 'nenhuma mudança';
-        const faltando = rw.missing.length ? `; linhas não achadas: ${rw.missing.join(', ')}` : '';
+        const faltando = (rw.missing.length ? `; linhas não achadas: ${rw.missing.join(', ')}` : '')
+            + (falhas.length ? `; sem leitura: ${falhas.join('; ')}` : '');
         let status = 'nada a escrever';
         if (Object.keys(input).length) {
             if (mode === 'on') { await linear.updateIssue(issue.id, input); status = 'escrito'; }
@@ -128,12 +187,12 @@ function arg(name) {
 const ISSUE_QUERY = `query($id: String!) { issue(id: $id) {
   id identifier description state { type name }
   team { states(first: 100) { nodes { id name type } } }
-  children(first: 100) { nodes { identifier state { type } } }
-  attachments(first: 100) { nodes { url } }
+  children(first: 100) { nodes { identifier state { type } } pageInfo { hasNextPage } }
+  attachments(first: 100) { nodes { url } pageInfo { hasNextPage } }
 } }`;
 const UPDATE_MUTATION = `mutation($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success } }`;
 
-function realLinear(apiKey) {
+export function realLinear(apiKey) {
     async function gql(query, variables) {
         if (!apiKey) throw new Error('LINEAR_API_KEY ausente');
         const res = await fetch('https://api.linear.app/graphql', {
@@ -155,7 +214,9 @@ function realLinear(apiKey) {
                 ...issue,
                 team: { states: issue.team?.states?.nodes ?? [] },
                 children: issue.children?.nodes ?? [],
+                childrenHasNextPage: Boolean(issue.children?.pageInfo?.hasNextPage),
                 attachments: issue.attachments?.nodes ?? [],
+                attachmentsHasNextPage: Boolean(issue.attachments?.pageInfo?.hasNextPage),
             };
         },
         async updateIssue(id, input) {
@@ -166,9 +227,10 @@ function realLinear(apiKey) {
     };
 }
 
-function realGh(repo, token) {
+// A API do GitHub segue o redirecionamento de repo renomeado (mesma origem, o token vai junto).
+export function realGh(token) {
     return {
-        async getPull(n) {
+        async getPull(repo, n) {
             const url = `/repos/${repo}/pulls/${n}`;
             const res = await fetch(`https://api.github.com${url}`, {
                 headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${token}`, 'x-github-api-version': '2022-11-28' },
@@ -180,7 +242,8 @@ function realGh(repo, token) {
 }
 
 function fakeNet(file) {
-    const { issues = {}, pulls = {} } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const { issues = {}, pulls: rawPulls = {} } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const pulls = Object.fromEntries(Object.entries(rawPulls).map(([k, v]) => [k.toLowerCase(), v]));
     return {
         linear: {
             async getIssue(id) {
@@ -193,9 +256,10 @@ function fakeNet(file) {
             },
         },
         gh: {
-            async getPull(n) {
-                if (!pulls[n]) throw new Error(`PR ${n} não está no --fake`);
-                return pulls[n];
+            async getPull(repo, n) {
+                const v = pulls[`${repo}#${n}`.toLowerCase()];
+                if (!v) throw new Error(`PR ${repo}#${n} não está no --fake`);
+                return v;
             },
         },
     };
@@ -207,7 +271,7 @@ async function main() {
     const eventPath = arg('--event') ?? env.GITHUB_EVENT_PATH;
     const event = prArg ? { inputs: { pr: prArg } } : eventPath ? JSON.parse(fs.readFileSync(eventPath, 'utf8')) : {};
     const fake = arg('--fake');
-    const net = fake ? fakeNet(fake) : { linear: realLinear(env.LINEAR_API_KEY), gh: realGh(env.GITHUB_REPOSITORY, env.GITHUB_TOKEN) };
+    const net = fake ? fakeNet(fake) : { linear: realLinear(env.LINEAR_API_KEY), gh: realGh(env.GITHUB_TOKEN) };
     const summary = env.GITHUB_STEP_SUMMARY
         ? (t) => fs.appendFileSync(env.GITHUB_STEP_SUMMARY, t)
         : (t) => process.stdout.write(t);

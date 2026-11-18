@@ -23,15 +23,26 @@
     }
   },
   "pulls": {
-    "215": {
+    "acme/prisma#215": {
+      "id": 9215,
       "number": 215,
+      "html_url": "https://github.com/acme/prisma/pull/215",
       "state": "closed",
       "merged": true,
       "merged_at": "2026-11-18T15:00:00Z",
       "title": "feat(ci): estado no merge, F0.9 (Refs PRI-399)",
       "body": "**Nível:** médio\n**Issue:** Refs PRI-399\nTambém Refs PRI-400.",
-      "labels": [{ "name": "processo:medio" }]
+      "labels": [{ "name": "processo:medio" }],
+      "base": { "ref": "main", "repo": { "full_name": "acme/prisma" } },
+      "head": { "repo": { "full_name": "acme/prisma" } }
     },
-    "216": { "number": 216, "state": "open", "merged": false }
+    "acme/prisma#216": {
+      "id": 9216,
+      "number": 216,
+      "html_url": "https://github.com/acme/prisma/pull/216",
+      "state": "open",
+      "merged": false,
+      "base": { "ref": "main", "repo": { "full_name": "acme/prisma" } }
+    }
   }
 }

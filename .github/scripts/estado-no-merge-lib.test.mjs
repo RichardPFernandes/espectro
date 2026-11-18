@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig } from './processo-lib.mjs';
-import { parseRefs, levelFromLabels, decide, rewriteEstado, estadoText } from './estado-no-merge-lib.mjs';
+import { parseRefs, levelFromLabels, decide, pendenciaText, rewriteEstado, estadoText } from './estado-no-merge-lib.mjs';
 
 const { levels } = loadConfig();
 
@@ -44,6 +44,21 @@ test('decide: Médio com outro PR aberto → estado, listando o que falta', () =
     const r = decide({ level: 'medio', otherOpenPrs: [220], openChildren: ['PRI-500'] });
     assert.equal(r.acao, 'estado');
     assert.deepEqual(r.pendencias, [{ tipo: 'pr', n: 220 }, { tipo: 'filha', id: 'PRI-500' }]);
+});
+
+test('decide: PR anexado sem leitura impede o Done e aparece como "sem leitura"', () => {
+    const url = 'https://github.com/acme/sumido/pull/9';
+    const r = decide({ level: 'medio', otherOpenPrs: [], unreadablePrs: [url], openChildren: [] });
+    assert.equal(r.acao, 'estado');
+    assert.deepEqual(r.pendencias, [{ tipo: 'pr-ilegivel', url }]);
+    assert.equal(pendenciaText(r.pendencias[0]), `PR ${url} sem leitura`);
+});
+
+test('decide: PR aberto de outro repo leva o nome do repo no texto', () => {
+    const r = decide({ level: 'leve', otherOpenPrs: [{ n: 7, repo: 'outra/coisa' }] });
+    assert.equal(r.acao, 'estado');
+    assert.deepEqual(r.pendencias, [{ tipo: 'pr', n: 7, repo: 'outra/coisa' }]);
+    assert.equal(pendenciaText(r.pendencias[0]), 'PR outra/coisa#7');
 });
 
 test('decide: Leve limpo → done', () => {

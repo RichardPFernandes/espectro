@@ -29,23 +29,26 @@ export function levelFromLabels(labels, levels) {
 }
 
 /**
- * @typedef {{ tipo: 'pr', n: number } | { tipo: 'filha', id: string }} Pendencia
- *   `pr`: outro PR aberto anexado à issue; `filha`: issue filha aberta.
+ * @typedef {{ tipo: 'pr', n: number, repo?: string } | { tipo: 'pr-ilegivel', url: string } | { tipo: 'filha', id: string }} Pendencia
+ *   `pr`: outro PR aberto anexado à issue (`repo` só quando não é o repo do workflow);
+ *   `pr-ilegivel`: PR anexado que não deu para ler (UNKNOWN não vira fechado); `filha`: issue filha aberta.
  */
 
 /**
  * Decide a ação sobre uma issue.
- * @param {{ level: string|null, otherOpenPrs?: number[], openChildren?: string[] }} input
- *   otherOpenPrs: números de outros PRs abertos anexados; openChildren: IDs das filhas abertas.
+ * @param {{ level: string|null, otherOpenPrs?: Array<number|{ n: number, repo: string }>, unreadablePrs?: string[], openChildren?: string[] }} input
+ *   otherOpenPrs: outros PRs abertos anexados (número, ou `{ n, repo }` de outro repo);
+ *   unreadablePrs: URLs de PRs anexados sem leitura; openChildren: IDs das filhas abertas.
  * @returns {{ acao: 'nada'|'done'|'estado', motivo: string, pendencias: Pendencia[] }}
  *   'nada': alto ou sem nível, não escreve; 'done': mover para Done e reescrever Estado;
  *   'estado': só reescrever Estado e Próximo passo com as pendências.
  */
-export function decide({ level, otherOpenPrs = [], openChildren = [] }) {
+export function decide({ level, otherOpenPrs = [], unreadablePrs = [], openChildren = [] }) {
     if (level === 'alto') return { acao: 'nada', motivo: 'nível alto: Done só com aceite do Richard', pendencias: [] };
     if (level !== 'leve' && level !== 'medio') return { acao: 'nada', motivo: 'sem rótulo de nível único (processo:*)', pendencias: [] };
     const pendencias = [
-        ...otherOpenPrs.map((n) => ({ tipo: 'pr', n })),
+        ...otherOpenPrs.map((p) => (typeof p === 'number' ? { tipo: 'pr', n: p } : { tipo: 'pr', n: p.n, repo: p.repo })),
+        ...unreadablePrs.map((url) => ({ tipo: 'pr-ilegivel', url })),
         ...openChildren.map((id) => ({ tipo: 'filha', id })),
     ];
     if (pendencias.length === 0) return { acao: 'done', motivo: `nível ${level} sem PR aberto nem filha aberta`, pendencias };
@@ -54,7 +57,9 @@ export function decide({ level, otherOpenPrs = [], openChildren = [] }) {
 
 /** @param {Pendencia} p */
 export function pendenciaText(p) {
-    return p.tipo === 'pr' ? `PR #${p.n}` : `filha ${p.id}`;
+    if (p.tipo === 'pr') return `PR ${p.repo ?? ''}#${p.n}`;
+    if (p.tipo === 'pr-ilegivel') return `PR ${p.url} sem leitura`;
+    return `filha ${p.id}`;
 }
 
 const LINES = [['estado', 'Estado'], ['proximo', 'Próximo passo']];

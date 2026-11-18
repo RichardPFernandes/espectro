@@ -6,7 +6,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { run } from './estado-no-merge.mjs';
+import * as cli from './estado-no-merge.mjs';
+
+const { run } = cli;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = 'acme/prisma';
@@ -37,14 +39,19 @@ function issue(identifier, over = {}) {
     };
 }
 
+// Como a API devolve: id e html_url canônicos (repo renomeado responde com o nome novo), base e head.
 function pull(over = {}) {
+    const number = over.number ?? 50;
     return {
-        number: 50, state: 'closed', merged: true, merged_at: '2026-11-17T22:10:00Z',
-        title: 'feat: x (Refs PRI-1)', body: '', labels: [{ name: 'processo:medio' }], ...over,
+        id: 9000 + number, number, html_url: `https://github.com/${REPO}/pull/${number}`,
+        state: 'closed', merged: true, merged_at: '2026-11-17T22:10:00Z',
+        title: 'feat: x (Refs PRI-1)', body: '', labels: [{ name: 'processo:medio' }],
+        base: { ref: 'main', repo: { full_name: REPO } }, head: { repo: { full_name: REPO } }, ...over,
     };
 }
 
 // Falsos: registram cada chamada; `issues`/`pulls` são mapas; função no lugar do valor lança.
+// `pulls`: chave 'dono/repo#N', ou só N para o repo do GITHUB_REPOSITORY (REPO). Ausente = 404.
 function fakes({ issues = {}, pulls = {} } = {}) {
     const calls = { linear: [], gh: [], mutations: [] };
     const linear = {
@@ -62,10 +69,12 @@ function fakes({ issues = {}, pulls = {} } = {}) {
         },
     };
     const gh = {
-        async getPull(n) {
-            calls.gh.push(['getPull', n]);
-            if (!pulls[n]) throw new Error(`PR ${n} não encontrado`);
-            return pulls[n];
+        async getPull(repo, n) {
+            calls.gh.push(['getPull', repo, n]);
+            const v = pulls[`${repo}#${n}`] ?? (repo === REPO ? pulls[n] : undefined);
+            if (typeof v === 'function') return v();
+            if (!v) throw new Error(`GitHub API 404 em /repos/${repo}/pulls/${n}`);
+            return v;
         },
     };
     return { calls, linear, gh };
@@ -131,7 +140,7 @@ test('evento velho (Re-run): a decisão vem do PR na API, não do payload', asyn
     const pulls = { 50: pull({ labels: [{ name: 'processo:alto' }] }) };
     const r = await exec({ mode: 'on', event, issues: { 'PRI-1': issue('PRI-1') }, pulls });
     assert.equal(r.code, 0);
-    assert.deepEqual(r.calls.gh[0], ['getPull', 50]);
+    assert.deepEqual(r.calls.gh[0], ['getPull', REPO, 50]);
     assert.deepEqual(r.calls.mutations, []);
     assert.match(r.summary, /alto/);
 });
@@ -150,21 +159,132 @@ test('on + filha aberta: mutação só com descrição, sem stateId', async () =
     assert.match(input.description, /^\*\*Próximo passo:\*\* falta filha PRI-2\.$/m);
 });
 
-test('on + outro PR aberto anexado: conta só PR deste repo, diferente do mesclado e aberto', async () => {
+test('on + outro PR aberto anexado: conta PR diferente do mesclado e aberto; ignora link que não é PR', async () => {
     const attachments = [
         { url: `https://github.com/${REPO}/pull/50` },
         { url: `https://github.com/${REPO}/pull/51` },
         { url: `https://github.com/${REPO}/pull/52#issuecomment-1` },
-        { url: 'https://github.com/outro/repo/pull/53' },
         { url: 'https://linear.app/x' },
     ];
     const pulls = { 51: pull({ number: 51, state: 'open', merged: false }), 52: pull({ number: 52, state: 'closed' }) };
     const r = await exec({ mode: 'on', event: { pull_request: pull() }, issues: { 'PRI-1': issue('PRI-1', { attachments }) }, pulls });
     assert.equal(r.code, 0);
-    assert.deepEqual(r.calls.gh.map((c) => c[1]).sort(), [50, 51, 52]);
+    assert.deepEqual(r.calls.gh.map((c) => c[2]).sort(), [50, 51, 52]);
     assert.equal(r.calls.mutations.length, 1);
     assert.equal('stateId' in r.calls.mutations[0].input, false);
     assert.match(r.calls.mutations[0].input.description, /falta PR #51\./);
+});
+
+test('anexo com o nome antigo do repo apontando para PR aberto: estado, sem Done', async () => {
+    const attachments = [{ url: 'https://github.com/acme/prisma-antigo/pull/51' }];
+    const pulls = { 'acme/prisma-antigo#51': pull({ number: 51, state: 'open', merged: false }) };
+    const r = await exec({ mode: 'on', event: { pull_request: pull() }, issues: { 'PRI-1': issue('PRI-1', { attachments }) }, pulls });
+    assert.equal(r.code, 0);
+    assert.deepEqual(r.calls.gh.at(-1), ['getPull', 'acme/prisma-antigo', 51]);
+    assert.equal(r.calls.mutations.length, 1);
+    assert.equal('stateId' in r.calls.mutations[0].input, false);
+    assert.match(r.calls.mutations[0].input.description, /^\*\*Próximo passo:\*\* falta PR #51\.$/m);
+});
+
+test('anexo de PR aberto em outro repo: estado, com o repo no texto', async () => {
+    const attachments = [{ url: 'https://github.com/outra/coisa/pull/7' }];
+    const pulls = { 'outra/coisa#7': pull({
+        id: 777, number: 7, state: 'open', merged: false, html_url: 'https://github.com/outra/coisa/pull/7',
+        base: { ref: 'main', repo: { full_name: 'outra/coisa' } }, head: { repo: { full_name: 'outra/coisa' } },
+    }) };
+    const r = await exec({ mode: 'on', event: { pull_request: pull() }, issues: { 'PRI-1': issue('PRI-1', { attachments }) }, pulls });
+    assert.equal(r.code, 0);
+    assert.equal(r.calls.mutations.length, 1);
+    assert.equal('stateId' in r.calls.mutations[0].input, false);
+    assert.match(r.calls.mutations[0].input.description, /^\*\*Próximo passo:\*\* falta PR outra\/coisa#7\.$/m);
+});
+
+test('anexo de PR sem leitura (404): pendência "sem leitura", sem Done, e a issue não vira erro', async () => {
+    const attachments = [{ url: `https://github.com/${REPO}/pull/60/files` }];
+    const r = await exec({ mode: 'on', event: { pull_request: pull() }, issues: { 'PRI-1': issue('PRI-1', { attachments }) } });
+    assert.equal(r.code, 0);
+    assert.equal(r.calls.mutations.length, 1);
+    assert.equal('stateId' in r.calls.mutations[0].input, false);
+    assert.match(r.calls.mutations[0].input.description,
+        /^\*\*Próximo passo:\*\* falta PR https:\/\/github\.com\/acme\/prisma\/pull\/60 sem leitura\.$/m);
+    assert.match(r.summary, /PRI-1: estado .*sem leitura.*404/);
+});
+
+test('anexo do próprio PR mesclado com a URL do nome antigo: não conta como pendência', async () => {
+    const attachments = [{ url: 'https://github.com/acme/prisma-antigo/pull/50' }];
+    const pulls = { 'acme/prisma-antigo#50': pull() };
+    const r = await exec({ mode: 'on', event: { pull_request: pull() }, issues: { 'PRI-1': issue('PRI-1', { attachments }) }, pulls });
+    assert.equal(r.code, 0);
+    assert.equal(r.calls.mutations.length, 1);
+    assert.equal(r.calls.mutations[0].input.stateId, DONE_ID);
+    assert.match(r.summary, /PRI-1: done/);
+});
+
+test('GITHUB_REPOSITORY ausente ou vazio em simular/on: código 1, sem chamar Linear nem GitHub', async () => {
+    for (const mode of ['simular', 'on']) {
+        for (const repo of [undefined, '', '  ']) {
+            const r = await exec({ mode, event: { pull_request: pull() }, issues: { 'PRI-1': issue('PRI-1') }, env: { GITHUB_REPOSITORY: repo } });
+            assert.equal(r.code, 1, `${mode}/${JSON.stringify(repo)}`);
+            assert.deepEqual(r.calls.linear, []);
+            assert.deepEqual(r.calls.gh, []);
+            assert.match(r.summary, /GITHUB_REPOSITORY/);
+        }
+    }
+});
+
+test('mais de 100 filhas ou anexos (hasNextPage): erro naquela issue, a outra segue, código 1', async () => {
+    const issues = {
+        'PRI-1': issue('PRI-1', { attachmentsHasNextPage: true }),
+        'PRI-2': issue('PRI-2'),
+        'PRI-3': issue('PRI-3', { childrenHasNextPage: true }),
+    };
+    const event = { pull_request: pull({ title: 'feat: x (Refs PRI-1)', body: 'Refs PRI-2\nRefs PRI-3' }) };
+    const r = await exec({ mode: 'on', event, issues });
+    assert.equal(r.code, 1);
+    assert.deepEqual(r.calls.mutations.map((m) => m.id), ['uuid-PRI-2']);
+    assert.match(r.summary, /PRI-1: ERRO .*anexos/);
+    assert.match(r.summary, /PRI-3: ERRO .*filhas/);
+});
+
+test('PR fora do escopo (base não é main, ou head de outro repo): nada, também no dispatch', async () => {
+    const casos = [
+        pull({ base: { ref: 'dev', repo: { full_name: REPO } } }),
+        pull({ head: { repo: { full_name: 'fork/prisma' } } }),
+        pull({ head: { repo: null } }),
+    ];
+    for (const p of casos) {
+        const r = await exec({ mode: 'on', event: { inputs: { pr: '50' } }, issues: { 'PRI-1': issue('PRI-1') }, pulls: { 50: p } });
+        assert.equal(r.code, 0);
+        assert.deepEqual(r.calls.linear, []);
+        assert.deepEqual(r.calls.mutations, []);
+        assert.match(r.summary, /fora do escopo/);
+    }
+});
+
+test('Linear real: pede pageInfo de filhas e anexos e repassa hasNextPage', async (t) => {
+    const queries = [];
+    t.mock.method(globalThis, 'fetch', async (_url, init) => {
+        queries.push(JSON.parse(init.body).query);
+        return new Response(JSON.stringify({ data: { issue: {
+            id: 'u', identifier: 'PRI-1', description: '', state: { type: 'started', name: 'x' },
+            team: { states: { nodes: [] } },
+            children: { nodes: [], pageInfo: { hasNextPage: true } },
+            attachments: { nodes: [{ url: 'x' }], pageInfo: { hasNextPage: false } },
+        } } }), { status: 200 });
+    });
+    const got = await cli.realLinear('lin_api_x').getIssue('PRI-1');
+    assert.equal((queries[0].match(/pageInfo \{ hasNextPage \}/g) ?? []).length, 2);
+    assert.equal(got.childrenHasNextPage, true);
+    assert.equal(got.attachmentsHasNextPage, false);
+    assert.deepEqual(got.attachments, [{ url: 'x' }]);
+});
+
+test('GitHub real: busca o PR pelo dono/repo pedido', async (t) => {
+    const urls = [];
+    t.mock.method(globalThis, 'fetch', async (url) => { urls.push(String(url)); return new Response('{"number":51}', { status: 200 }); });
+    const got = await cli.realGh('ghs_x').getPull('acme/prisma-antigo', 51);
+    assert.deepEqual(urls, ['https://api.github.com/repos/acme/prisma-antigo/pulls/51']);
+    assert.equal(got.number, 51);
 });
 
 test('PR fechado sem merge: nada', async () => {
@@ -190,7 +310,7 @@ test('erro do Linear numa issue: a outra ainda é processada e o código é 1', 
 test('dispatch: busca o PR pelo número do input', async () => {
     const r = await exec({ mode: 'simular', event: { inputs: { pr: '50' } }, issues: { 'PRI-1': issue('PRI-1') }, pulls: { 50: pull() } });
     assert.equal(r.code, 0);
-    assert.deepEqual(r.calls.gh, [['getPull', 50]]);
+    assert.deepEqual(r.calls.gh, [['getPull', REPO, 50]]);
     assert.match(r.summary, /PRI-1.*done/);
 });
 
