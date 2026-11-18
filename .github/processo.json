@@ -12,6 +12,9 @@
       "**/handoff*.yaml",
       "**/handoff*.yml",
       "**/evidence*.md"
+    ],
+    "renameAllowedPrefixes": [
+      "docs/historico/"
     ]
   },
   "alto": {

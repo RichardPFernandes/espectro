@@ -22,7 +22,8 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    ```
 
    - Nenhum arquivo novo ou renomeado pode casar com `evidence*.md`,
-     `handoff*.yaml` ou `handoff*.yml`.
+     `handoff*.yaml` ou `handoff*.yml`. Exceção: renomear (mover) para
+     `docs/historico/` é permitido; arquivo novo ou copiado, nem lá.
    - No Leve, também não pode haver `tasks/**/SPEC*`, e o limite é de 400 linhas,
      sem contar lockfiles, snapshots e fixtures gerados (`.github/processo.json`).
    - Se passar do nível, peça reclassificação. Não divida o PR em silêncio.
