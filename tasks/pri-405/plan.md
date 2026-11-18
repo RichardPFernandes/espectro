@@ -12,7 +12,7 @@ Nível Médio. Fonte das decisões: D-PRI-401-01 (Mesa de Decisões, itens 4 e 5
 - Fora do escopo e não são ticket: durações em milissegundos nos testes (6 linhas em
   `dashboard/compare-model.test.js`, `dashboard/server.test.js`, `dashboard/system-model.test.js`
   e `scripts/lib/spec-repairer.test.js`). Ficam como estão e são listadas na Evidência.
-- `dashboard/README.md` ainda tem 3 linhas com número; a troca está no PR #198 (aberto), não aqui.
+- `dashboard/README.md` tinha 3 linhas com número; saíram pelo PR #198, mesclado em 18/11.
 
 ## Regra de troca (uma só, para testes e prompts)
 
@@ -57,7 +57,9 @@ próximo bump, que tem AUTORIZO próprio.
 
 - Teste que monta string de outro teste (ex.: nome de run `NNNNN-slug` reaproveitado entre
   arquivos de grupos diferentes). Mitigação: `npm test` completo no `/pri-check` de cada PR.
-- O critério de saída da F0.1 também depende do PR #198 (README do dashboard). Se o #198 não
-  estiver mesclado quando o PR D abrir, a F0.1 fica `em andamento` e o PR diz isso.
+- Ordem de merge: o PR D marca a F0.1 `concluída`, então entra **depois** de A, B e C. Isso
+  substitui a condição da T5 ("senão, fica `em andamento`"): a F0.1 só aparece concluída na
+  `main` quando o D for mesclado, e antes disso o grep do AC-01 na `main` é refeito. O #198
+  (README do dashboard) já foi mesclado.
 - A linha da F0.1 está como Leve e cita só a PRI-376; esta issue é Médio. O PR D acrescenta a
   PRI-405 na coluna da issue e mantém o nível da fatia (Leve), com a nota "PRI-405: Médio".
