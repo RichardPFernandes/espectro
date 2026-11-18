@@ -131,7 +131,9 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    - **Decisão pendente** não muda: continua manual. Ajuste só "Ligado ao fechar" se o
      escopo do PR mudou.
    - Leve e Médio: a issue vai para In Review só se precisar de decisão ou aceite do
-     Richard. Mesclar é aceitar.
+     Richard. Mesclar é aceitar. Com `ESTADO_NO_MERGE=on`, a Action
+     `estado-no-merge.yml` move Leve e Médio para Done no merge; o `/pri-pr` continua
+     sem mover.
    - Alto: In Review, esperando o AUTORIZO do Richard. Deixe na issue o comentário de 3
      linhas do `/pri-autorizo` (Bloqueio / AUTORIZO / Efeito), com o link do PR. Depois do AUTORIZO e do bump, o próximo
      passo é `/pri-autorizo PRI-NNN readback`.
