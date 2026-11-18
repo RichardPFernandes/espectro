@@ -35,6 +35,10 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
      saem neste (caixas da issue e Estado), não há PR aberto dela
      (`gh pr list --search "PRI-NNN" --state open`) nem filha aberta. Se não der para
      conferir, não é o último.
+   - **Issue compartilhada.** Se a mesma issue aparece em outras linhas de fatia (como a
+     PRI-376 em toda a Fase 0), conte só os ACs **desta fatia** (semente no `FASE.md`,
+     ou os critérios de saída que citam a fatia) e os PRs que citam o ID dela
+     (`gh pr list --search "<Fx.y>" --state open`). O resto da issue não segura a fatia.
    - **Último, e Leve ou Médio com AUTORIZO `Não`:** troque o `Status` da linha por
      `concluída` e faça commit `docs(roadmap): <Fx.y> concluída (Refs PRI-NNN)`.
    - **Último, mas Alto ou com AUTORIZO `Sim`:** o merge vem antes do AUTORIZO, do bump e
@@ -42,17 +46,24 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
      do aceite do Richard, em outro PR ou à mão.
    - **Não é o último:** o `Status` fica `em andamento`; corrija se estiver
      `não iniciada` ou `em spec`.
-   - Em qualquer ramo que edite o `FASE.md`: mude só o `Status` dessa linha, rode
-     `node scripts/lib/roadmap-lint.js` (0 erro) e, se o arquivo já estiver certo (por
-     exemplo, ajustado numa tarefa do `/pri-build`), não commite nada.
+   - **Resto da linha, em qualquer ramo:** se o rótulo `Processo` da issue não bate com
+     a coluna `Nível`, troque o `Nível` (reclassificação, regra 7) e cite a decisão na
+     coluna `Issue no Linear`; se essa coluna não tem a issue do contexto (por exemplo,
+     "sem issue"), acrescente `PRI-NNN`.
+   - **Critério de saída da fase:** quando a fatia fica `concluída` e um critério de
+     saída da fase é cumprido por ela (cita a fatia ou o entregável dela) e já está
+     provado na `main` mais este PR, troque `- [ ]` por `- [x]`. Na dúvida, não marque.
+   - Em qualquer ramo que edite o `FASE.md`: mude só a linha da fatia e os critérios do
+     item anterior, rode `node scripts/lib/roadmap-lint.js` (0 erro) e, se o arquivo já
+     estiver certo (por exemplo, ajustado numa tarefa do `/pri-build`), não commite nada.
    - **O commit muda o HEAD**, e o hook exige `check.json` no HEAD. Rode o `/pri-check`
-     de novo antes do push, passo 3. Como o diff novo é só o `Status` do `FASE.md`, a
+     de novo antes do push, passo 3. Como o diff novo é só o `FASE.md`, a
      seção 2 do `/pri-check` vale com um `agent-skills:code-reviewer` novo que confere só
      esse diff, e o `check.json` leva `conferencia_de` com o SHA revisado antes.
      Prefira ajustar o `FASE.md` numa tarefa do `/pri-build`, antes do `/pri-check`: o
      HEAD não muda.
-   - Nunca marque `concluída` uma fatia com AC pendente nem altere outra linha do
-     `FASE.md`.
+   - Nunca marque `concluída` uma fatia com AC pendente nem altere a linha de outra
+     fatia.
 3. **Push:** `git push -u origin HEAD`.
 4. **Corpo do PR.** Escreva fora da worktree (no scratchpad) a partir de
    `.github/pull_request_template.md`, sem deixar marcador `<...>`:
