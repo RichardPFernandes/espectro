@@ -99,7 +99,7 @@ linhas de arquivo (as outras páginas ficam em 40); o teto é conferido por `scr
 | [db-effect](db-effect.md) | capacidade | ligada | sem-spec | Executa, com aprovador humano, um SQL de migração num banco da allowlist e detecta mudança de schema. |
 | [estado](estado.md) | base | ligada | viva | Guarda o state.json de cada Run, com um só escritor, versão e lease de nó. |
 | [execucao](execucao.md) | capacidade | ligada | sem-spec | Monta o contexto e a linha de comando do agente de cada nó e lê os sinais de saída dele. |
-| [ferramentas](ferramentas.md) | capacidade | ligada | sem-spec | Scripts offline fora do caminho da Run, como demo, sondas, limpeza, exportadores, validadores de processo e o próprio mapa. |
+| [ferramentas](ferramentas.md) | capacidade | ligada | viva | Scripts offline fora do caminho da Run, como demo, sondas, limpeza, exportadores, validadores de processo e o próprio mapa. |
 | [grafo](grafo.md) | base | ligada | viva | Define o ciclo da Run como grafo de nós, com o comando de cada nó e o limite de retry. |
 | [integracoes](integracoes.md) | capacidade | ligada | sem-spec | Fala com o Redmine e o Bitbucket e avisa o dev por webhook, cobrindo ticket, anexos, PRs, horas e notificações. |
 | [medicao](medicao.md) | capacidade | ligada | sem-spec | Mede e guarda o que as Runs deixam, como custo por nó, transcrições, comparação de Runs, padrões de falha e rastreio ticket → PR. |
