@@ -52,7 +52,7 @@ Testes: `npm run test:changed -- origin/main` na raiz, com Node 22 ou mais.
   - run misto (a fonte cai para o transcript);
   - nada gravado (desconhecido, nunca zero).
 
-- [ ] **T5. Ponta a ponta e docs.** AC-04, AC-05.
+- [x] **T5. Ponta a ponta e docs.** AC-04, AC-05.
   - Teste sintético: um despacho com a flag ligada e `SIMULATE` desligado não é viável; use
     um log e um transcript de fixture e passe pelo `finishCostRun` e pelo `buildReport`.
   - Atualizar `dashboard/README.md`.
