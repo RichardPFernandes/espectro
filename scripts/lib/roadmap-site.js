@@ -111,12 +111,13 @@ function progress(slices) {
 function renderCards(phases) {
     return phases.map(p => {
         const g = progress(p.slices), pct = n => (g.total ? (100 * n / g.total).toFixed(1) : 0);
-        const items = p.slices.map(s => `<li data-id="${esc(s.id)}" data-status="${esc(s.status)}"><b>${esc(s.id)}</b> ${esc(s.name)} ${tag(s.status)} · ${s.dias == null ? 'sem dias' : `${s.dias} dias`} · ${esc(s.nivel || 'sem nível')}</li>`).join('');
+        const live = p.slices.filter(s => s.status !== 'removida'), gone = p.slices.filter(s => s.status === 'removida');
+        const items = live.map(s => `<li data-id="${esc(s.id)}" data-status="${esc(s.status)}"><b>${esc(s.id)}</b> ${esc(s.name)} ${tag(s.status)} · ${s.dias == null ? 'sem dias' : `${s.dias} dias`} · ${esc(s.nivel || 'sem nível')}</li>`).join('');
         return `<article class="card" data-done="${g.done}" data-total="${g.total}"><h3>Fase ${p.n} · ${esc(p.name)}</h3>
 <p class="mut">${tag(p.status || 'não iniciada')} ${p.start ? `${br(p.start)} a ${br(p.end)}` : 'sem data'}</p>
 <div class="pb"><i style="width:${pct(g.done)}%"></i><i style="width:${pct(g.active)}%"></i><i style="width:${pct(g.todo)}%"></i></div>
 <p class="mut">${g.done} de ${g.total} dias concluídos (${Math.round(g.total ? 100 * g.done / g.total : 0)}%)${g.unknown ? ` · ${g.unknown} fatia${g.unknown > 1 ? 's' : ''} sem estimativa` : ''}</p>
-<details><summary>${p.slices.length} fatias</summary><ul>${items}</ul></details></article>`;
+<details><summary>${live.length} fatias</summary><ul>${items}</ul></details>${gone.length ? `<p class="mut">Removidas: ${gone.map(s => esc(s.id)).join(', ')}</p>` : ''}</article>`;
     }).join('\n');
 }
 
@@ -139,7 +140,8 @@ function renderTimeline(phases, today) {
     return `<div class="tl"><div class="row"><span></span><div class="tr ax">${months.join('')}<em style="left:${pos(day(today))}%">hoje</em></div></div>\n${[...rows, ...undated].join('\n')}</div>`;
 }
 
-function renderGraph(phases) {
+function renderGraph(allPhases) {
+    const phases = allPhases.map(p => ({ ...p, slices: p.slices.filter(s => s.status !== 'removida') }));
     const at = new Map(), W = 84, rows = Math.max(1, ...phases.map(p => p.slices.length));
     phases.forEach((p, i) => p.slices.forEach((s, j) => at.set(s.id, { x: 48 + i * W, y: 30 + j * 28, s })));
     const edges = [...at.values()].flatMap(({ x, y, s }) => s.deps.filter(d => at.has(d)).map(d => {
@@ -148,7 +150,7 @@ function renderGraph(phases) {
     }));
     const nodes = [...at.values()].map(({ x, y, s }) => `<g class="n ${cls(s.status)}"><title>${esc(`${s.id} · ${s.name} · ${s.status}`)}</title><rect x="${x}" y="${y}" width="54" height="22" rx="5"/><text x="${x + 27}" y="${y + 11}">${esc(s.id)}</text></g>`);
     const heads = phases.map((p, i) => `<text class="cl" x="${48 + i * W + 27}" y="12">F${p.n}</text>`);
-    const legend = STATUS_VOCAB.map(t => `<span class="${cls(t)}">${t}</span>`).join('');
+    const legend = STATUS_VOCAB.filter(t => t !== 'removida').map(t => `<span class="${cls(t)}">${t}</span>`).join('');
     return `<div class="lg">${legend} (borda tracejada: não iniciada)</div>
 <div class="rola"><svg viewBox="0 0 ${64 + phases.length * W} ${40 + rows * 28}" role="img" aria-label="Grafo de dependências entre fatias">${heads.join('')}${edges.join('')}${nodes.join('')}</svg></div>`;
 }
@@ -156,7 +158,7 @@ function renderGraph(phases) {
 /** Monta a página. @returns {string} HTML */
 function render(model, { today, commit, generatedAt }) {
     const { phases } = model, sha = /^[0-9a-f]{7,}$/i.test(commit) ? commit.slice(0, 7) : commit;
-    const alto = phases.flatMap(p => p.slices).filter(s => s.alto);
+    const alto = phases.flatMap(p => p.slices).filter(s => s.alto && s.status !== 'removida');
     const table = alto.length ? `<div class="rola"><table><tr><th>ID</th><th>Fatia</th><th>Fase</th><th>Nível</th><th>AUTORIZO</th><th>Status</th><th>Issue</th></tr>${alto.map(s => `<tr><td>${esc(s.id)}</td><td>${esc(s.name)}</td><td>${s.phase}</td><td>${esc(s.nivel)}</td><td>${esc(s.autorizo)}</td><td>${tag(s.status)}</td><td>${esc(s.issue)}</td></tr>`).join('')}</table></div>` : '<p>Nenhuma.</p>';
     return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Roadmap do Espectro</title><style>${CSS}</style></head><body>
