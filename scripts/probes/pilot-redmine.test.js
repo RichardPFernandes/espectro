@@ -242,3 +242,31 @@ test('seed recusa rodar com o servidor de pé e valida os tipos dos campos', asy
     fs.writeFileSync(from, JSON.stringify([{ id: 9100, subject: 'x' }]));
     assert.strictEqual(pilot.seed(s.store, from), 1);
 });
+
+test('request-target inválido (//) é 400 sem derrubar o servidor nem soltar a trava', async () => {
+    const s = await boot();
+    const { port, hostname } = new URL(s.url);
+    const raw = await new Promise((resolve, reject) => {
+        const sock = require('net').connect(Number(port), hostname, () => sock.write(`GET // HTTP/1.1\r\nHost: x\r\nX-Redmine-API-Key: ${KEY}\r\nConnection: close\r\n\r\n`));
+        let out = '';
+        sock.on('data', d => { out += d; });
+        sock.on('end', () => resolve(out));
+        sock.on('error', reject);
+    });
+    assert.match(raw, /^HTTP\/1\.1 400/);
+    assert.equal((await fetch(`${s.url}/users/current.json`, { headers: { 'X-Redmine-API-Key': KEY } })).status, 200, 'servidor segue de pé');
+    assert.ok(fs.existsSync(`${s.store}.lock`));
+    await s.close();
+});
+
+test('trava: dono vivo bloqueia o seed e um segundo servidor; trava órfã (pid morto) some sozinha', async () => {
+    const s = await boot();
+    const from = path.join(s.dir, 'mais.json');
+    fs.writeFileSync(from, JSON.stringify([{ id: 9002, subject: 'Outro' }]));
+    assert.throws(() => pilot.seed(s.store, from), /pid \d+/);
+    await assert.rejects(() => pilot.listen(pilot.createServer({ store: s.store, key: KEY }), 0), /já há servidor/);
+    await s.close();
+    fs.writeFileSync(`${s.store}.lock`, '999999999');
+    assert.equal(pilot.seed(s.store, from), 1, 'pid morto: trava órfã não bloqueia');
+    assert.ok(!fs.existsSync(`${s.store}.lock`));
+});
