@@ -69,6 +69,6 @@ Repositórios de teste: temporários, com origem `--bare` local, `GIT_CONFIG_GLO
 
 ### Checkpoint 2 (fim)
 
-- [ ] `npm test` e `npm run check` verdes; `node scripts/lib/roadmap-lint.js` com 0 erros.
+- [x] `npm test` e `npm run check` verdes; `node scripts/lib/roadmap-lint.js` com 0 erros.
 - [ ] PR A mesclado ou, no mínimo, aberto e citado (AC-05 só fecha com ele mesclado).
 - [ ] `/pri-check` com dois revisores; `/pri-autorizo` com as quatro ações do Richard (bump para a revisão mesclada, primeiro `mark`, `back` de ensaio e flag no launcher), cada uma com rollback; `/pri-pr` em draft.
