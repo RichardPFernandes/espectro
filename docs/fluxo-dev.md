@@ -48,6 +48,10 @@ de dev (com `.prisma/level`); a barreira real é a CI. No Médio e no Alto,
 o plano para para aprovação antes do código; no Alto, a SPEC também. O Leve não para
 até o PR. No build, cada tarefa roda num subagente novo, em contexto limpo.
 
+## Onde mora cada coisa
+
+Onde mora cada coisa: SPEC da fatia (`tasks/<pasta>/SPEC.md`, efêmera, vai para `docs/historico/` ao fechar), spec viva (`docs/capacidades/<id>.md`, o comportamento da capacidade), ADR (`docs/adr/`, decisão de arquitetura já tomada) e `roadmap/DECISOES.md` (decisões de roadmap). A fatia que muda comportamento de uma capacidade `sem-spec` faz nascer a spec viva dela no mesmo PR; a que toma decisão de arquitetura traz o ADR (o `/pri-pr` pergunta).
+
 ## Merge automático do Leve (F0.8)
 
 Com a variável `MERGE_LEVE` ligada, o bot do GitHub Actions mescla o PR `processo:leve`

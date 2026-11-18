@@ -30,7 +30,14 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    - **Capacidades.** Use a lista do `.prisma/context.json`, já reconferida pelo
      `/pri-check`. Para cada capacidade com spec que não seja `sem-spec` cujo código está no diff, a página
      `docs/capacidades/<id>.md` precisa estar no diff; senão, a Evidência diz por que o
-     comportamento não mudou (é o que o `processo-check` avisa).
+     comportamento não mudou (é o que o `processo-check` avisa). Capacidade `sem-spec` cujo
+     comportamento o diff muda: a página nasce no PR como spec viva, com o mapa regenerado;
+     sem mudança de comportamento, a Evidência diz o motivo.
+   - **ADR.** Pergunte: a fatia tomou decisão de arquitetura (contrato, dono, fronteira
+     plataforma/consumidor ou regra do processo de todas as fatias)? Se sim, o ADR de
+     `docs/adr/` (modelo em `docs/adr/modelo.md`, com a fonte) precisa estar no diff; se só agora
+     ficou claro, o commit muda o HEAD e o `/pri-check` roda de novo. Não crie ADR de
+     decisão que ainda não foi tomada.
 2. **Fatia do roadmap.** Só se o `fatia` do `.prisma/context.json` não for `null`. O
    merge é do Richard e acontece depois da sessão, então o estado da fatia precisa ir
    dentro do PR, **antes do push**. Depois do merge a worktree é apagada: o que ficar
@@ -101,7 +108,7 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
      Mais uma linha por capacidade tocada, `Capacidade <id>`, com PASS e a spec viva
      atualizada neste PR (os IDs que mudaram) ou, sem mudança de comportamento, o motivo
      de a página não mudar. Sem capacidade tocada, uma linha só: "Capacidade: nenhuma" e
-     o motivo. Se o PR altera uma SPEC, cada AC dela também tem a sua linha (o
+     o motivo. Mais uma linha `ADR: <número>` (o ADR deste PR) ou `ADR: nenhum`. Se o PR altera uma SPEC, cada AC dela também tem a sua linha (o
      `processo-check` avisa, sem reprovar, quando falta).
    - **Alto:** antes de criar o PR, rode a parte "Pedido" do `/pri-autorizo`, copie o
      `pedido.md` dele para o corpo e cite a

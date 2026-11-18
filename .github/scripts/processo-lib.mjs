@@ -169,12 +169,14 @@ export function evaluate({ labels = [], body = '', files = [], templateBody = ''
         }
         const states = capabilityMap.capabilities.filter((c) => code.has(c.id));
         if (states.length) info.push(`capacidades com código alterado: ${states.map((c) => `${c.id} (${c.spec})`).join(', ')}`);
-        for (const c of states.filter((c) => c.spec !== 'sem-spec')) {
+        for (const c of states) {
             const spec = `docs/capacidades/${c.id}.md`;
             if (names.includes(spec)) continue;
             const changed = [...new Set(code.get(c.id))];
             const shown = changed.slice(0, 3).join(', ') + (changed.length > 3 ? ` +${changed.length - 3}` : '');
-            warnings.push(`Capacidade "${c.id}": o PR muda código dela (${shown}) e não toca a spec viva (${spec}). Se o comportamento mudou, atualize a spec no mesmo PR; se não mudou, diga isso na Evidência. Aviso, não reprova.`);
+            warnings.push(c.spec === 'sem-spec'
+                ? `Capacidade "${c.id}": ainda sem spec viva e o PR muda código dela (${shown}). Se o comportamento mudou, a spec viva dela (uma página, no molde de docs/capacidades/estado.md) nasce neste PR em ${spec}; se não mudou, diga isso na Evidência. Aviso, não reprova.`
+                : `Capacidade "${c.id}": o PR muda código dela (${shown}) e não toca a spec viva (${spec}). Se o comportamento mudou, atualize a spec no mesmo PR; se não mudou, diga isso na Evidência. Aviso, não reprova.`);
         }
     }
     // SPEC alterada: cada AC aparece na Evidência? Aviso só com a seção preenchida (senão o erro acima já cobre).

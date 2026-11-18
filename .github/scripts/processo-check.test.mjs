@@ -183,17 +183,35 @@ test('aviso de capacidade: tocar a spec no mesmo PR (inclusive renomeada) tira o
     assert.deepEqual(warn([file('scripts/alfa-x.js'), renamed]).warnings, []);
 });
 
-test('aviso de capacidade: sem-spec não avisa, mas entra na linha de info', () => {
+test('aviso de capacidade: sem-spec com código alterado avisa que a spec viva nasce no PR', () => {
     const r = warn([file('scripts/beta.js'), file('scripts/alfa-x.js')]);
-    assert.equal(r.warnings.length, 1);
+    assert.equal(r.ok, true);
+    assert.equal(r.warnings.length, 2);
     assert.match(r.info.join('\n'), /capacidades com código alterado: alfa \(viva\), beta \(sem-spec\)/);
-    assert.deepEqual(warn([file('scripts/beta.js')]).warnings, []);
+    const only = warn([file('scripts/beta.js')]);
+    assert.equal(only.ok, true);
+    assert.deepEqual(only.errors, []);
+    assert.equal(only.warnings.length, 1);
+    assert.match(only.warnings[0], /Capacidade "beta".*sem spec viva.*nasce.*docs\/capacidades\/beta\.md.*Aviso, não reprova/);
+    assert.match(only.warnings[0], /\(scripts\/beta\.js\)/);
+});
+
+test('aviso de capacidade: sem-spec, tocar a página (inclusive renomeada) tira o aviso de beta', () => {
+    assert.deepEqual(warn([file('scripts/beta.js'), file('docs/capacidades/beta.md')]).warnings, []);
+    const renamed = { ...file('docs/capacidades/outra.md', 1, 'renamed'), previous_filename: 'docs/capacidades/beta.md' };
+    assert.deepEqual(warn([file('scripts/beta.js'), renamed]).warnings, []);
+    const mixed = warn([file('scripts/beta.js'), file('scripts/alfa-x.js'), file('docs/capacidades/beta.md')]);
+    assert.equal(mixed.warnings.length, 1);
+    assert.match(mixed.warnings[0], /Capacidade "alfa"/);
 });
 
 test('aviso de capacidade: só teste, fixture ou docs alterados não avisa', () => {
     const r = warn([file('scripts/alfa-x.test.js'), file('scripts/fixtures/alfa-y.js'), file('README.md')]);
     assert.deepEqual(r.warnings, []);
     assert.doesNotMatch(r.info.join('\n'), /capacidades com código/);
+    const b = warn([file('scripts/beta.test.js'), file('scripts/fixtures/beta.js'), file('docs/beta.md')]);
+    assert.deepEqual(b.warnings, []);
+    assert.doesNotMatch(b.info.join('\n'), /capacidades com código/);
 });
 
 test('aviso de capacidade: código removido ou renomeado de dentro da capacidade conta', () => {

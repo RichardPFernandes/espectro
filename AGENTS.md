@@ -29,6 +29,7 @@
    no PR. Bloqueio vira comentário de 3 linhas (Bloqueio / Por quê ou quem
    decide / Efeito). O handoff YAML de docs/handoff-contract.md é opcional: só
    quando o coordenador Maestri pedir uma transferência entre agentes.
+10. Onde mora cada coisa: SPEC da fatia (`tasks/<pasta>/SPEC.md`, efêmera, vai para `docs/historico/` ao fechar), spec viva (`docs/capacidades/<id>.md`, o comportamento da capacidade), ADR (`docs/adr/`, decisão de arquitetura já tomada) e `roadmap/DECISOES.md` (decisões de roadmap).
 
 ## Níveis de processo (Acordo v2)
 
