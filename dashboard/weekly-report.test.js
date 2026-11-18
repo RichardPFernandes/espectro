@@ -556,8 +556,8 @@ test('copyText: custo por ticket entregue com período, n, runs somados, três l
     for (const l of ['Todos os entregues (n = 2)', 'Com recusa de QA (n = 0)', 'Sem recusa de QA (n = 2)']) assert.ok(t.includes(`  ${l}: `), l);
     const lines = t.split('\n').filter(l => /^  (Todos os entregues|Com recusa|Sem recusa)/.test(l));
     assert.ok(lines.length === 3 && lines.every(l => (l.match(/US\$/g) || []).length === (l.match(/ imputado/g) || []).length));
-    assert.match(t, /Linha para a série semanal \(roadmap\/ACOMPANHAMENTO\.md\): US\$ 7,00 imputado, mediana · .* tokens, mediana \(n = 2\)/);
-    assert.ok(t.indexOf('Runs concluídos por semana') < t.indexOf('Custo por ticket entregue') && t.indexOf('Custo por ticket entregue') < t.indexOf('PRs por estado'));
+    assert.match(t, /Linha para a série semanal \(roadmap\/ACOMPANHAMENTO\.md\):\n\| 2026-11-09 \| US\$ 7,00 imputado, mediana · .* tokens, mediana \(n = 2\) \|/);
+    assert.ok(t.indexOf('Runs concluídos por semana') < t.indexOf('Custo por ticket entregue (') && t.indexOf('Custo por ticket entregue (') < t.indexOf('PRs por estado'));
 });
 
 test('copyText e seriesLine: janela sem ticket entregue diz "nenhum ticket" e "sem medição", sem número inventado', () => {
@@ -565,7 +565,7 @@ test('copyText e seriesLine: janela sem ticket entregue diz "nenhum ticket" e "s
     const t = W.copyText(M, '');
     assert.match(t, /n = 0 tickets em 0 runs somados/);
     assert.match(t, /Todos os entregues \(n = 0\): nenhum ticket · nenhum ticket · nenhum ticket/);
-    assert.match(t, /\(roadmap\/ACOMPANHAMENTO\.md\): USD sem medição · tokens sem medição \(n = 0\)/);
+    assert.match(t, /\(roadmap\/ACOMPANHAMENTO\.md\):\n\| 2026-11-09 \| sem medição \| sem medição \| sem medição \| sem medição \| sem medição \|  \|$/m);
 });
 
 test('seriesLine: com medida usa a mediana; sem medida vira "sem medição", nunca zero', () => {
@@ -739,6 +739,51 @@ test('seriesRow: linha da série semanal com as 7 colunas e "sem medição" onde
     assert.strictEqual(full[1], 'US$ 2,00 imputado, mediana · 1 mil tokens, mediana (n = 1)');
     assert.match(full[2], /^100 % de primeira.*\(n = 1\)/);
     assert.strictEqual(full[3], 'sem medição');
-    assert.match(full[4], /^9 itens desligados.*\(n = 12 flags\)$/);
+    assert.strictEqual(full[4], '9 (n = 12 flags)'); // só o número de itens desligados, como a linha de base; o texto longo fica na tela
     assert.strictEqual(full[5], 'sem medição');
+});
+
+// T4: o "Copiar resumo" traz as cinco métricas e a linha da série vem da seriesRow, com a semana da janela.
+const fiveBlock = t => { const L = t.split('\n'), i = L.indexOf('As cinco métricas do acompanhamento (roadmap/ACOMPANHAMENTO.md):'); return i < 0 ? [] : L.slice(i + 1, i + 6); };
+const seriesOf = t => { const L = t.split('\n'); return L[L.findIndex(l => l.startsWith('Linha para a série semanal (roadmap/ACOMPANHAMENTO.md):')) + 1] || ''; };
+const cellsOf = l => l.replace(/^\| | \|$/g, '').split(' | ');
+
+test('copyText: bloco das cinco métricas, uma linha por métrica com valor, "n =" e "fonte:"', () => {
+    const M = report([run(1, IN, { ticket: '90003-a', usd: 2 }), run(2, IN, { ticket: '90003-b', usd: 4 })]);
+    const block = fiveBlock(W.copyText(M, '', FLAGS));
+    assert.strictEqual(block.length, 5);
+    for (const [i, l] of block.entries()) {
+        assert.match(l, new RegExp(`^  M${i + 1} `), l);
+        assert.match(l, /n = /, l);
+        assert.match(l, /; fonte: \S/, l);
+    }
+    assert.strictEqual(block[0], `  M1 Custo por ticket entregue: US$ 3,00 imputado, mediana · 1 mil tokens, mediana (n = 2); fonte: cost_tracking dos runs (F1.5); ${W.costSourceText(M.costSource)}`);
+    assert.match(block[3], /^  M4 Estoque desligado: 9 itens desligados; 9 flags desligadas e 3 ligadas por padrão, 2 vencidas, 4 sem verificação no consumidor \(n = 12 flags\); fonte: docs\/flags\.md, lido em 2026-11-16$/);
+    assert.strictEqual(block[2], '  M3 Runs bloqueadas pelo teto e acima de N× a mediana: desconhecido (n = desconhecido); fonte: não medida, F1.3/F3.4');
+    assert.strictEqual(block[4], '  M5 Fluxo: frentes ativas, issues abertas × fechadas, escopo do cycle: desconhecido (n = desconhecido); fonte: Linear, à mão');
+});
+
+test('copyText: sem o registro de flags, M4 sai desconhecida com a fonte e o motivo, nunca zero', () => {
+    const t = W.copyText(report([]), '', null);
+    const block = fiveBlock(t);
+    assert.strictEqual(block.length, 5);
+    for (const l of block) assert.match(l, /: desconhecido \(n = desconhecido\); fonte: \S/, l);
+    assert.strictEqual(block[3], '  M4 Estoque desligado: desconhecido (n = desconhecido); fonte: docs/flags.md (registro de flags indisponível)');
+    assert.strictEqual(fiveBlock(W.copyText(report([]), '')).length, 5); // sem o terceiro argumento, o mesmo que null
+});
+
+test('copyText: a linha da série é a seriesRow com 7 colunas, a semana da janela e "Itens desligados" só com o número', () => {
+    const M = report([run(1, IN, { ticket: '90003-a', usd: 2 })]);
+    const row = seriesOf(W.copyText(M, '', FLAGS));
+    assert.strictEqual(row, W.seriesRow(W.fiveMetrics(M, FLAGS), '2026-11-09'));
+    const c = cellsOf(row);
+    assert.strictEqual(c.length, 7);
+    assert.strictEqual(c[0], '2026-11-09');
+    assert.strictEqual(c[1], 'US$ 2,00 imputado, mediana · 1 mil tokens, mediana (n = 1)');
+    assert.strictEqual(c[4], '9 (n = 12 flags)');
+    assert.strictEqual(c[3], 'sem medição');
+    assert.strictEqual(c[5], 'sem medição');
+    // Semana anterior leva a segunda dela; "todos os runs" leva a semana atual e diz que é todo o histórico.
+    assert.strictEqual(cellsOf(seriesOf(W.copyText(W.buildReport([], env(), { win: 'prev', now: NOW }), '')))[0], '2026-11-02');
+    assert.strictEqual(cellsOf(seriesOf(W.copyText(W.buildReport([], env(), { win: 'all', now: NOW }), '')))[0], '2026-11-09 (todo o histórico)');
 });
