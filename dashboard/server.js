@@ -52,6 +52,7 @@ const { projectCostTracking } = require('./cost-projection');
 const { buildWouldRouteMetrics } = require('./would-route-metrics');
 const routingProjection = require('./routing-projection');
 const uiVerifyProjection = require('./ui-verify-projection');
+const { runJsonReader } = require('./json-reader');
 // Leitor de roteamento por processo (G3: o dashboard não importa scripts/lib).
 const ROUTING_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'routing-read.js');
 // Leitor por processo do registro effort_miss (PRI-353, mesma fronteira G3).
@@ -1455,24 +1456,8 @@ function createDashboard(options = {}) {
     // nunca zero. A projeção vem do leitor por processo (scripts/effort-miss-read.js): o dashboard
     // não importa scripts/lib (G3). Texto livre passa por redact() como o resto.
     const effortMissReadScript = options.effortMissReadScript || EFFORT_MISS_READ_SCRIPT;
-    function runEffortMissRead(input) {
-        return new Promise(resolve => {
-            const child = execFile(process.execPath, [effortMissReadScript, '--json'],
-                { cwd: repoRoot, env: consumerEnv, timeout: 20000, maxBuffer: 8 * 1024 * 1024 },
-                (err, stdout) => {
-                    let out = null;
-                    try { out = JSON.parse(stdout); } catch { out = null; }
-                    if (err || !out || out.ok !== true) {
-                        console.error(`[dashboard] effort-miss-read: ${redact(out?.error || err?.message || 'sem saída')}`);
-                        return resolve(null);
-                    }
-                    resolve(out.projection);
-                });
-            child.on('error', () => resolve(null));
-            child.stdin.on('error', () => {});
-            child.stdin.end(JSON.stringify(input));
-        });
-    }
+    const runEffortMissRead = input => runJsonReader({ script: effortMissReadScript, field: 'projection', label: 'effort-miss-read',
+        cwd: repoRoot, env: consumerEnv, redact, input, maxBuffer: 8 * 1024 * 1024 });
     app.get('/api/effort-misses', async (req, res) => {
         syncWatchedRoots();
         const reg = readRegistry();
@@ -1493,20 +1478,7 @@ function createDashboard(options = {}) {
     // Vem do leitor por processo (scripts/flags-read.js), pela fronteira G3. Falha é UNKNOWN, nunca zero.
     const flagsReadScript = options.flagsReadScript || FLAGS_READ_SCRIPT;
     app.get('/api/flags-summary', async (req, res) => {
-        const summary = await new Promise(resolve => {
-            const child = execFile(process.execPath, [flagsReadScript, '--json'],
-                { cwd: repoRoot, env: consumerEnv, timeout: 20000, maxBuffer: 1024 * 1024 },
-                (err, stdout) => {
-                    let out = null;
-                    try { out = JSON.parse(stdout); } catch { out = null; }
-                    if (err || !out || out.ok !== true || !out.summary) {
-                        console.error(`[dashboard] flags-read: ${redact(out?.error || err?.message || 'sem saída')}`);
-                        return resolve(null);
-                    }
-                    resolve(out.summary);
-                });
-            child.on('error', () => resolve(null));
-        });
+        const summary = await runJsonReader({ script: flagsReadScript, field: 'summary', label: 'flags-read', cwd: repoRoot, env: consumerEnv, redact });
         if (!summary) return res.status(502).json({ status: 'UNKNOWN', error: 'leitor do registro de flags indisponível' });
         res.json(summary);
     });
