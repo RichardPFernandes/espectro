@@ -47,3 +47,5 @@ Os hexágonos são portões: decisão do Richard, hook ou CI. O hook só age num
 de dev (com `.prisma/level`); a barreira real é a CI. No Médio e no Alto,
 o plano para para aprovação antes do código; no Alto, a SPEC também. O Leve não para
 até o PR. No build, cada tarefa roda num subagente novo, em contexto limpo.
+
+<!-- teste de readback da F0.8 (PRI-410): PR Leve em draft não pode ser mesclado pelo bot. Será fechado sem merge. -->
