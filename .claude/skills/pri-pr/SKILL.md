@@ -28,8 +28,13 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
    - Se passar do nível, peça reclassificação. Não divida o PR em silêncio.
 2. **Fatia do roadmap.** Só se o `fatia` do `.prisma/context.json` não for `null`. O
    merge é do Richard e acontece depois da sessão, então o estado da fatia precisa ir
-   dentro do PR. Leia a linha da fatia em `roadmap/fase-*/FASE.md` (colunas `Nível`,
-   `AUTORIZO` e `Issue no Linear`).
+   dentro do PR, **antes do push**. Depois do merge a worktree é apagada: o que ficar
+   para "marcar depois" se perde. Leia a linha da fatia em `roadmap/fase-*/FASE.md`
+   (colunas `Nível`, `AUTORIZO` e `Issue no Linear`).
+   - **Depois do merge, nunca commite nesta branch** (numa sessão com `.prisma/level`, o hook `pri-fluxo.mjs` nega
+     `git commit` e `git push` quando o PR dela já foi mesclado ou fechado). Se só
+     depois do merge ficar claro que a fatia fechou, crie uma branch nova a partir de
+     `origin/main` e abra um PR só com a linha do `FASE.md`.
    - **Último PR da fatia** só quando, para **toda** issue da coluna `Issue no Linear`
      (a fatia pode ter mais de uma, como a F1.2), os ACs já saíram em PRs mesclados ou
      saem neste (caixas da issue e Estado), não há PR aberto dela
@@ -61,7 +66,11 @@ Sem esse arquivo, ou com outro SHA, rode o `/pri-check` antes (o hook
      entregável é desta fatia; e a Evidência do PR traz uma linha com o critério e a
      prova na `main` mais este PR. Na dúvida, não marque.
    - Em qualquer ramo que edite o `FASE.md`: mude só a linha da fatia e o critério de
-     saída marcado, rode `node scripts/lib/roadmap-lint.js` (0 erro) e, se o arquivo já
+     saída marcado. Depois de `git fetch -q origin`, confira que
+     `git diff origin/main -- roadmap/` só mostra essas linhas. Se aparecer linha de
+     outra fatia, a branch está atrás da `main` e o merge desfaria a mudança de outro PR
+     (foi o que o #191 fez com a F0.10): traga a `main` com `git merge origin/main` antes
+     do push. Rode `node scripts/lib/roadmap-lint.js` (0 erro) e, se o arquivo já
      estiver certo (por exemplo, ajustado numa tarefa do `/pri-build`), não commite nada.
    - **O commit muda o HEAD**, e o hook exige `check.json` no HEAD. Rode o `/pri-check`
      de novo antes do push, passo 3. Como o diff novo é só o `FASE.md`, a
