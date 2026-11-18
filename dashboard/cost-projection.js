@@ -8,7 +8,9 @@ const COUNTERS = ['messages', 'input_tokens', 'output_tokens', 'cache_read_token
     'cache_write_5m_tokens', 'cache_write_1h_tokens', 'cache_write_ttl_unknown_tokens'];
 const AGGREGATES = ['input_tokens', 'output_tokens', 'cache_read_input_tokens',
     'cache_creation_input_tokens', 'cost_usd', 'duration_ms', 'loop_count', 'runs',
-    'retries', 'runs_without_tokens', 'runs_without_cost'];
+    'retries', 'runs_without_tokens', 'runs_without_cost',
+    // PRI-381 (F1.5): só existem com WATCHER_CLI_RESULT_JSON ligada; `numeric` só projeta chave presente.
+    'cli_cost_usd', 'runs_without_cli_cost'];
 const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_<\[\]][a-zA-Z0-9_.:<\[\]> -]{0,199}$/.test(value) ? value : 'UNKNOWN';
 // subtask_key S2 usa barra (ex. abcdef012345/0-2); paths_decl relativos sem absolute/private.
@@ -141,6 +143,18 @@ function projectRoutingDecision(value) {
     };
 }
 
+// PRI-381 (F1.5): campos do JSON da CLI, cada um só quando gravado (flag ligada). Versão fora do
+// formato vira null (o weekly a conta como desconhecida); hash inválido vira UNKNOWN; chave de nó inválida sai.
+const cliVersion = value => typeof value === 'string' && /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/.test(value) ? value : null;
+const promptHashes = value => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).filter(([key]) => id(key) === key).map(([key, h]) => [key, hash(h)])) : {};
+function cliFields(a) {
+    return {
+        ...(Object.hasOwn(a, 'cli_version') ? { cli_version: cliVersion(a.cli_version) } : {}),
+        ...(Object.hasOwn(a, 'prompt_hashes') ? { prompt_hashes: promptHashes(a.prompt_hashes) } : {}),
+    };
+}
+
 function attemptOf(value, context) {
     const a = value || {};
     return {
@@ -154,7 +168,9 @@ function attemptOf(value, context) {
         role_attribution: { status: id(a.role_attribution?.status), conflicted_messages: number(a.role_attribution?.conflicted_messages) },
         cost: { usd: number(a.cost?.usd), unpriced_models: list(a.cost?.unpriced_models).map(id),
             pricing_source: pricingSource(a.cost?.pricing_source), pricing_sha256: hash(a.cost?.pricing_sha256),
-            estimated: typeof a.cost?.estimated === 'boolean' ? a.cost.estimated : 'UNKNOWN' },
+            estimated: typeof a.cost?.estimated === 'boolean' ? a.cost.estimated : 'UNKNOWN',
+            ...(a.cost && typeof a.cost === 'object' && Object.hasOwn(a.cost, 'cli_usd') ? { cli_usd: number(a.cost.cli_usd) } : {}) },
+        ...cliFields(a),
         duration_ms: number(a.duration_ms), exit: Number.isInteger(a.exit) ? a.exit : 'UNKNOWN', result: id(a.result),
         // PRI-222/223: subtarefas e decisão sombra — só campos públicos; applied permanece false em S3.
         signals: projectSignals(a.signals),

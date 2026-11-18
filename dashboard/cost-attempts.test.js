@@ -268,6 +268,49 @@ test('projection: UNKNOWN speed never inherits the standard-mode price', () => {
     assert.match(UI.render(projected), /sem preço<br><small>modo não observado/);
 });
 
+// PRI-381 (F1.5): campos do JSON da CLI só existem com WATCHER_CLI_RESULT_JSON ligada. A projeção os
+// leva ao weekly só quando gravados; null continua null (nunca zero) e nada aparece com a flag desligada.
+test('projection: CLI cost, version and prompt hashes travel only when recorded; null stays null', () => {
+    const HASH = 'a'.repeat(64);
+    const cliRun = (ct, node, sessionId, m, hashes) => cost.mergeRun(ct, { node, agent: 'claude', metrics: { ...metrics, ...m },
+        run: { session_id: sessionId, cli_result_json: true, prompt_hashes: hashes }, outcome: { exitCode: 0 } });
+    let c = cliRun(null, 'plan', 'cli-a', { cli_cost_usd: 1.25, cli_version: '2.5.1' }, { plan: HASH, 'fetch-ticket': 'UNKNOWN' });
+    c = cliRun(c, 'review', 'cli-b', { cli_cost_usd: null, cli_version: null }, { review: 'UNKNOWN' });
+    const p = projectCostTracking(c);
+    assert.equal(p.totals.cli_cost_usd, 1.25);
+    assert.equal(p.totals.runs_without_cli_cost, 1);
+    assert.equal(p.nodes.plan.cli_cost_usd, 1.25);
+    assert.equal(p.nodes.plan.runs_without_cli_cost, 0);
+    assert.equal(p.nodes.review.cli_cost_usd, null, 'node without CLI cost stays null, never 0');
+    assert.equal(p.nodes.review.runs_without_cli_cost, 1);
+    const [plan, review] = [p.nodes.plan.attempts[0], p.nodes.review.attempts[0]];
+    assert.equal(plan.cost.cli_usd, 1.25);
+    assert.equal(plan.cli_version, '2.5.1');
+    assert.deepEqual(plan.prompt_hashes, { plan: HASH, 'fetch-ticket': 'UNKNOWN' });
+    assert.ok(Object.hasOwn(review.cost, 'cli_usd'));
+    assert.equal(review.cost.cli_usd, null);
+    assert.equal(review.cli_version, null);
+    assert.deepEqual(review.prompt_hashes, { review: 'UNKNOWN' });
+
+    const bad = clone(c);
+    const a = bad.nodes.plan.attempts[0];
+    a.cost.cli_usd = -1;
+    a.cli_version = '/private/claude';
+    a.prompt_hashes = { plan: '/etc/passwd', '../x': HASH };
+    bad.nodes.review.attempts[0].cli_version = 42;
+    bad.nodes.review.attempts[0].cost.cli_usd = 'abc';
+    const q = projectCostTracking(bad);
+    assert.equal(q.nodes.plan.attempts[0].cost.cli_usd, null);
+    assert.equal(q.nodes.plan.attempts[0].cli_version, null);
+    assert.deepEqual(q.nodes.plan.attempts[0].prompt_hashes, { plan: 'UNKNOWN' });
+    assert.equal(q.nodes.review.attempts[0].cli_version, null);
+    assert.equal(q.nodes.review.attempts[0].cost.cli_usd, null);
+
+    const CLI_KEYS = /"(cli_usd|cli_version|prompt_hashes|cli_cost_usd|runs_without_cli_cost)"/;
+    assert.doesNotMatch(JSON.stringify(projectCostTracking(multi)), CLI_KEYS, 'flag off: projection unchanged');
+    assert.doesNotMatch(JSON.stringify(projectCostTracking(legacy)), CLI_KEYS);
+});
+
 test('render: multimodel, unknowns, provenance, cache and unpriced/null counters', async () => {
     const html = UI.render((await get('96002-multi')).state.cost_tracking, { plan: 'Plano' });
     for (const text of ['Attempts por nó', 'initial-a', 'retry-b', started, 'COMPLETED', 'principal', 'subagente', 'fast', 'Cache read', 'Cache write 5 min', 'Cache write 1 h', 'TTL não observado', 'UNAVAILABLE', cost.PRICING_SHA256, '2026-10-20']) assert.ok(html.includes(text), text);

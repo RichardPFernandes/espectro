@@ -1776,6 +1776,19 @@
                 "type": "integer",
                 "minimum": 0
               },
+              "cli_cost_usd": {
+                "description": "PRI-381 (F1.5): soma do total_cost_usd do JSON da CLI nos runs que o tinham. Só existe depois de um run com WATCHER_CLI_RESULT_JSON ligada; null quando nenhum run teve o JSON, nunca zero.",
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "runs_without_cli_cost": {
+                "description": "PRI-381 (F1.5): runs do nó sem custo da CLI (JSON ausente ou ilegível, flag desligada ou run de antes dela). > 0 = cli_cost_usd parcial.",
+                "type": "integer",
+                "minimum": 0
+              },
               "models": {
                 "type": "array",
                 "items": {
@@ -1820,6 +1833,19 @@
                 "number",
                 "null"
               ],
+              "minimum": 0
+            },
+            "cli_cost_usd": {
+              "description": "PRI-381 (F1.5): soma de cli_cost_usd dos nós. Ausente se nenhum nó tem custo da CLI.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "runs_without_cli_cost": {
+              "description": "PRI-381 (F1.5): soma de runs_without_cli_cost; nó sem custo da CLI conta todos os seus runs.",
+              "type": "integer",
               "minimum": 0
             }
           }
@@ -3542,7 +3568,30 @@
                   ]
                 }
               ]
+            },
+            "cli_usd": {
+              "description": "PRI-381 (F1.5): total_cost_usd do JSON da CLI (--output-format json). Só com WATCHER_CLI_RESULT_JSON ligada; null = JSON ausente ou ilegível, nunca zero. usd segue sendo o do transcript.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
             }
+          }
+        },
+        "cli_version": {
+          "description": "PRI-381 (F1.5): versão da CLI que rodou, do campo version do transcript da sessão. Só com WATCHER_CLI_RESULT_JSON ligada; null = não encontrada.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_hashes": {
+          "description": "PRI-381 (F1.5): sha256 do template .claude/commands/<template>.md de cada comando do despacho (template = primeiro token do comando sem a /, ex. implement-step na run decomposta; sem comandos, o nó), no início do run; UNKNOWN = template ausente. Só com WATCHER_CLI_RESULT_JSON ligada.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^([a-f0-9]{64}|UNKNOWN)$"
           }
         },
         "duration_ms": {
