@@ -85,7 +85,7 @@ Você está executando o nó **Fetch Ticket**, um entry point alternativo do gra
    `pretaskAnswerPending`/`notifyPretaskBlocked` no watcher), e avisa você via
    Redmine/notificação local uma vez.
 3. Crie/entre na branch do ticket, seguindo a convenção já usada no repo (branch
-   nomeada só com o número do ticket, ex: `43386`, `43153`, `43312`):
+   nomeada só com o número do ticket, ex: `13386`, `13153`, `13312`):
    - Se já existir uma branch local `$ARGUMENTS`, apenas faça checkout (ignore os
      passos de branch base abaixo — a branch já existe, não recrie).
    - Se existir só em `origin/$ARGUMENTS`, faça checkout rastreando o remoto.

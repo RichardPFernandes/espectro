@@ -165,9 +165,9 @@ profundidade do diagnóstico (arquivos a tocar, dependências, riscos) não muda
 
     ```markdown
     ## Referência da Spec
-    - Spec: memory/spec/43646-spec.md
+    - Spec: memory/spec/10005-spec.md
     - ACs: AC-01, AC-02, AC-03
-    - Plan: memory/runs/43646-slug/plan.md
+    - Plan: memory/runs/10005-slug/plan.md
     ```
 
    `ACs:` = todos os IDs **ativos** da spec, nada a mais nem a menos. Nunca escreva
