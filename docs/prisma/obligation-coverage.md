@@ -84,7 +84,7 @@ Falha real (regressão) observada: **nenhuma**. Falhas de ambiente: 2 grupos. In
 Cruzamento com a [PRI-359](https://linear.app/prisma-app/issue/PRI-359). Ela registra 11 falhas numa SHA anterior (worktree da PRI-274):
 
 - **depcruise (3)**: reproduzidas aqui. Classe ambiente (Node 20).
-- **C0 adversarial (2)**: reproduzidas só com TMPDIR em `/var/folders`. Classe ambiente. Confirma `tasks/pri-287-s5/evidence-s5.1.md:38`.
+- **C0 adversarial (2)**: reproduzidas só com TMPDIR em `/var/folders`. Classe ambiente. Confirma `docs/historico/pri-287/evidence-s5.1.md:38`.
 - **consumer B (2)** e **fundação TS (4)**: não reproduzidas na `7da4e97`. Passaram nas 3 rodadas Node 20, na Node 22 e no recorte com TMPDIR em `/var/folders`. A causa na SHA da PRI-274 segue `UNKNOWN`. Nesta SHA elas não falham.
 - A instabilidade de `cost-tracking.test.js` citada em `docs/historico/pri-233/todo.md:120` não apareceu nas 4 rodadas.
 

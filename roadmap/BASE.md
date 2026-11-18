@@ -41,7 +41,7 @@ Gates automáticos ligados por padrão. Custo medido por run, nó e tentativa.
 | 7 | A cadeia plan+implement exige pular o pré-build e roteamento OFF; é inelegível no repo do Espectro (`mode: ON`) | `scripts/lib/plan-implement-chain.js:23-31` | V |
 | 8 | A decomposição ficou alcançável em 15/11 e segue `off`; falta o PR que liga e as runs do piloto | `.claude/model-routing.json:2-6` | V |
 | 9 | O roteamento trata todo `.java` como schema e nunca rebaixa trabalho Java, o caso do único consumidor (PRI-318) | `scripts/lib/schema-watcher.js`, `scripts/lib/classifier-gray-zone.js:34` | V |
-| 10 | `permissions.deny` no plan foi medido sem ganho (32.223 × 32.387 tokens), com a ressalva de que o prompt era stub | `tasks/pri-315/evidence/README.md:7-13` | V |
+| 10 | `permissions.deny` no plan foi medido sem ganho (32.223 × 32.387 tokens), com a ressalva de que o prompt era stub | `docs/historico/pri-315/evidence/README.md:7-13` | V |
 | 11 | Não existe módulo Human Gate / Decision Center. Aceites de spec e plano são comentário no Redmine ou flag de CLI; o dashboard só aceita churn | `scripts/readmine-watcher.js:143-167`, `:2884`; `dashboard/server.js:1724` | V |
 | 12 | Autorização humana estruturada existe para um único tipo de ação (`db_migration`) | `scripts/lib/authorization.js:43` | V |
 | 13 | Só três status aparecem como "precisa de você"; o webhook cobre PR aberto, PR de alto risco e escalation | `dashboard/public/run-list-model.js:14`, `scripts/lib/cycle-notifications.js:3-6` | V |

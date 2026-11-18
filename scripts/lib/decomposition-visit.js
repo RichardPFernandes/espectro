@@ -1,4 +1,4 @@
-// Visita ao Implement da Run decomposta (PRI-311 / PRI-287 S5.2b; SPEC tasks/pri-287-s5/SPEC.md
+// Visita ao Implement da Run decomposta (PRI-311 / PRI-287 S5.2b; SPEC docs/historico/pri-287/SPEC.md
 // v2.1 B2, B5, B6 e o adendo SPEC-s5.2.md v2.1). Decide; não grava o state.json nem despacha.
 //
 // - B2: `decomposition` da visita a partir do plano (subtask-decomposition.decomposePlan, S5.1),

@@ -50,10 +50,10 @@ tasks/fN-M-<nome>/     criado quando a fatia começa: SPEC.md, plan.md, todo.md
    vale a issue e corrige-se o `FASE.md`. O `/pri-pr` também mantém, na linha da fatia, o
    `Nível` e a `Issue no Linear`, e marca o critério de saída que a fatia cumpre. Fatias que
    dividem uma issue fecham pelos próprios ACs, não pela issue inteira.
-9. **`tasks/` antigo fica onde está.** As pastas `tasks/pri-*` e `tasks/evidence.md` são de trabalhos
-   anteriores e seguem como estão. O `plan.md` e o `todo.md` da PRI-233 foram para
-   `docs/historico/pri-233/` em 16/11, porque travavam os comandos do agent-skills. A F0.14 leva
-   para `docs/historico/` as demais pastas de issue fechada. Só as pastas
+9. **`tasks/` só tem o que está em curso.** Pasta de issue fechada vai para `docs/historico/`
+   (a F0.14 moveu as de issue Done; a da PRI-233 já tinha ido em 16/11, porque travava os
+   comandos do agent-skills). Um arquivo que o código cita por caminho não se move: as provas
+   `u10-probe-evidence*.json` da PRI-287 ficam em `tasks/pri-287-s5/`. Pastas
    `tasks/fN-M-<nome>/` pertencem a este roadmap.
 
 ## O que vale para toda fatia

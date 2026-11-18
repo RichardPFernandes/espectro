@@ -1,6 +1,6 @@
 // node --test scripts/lib/decomposition-runtime.test.js
 // PRI-311 (PRI-287 S5.2a): ligações da Run decomposta — AC-36 a AC-45 do adendo
-// tasks/pri-287-s5/SPEC-s5.2.md v2.1. Attempts injetados (sem despacho de subtarefa), repositórios
+// docs/historico/pri-287/SPEC-s5.2.md v2.1. Attempts injetados (sem despacho de subtarefa), repositórios
 // git sintéticos, nada externo.
 const test = require('node:test');
 const assert = require('node:assert');

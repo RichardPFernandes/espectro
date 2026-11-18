@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PRI-315 (L1 da PRI-206): medição offline do cache do prefixo no 1º request do nó plan,
 // AS-IS (`--disallowedTools Agent,Task`) contra a flag (`permissions.deny` via `--settings`),
-// e prova de que, com a flag, o plan não abre subagente. SPEC: tasks/pri-315/SPEC.md.
+// e prova de que, com a flag, o plan não abre subagente. SPEC: docs/historico/pri-315/SPEC.md.
 //
 // STATUS: verificação pontual, FORA do watcher, do harness (loopback-only) e de qualquer
 // estado de Run: faz chamadas reais ao provider com a conta padrão do CLI (config pessoal,
