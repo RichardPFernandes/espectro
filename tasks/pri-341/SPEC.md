@@ -50,3 +50,7 @@ A decomposição do Implement (PRI-287/310/311) está pronta, mas **reservada**:
 ## Pergunta aberta
 
 - **Q1 (decidida em 14/11, resta config do consumidor):** por ora o único tracker é o Redmine, e o futuro é aceitar outros trackers (Richard). Efeito nesta fatia: o piloto usa o adapter Redmine que já existe (`REDMINE_URL`, `REDMINE_API_KEY`, `assigned_to_id=me`; `scripts/readmine-watcher.js:322`). **Não se cria camada de tracker aqui** (seria engine paralelo, AGENTS.md regra 4); vira issue própria quando houver o segundo tracker. Resta só config do consumidor, fora do código: qual projeto Redmine, ticket(s) e `REPO_PATH`/launcher do piloto. Bloqueia T6 em diante, não o PR-A. Sessão pessoal não consulta Redmine (conteúdo M&O é de sessão team).
+
+## Registro T7 (18/11/2026)
+
+Baseline monomodelo medido: 3 Runs (R1, R2, R3) no consumidor-piloto, todas até `committed`, nenhuma com `decomposition`. Média por Run completa: USD 14,18 (n = 2 de 3, indicador sem limiar). R2 tem 37 Attempts sem preço e R3 não tem o Attempt do commit. A tabela e os desvios estão na Evidência do PR que traz este registro.
