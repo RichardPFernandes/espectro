@@ -10,7 +10,8 @@ run) e a régua de custo.
 e não tem lista. Nenhum agente tem limite. Sem linha de base, nenhum ganho pode ser afirmado.
 As únicas coisas ligadas no consumidor corporativo nesta fase são as próprias barreiras,
 nesta ordem: registro, retorno, teto. Os pilotos PRI-341 e PRI-354 rodam no launcher do
-piloto, no próprio Espectro, e seguem em paralelo (D11).
+piloto, no próprio Espectro, e seguem em paralelo (D11). A prova de valor antecipada (F3.7)
+também roda ao lado desta fase, no mesmo launcher, sem tocar o consumidor (D15).
 
 ## Critério de saída
 
