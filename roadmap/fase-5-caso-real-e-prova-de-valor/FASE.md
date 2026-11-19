@@ -6,6 +6,9 @@
 **Objetivo.** Fazer o roteamento valer para o único consumidor (Java) e ter o primeiro
 quadro Espectro × agente direto.
 
+**Depende do resultado da F3.7 (D15).** Se o Espectro não ganhar do agente direto em
+nenhuma medida que pesa, esta fase é revista antes de abrir.
+
 **Por que vem aqui.** A correção do viés `.java` só compensa depois que modelo por fase
 mostrar quanto do ganho já foi capturado. A prova de valor precisa do projeto-amostra e de
 uma linha de base madura.

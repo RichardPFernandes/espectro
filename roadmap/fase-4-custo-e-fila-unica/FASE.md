@@ -6,6 +6,9 @@
 **Objetivo.** Dar a cada flag ligada um antes/depois automático, levar o modelo por fase ao
 consumidor se os tickets de ouro aprovarem, e juntar num lugar tudo que espera o Richard.
 
+**Depende do resultado da F3.7 (D15).** Se o Espectro não ganhar do agente direto em
+nenhuma medida que pesa, esta fase é revista antes de abrir.
+
 **Por que vem aqui.** Decidido em 16/11 (D1): o modelo por fase não espera o comparador por
 coorte, porque com o volume real as coortes não juntam amostra no consumidor; o primeiro
 teste é nos tickets de ouro, na Fase 3. A fila única vem agora porque a F3.6 passa a dizer se o gate é mesmo
