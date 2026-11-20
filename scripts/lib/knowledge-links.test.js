@@ -38,20 +38,19 @@ function withRepo(files, fn) {
 }
 const read = (dir, name) => fs.readFileSync(path.join(dir, name), 'utf8');
 const rule = (dir, name) => kl.check(dir).problems.filter(problem => problem.rule === name);
+const messages = (dir, name) => rule(dir, name).map(problem => problem.message).join('\n');
+const [BEGIN, END] = ['<!-- ligacoes:inicio -->', '<!-- ligacoes:fim -->'];
+const [SOLTA, GRAFO] = ['docs/capacidades/solta.md', 'docs/capacidades/grafo.md'];
+const INLINE = `Use \`${BEGIN}\` e \`${END}\`.`;
 
 describe('--check: regras de reprovação', () => {
-    it('aprova o repo com as seções geradas', () => withRepo(base(), dir => {
-        kl.write(dir);
-        assert.deepEqual(kl.check(dir).problems, []);
-    }));
-
     it('1: ID de capacidade ou de ADR que não existe, em qualquer campo', () => withRepo({
         ...base(),
-        'docs/capacidades/grafo.md': cap('grafo', { depende_de: '[fantasma]', adrs: '[ADR-0009]' }),
-        'docs/adr/0001-a.md': adr(1, { capacidades: '[estado, outra]', substitui: 'ADR-0008' }),
+        [GRAFO]: cap('grafo', { depende_de: '[fantasma]', adrs: '[ADR-0009]' }),
+        'docs/adr/0001-a.md': adr(1, { capacidades: '[estado, outra]', substitui: 'ADR-0008', substituida_por: 'ADR-0007' }),
+        'tasks/pri-1/SPEC-a.md': page({ capacidades: '[nenhuma]', adrs: '[ADR-0006]' }, '# SPEC'),
     }, dir => {
-        const messages = rule(dir, 'id-inexistente').map(problem => problem.message).join('\n');
-        for (const id of ['fantasma', 'ADR-0009', 'outra', 'ADR-0008']) assert.match(messages, new RegExp(`"${id}"`));
+        for (const id of ['fantasma', 'ADR-0009', 'outra', 'ADR-0008', 'ADR-0007', 'nenhuma', 'ADR-0006']) assert.match(messages(dir, 'id-inexistente'), new RegExp(`"${id}"`));
     }));
 
     it('2: capacidade e ADR divergem em adrs/capacidades', () => withRepo({
@@ -61,86 +60,85 @@ describe('--check: regras de reprovação', () => {
         assert.equal(rule(dir, 'lados-divergem').length, 2);
     }));
 
-    it('2: substitui e substituida_por divergem', () => withRepo({
-        ...base(),
-        'docs/adr/0002-b.md': adr(2, { capacidades: '[]', substitui: 'ADR-0001' }),
-    }, dir => {
-        const [problem, ...rest] = rule(dir, 'lados-divergem');
-        assert.equal(rest.length, 0);
-        assert.match(problem.message, /0002-b\.md: substitui cita ADR-0001, mas docs\/adr\/0001-a\.md não cita ADR-0002 em substituida_por/);
-    }));
+    for (const [field, over] of [['substitui', { substitui: 'ADR-0001' }], ['substituida_por', { status: 'substituída', substituida_por: 'ADR-0001' }]]) {
+        it(`2: ${field} sem o espelho na outra ADR`, () => withRepo({ ...base(), 'docs/adr/0002-b.md': adr(2, { capacidades: '[]', ...over }) }, dir => {
+            const mirror = field === 'substitui' ? 'substituida_por' : 'substitui';
+            assert.match(messages(dir, 'lados-divergem'), new RegExp(`^docs/adr/0002-b\\.md: ${field} cita ADR-0001, mas docs/adr/0001-a\\.md não cita ADR-0002 em ${mirror}\\.`));
+            assert.equal(rule(dir, 'lados-divergem').length, 1);
+        }));
+    }
 
-    it('3: status fora do MADR', () => withRepo({ ...base(), 'docs/adr/0001-a.md': adr(1, { status: 'Aceita em 2026' }) }, dir => {
-        assert.match(rule(dir, 'adr-invalida')[0].message, /status "Aceita em 2026"/);
-    }));
-
-    it('3: substituída sem substituida_por, e substituida_por com outro status', () => withRepo({
+    it('3: ADR sem front-matter, campo obrigatório, id, status ou substituição inválidos', () => withRepo({
         ...base(),
-        'docs/capacidades/estado.md': cap('estado'),
-        'docs/adr/0001-a.md': adr(1, { status: 'substituída' }),
-        'docs/adr/0002-b.md': adr(2, { substituida_por: 'ADR-0001' }),
-    }, dir => {
-        const messages = rule(dir, 'adr-invalida').map(problem => problem.message).join('\n');
-        assert.match(messages, /0001-a\.md: .*substituída.* sem substituida_por/);
-        assert.match(messages, /0002-b\.md: .*substituida_por.*status "aceita"/);
-    }));
-
-    it('3: ADR sem front-matter, sem campo obrigatório ou com id diferente do nome', () => withRepo({
-        ...base(),
-        'docs/capacidades/estado.md': cap('estado'),
         'docs/adr/0001-a.md': '# ADR 0001: sem cabeçalho\n',
         'docs/adr/0002-b.md': adr(2, { capacidades: undefined }),
         'docs/adr/0003-c.md': adr(3, { id: 'ADR-0004' }),
+        'docs/adr/0005-e.md': adr(5, { status: 'substituída' }),
+        'docs/adr/0006-f.md': adr(6, { substituida_por: 'ADR-0005' }),
+        'docs/adr/0007-g.md': adr(7, { status: 'Aceita em 2026' }),
     }, dir => {
-        const messages = rule(dir, 'adr-invalida').map(problem => problem.message).join('\n');
-        assert.match(messages, /0001-a\.md: sem front-matter/);
-        assert.match(messages, /0002-b\.md: .*ausente: capacidades/);
-        assert.match(messages, /0003-c\.md: .*"ADR-0004".*ADR-0003/);
+        for (const pattern of [/0001-a\.md: sem front-matter/, /0002-b\.md: .*ausente: capacidades/, /0003-c\.md: .*"ADR-0004".*ADR-0003/, /0005-e\.md: .*substituída.* sem substituida_por/, /0006-f\.md: .*substituida_por.*status "aceita"/, /0007-g\.md: .*status "Aceita em 2026"/]) {
+            assert.match(messages(dir, 'adr-invalida'), pattern);
+        }
     }));
 
     it('4: seção ausente, diferente da esperada ou em página sem ligação', () => withRepo(base(), dir => {
         kl.write(dir);
-        const solta = 'docs/capacidades/solta.md';
-        fs.appendFileSync(path.join(dir, solta), '\n<!-- ligacoes:inicio -->\n## Ligações\n<!-- ligacoes:fim -->\n');
+        fs.appendFileSync(path.join(dir, SOLTA), `\n${BEGIN}\n## Ligações\n${END}\n`);
         fs.writeFileSync(path.join(dir, 'docs/adr/0001-a.md'), read(dir, 'docs/adr/0001-a.md').replace('estado.md', 'outra.md'));
-        fs.writeFileSync(path.join(dir, 'docs/capacidades/grafo.md'), cap('grafo', { depende_de: '[estado]' }));
+        fs.writeFileSync(path.join(dir, GRAFO), cap('grafo', { depende_de: '[estado]' }));
         const files = rule(dir, 'secao').map(problem => problem.message.split(':')[0]).sort();
-        assert.deepEqual(files, ['docs/adr/0001-a.md', 'docs/capacidades/grafo.md', solta]);
+        assert.deepEqual(files, ['docs/adr/0001-a.md', GRAFO, SOLTA]);
     }));
+
+    for (const [name, tail] of [['só início', BEGIN], ['só fim', END], ['fim antes do início', `${END}\n${BEGIN}`]]) {
+        it(`4: marcadores incompletos (${name}): check aponta e write não escreve`, () => withRepo({ ...base(), [SOLTA]: `${cap('solta')}\n${tail}\n` }, dir => {
+            const before = read(dir, SOLTA);
+            assert.match(messages(dir, 'secao'), /docs\/capacidades\/solta\.md: faltam os marcadores/);
+            assert.throws(() => kl.write(dir), /faltam os marcadores/);
+            assert.equal(read(dir, SOLTA), before);
+        }));
+    }
 });
 
 describe('--write', () => {
-    it('gera links relativos, ordenados, só em página com ligação, e não mexe no resto', () => withRepo(base(), dir => {
+    it('gera links relativos, ordenados, só em página com ligação (SPEC com front-matter), e não mexe no resto', () => withRepo({
+        ...base(),
+        'tasks/pri-1/SPEC-a.md': page({ capacidades: '[grafo, estado]', adrs: '[ADR-0001]' }, '# SPEC'),
+        'docs/historico/pri-2/SPEC-b.md': '# SPEC sem cabeçalho\n',
+    }, dir => {
         const before = read(dir, 'docs/capacidades/estado.md');
         kl.write(dir);
-        assert.equal(read(dir, 'docs/capacidades/estado.md'), `${before}\n<!-- ligacoes:inicio -->\n## Ligações\n\n- Usada por: [grafo](grafo.md)\n- ADRs: [ADR-0001](../adr/0001-a.md) — Título 1\n<!-- ligacoes:fim -->\n`);
-        assert.match(read(dir, 'docs/capacidades/grafo.md'), /- Depende de: \[estado\]\(estado\.md\)\n<!-- ligacoes:fim -->\n$/);
+        assert.equal(read(dir, 'docs/capacidades/estado.md'), `${before}\n${BEGIN}\n## Ligações\n\n- Usada por: [grafo](grafo.md)\n- ADRs: [ADR-0001](../adr/0001-a.md) — Título 1\n${END}\n`);
+        assert.match(read(dir, GRAFO), /- Depende de: \[estado\]\(estado\.md\)\n<!-- ligacoes:fim -->\n$/);
+        assert.match(read(dir, 'tasks/pri-1/SPEC-a.md'), /- Capacidades: \[estado\]\(\.\.\/\.\.\/docs\/capacidades\/estado\.md\)\n- Capacidades: \[grafo\].*\n- ADRs: \[ADR-0001\]\(\.\.\/\.\.\/docs\/adr\/0001-a\.md\)/);
+        assert.equal(read(dir, 'docs/historico/pri-2/SPEC-b.md'), '# SPEC sem cabeçalho\n');
     }));
 
-    it('é idempotente e desfaz a seção quando a ligação some', () => withRepo(base(), dir => {
-        const first = kl.write(dir);
-        assert.deepEqual(kl.write(dir).changed, []);
-        fs.writeFileSync(path.join(dir, 'docs/capacidades/grafo.md'), read(dir, 'docs/capacidades/grafo.md').replace('depende_de: [estado]\n', ''));
+    it('arquivo sem newline final: seção com newline final, idempotente, e some quando a ligação some', () => withRepo({ ...base(), [GRAFO]: cap('grafo', { depende_de: '[estado]' }).trimEnd() }, dir => {
         kl.write(dir);
-        assert.equal(read(dir, 'docs/capacidades/grafo.md'), cap('grafo'));
+        assert.match(read(dir, GRAFO), /Corpo\.\n\n<!-- ligacoes:inicio -->[^]*<!-- ligacoes:fim -->\n$/);
+        assert.deepEqual(kl.write(dir).changed, []);
+        fs.writeFileSync(path.join(dir, GRAFO), read(dir, GRAFO).replace('depende_de: [estado]\n', ''));
+        kl.write(dir);
+        assert.equal(read(dir, GRAFO), cap('grafo'));
         assert.doesNotMatch(read(dir, 'docs/capacidades/estado.md'), /Usada por/);
     }));
 
-    it('liga SPEC com front-matter e ignora a sem front-matter', () => withRepo({
+    it('marcador citado no texto não é seção: só vale na linha inteira', () => withRepo({
         ...base(),
-        'tasks/pri-1/SPEC-a.md': page({ capacidades: '[estado, grafo]', adrs: '[ADR-0001]' }, '# SPEC'),
-        'docs/historico/pri-2/SPEC-b.md': '# SPEC sem cabeçalho\n',
+        [SOLTA]: cap('solta').replace('Corpo.', INLINE),
+        [GRAFO]: cap('grafo', { depende_de: '[estado]' }).replace('Corpo.', INLINE),
     }, dir => {
+        const solta = read(dir, SOLTA);
         kl.write(dir);
-        assert.match(read(dir, 'tasks/pri-1/SPEC-a.md'), /- Capacidades: \[estado\]\(\.\.\/\.\.\/docs\/capacidades\/estado\.md\)\n- Capacidades: \[grafo\].*\n- ADRs: \[ADR-0001\]\(\.\.\/\.\.\/docs\/adr\/0001-a\.md\)/);
-        assert.equal(read(dir, 'docs/historico/pri-2/SPEC-b.md'), '# SPEC sem cabeçalho\n');
-        assert.doesNotMatch(read(dir, 'docs/capacidades/estado.md'), /SPEC/);
+        assert.equal(read(dir, SOLTA), solta);
+        assert.equal(read(dir, GRAFO).split(BEGIN).length, 3);
+        assert.ok(read(dir, GRAFO).includes(`${INLINE}\n\n${BEGIN}\n## Ligações`));
+        assert.deepEqual(kl.check(dir).problems, []);
     }));
 
-    it('não conserta ID inexistente nem lado divergente: devolve os problemas sem escrever', () => withRepo({
-        ...base(),
-        'docs/capacidades/grafo.md': cap('grafo', { depende_de: '[fantasma]' }),
-    }, dir => {
+    it('não conserta ID inexistente nem lado divergente: devolve os problemas sem escrever', () => withRepo({ ...base(), [GRAFO]: cap('grafo', { depende_de: '[fantasma]' }) }, dir => {
         const result = kl.write(dir);
         assert.equal(result.problems.length, 1);
         assert.deepEqual(result.changed, []);
@@ -150,12 +148,8 @@ describe('--write', () => {
 
 describe('CLI', () => {
     const run = (dir, ...args) => spawnSync(process.execPath, [path.join(dir, 'scripts/knowledge-links.js'), ...args], { encoding: 'utf8' });
-    const withCli = (files, fn) => withRepo({
-        ...files,
-        'scripts/knowledge-links.js': read(SCRIPTS, 'knowledge-links.js'),
-        'scripts/lib/knowledge-links.js': read(SCRIPTS, 'lib/knowledge-links.js'),
-        'scripts/lib/front-matter.js': read(SCRIPTS, 'lib/front-matter.js'),
-    }, fn);
+    const sources = ['knowledge-links.js', 'lib/knowledge-links.js', 'lib/front-matter.js'].map(name => [`scripts/${name}`, read(SCRIPTS, name)]);
+    const withCli = (files, fn) => withRepo({ ...files, ...Object.fromEntries(sources) }, fn);
 
     it('--check reprova (1), --write conserta (0), --check aprova (0) com o resumo', () => withCli(base(), dir => {
         const failed = run(dir, '--check');
@@ -166,4 +160,17 @@ describe('CLI', () => {
         assert.equal(ok.status, 0);
         assert.match(ok.stdout, /ligações: 4 páginas, sem problema/);
     }));
+
+    for (const [name, args, over, status, pattern] of [
+        ['argumento desconhecido', ['--outro'], {}, 2, /^uso: /],
+        ['cabeçalho ilegível', ['--check'], { [GRAFO]: cap('grafo', { depende_de: '[estado' }) }, 2, /lista em linha sem "\]"/],
+        ['--write com ID inexistente (sem escrever)', ['--write'], { [GRAFO]: cap('grafo', { depende_de: '[fantasma]' }) }, 1, /"fantasma"/],
+    ]) {
+        it(`${name} sai ${status}`, () => withCli({ ...base(), ...over }, dir => {
+            const result = run(dir, ...args);
+            assert.equal(result.status, status);
+            assert.match(result.stderr, pattern);
+            assert.equal(read(dir, 'docs/adr/0001-a.md'), adr(1));
+        }));
+    }
 });

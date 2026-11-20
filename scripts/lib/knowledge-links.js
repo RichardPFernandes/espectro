@@ -31,30 +31,22 @@ function header(rel, text) {
     }
 }
 
-function markdownIn(root, dir) {
+// Arquivos de `dir` (e subpastas, se `deep`) cujo nome casa com `pattern`, como caminhos relativos a `root`.
+function filesIn(root, dir, pattern, deep = false) {
     if (!fs.existsSync(path.join(root, dir))) return [];
-    return fs.readdirSync(path.join(root, dir)).filter(name => name.endsWith('.md')).sort().map(name => `${dir}/${name}`);
-}
-
-function specsIn(root, dir) {
-    if (!fs.existsSync(path.join(root, dir))) return [];
-    return fs.readdirSync(path.join(root, dir), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).flatMap(entry => {
-        const rel = `${dir}/${entry.name}`;
-        if (entry.isDirectory()) return specsIn(root, rel);
-        return /^SPEC.*\.md$/.test(entry.name) ? [rel] : [];
-    });
+    return fs.readdirSync(path.join(root, dir), { recursive: deep }).filter(rel => pattern.test(path.basename(rel))).sort().map(rel => `${dir}/${rel}`);
 }
 
 // Lê as páginas e devolve { pages, problems } com os problemas de cabeçalho das ADRs.
 function load(root) {
     const pages = [];
     const problems = [];
-    for (const rel of markdownIn(root, 'docs/capacidades').filter(file => !file.endsWith('/README.md'))) {
+    for (const rel of filesIn(root, 'docs/capacidades', /^(?!README\.md$).*\.md$/)) {
         const text = read(root, rel);
         const fields = header(rel, text);
         pages.push({ kind: 'cap', rel, text, id: fields.id || path.basename(rel, '.md'), depende_de: list(fields.depende_de), adrs: list(fields.adrs) });
     }
-    for (const rel of markdownIn(root, 'docs/adr').filter(file => !/\/(README|modelo)\.md$/.test(file))) {
+    for (const rel of filesIn(root, 'docs/adr', /^(?!(README|modelo)\.md$).*\.md$/)) {
         const text = read(root, rel);
         const bad = message => problems.push({ rule: 'adr-invalida', message: `${rel}: ${message}. ${fix(rel)}` });
         const num = /^(\d{4})-/.exec(path.basename(rel))?.[1];
@@ -71,7 +63,7 @@ function load(root) {
         adr.title = /^# (?:ADR \d+: )?(.+)$/m.exec(text)?.[1] || '';
         pages.push(adr);
     }
-    for (const rel of [...specsIn(root, 'tasks'), ...specsIn(root, 'docs/historico')]) {
+    for (const rel of [...filesIn(root, 'tasks', /^SPEC.*\.md$/, true), ...filesIn(root, 'docs/historico', /^SPEC.*\.md$/, true)]) {
         const text = read(root, rel);
         if (!text.startsWith('---')) continue;
         const fields = header(rel, text);
@@ -125,13 +117,13 @@ function expectedSection(page, pages, byId) {
 
 // Tira a seção existente (com a linha em branco antes) e, se houver `section`, acrescenta ao fim.
 function applySection(text, section) {
-    const begin = text.indexOf(BEGIN);
-    const end = text.indexOf(END);
-    if ((begin === -1) !== (end === -1) || end < begin) throw new Error(`faltam os marcadores ${BEGIN} e ${END}, nesta ordem`);
+    // O marcador só vale se ocupar a linha inteira; citado no meio do texto, não conta.
+    const [begin, end] = [BEGIN, END].map(tag => new RegExp(`^${tag}\\r?$`, 'm').exec(text));
+    if (!begin !== !end || (end && end.index < begin.index)) throw new Error(`faltam os marcadores ${BEGIN} e ${END}, nesta ordem`);
     let base = text;
-    if (begin !== -1) {
-        const after = text.slice(end + END.length);
-        const head = text.slice(0, begin);
+    if (begin) {
+        const after = text.slice(end.index + end[0].length);
+        const head = text.slice(0, begin.index);
         base = (head.endsWith('\n\n') ? head.slice(0, -1) : head) + (after.trim() === '' ? '' : after.replace(/^\n/, ''));
     }
     return section ? `${base}${base.endsWith('\n') ? '' : '\n'}\n${section}\n` : base;
