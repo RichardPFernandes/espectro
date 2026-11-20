@@ -12,9 +12,9 @@ const sh = require('./spec-hash');
 
 const SPEC = `---
 spec_template_version: 1
-ticket: 43700
+ticket: 10004
 ---
-# Ticket #43700 — Desconto por volume
+# Ticket #10004 — Desconto por volume
 
 ## Contexto
 Hoje o relatório não mostra o desconto.
@@ -34,7 +34,7 @@ Transportadora vê o desconto aplicado.
 - Não alterar o contrato do endpoint de cotação.
 
 ## Referências
-- ticket #43600
+- ticket #13600
 `;
 
 test('config: escopo atual existe e é o que a CLI usa por padrão', () => {
@@ -50,7 +50,7 @@ test('forma canônica: só seções contratuais, na ordem do config, sem cabeça
     assert.ok(canon.startsWith('scope:contract_sections_v1\n[acceptance_criteria]\n- AC-01: Fretes'));
     assert.ok(canon.includes('[objective]\nTransportadora vê o desconto aplicado.'));
     assert.ok(canon.includes('[constraints]\n- Não alterar o contrato'));
-    for (const out of ['Hoje o relatório', 'ticket #43600', 'spec_template_version', '## Critérios']) assert.ok(!canon.includes(out), out);
+    for (const out of ['Hoje o relatório', 'ticket #13600', 'spec_template_version', '## Critérios']) assert.ok(!canon.includes(out), out);
 });
 
 test('fora do HASH_SCOPE: comentário, espaço, frontmatter, Contexto, Referências, Histórico e Casos-limite não mudam o hash', () => {
@@ -58,12 +58,12 @@ test('fora do HASH_SCOPE: comentário, espaço, frontmatter, Contexto, Referênc
     const variants = [
         SPEC.replace('- AC-01: Fretes', '<!-- revisar -->\n- AC-01:   Fretes  '),
         SPEC.replace(/\n/g, '\r\n'),
-        SPEC.replace('ticket: 43700', 'ticket: 43700\nautor: fulano\ndata: 2026-10-01'),
+        SPEC.replace('ticket: 10004', 'ticket: 10004\nautor: fulano\ndata: 2026-10-01'),
         SPEC.replace('Hoje o relatório não mostra o desconto.', 'Contexto reescrito do zero.'),
-        SPEC.replace('- ticket #43600', '- ticket #43600\n- print.png'),
+        SPEC.replace('- ticket #13600', '- ticket #13600\n- print.png'),
         SPEC.replace('## Critérios de Aceite', '## Critérios de aceite'),
         SPEC + '\n## Histórico de Mudanças\n\n### SC-001 · aprovado\n- Antes: x\n',
-        SPEC + '\n## Decisões de Implementação\n\n### implement · 2026 · 43700\n- Impacto no spec: nenhum\n',
+        SPEC + '\n## Decisões de Implementação\n\n### implement · 2026 · 10004\n- Impacto no spec: nenhum\n',
         SPEC.replace('## Restrições', '### Casos-limite / Pontos a esclarecer\n- e se o volume for 0?\n\n## Restrições'),
         SPEC.replace('## Escopo', '## Pontos a esclarecer\n- dúvida aberta\n\n## Escopo'),
     ];

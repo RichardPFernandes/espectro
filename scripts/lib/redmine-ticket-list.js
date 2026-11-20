@@ -24,6 +24,13 @@ function config(opts = {}) {
     };
 }
 
+// Número que o Redmine mandou, ou null (ausente/vazio/não numérico). Nunca 0 por falta.
+function num(v) {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
 function scrub(text, key) {
     const s = String(text ?? '');
     return key && key.length >= 4 ? s.split(key).join('[REDACTED]') : s;
@@ -55,6 +62,12 @@ async function fetchAssignedTickets(opts = {}) {
             status: i.status?.name || '',
             priority: i.priority?.name || '',
             updated_on: i.updated_on || null,
+            // Vêm na mesma resposta do issues.json (tela Tickets: tipo, responsável,
+            // horas estimadas, % feito). null = o Redmine não mandou — nunca 0.
+            tracker: i.tracker?.name || null,
+            assignee: i.assigned_to?.name || null,
+            estimated_hours: num(i.estimated_hours),
+            done_ratio: num(i.done_ratio),
         }));
     } catch (e) {
         cfg.log(`[redmine-ticket-list] falha buscando tickets atribuídos (${scrub(e?.name === 'TimeoutError' ? 'timeout' : e?.message, cfg.key)})`);
@@ -174,6 +187,10 @@ async function getTicketDetail(issueId, opts = {}) {
         assignee: i.assigned_to?.name || null,
         tracker: i.tracker?.name || null,
         project: i.project?.name || null,
+        version: i.fixed_version?.name || null,
+        estimated_hours: num(i.estimated_hours),
+        spent_hours: num(i.spent_hours),
+        done_ratio: num(i.done_ratio),
         author: i.author?.name || null,
         created_on: i.created_on || null,
         updated_on: i.updated_on || null,

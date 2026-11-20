@@ -1,0 +1,136 @@
+# Maestri — Agent Handoff Contract v1.2. Regras: docs/handoff-contract.md
+handoff_version: "1.2"
+
+nivel_processo: "alto"
+nivel_processo_inicial: null
+nivel_processo_motivo: null
+
+task:
+  id: "PRI-273"
+  objective: "Implementar o protocolo c2b-2 do Diagnosis Record (PRI-181): reserva/lease com job e token, produção fora de lock em staging, localização por K+token, commit numa única seção crítica com admissão (a)–(g), reconciliador de órfãos provado por SIGKILL, republicação, stale campo a campo com regra de cadeia do retry, superseded (RC-6) e failed:INTEGRITY — tudo atrás de WATCHER_QA_DIAGNOSTICO, desligada."
+  specification_ref: "prisma-evidence/pri-181/SPEC-c2b-2-protocol-r5.1.md (SHA-256 d9c90435fc19fb6ed0234baf1483b0b161ac966f44f70cb00da91974fc133338), pinada na sdd-B-v3 (6da4acc6…6421); AUTORIZO D-C2b-2 do Richard em 13/11/2026 («AUTORIZO, 4 keys»)"
+  acceptance_criteria:
+    - "AC-01 a AC-16 da SPEC-c2b-2-protocol r5.1 (parciais declarados em validation.not_executed e open_issues)"
+
+routing:
+  from: "Claude Opus 5.5 (sessão PRI-273)"
+  to: "Richard (revisão do PR draft, merge exclusivo dele; AUTORIZOs de bump e de ligar a flag são separados)"
+  runtime: "claude"
+  fallback_reason: null
+
+risk:
+  level: "HIGH"
+  signals:
+    - "G3: escreve estado autoritativo (state.json > qa_rejections[].diagnosis) com concorrência, crash e cerco"
+    - "Sem efeito no consumidor: só com WATCHER_QA_DIAGNOSTICO=1 (desligada; ligar é gate próprio R3) e sem bump"
+  classified_by: "Claude Opus 5.5"
+
+execution:
+  agent: "Claude Opus 5.5"
+  status: "COMPLETED"
+  summary: "Novo scripts/lib/qa-diagnosis-protocol.js (reserve, produceDeterministic, locate, commit, failJob, verifyFailJob, applyStale, applySuperseded, reconcile 9.1–9.5, drive, tick), validateJob no model (snapshot com quatro chaves, leitura 14.12), um passo qaDiagnosisTickSafe no watcher antes de consumeQaRetrySignals (só com a flag; no-op em DRY_RUN/SIMULATE), descrições do schema. state-writer e cas injetados pelo watcher (no-lib-upward). Store, state-writer, dashboard, C2/C3 e ramo C0 intocados. G3 r1 (Opus REQUEST_CHANGES 1 MAJOR de cobertura; Arquiteto REQUEST_CHANGES 1 MAJOR AI1-01) → correções → r2 (Opus APPROVE com condições, aplicadas; Arquiteto APPROVE)."
+  branch: "fernandesrichard312/pri-273-pri-181-c2b-2-protocol"
+  commit: null
+
+artifacts:
+  - path: "scripts/lib/qa-diagnosis-protocol.js"
+    action: "CREATED"
+    description: "Protocolo §4.3/§4.3.1/§5/§7 da SDD B v3 conforme a spec r5.1; índice token → run só em memória; costura opts.clonesOf (DB-16b ponto 5, padrão 1); pontos 1, 2, 5 e 7 da DB-16b nomeados."
+  - path: "scripts/lib/qa-diagnosis-model.js"
+    action: "MODIFIED"
+    description: "validateJob e validateBlock valida job (premissa 4); bypassed segue tolerado como chave extra."
+  - path: "scripts/readmine-watcher.js"
+    action: "MODIFIED"
+    description: "qaDiagnosisTickSafe (flag, DRY_RUN/SIMULATE no-op, erros contidos), raízes de descoberta e de localização; chamada no tick antes de consumeQaRetrySignals; syncQaRejection inalterado (Q8 B)."
+  - path: ".graph/schemas/state.schema.json"
+    action: "MODIFIED"
+    description: "Só descrições: diagnosis.job e eventos qa_diagnosis_*."
+  - path: "scripts/lib/qa-diagnosis-protocol.test.js"
+    action: "CREATED"
+    description: "AC-01…AC-06, AC-07b sem crash, AC-07c, AC-08…AC-12 (protocolo), AC-14, AC-15 e testes dirigidos da G3."
+  - path: "scripts/lib/qa-diagnosis-protocol-crash.test.js"
+    action: "CREATED"
+    description: "AC-07: filho real morto por SIGKILL em K1–K6 (13 cenários) + AC-07b depois de K4; o pai espera o exit antes do tick."
+  - path: "scripts/lib/qa-diagnosis-c2b2-flag-on.test.js"
+    action: "CREATED"
+    description: "AC-12/AC-13 com a flag pelo passo do watcher: checkout, worktree, rotação, fora das raízes, DRY_RUN/SIMULATE, ordem no tick, exceção contida."
+  - path: "scripts/lib/qa-diagnosis-c2b2-flag-off.test.js"
+    action: "CREATED"
+    description: "AC-13 com a flag ausente: spy prova que o protocolo não é chamado."
+  - path: "scripts/lib/qa-diagnosis-model.test.js"
+    action: "MODIFIED"
+    description: "Caso novo de job malformado (cada regra da premissa 4); nenhuma asserção existente mudou."
+  - path: "tasks/pri-273/handoff.yaml"
+    action: "CREATED"
+    description: "Este handoff."
+
+decisions:
+  approved:
+    - "AUTORIZO D-C2b-2 (Richard, 13/11/2026): implementação com a flag desligada, PR draft, merge do Richard; snapshot com quatro chaves (leitura 14.12)."
+    - "Q1–Q8, RC-1/2/3/6/7/8 e G-1 conforme decisoes-rrc005-c2b2.md e SDD B v3 (RRC-PRI181-005 APPLIED)."
+  proposed:
+    - "Leitura declarada (OI1-02): no commit, a regra de status da premissa 8 («só collecting com o job T muda de status») vem antes da (g) para o caso (f) — bloco proposed/reviewed com job T é cercado sem mudar de status. Contradição interna da spec (precedência × regra de status); sem efeito prático nesta fatia (a passada de stale do driver leva o bloco a stale no mesmo tick)."
+    - "Desvio de dependência: state-writer e cas são injetados pelo chamador (lib/ não pode subir para scripts/, regra no-lib-upward do arch:check); a spec já previa a injeção de raízes e listagens."
+    - "applySuperseded exige `at` do chamador (INVALID_AT sem relógio), sem Date() implícito (AI1-04)."
+    - "Toda promoção 9.1 não concluída grava promotion_deferred (AI1-02/OI1-05), para a carência sempre vencer; a spec dá exemplos de transitórios, não lista fechada."
+
+validation:
+  executed:
+    - command: "Receita oficial (env -i, HOME/TMPDIR sintéticos, loopback-only), Node v22.23.2, npm test em scripts e dashboard, branch com a diff da r2"
+      result: "FAILED"
+      expected: "PASSED"
+      evidence: "scripts: 2000 testes, 1992 pass, 2 fail; dashboard: 547/547. As 2 falhas são o mesmo teste «C0: árvore adversarial … symlink real» (qa-rejection-c0-oracle e qa-retry-watcher-c0-oracle), por realpath /var → /private/var do macOS; idênticas na main 5560d29 limpa na mesma receita (1918 pass, 2 fail). Com TMPDIR canônico os oráculos dão 23/23 e 26/26 (conferido pelo Arquiteto). Pré-existentes, fora desta entrega."
+    - command: "node harness/run-tests.js scripts (testes c2b-2 + c2b-1 + flag + golden + retry + validate-state), Node 22, código final"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "197 testes, 196 pass; a única falha é o mesmo teste C0 de realpath acima. Testes c2b-2: protocol 50, crash 14, flag-on 7, flag-off 2, model 16."
+    - command: "npm --prefix scripts run check:js && arch:check && lint:src (Node 22)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "check:js=0, arch:check=0 (sem violações novas; 77 conhecidas ignoradas), lint:src=0."
+    - command: "Mutações em cópia isolada (M7, M12, AI1-01, OI2-01, OI2-02)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "prisma-evidence/pri-181/mutacoes-c2b-2-impl-r2.log (SHA-256 49d1294b…a846): as cinco mortas pelos testes."
+    - command: "AC-15: tick sobre 1.200 runs (50 com bloco) e 500 stagings (metade LOST)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "766 ms na máquina de teste (Node 20, primeira medição), scanReads = 1200 (uma leitura por state.json). Limite da spec ≤ 2 s; sensível a carga (OI1-04)."
+  not_executed:
+    - "AC-14 parcial: CLI state-writer set/transition, appendRejection e ingestFromJournals preservando diagnosis não foram exercitados (cobertos write com base, update e archive); casos concorrentes com syncQaRejection/retry do dashboard são da c1b (Q8 B)."
+    - "AC-15 parcial: writer/archive/tick concorrentes sem espera além de LOCK_TIMEOUT_MS não foi medido sob concorrência real; custo do passo no consumidor UNKNOWN (AI1-05)."
+    - "AC-04 parcial: «archive concorrente bloqueado até o fim do commit» não tem teste com processos concorrentes (coberto: archive entre localização e commit relocaliza)."
+    - "AC-13 parcial: «retry pelo dashboard funciona como hoje» só pela regressão das suítes (qa-retry-watcher, golden), sem teste novo dedicado."
+    - "UNKNOWN ≠ PASS (spec): hard link/st_dev/EXDEV no layout real (gate 8), SIGKILL e breakIfStale no Linux, frequência do rebaseline do retry, agentes que regravam state.json por fora do state-writer, staging de worktree apagado pela limpeza (AR-09), resíduos do §12 v3."
+
+open_issues:
+  - "Suíte scripts com 2 falhas pré-existentes por realpath do macOS (mesmo teste C0 nos dois oráculos), idênticas na main."
+  - "NIT abertos não bloqueantes: OI1-08 a OI1-10 e OI2-04 (Opus), AI2-02 (Map de quarentena pendente sem limite; limitado na prática pelo número de stagings do processo)."
+  - "Carry-overs do gate de ligar a flag (R3), inalterados: c2b-3 mergeada (clones(K), marcador/cerco em clones, limpeza de worktree × staging, campos origin/previous_spec_hash/new_spec_hash/spec_version no spec_baseline do retry, bypassed); c1b (binding com predicado t1, preservação do diagnosis contra o merge3, chamador de applySuperseded); dono da G-1; hard link/st_dev e custo no consumidor."
+  - "Pré-condição do bump: registrar o modo vigente do consumidor na PRI-263 (fd62968a)."
+  - "Até a c2b-3, o retry real (sem origin) deixa todo diagnóstico com vínculo comparável em stale; até a c1b, nenhum bloco é criado e todo diagnóstico publica sob UNKNOWN (fail-closed, flag desligada)."
+
+next:
+  recommended_agent: "Richard"
+  action: "Revisar o PR draft e decidir o merge. Bump do checkout vivo e ligar WATCHER_QA_DIAGNOSTICO são AUTORIZOs separados, depois das pré-condições R3."
+  prerequisites:
+    - "Merge do PR (exclusivo do Richard)"
+
+context_refs:
+  - "https://linear.app/prisma-app/issue/PRI-273"
+  - "prisma-evidence/pri-181/SPEC-c2b-2-protocol-r5.1.md"
+  - "prisma-evidence/pri-181/review-c2b-2-impl-opus-r1.md (2ccdf8a5…4884), review-c2b-2-impl-opus-r2.md (17f28552…a92b)"
+  - "prisma-evidence/pri-181/review-c2b-2-impl-arquiteto-r1.md (472ae01a…e449), review-c2b-2-impl-arquiteto-r2.md (20d2f412…c140)"
+
+facts:
+  - "Revisores G3: Claude Opus (adversarial) e Claude Opus (Arquiteto), cada um em contexto limpo — independência por contexto, mesmo fornecedor, sem Codex."
+  - "G3 r1 (diff 49f40f31…594f0d): Opus REQUEST_CHANGES (0 BLOCKER, 1 MAJOR OI1-01 de cobertura, 6 MINOR, 3 NIT); Arquiteto REQUEST_CHANGES (0 BLOCKER, 1 MAJOR AI1-01: passada de stale gravava em run fora das raízes, 4 MINOR, 3 NIT)."
+  - "G3 r2 (diff be439ec2…3928c): Opus APPROVE com condições (0/0, 3 MINOR, 1 NIT; condições aplicadas: testes de OI2-01/OI2-02 com mutantes mortos, guarda running no deferPromotion, leitura OI1-02 declarada); Arquiteto APPROVE (0/0/0, 3 NIT)."
+  - "Duas sessões foram interrompidas pelo encerramento do app durante as suítes e as revisões; os revisores foram retomados pelo transcript e as suítes rodadas de novo do zero."
+  - "Uma rodada de mutação (OI2-01) não aplicou o patch por indentação e registrou «fail 0»; a linha foi descartada e a mutação refeita com o patch aplicado (fail 1)."
+assumptions: []
+
+usage:
+  duration: "UNKNOWN"
+  retries: 0
+  tokens: "UNKNOWN"

@@ -14,9 +14,41 @@
 //   - porta do connect → PREVIEW_FRONT_PORT (e sem abrir browser sozinho);
 //   - regras do connect-modrewrite: localhost:8080 → localhost:PREVIEW_BACK_PORT. O
 //     Gruntfile chama require('connect-modrewrite') dentro do middleware, então basta
-//     trocar o export em cache pelo wrapper antes do primeiro request.
+//     trocar o export em cache pelo wrapper antes do primeiro request;
+//   - o app decide "dev" por `location.port === '9000'` (app.js: 401 vai pra /#/login; em
+//     "produção" recarrega "/", que no preview é o próprio app → loop de reload). Um
+//     middleware na frente serve esses .js com a porta do preview no lugar do 9000 —
+//     só a resposta HTTP muda, o arquivo do front fica como está.
+const fs = require('fs');
 const path = require('path');
 const { createRequire } = require('module');
+
+// `location.port === '9000'` / `== "9000"`: a checagem de "ambiente dev" do app-front.
+const DEV_PORT_RE = /(location\.port\s*={2,3}\s*)(['"])9000\2/g;
+
+// Middleware connect: .js do front (app/, .tmp/ ou a raiz, como os serveStatic do
+// Gruntfile) que tenha a checagem de porta vai com a porta do preview; o resto segue.
+function devPortPatch(frontDir, frontPort) {
+    const root = path.resolve(frontDir);
+    return (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        let url;
+        try { url = decodeURIComponent(String(req.url || '').split('?')[0]); } catch { return next(); }
+        if (!url.endsWith('.js')) return next();
+        for (const base of [path.join(root, '.tmp'), path.join(root, 'app'), root]) {
+            const file = path.resolve(base, `.${path.sep}${url}`);
+            if (!file.startsWith(root + path.sep)) return next();
+            let text;
+            try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+            if (!DEV_PORT_RE.test(text)) return next();
+            DEV_PORT_RE.lastIndex = 0;
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-cache');
+            return res.end(text.replace(DEV_PORT_RE, `$1$2${frontPort}$2`));
+        }
+        return next();
+    };
+}
 
 module.exports = function (grunt) {
     const frontDir = process.env.PREVIEW_FRONT_DIR || process.cwd();
@@ -38,10 +70,16 @@ module.exports = function (grunt) {
 
     frontRequire(original)(grunt);
     grunt.config.set('connect.options.port', frontPort);
+    const middleware = grunt.config.get('connect.livereload.options.middleware');
+    if (typeof middleware === 'function' && frontPort !== 9000) {
+        const patch = devPortPatch(frontDir, frontPort);
+        grunt.config.set('connect.livereload.options.middleware', (...args) => [patch, ...middleware(...args)]);
+        grunt.log.writeln(`[preview] location.port === '9000' (modo dev do app) servido como '${frontPort}'`);
+    }
     if (grunt.config.get('connect.livereload.options')) {
         grunt.config.set('connect.livereload.options.open', false);
         // O `watch` (grunt-contrib-watch/gaze antigos) estoura "Maximum call stack size
-        // exceeded" no Node 20 e o grunt encerra junto com o connect (#43646). Com
+        // exceeded" no Node 20 e o grunt encerra junto com o connect (#10005). Com
         // keepalive o connect segura o processo e o watch nunca roda — igual ao
         // `connect:livereload:keepalive` local do checkout principal. Sem live reload.
         // PREVIEW_GRUNT_WATCH=true mantém o watch.
@@ -64,7 +102,7 @@ if (require.main === module) {
     const tasks = process.argv.slice(2).filter(a => !a.startsWith('-'));
     // Sem cor: a saída vai pro log do painel, não pra um terminal. force: o serve roda
     // htmlhint antes de subir e aborta no primeiro warning — lint que já está no master
-    // (#43646: <br> sem fechar) derrubava o preview. O warning segue no log.
+    // (#10005: <br> sem fechar) derrubava o preview. O warning segue no log.
     // PREVIEW_GRUNT_FORCE=false volta ao comportamento do grunt serve do repo.
     const force = !/^(0|false|nao|não|no)$/i.test(process.env.PREVIEW_GRUNT_FORCE || '');
     grunt.tasks(tasks.length ? tasks : ['serve'], { gruntfile: __filename, base: frontDir, color: false, force });

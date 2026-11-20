@@ -104,7 +104,7 @@ test('listPRs: monta a URL com state/pagelen e normaliza cada PR (reviewers x pa
                             { account_id: 'rev-1', uuid: '{r1}', display_name: 'Revisor Um' },
                             { account_id: 'rev-2', uuid: '{r2}', nickname: 'revisor2' },
                         ],
-                        participants: [{ user: { account_id: 'rev-1' }, approved: true }],
+                        participants: [{ user: { account_id: 'rev-1' }, approved: true }, { user: { account_id: 'rev-2' }, approved: false, state: 'changes_requested' }],
                         created_on: '2026-09-01T00:00:00.000Z',
                         updated_on: '2026-09-02T00:00:00.000Z',
                         links: { html: { href: 'https://bitbucket.org/ws/app-back/pull-requests/10' } },
@@ -123,8 +123,8 @@ test('listPRs: monta a URL com state/pagelen e normaliza cada PR (reviewers x pa
             sourceCommit: null, targetCommit: null,
             state: 'OPEN', draft: true, author: 'Autora', authorAccountId: null,
             reviewers: [
-                { accountId: 'rev-1', uuid: '{r1}', displayName: 'Revisor Um', approved: true },
-                { accountId: 'rev-2', uuid: '{r2}', displayName: 'revisor2', approved: false },
+                { accountId: 'rev-1', uuid: '{r1}', displayName: 'Revisor Um', approved: true, changesRequested: false },
+                { accountId: 'rev-2', uuid: '{r2}', displayName: 'revisor2', approved: false, changesRequested: true },
             ],
             createdOn: '2026-09-01T00:00:00.000Z', updatedOn: '2026-09-02T00:00:00.000Z',
             url: 'https://bitbucket.org/ws/app-back/pull-requests/10',
@@ -176,21 +176,28 @@ test('getPRDetail: segue o diffstat paginado (campo next) até esgotar, agrega f
                     // Como a porta só é conhecida depois do listen(), referencia via getter.
                     return json(res, 200, {
                         values: [
-                            { lines_added: 10, lines_removed: 2 },
-                            { lines_added: 5, lines_removed: 0 },
+                            { lines_added: 10, lines_removed: 2, status: 'modified', new: { path: 'src/A.java' }, old: { path: 'src/A.java' } },
+                            { lines_added: 5, lines_removed: 0, status: 'added', new: { path: 'src/B.java' }, old: null },
                         ],
                         next: `http://127.0.0.1:${req.socket.localPort}/2.0/repositories/${WORKSPACE}/${REPO}/pullrequests/${prId}/diffstat?pagelen=100&page=2`,
                     });
                 }
                 // Última página: sem `next` -> encerra o loop.
-                return json(res, 200, { values: [{ lines_added: 1, lines_removed: 1 }], next: null });
+                return json(res, 200, { values: [{ lines_added: 1, lines_removed: 1, status: 'removed', new: null, old: { path: 'src/C.java' } }], next: null });
             },
         },
     ]);
     try {
         const detail = await getPRDetail({ workspace: WORKSPACE, repo: REPO, prId, token: TOKEN, apiBase: bb.apiBase });
         assert.strictEqual(diffstatCalls, 2, 'segue o `next` até a página sem next');
-        assert.deepStrictEqual(detail.diffStat, { filesChanged: 3, linesAdded: 16, linesRemoved: 3 });
+        assert.deepStrictEqual(detail.diffStat, {
+            filesChanged: 3, linesAdded: 16, linesRemoved: 3,
+            files: [
+                { path: 'src/A.java', added: 10, removed: 2, status: 'modified' },
+                { path: 'src/B.java', added: 5, removed: 0, status: 'added' },
+                { path: 'src/C.java', added: 1, removed: 1, status: 'removed' },
+            ],
+        });
         assert.strictEqual(detail.id, prId);
         assert.ok(bb.seen.every(s => !s.url.includes(TOKEN)));
     } finally {
@@ -214,7 +221,7 @@ test('getPRDetail: diffstat de página única (sem next) não entra em loop', as
     try {
         const detail = await getPRDetail({ workspace: WORKSPACE, repo: REPO, prId, token: TOKEN, apiBase: bb.apiBase });
         assert.strictEqual(diffstatCalls, 1);
-        assert.deepStrictEqual(detail.diffStat, { filesChanged: 0, linesAdded: 0, linesRemoved: 0 });
+        assert.deepStrictEqual(detail.diffStat, { filesChanged: 0, linesAdded: 0, linesRemoved: 0, files: [] });
     } finally {
         await bb.close();
     }

@@ -1,41 +1,68 @@
-// Visões extras do dashboard (abas): Quadro, Tabela, Linha do tempo, Métricas,
-// Tickets e PRs, Grafo (esta em graph.js). Script clássico carregado depois do principal: usa os globais de lá
+// Visões extras do dashboard (abas): Quadro, Tabela, Linha do tempo, Relatório semanal (chave
+// metricas), Knowledge Graph (chave grafo, em graph.js). Script clássico carregado depois do principal: usa os globais de lá
 // (runs, NODES, NODE_LABEL, STATUS, esc, ago, when, titleOf, isHidden, isDone,
 // needsYou, visibleRuns, extractPrs, prBadge, prState, ticketIdOfRun, ticketCache,
 // prCache, apiStatus, select, setGroupOpen, GROUPS, prefs, persist, $,
 // ticketStatusBadge, retryQaRejection, refreshRuns, toast).
 (() => {
   const VIEWS = [
-    ['runs', 'Runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'],
-    ['timeline', 'Linha do tempo'], ['metricas', 'Métricas'], ['tickets', 'Tickets e PRs'],
-    ['redmine', 'Redmine'], ['grafo', 'Grafo'], ['padroes', 'Padrões'], ['prs', 'PRs'],
-    ['coordenacao', 'Coordenação'], ['versao', 'Versão'],
+    ['runs', 'Runs'], ['comparar', 'Comparar runs'], ['quadro', 'Quadro'], ['tabela', 'Tabela'],
+    ['timeline', 'Linha do tempo'], ['metricas', 'Relatório semanal'],
+    ['redmine', 'Tickets'], ['grafo', 'Knowledge Graph'], ['padroes', 'Padrões de falha'], ['prs', 'Pull requests'],
+    ['roteamento', 'Roteamento'], ['versao', 'Sistema'], ['computador', 'Este computador'],
   ];
   // Etapas agrupadas em 4 fases pra linha do tempo: 7 tons de um matiz não ficam
   // distinguíveis (validado), 4 ficam. O nome exato da etapa vai no tooltip.
   const PHASES = [
-    { key: 'prep', label: 'Preparação', nodes: ['fetch_ticket', 'plan'] },
-    { key: 'build', label: 'Construção', nodes: ['implement'] },
-    { key: 'check', label: 'Validação', nodes: ['review', 'test', 'verify'] },
-    { key: 'ship', label: 'Entrega', nodes: ['commit'] },
+    { key: 'prep', label: 'planejar', nodes: ['fetch_ticket', 'plan'] },
+    { key: 'build', label: 'implementar', nodes: ['implement'] },
+    { key: 'check', label: 'revisar e testar', nodes: ['review', 'test', 'verify'] },
+    { key: 'ship', label: 'commit', nodes: ['commit'] },
   ];
   const phaseOf = node => PHASES.findIndex(p => p.nodes.includes(node));
   const DAY = 86400000;
 
   // "Meus Tickets" virou "Redmine" (redmine.js): hash/pref antigos caem na aba nova.
-  const alias = v => (v === 'my-tickets' ? 'redmine' : v);
+  // #medicao-modelo (antiga aba Sombra × real) é o corpo da tela Roteamento desde a onda 1 (PRI-328).
+  // #coordenacao: tela descartada na onda 1 do design (PRI-323); a API continua, a tela não.
+  const alias = v => {
+    if (v === 'my-tickets') return 'redmine';
+    // #tickets ("Tickets e PRs") saiu na onda 1: tickets em Tickets (PRI-325), PRs em Pull requests (PRI-326).
+    if (v === 'tickets') return 'redmine';
+    if (v === 'coordenacao') return 'runs';
+    if (v === 'medicao-modelo') return 'roteamento';
+    return v;
+  };
   let view = VIEWS.some(([k]) => k === alias(location.hash.slice(1))) ? alias(location.hash.slice(1))
     : location.hash.startsWith('#run/') ? 'runs' : (VIEWS.some(([k]) => k === alias(prefs.view)) ? alias(prefs.view) : 'runs');
   const table = Object.assign({ sort: 'updated', dir: -1, status: 'all', node: 'all', pr: 'all', hidden: false }, prefs.table || {});
-  const tl = Object.assign({ range: 30 }, prefs.timeline || {});
-  const tk = Object.assign({ filter: 'all' }, prefs.tickets || {});
+  const tl = Object.assign({ range: 7 }, prefs.timeline || {});
   let bulk = { running: false, done: 0, total: 0 };
 
   // ------------------------------------------------------------------ helpers
-  const shownRuns = (includeHidden = false) => visibleRuns().filter(r => includeHidden || !isHidden(r));
+  // Filtro por estado e filtro do kcard do topo (runs-main.js) valem também aqui (artboard Main).
+  // Só nas visões de Runs (Quadro, Tabela, Linha do tempo), onde o filtro aparece no topo; Relatório
+  // semanal e a tela Tickets (Views.loadAll) continuam com tudo.
+  const RUN_FILTERED = new Set(['quadro', 'tabela', 'timeline']);
+  const shownRuns = (includeHidden = false) => {
+    const list = visibleRuns().filter(r => includeHidden || !isHidden(r));
+    return window.RunsMain && RUN_FILTERED.has(view) ? RunsMain.applyFilters(list, [...runs.values()].filter(r => !isHidden(r))) : list;
+  };
   const ticketOf = r => { const t = titleOf(r); return { num: t.num, text: t.text, id: ticketIdOfRun(r) }; };
   const statusLabel = r => STATUS[r.status] || r.status;
-  const lamp = r => `<span class="lamp ${esc(r.status)}" title="${esc(statusLabel(r))}"></span>`;
+  // Estado no design Espectro: glifo + cor, nunca só o matiz (✓ ◐ ‖ ✕ ○). O texto
+  // continua o de STATUS (domínio); só a forma de mostrar muda.
+  const STATE_GLYPH = { done: '✓', running: '◐', waiting: '‖', failed: '✕', queued: '○' };
+  const stateKey = r => (r.status === 'committed' || isDone(r) ? 'done' : r.status === 'failed' ? 'failed'
+    : needsYou(r) ? 'waiting' : r.status === 'running' ? 'running' : 'queued');
+  const glyphOf = r => {
+    const k = stateKey(r);
+    return `<span class="rv-glyph ${k}" role="img" aria-label="${esc(statusLabel(r))}" title="${esc(statusLabel(r))}">${STATE_GLYPH[k]}</span>`;
+  };
+  const pillOf = r => { const k = stateKey(r); return `<span class="pill ${k}"><span aria-hidden="true">${STATE_GLYPH[k]}</span>${esc(statusLabel(r))}</span>`; };
+  // Cabeçalho das visões: título, texto de apoio e ferramentas (filtros/ações) à direita.
+  const vhead = (title, sub, tools = '') => `<header class="rv-head"><div class="rv-head-text"><h2 class="t-title">${title}</h2><p class="rv-sub">${sub}</p></div>${
+    tools ? `<div class="rv-tools">${tools}</div>` : ''}</header>`;
   const stageOf = r => {
     if (r.status === 'committed' || isDone(r)) return 'done';
     if (NODES.some(([k]) => k === r.node)) return r.node;
@@ -47,7 +74,6 @@
   // Tokens totais (entrada + saída) de state.json.cost_tracking; null = sem medição
   // (run anterior ao rastreamento de custo, ou agente não reportou) — nunca 0.
   const usdOf = r => costOf(r)?.totals.cost_usd ?? null;
-  const moneyTip = usd => (usd == null ? '' : `${fmtUsd(usd)}${fx?.rate ? ` · ${fmtBrl(usd)}` : ''}`);
   const tokensOf = r => {
     const t = costOf(r)?.totals;
     if (!t || (t.input_tokens == null && t.output_tokens == null)) return null;
@@ -77,24 +103,132 @@
   }
 
   // ------------------------------------------------------------------ tabs
+  // Navegação lateral (design Espectro, AppNav): grupos com ícone por visão. Lista, Quadro,
+  // Tabela e Linha do tempo são a mesma tela (Runs) e trocam pelo segmento do topo.
+  const RUN_VIEWS = [['runs', 'Lista', 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'],
+    ['quadro', 'Quadro', 'M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v7h-4z'], ['tabela', 'Tabela', 'M3 5h18v14H3zM3 10h18M9 10v9'],
+    ['timeline', 'Linha do tempo', 'M3 6h8M7 12h10M5 18h14']];
+  // Grupos, ordem, rótulos e ícones do AppNav do design (Trabalho, Operação, Conhecimento, Agentes e
+  // modelos, Plataforma). Só entram visões que existem no app: área sem tela não aparece.
+  // Fora do AppNav, por enquanto: Relatório semanal (no design se chega pela Saúde do projeto, que o
+  // app não tem) e Este computador.
+  const NAV = [
+    ['Trabalho', [
+      ['runs', 'Runs', 'M3 12h4l3-8 4 16 3-8h4'],
+      ['comparar', 'Comparar runs', 'M4 4h6v16H4zM14 4h6v16h-6z'],
+      ['redmine', 'Tickets', 'M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 7v12'],
+      ['prs', 'Pull requests', 'M6 3v12M18 9a3 3 0 0 1-3 3H9a3 3 0 0 0-3 3M6 18h.01M18 6h.01'],
+      ['metricas', 'Relatório semanal', 'M4 20V10M10 20V4M16 20v-7M22 20H2'],
+    ]],
+    ['Operação', [
+      ['padroes', 'Padrões de falha', 'M12 3l9 16H3zM12 10v4M12 17h.01'],
+    ]],
+    ['Conhecimento', [['grafo', 'Knowledge Graph', 'M6 6.5h.01M18 5.5h.01M12 18.5h.01M7 7.5l4 9.2M17 6.8l-4 9.9M7.5 6l9-.2']]],
+    ['Agentes e modelos', [['roteamento', 'Roteamento', 'M4 6h6l4 6h6M4 18h6l4-6M17 3l3 3-3 3M17 15l3 3-3 3']]],
+    ['Plataforma', [['versao', 'Sistema', 'M3 5.5h18v6H3zM3 13.5h18v6H3zM7 8.5h.01M7 16.5h.01'], ['computador', 'Este computador', 'M4 5h16v11H4zM2 19h20']]],
+  ];
+  const navKeyOf = v => (RUN_VIEWS.some(([k]) => k === v) ? 'runs' : v);
+  // Grupos recolhidos (prefs.navClosed: true recolhido, false aberto). Sem escolha salva vale o
+  // padrão do AppNav: abertos só Trabalho e o grupo da visão atual. Entrar numa visão abre o grupo
+  // dela (na carga e no setView); depois o grupo atual também pode ser recolhido.
+  const navClosed = Object.assign({}, prefs.navClosed || {});
+  const NAV_OPEN_BY_DEFAULT = 'Trabalho';
+  const navIsOpen = (group, hasCurrent) => (navClosed[group] !== undefined ? !navClosed[group] : hasCurrent || group === NAV_OPEN_BY_DEFAULT);
+  const navGroupId = g => 'nav-' + g.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  function openNavGroupOf(v) {
+    const g = NAV.find(([, its]) => its.some(([k]) => k === navKeyOf(v)));
+    if (g && navClosed[g[0]]) { delete navClosed[g[0]]; prefs.navClosed = navClosed; }
+  }
+  openNavGroupOf(view);
+  const icon = d => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+
+  // refresh() chama renderTabs a cada evento ao vivo: só reescreve o HTML quando ele muda,
+  // e devolve o foco ao mesmo item, para não derrubar o foco do teclado nem um clique em curso.
+  const lastHtml = new Map();
+  function paint(id, html) {
+    if (lastHtml.get(id) === html) return;
+    lastHtml.set(id, html);
+    // Item ou cabeçalho de grupo (data-nav-group) com foco: devolve o foco ao mesmo depois de repintar.
+    const act = document.activeElement;
+    const focused = act?.closest?.(`#${id} [data-view]`)?.dataset.view;
+    const focusedGroup = act?.closest?.(`#${id} [data-nav-group]`)?.dataset.navGroup;
+    $(id).innerHTML = html;
+    if (focused) $(id).querySelector(`[data-view="${focused}"]`)?.focus();
+    else if (focusedGroup) $(id).querySelector(`[data-nav-group="${focusedGroup}"]`)?.focus();
+  }
+
   function renderTabs() {
-    $('tabs').innerHTML = VIEWS.map(([k, label]) =>
-      `<button type="button" role="tab" data-view="${k}" aria-selected="${k === view}">${label}</button>`).join('');
-    $('tabs').querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const cur = navKeyOf(view);
+    // Mesmo total do título da aba (updateTitle): não varia com a busca.
+    const waiting = [...runs.values()].filter(r => !isHidden(r) && needsYou(r)).length;
+    // Atributos na ordem data-view, aria-selected: version-ui.test.js procura esse par.
+    // Cada grupo: botão que recolhe (design AppNav: chevron + rótulo mono) e um tablist próprio.
+    // Recolhido, o grupo mostra a soma do que pede você, para a pendência não sumir.
+    paint('tabs', NAV.map(([group, items]) => {
+      const id = navGroupId(group);
+      const hasCurrent = items.some(([k]) => k === cur);
+      const open = navIsOpen(group, hasCurrent);
+      const sum = items.some(([k]) => k === 'runs') ? waiting : 0;
+      return `<div class="nav-group${hasCurrent ? ' has-current' : ''}" role="group" aria-labelledby="${id}-h">
+      <button type="button" class="nav-group-label label" id="${id}-h" data-nav-group="${group}" aria-expanded="${open}" aria-controls="${id}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>${group}</span>${
+        !open && sum ? `<span class="nav-count" title="${sum} pedem você">${sum}</span>` : ''}</button>
+      <div class="nav-group-items" id="${id}" role="tablist" aria-orientation="vertical" aria-labelledby="${id}-h"${open ? '' : ' hidden'}>
+      ${items.map(([k, label, d]) => `<button type="button" role="tab" class="nav-item" data-view="${k}" aria-selected="${k === cur}">${icon(d)}<span>${label}</span>${
+        k === 'runs' && waiting ? `<span class="nav-count" title="${waiting} pedem você">${waiting}</span>` : ''}</button>`).join('')}
+      </div>
+    </div>`;
+    }).join(''));
+    const [group, items] = NAV.find(([, its]) => its.some(([k]) => k === cur)) || NAV[0];
+    $('crumbGroup').textContent = group;
+    $('crumbView').textContent = (items.find(([k]) => k === cur) || [, 'Runs'])[1];
+    renderRunViews();
+    renderStatusKeys();
+  }
+  // Atalhos à direita do rodapé de status (#helpBtn abre a ajuda completa). Só atalhos que existem
+  // (ux.js, refresh.js, index.html); telas com rodapé próprio escondem o rodapé comum.
+  const STATUS_KEYS = {
+    runs: '⌘K buscar · J K navegar · / filtrar · R atualizar · ? atalhos · Esc fechar',
+    quadro: '⌘K buscar · / filtrar · 1–4 visão · R atualizar · ? atalhos',
+  };
+  function renderStatusKeys() {
+    const el = $('helpBtn');
+    if (!el) return;
+    const k = STATUS_KEYS[view] || STATUS_KEYS[navKeyOf(view) === 'runs' ? 'quadro' : ''] || '⌘K buscar · R atualizar · ? atalhos · Esc fechar';
+    if (el.textContent !== k) el.textContent = k;
+  }
+  // Segmento Lista · Quadro · Tabela · Linha do tempo no topo, só nas visões de Runs.
+  function renderRunViews() {
+    const seg = $('runViews');
+    seg.hidden = navKeyOf(view) !== 'runs';
+    paint('runViews', RUN_VIEWS.map(([k, label, d]) =>
+      `<button type="button" role="tab" data-view="${k}" aria-selected="${k === view}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>${label}</button>`).join(''));
   }
   function setView(v) {
-    view = v; prefs.view = v; persist();
+    v = alias(v);
+    view = v; prefs.view = v; openNavGroupOf(v); persist();
+    // Saiu de Runs com o detalhe aberto: o detalhe fecha (a run continua selecionada).
+    if (v !== 'runs' && typeof runOpen !== 'undefined' && runOpen) { runOpen = false; document.body.classList.remove('run-open'); }
     const want = v === 'runs' ? (selected ? `#run/${encodeURIComponent(selected)}` : '') : `#${v}`;
     if (location.hash !== want) history.replaceState(null, '', want || location.pathname);
     document.body.dataset.view = v;
     renderTabs();
     refresh();
-    if (v === 'tickets' && !bulk.running && !bulk.loadedOnce) loadAll(false);
     if (v === 'redmine') window.RedmineView?.load(false);
-    if (v === 'coordenacao') window.CoordinationView?.load();
+    if (v === 'roteamento') window.RoutingView?.load();
     if (v === 'versao') window.VersionView?.load(false);
+    if (v === 'computador') window.OnboardingView?.load();
   }
-  $('tabs').addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
+  $('tabs').addEventListener('click', e => {
+    const g = e.target.closest('[data-nav-group]');
+    if (g) {
+      const name = g.dataset.navGroup;
+      navClosed[name] = g.getAttribute('aria-expanded') === 'true';
+      prefs.navClosed = navClosed; persist(); renderTabs();
+      return;
+    }
+    const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view);
+  });
+  $('runViews').addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
   window.addEventListener('hashchange', () => { const v = alias(location.hash.slice(1)) || 'runs'; if (VIEWS.some(([k]) => k === v)) setView(v); });
   // #run/<id> é tratado em ux.js.
 
@@ -120,9 +254,7 @@
       table.dir = table.sort === k ? -table.dir : (k === 'updated' || k === 'started' ? -1 : 1);
       table.sort = k; prefs.table = table; persist(); refresh();
     } else if (a === 'range') { tl.range = Number(el.dataset.range); prefs.timeline = tl; persist(); refresh(); }
-    else if (a === 'tkfilter') { tk.filter = el.dataset.filter; prefs.tickets = tk; persist(); refresh(); }
     else if (a === 'loadall') loadAll(true);
-    else if (a === 'toggledone') { prefs.boardDone = !prefs.boardDone; persist(); refresh(); }
   }
 
   // ------------------------------------------------------------------ tooltip
@@ -156,30 +288,32 @@
     const by = Object.fromEntries(cols.map(c => [c.key, []]));
     for (const r of list) by[stageOf(r)].push(r);
     for (const k in by) by[k].sort((a, b) => (needsYou(b) - needsYou(a)) || (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
-    const showDone = !!prefs.boardDone;
     const card = r => {
       const t = ticketOf(r);
       const prs = prsOf(r);
       const retries = retriesOf(r);
-      return `<div class="bcard ${needsYou(r) ? 'attn' : ''}" role="button" tabindex="0" ${openAttr(r)}>
-        <div class="bcard-top">${lamp(r)}<span class="bnum">${esc(t.num || '')}</span><span class="bwhen">${esc(ago(r.updatedAt))}</span></div>
-        <div class="btitle">${esc(t.text)}</div>
-        <div class="bmeta">
-          <span>${esc(statusLabel(r))}</span>
-          ${retries ? `<span title="Tentativas extras">↻ ${retries}</span>` : ''}
-          ${r.pendingHumanInput ? '<span class="mail">✉ na fila</span>' : ''}
-          ${prs.slice(0, 2).map(p => prBadge(r.taskId, p)).join('')}${prs.length > 2 ? `<span class="pr-more">+${prs.length - 2}</span>` : ''}
-        </div>
+      const k = stateKey(r);
+      const meta = [
+        retries ? `<span class="rv-meta-item" title="Tentativas extras">↻ ${retries}</span>` : '',
+        r.pendingHumanInput ? '<span class="rv-mail">✉ na fila</span>' : '',
+        prs.slice(0, 2).map(p => prBadge(r.taskId, p)).join(''),
+        prs.length > 2 ? `<span class="pr-more">+${prs.length - 2}</span>` : '',
+      ].join('');
+      return `<div class="rv-card ${k}" role="button" tabindex="0" ${openAttr(r)}>
+        <div class="rv-card-top"><span class="rv-g ${k}" aria-hidden="true">${STATE_GLYPH[k]}</span><span class="rv-card-num">${esc(t.num || '')}</span><span class="rv-card-when num" title="${esc(usdOf(r) == null ? `Sem medição de custo · atualizado ${ago(r.updatedAt)}` : `Custo medido · fonte: cost_tracking do state.json · atualizado ${ago(r.updatedAt)}`)}">${esc(usdOf(r) == null ? ago(r.updatedAt) : fmtUsd(usdOf(r)))}</span></div>
+        <div class="rv-card-title">${esc(t.text)}</div>
+        <div class="rv-card-state ${k}">${esc(statusLabel(r))}</div>
+        ${meta ? `<div class="rv-card-meta">${meta}</div>` : ''}
       </div>`;
     };
-    return `<div class="vhead"><h2>Quadro por etapa</h2><p>Cada run fica na etapa que vai rodar em seguida. Os parados esperando você têm borda amarela e vêm primeiro.</p>
-      <div class="vtools"><button class="ghost-btn" type="button" data-vact="toggledone">${showDone ? 'Esconder concluídos' : `Mostrar concluídos (${by.done.length})`}</button></div></div>
-      <div class="board">${cols.filter(c => c.key !== 'done' || showDone).map(c => `
-        <section class="bcol" aria-label="${esc(c.label)}">
-          <header><span>${esc(c.label)}</span><span class="count">${by[c.key].length}</span></header>
-          <div class="bcol-body">${by[c.key].map(card).join('') || '<div class="bempty">Nenhum run</div>'}</div>
+    // Artboard Main: 8 colunas fixas (7 etapas + concluído), texto de apoio embaixo.
+    return `<div class="rv-board">${cols.map(c => `
+        <section class="rv-col" aria-label="${esc(c.label)}: ${by[c.key].length} run${by[c.key].length === 1 ? '' : 's'}">
+          <header class="rv-col-head"><span>${esc(c.label)}</span><span class="rv-count">${by[c.key].length}</span></header>
+          <div class="rv-col-body">${by[c.key].map(card).join('') || '<p class="rv-col-empty">Nenhum run</p>'}</div>
         </section>`).join('')}
-      </div>`;
+      </div>
+      <p class="rv-foot">Cada cartão fica na etapa em que a run está. Borda âmbar ou vermelha = parada esperando você; esses vêm primeiro.</p>`;
   }
 
   // ------------------------------------------------------------------ Tabela
@@ -219,39 +353,41 @@
       return (va < vb ? -1 : va > vb ? 1 : 0) * table.dir || (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0);
     });
     const opt = (v, cur, label) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${label}</option>`;
+    const NUM_COLS = new Set(['retries', 'tokens', 'cost', 'msgs']);
     const head = TABLE_COLS.map(([k, label]) => {
       const sorted = table.sort === k;
-      return `<th aria-sort="${sorted ? (table.dir > 0 ? 'ascending' : 'descending') : 'none'}">
-        <button type="button" data-vact="sort" data-key="${k}">${label}<span class="sort-ind">${sorted ? (table.dir > 0 ? '↑' : '↓') : ''}</span></button></th>`;
+      return `<th class="${NUM_COLS.has(k) ? 'rv-n' : ''}" aria-sort="${sorted ? (table.dir > 0 ? 'ascending' : 'descending') : 'none'}">
+        <button type="button" data-vact="sort" data-key="${k}">${label}<span class="sort-ind" aria-hidden="true">${sorted ? (table.dir > 0 ? '↑' : '↓') : ''}</span></button></th>`;
     }).join('');
+    const none = '<span class="muted">—</span>';
     const rows = list.map(r => {
       const t = ticketOf(r);
       const prs = prsOf(r);
       const stage = stageOf(r);
       return `<tr ${openAttr(r)} tabindex="0" class="${isHidden(r) ? 'hidden-run' : ''}">
-        <td class="num">${esc(t.num || '—')}</td>
-        <td class="subj"><span>${esc(t.text)}</span><small>${esc(r.taskId)}</small>${svcChips(r) ? `<span class="svcs">${svcChips(r, { max: 3 })}</span>` : ''}</td>
-        <td>${esc(stage === 'done' ? 'Concluído' : NODE_LABEL[stage] || stage)}</td>
-        <td><span class="tstatus">${lamp(r)}${esc(statusLabel(r))}</span></td>
-        <td class="prs">${prs.map(p => prBadge(r.taskId, p)).join(' ') || '<span class="muted">—</span>'}</td>
-        <td class="n">${retriesOf(r) || '<span class="muted">0</span>'}</td>
-        <td class="n" ${costOf(r) ? `title="${esc(`${fmtMs(costOf(r).totals.duration_ms)} medidos · ${costOf(r).totals.loop_count} reexecução(ões)`)}"` : ''}>${tokensOf(r) == null ? '<span class="muted">—</span>' : esc(fmtTok(tokensOf(r)))}</td>
-        <td class="n">${usdOf(r) == null ? '<span class="muted">—</span>' : `${esc(fmtUsd(usdOf(r)))}${fx?.rate ? `<small class="brl">${esc(fmtBrl(usdOf(r)))}</small>` : ''}`}</td>
-        <td class="n">${msgsOf(r) || '<span class="muted">0</span>'}${r.pendingHumanInput ? ' <span class="mail">+ fila</span>' : ''}</td>
-        <td class="d">${esc(when(r.state?.started_at) || '—')}</td>
-        <td class="d">${esc(ago(r.updatedAt) || '—')}</td>
+        <td class="rv-mono rv-nowrap">${esc(t.num || '—')}</td>
+        <td class="rv-subj"><span class="rv-subj-title">${esc(t.text)}</span><span class="rv-subj-id">${esc(r.taskId)}</span>${svcChips(r) ? `<span class="svcs">${svcChips(r, { max: 3 })}</span>` : ''}</td>
+        <td class="rv-nowrap">${esc(stage === 'done' ? 'Concluído' : NODE_LABEL[stage] || stage)}</td>
+        <td>${pillOf(r)}</td>
+        <td class="rv-nowrap">${prs.map(p => prBadge(r.taskId, p)).join(' ') || none}</td>
+        <td class="rv-n">${retriesOf(r) || '<span class="muted">0</span>'}</td>
+        <td class="rv-n" ${costOf(r) ? `title="${esc(`${fmtMs(costOf(r).totals.duration_ms)} medidos · ${costOf(r).totals.loop_count} reexecução(ões)`)}"` : ''}>${tokensOf(r) == null ? none : esc(fmtTok(tokensOf(r)))}</td>
+        <td class="rv-n">${usdOf(r) == null ? none : `${esc(fmtUsd(usdOf(r)))}${fx?.rate ? `<small class="rv-brl">${esc(fmtBrl(usdOf(r)))}</small>` : ''}`}</td>
+        <td class="rv-n">${msgsOf(r) || '<span class="muted">0</span>'}${r.pendingHumanInput ? ' <span class="rv-mail">+ fila</span>' : ''}</td>
+        <td class="rv-date">${esc(when(r.state?.started_at) || '—')}</td>
+        <td class="rv-date">${esc(ago(r.updatedAt) || '—')}</td>
       </tr>`;
     }).join('');
-    return `<div class="vhead"><h2>Tabela</h2><p>Clique no cabeçalho para ordenar e na linha para abrir o run. A busca do topo também filtra aqui.</p>
-      <div class="vtools filters">
+    return `${vhead('Tabela', 'Clique no cabeçalho para ordenar e na linha para abrir o run. A busca do topo também filtra aqui.')}
+      <div class="rv-filters">
         <label>Status <select data-tfilter="status">${opt('all', table.status, 'Todos')}${opt('attention', table.status, 'Precisa de você')}${opt('running', table.status, 'Em andamento')}${opt('other', table.status, 'Planejados e outros')}${opt('done', table.status, 'Concluídos')}</select></label>
         <label>Etapa <select data-tfilter="node">${opt('all', table.node, 'Todas')}${NODES.map(([k, l]) => opt(k, table.node, l)).join('')}${opt('done', table.node, 'Concluído')}</select></label>
         <label>PR <select data-tfilter="pr">${opt('all', table.pr, 'Todos')}${opt('with', table.pr, 'Com PR')}${opt('without', table.pr, 'Sem PR')}</select></label>
-        <label class="chk"><input type="checkbox" data-tfilter="hidden" ${table.hidden ? 'checked' : ''}> Incluir removidos da lista</label>
-        <span class="muted">${list.length} run${list.length === 1 ? '' : 's'}</span>
-      </div></div>
-      <div class="table-wrap"><table class="runs-table"><thead><tr>${head}</tr></thead><tbody>${rows ||
-        `<tr><td colspan="${TABLE_COLS.length}" class="empty-row">Nenhum run com esses filtros.</td></tr>`}</tbody></table></div>`;
+        <label class="rv-check"><input type="checkbox" data-tfilter="hidden" ${table.hidden ? 'checked' : ''}> Incluir removidos da lista</label>
+        <span class="rv-total">${list.length} run${list.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="panel rv-table-wrap"><table class="dtable rv-table"><thead><tr>${head}</tr></thead><tbody>${rows ||
+        `<tr><td colspan="${TABLE_COLS.length}" class="empty">Nenhum run com esses filtros.</td></tr>`}</tbody></table></div>`;
   }
 
   // ------------------------------------------------------------------ Linha do tempo
@@ -292,163 +428,44 @@
       if (i % step === 0) ticks.push(t);
     }
     const fmtDay = t => new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const nowLine = `<span class="rv-now" style="left:${pct(now)}%" aria-hidden="true"></span>`;
     const lanes = inRange.map(({ r, segs, tail }) => {
       const t = ticketOf(r);
       const bars = segs.filter(s => s.to >= minStart).map(s => {
         const ph = phaseOf(s.node);
         const left = pct(s.from), width = Math.max(pct(s.to) - left, 0.6);
         const txt = `<strong>${esc(t.num)} ${esc(NODE_LABEL[s.node])}</strong><br>${esc(when(new Date(s.from).toISOString()))} → ${esc(when(new Date(s.to).toISOString()))}<br>${esc(dur(s.to - s.from))} · fase ${esc(PHASES[ph].label)}`;
-        return `<span class="tl-seg ph${ph}" style="left:${left}%;width:${width}%" data-tip="${esc(txt)}" tabindex="0" aria-label="${esc(`${NODE_LABEL[s.node]}, ${dur(s.to - s.from)}`)}"></span>`;
+        return `<span class="rv-seg ph${ph}" style="left:${left}%;width:${width}%" data-tip="${esc(txt)}" tabindex="0" aria-label="${esc(`${NODE_LABEL[s.node]}, ${dur(s.to - s.from)}`)}"></span>`;
       }).join('');
       const tailHtml = tail && tail.to > minStart ? (() => {
         const left = pct(tail.from), width = Math.max(pct(tail.to) - left, 0.6);
         const label = tail.blocked ? 'Parado esperando você'
           : r.status === 'pending' ? 'Planejado, ainda sem execução' : `Aguardando ${NODE_LABEL[r.node] || 'próximo passo'}`;
-        return `<span class="tl-seg tail ${tail.blocked ? 'blocked' : ''}" style="left:${left}%;width:${width}%" tabindex="0"
+        return `<span class="rv-seg rv-tail ${tail.blocked ? 'blocked' : ''}" style="left:${left}%;width:${width}%" tabindex="0"
           data-tip="${esc(`<strong>${esc(t.num)} ${esc(label)}</strong><br>há ${esc(dur(tail.to - tail.from))}`)}" aria-label="${esc(label)}"></span>`;
       })() : '';
-      return `<div class="lane">
-        <div class="lane-label" role="button" tabindex="0" ${openAttr(r)}>${lamp(r)}<span><b>${esc(t.num || '')}</b> ${esc(t.text)}</span></div>
-        <div class="lane-track">${tailHtml}${bars}</div>
+      return `<div class="rv-lane ${stateKey(r)}">
+        <div class="rv-lane-label" role="button" tabindex="0" ${openAttr(r)}>${glyphOf(r)}<span class="rv-lane-text"><span class="rv-lane-num">${esc(t.num || '')}</span><span class="rv-lane-title">${esc(t.text)}</span></span></div>
+        <div class="rv-track">${tailHtml}${bars}${nowLine}</div>
       </div>`;
     }).join('');
     const rangeBtn = (n, label) => `<button type="button" data-vact="range" data-range="${n}" aria-pressed="${tl.range === n}">${label}</button>`;
-    return `<div class="vhead"><h2>Linha do tempo</h2><p>Uma faixa por run. Cada trecho é o tempo até o agente registrar uma etapa (pelo agent_log); a faixa tracejada é quanto tempo o run está esperando agora.</p>
-      <div class="vtools"><div class="seg-ctl" role="group" aria-label="Período">${rangeBtn(7, '7 dias')}${rangeBtn(30, '30 dias')}${rangeBtn(0, 'Tudo')}</div>
-        <div class="legend">${PHASES.map((p, i) => `<span><i class="sw ph${i}"></i>${p.label} <small>(${p.nodes.map(n => NODE_LABEL[n]).join(', ')})</small></span>`).join('')}
-          <span><i class="sw tail"></i>Esperando</span><span><i class="sw tail blocked"></i>Parado esperando você</span></div></div></div>
-      ${inRange.length ? `<div class="timeline">
-        <div class="lane axis"><div class="lane-label"></div><div class="lane-track">${ticks.map(t => `<span class="tick" style="left:${pct(t)}%">${fmtDay(t)}</span>`).join('')}<span class="tick now" style="left:${pct(now)}%">agora</span></div></div>
-        <div class="lanes">${lanes}</div></div>` : '<div class="vempty">Nenhum run com atividade nesse período.</div>'}`;
+    const legend = `<div class="rv-legend" aria-label="Legenda">${PHASES.map((p, i) => `<span><i class="rv-sw ph${i}" aria-hidden="true"></i>${p.label} <small>(${p.nodes.map(n => NODE_LABEL[n]).join(', ')})</small></span>`).join('')}
+      <span><i class="rv-sw rv-tail blocked" aria-hidden="true"></i>esperando você</span><span><i class="rv-sw rv-tail" aria-hidden="true"></i>esperando o próximo passo</span></div>`;
+    // Artboard Main: faixas e legenda embaixo; o período (7/30 dias/tudo) é do app.
+    return `<div class="rv-tl-tools"><div class="seg" role="group" aria-label="Período">${rangeBtn(7, '7 dias')}${rangeBtn(30, '30 dias')}${rangeBtn(0, 'Tudo')}</div></div>
+      ${inRange.length ? `<div class="panel rv-timeline">
+        <div class="rv-tl-scroll"><div class="rv-tl-grid">
+          <div class="rv-lane rv-axis" aria-hidden="true"><span class="rv-axis-label">${tl.range ? `últimos ${tl.range} dias` : 'todo o período'}</span><div class="rv-track">${ticks.map(t => `<span class="rv-tick" style="left:${pct(t)}%">${fmtDay(t)}</span>`).join('')}<span class="rv-tick now" style="left:${pct(now)}%">agora</span></div></div>
+          <div class="rv-lanes">${lanes}</div>
+        </div></div>
+        ${legend}</div>` : '<div class="empty">Nenhum run com atividade nesse período.</div>'}`;
   }
 
-  // ------------------------------------------------------------------ Métricas
-  function median(xs) {
-    if (!xs.length) return null;
-    const s = [...xs].sort((a, b) => a - b), m = s.length >> 1;
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  }
-  function barChart(rows, { fmt = v => String(v), unit = '', empty = 'Sem dados.' } = {}) {
-    const max = Math.max(...rows.map(r => r.value), 0);
-    if (!max) return `<p class="muted">${empty}</p>`;
-    return `<div class="bars">${rows.map(r => `
-      <div class="bar-row" tabindex="0" data-tip="${esc(r.tip || `<strong>${esc(r.label)}</strong><br>${esc(fmt(r.value))}${unit}`)}">
-        <span class="bar-label">${esc(r.label)}</span>
-        <span class="bar-track"><span class="bar ${r.cls || ''}" style="width:${r.value ? Math.max((r.value / max) * 100, 1.5) : 0}%"></span></span>
-        <span class="bar-val">${r.value ? esc(fmt(r.value)) : '<span class="muted">0</span>'}</span>
-      </div>`).join('')}</div>`;
-  }
-  function renderMetrics() {
-    const list = shownRuns();
-    const count = f => list.filter(f).length;
-    const tiles = [
-      ['Precisa de você', count(r => !isDone(r) && needsYou(r)), 'attn'],
-      ['Em andamento', count(r => !isDone(r) && !needsYou(r) && r.status === 'running'), ''],
-      ['Planejados e outros', count(r => !isDone(r) && !needsYou(r) && r.status !== 'running'), ''],
-      ['Concluídos', count(isDone), ''],
-      ['PRs', list.reduce((a, r) => a + prsOf(r).length, 0), ''],
-      ['Mensagens ao agente', list.reduce((a, r) => a + msgsOf(r), 0), ''],
-    ];
-    const active = list.filter(r => !isDone(r));
-    const byStage = NODES.map(([k, label]) => ({ label, value: active.filter(r => stageOf(r) === k).length }));
-    // Tempo por etapa: run com cost_tracking usa a duração MEDIDA pelo watcher
-    // (duration_ms / runs = média por passagem); runs antigos seguem estimados pelo
-    // agent_log. O custo de fetch_ticket fica dentro de plan (mesmo despacho).
-    const durations = Object.fromEntries(NODES.map(([k]) => [k, []]));
-    const measured = Object.fromEntries(NODES.map(([k]) => [k, 0]));
-    for (const r of list) {
-      const c = costOf(r);
-      if (c) {
-        for (const [k, n] of Object.entries(c.nodes)) {
-          if (!durations[k] || !(n.duration_ms >= 0)) continue;
-          const runsN = Math.max(n.runs || 1, 1);
-          for (let i = 0; i < runsN; i++) durations[k].push(n.duration_ms / runsN);
-          measured[k] += runsN;
-        }
-      } else {
-        for (const s of segmentsOf(r).segs) durations[s.node].push(s.to - s.from);
-      }
-    }
-    const timeRows = NODES.map(([k, label]) => {
-      const m = median(durations[k]);
-      const src = measured[k] ? ` (${measured[k]} medida(s) pelo watcher)` : '';
-      return { label, value: m || 0, tip: `<strong>${esc(label)}</strong><br>mediana ${esc(dur(m))} em ${durations[k].length} passagem(ns)${esc(src)}` };
-    });
-    // Tokens: só runs com cost_tracking. Por etapa = soma; por tipo de ticket = média
-    // por run (é o que responde "que tipo de ticket custa mais").
-    const costed = list.filter(r => tokensOf(r) != null);
-    const nodeTok = n => (n.input_tokens == null && n.output_tokens == null) ? 0 : (n.input_tokens || 0) + (n.output_tokens || 0);
-    const tokenRows = NODES.map(([k, label]) => {
-      let sum = 0, inp = 0, out = 0, runsN = 0, silent = 0;
-      for (const r of costed) {
-        const n = costOf(r).nodes[k];
-        if (!n) continue;
-        sum += nodeTok(n); inp += n.input_tokens || 0; out += n.output_tokens || 0; runsN += n.runs || 1;
-        silent += n.runs_without_tokens || 0;
-      }
-      const silentTxt = silent ? `<br>${silent} execução(ões) sem tokens reportados (não contam como 0)` : '';
-      return { label, value: sum, tip: `<strong>${esc(label)}</strong><br>${esc(fmtTok(inp))} entrada · ${esc(fmtTok(out))} saída<br>${runsN} execução(ões)${silentTxt}` };
-    });
-    const byTracker = new Map();
-    for (const r of costed) {
-      const key = r.ticket?.tracker || 'Sem tipo';
-      const g = byTracker.get(key) || { tok: 0, ms: 0, loops: 0, n: 0 };
-      const t = costOf(r).totals;
-      g.tok += tokensOf(r); g.ms += t.duration_ms || 0; g.loops += t.loop_count || 0; g.n += 1;
-      byTracker.set(key, g);
-    }
-    const trackerRows = [...byTracker.entries()].sort((a, b) => b[1].tok / b[1].n - a[1].tok / a[1].n).map(([label, g]) => ({
-      label, value: Math.round(g.tok / g.n),
-      tip: `<strong>${esc(label)}</strong><br>média ${esc(fmtTok(Math.round(g.tok / g.n)))} tokens · ${esc(dur(g.ms / g.n))} por run<br>${g.n} run(s) · ${g.loops} reexecução(ões) no total`,
-    }));
-    const totalTok = costed.reduce((a, r) => a + tokensOf(r), 0);
-    const priced = list.filter(r => usdOf(r) != null);
-    const totalUsd = priced.reduce((a, r) => a + usdOf(r), 0);
-    const usdRows = NODES.map(([k, label]) => {
-      let usd = 0, runsN = 0;
-      for (const r of priced) { const n = costOf(r).nodes[k]; if (n?.cost_usd != null) { usd += n.cost_usd; runsN += n.runs || 1; } }
-      return { label, value: usd, tip: `<strong>${esc(label)}</strong><br>${esc(moneyTip(usd))}<br>${runsN} execução(ões)` };
-    });
-    const usdByTracker = new Map();
-    for (const r of priced) {
-      const key = r.ticket?.tracker || 'Sem tipo';
-      const g = usdByTracker.get(key) || { usd: 0, n: 0, loops: 0 };
-      g.usd += usdOf(r); g.n += 1; g.loops += costOf(r).totals.loop_count || 0;
-      usdByTracker.set(key, g);
-    }
-    const usdTrackerRows = [...usdByTracker.entries()].sort((a, b) => b[1].usd / b[1].n - a[1].usd / a[1].n).map(([label, g]) => ({
-      label, value: g.usd / g.n,
-      tip: `<strong>${esc(label)}</strong><br>média ${esc(moneyTip(g.usd / g.n))} por run<br>${g.n} run(s) · total ${esc(moneyTip(g.usd))} · ${g.loops} reexecução(ões)`,
-    }));
-    const totalLoops = list.reduce((a, r) => a + (costOf(r)?.totals.loop_count || 0), 0);
-    const retryRows = NODES.map(([k, label]) => ({ label, value: list.reduce((a, r) => a + (Number(r.state?.retries?.[k]) || 0), 0) }));
-    const prStates = { OPEN: 0, MERGED: 0, DECLINED: 0, SUPERSEDED: 0, '': 0 };
-    for (const r of list) for (const p of prsOf(r)) prStates[prState(r.taskId, p) || ''] += 1;
-    const prRows = [['OPEN', 'Abertos'], ['MERGED', 'Mergeados'], ['DECLINED', 'Recusados'], ['SUPERSEDED', 'Substituídos'], ['', 'Estado desconhecido']]
-      .map(([k, label]) => ({ label: k ? `${label} (${k})` : label, value: prStates[k], cls: `st-${k || 'unknown'}` }));
-    const liveKnown = list.some(r => prCache.get(r.taskId)?.data);
-    return `<div class="vhead"><h2>Métricas</h2><p>Números dos runs visíveis (a busca do topo filtra). Tempos vêm da medição do watcher quando o run tem cost_tracking; senão, são estimados pelos horários do agent_log.</p></div>
-      <div class="tiles">${[...tiles, ...(costed.length ? [
-        [`Tokens (${costed.length} run${costed.length > 1 ? 's' : ''} medido${costed.length > 1 ? 's' : ''})`, fmtTok(totalTok), ''],
-        ...(priced.length ? [[`Custo estimado${fx?.rate ? ` · ${esc(fmtBrl(totalUsd))}` : ''}`, esc(fmtUsd(totalUsd)), '']] : []),
-        ['Reexecuções de etapa', totalLoops, ''],
-      ] : [])].map(([l, v, c]) => `<div class="tile ${c}"><span class="tv">${v}</span><span class="tl">${l}</span></div>`).join('')}</div>
-      <div class="charts">
-        <section class="chart"><h3>Runs ativos por etapa</h3><p class="csub">Onde os runs em aberto estão agora.</p>${barChart(byStage, { fmt: v => `${v} run${v > 1 ? 's' : ''}` })}</section>
-        <section class="chart"><h3>Tempo por etapa</h3><p class="csub">Mediana de cada passagem pela etapa.</p>${barChart(timeRows, { fmt: dur, empty: 'Nenhum agent_log com horários ainda.' })}</section>
-        <section class="chart"><h3>Tokens por etapa</h3><p class="csub">Soma de entrada + saída medida pelo watcher (state.json.cost_tracking). Plan inclui o fetch_ticket.</p>${barChart(tokenRows, { fmt: fmtTok, empty: 'Nenhum run com custo medido ainda.' })}</section>
-        <section class="chart"><h3>Custo por etapa</h3><p class="csub">US$ a preço de API por modelo (equivalente, se for assinatura).${fx?.rate ? ` Em R$ no tooltip — ${esc(fxNote())}` : ''}</p>${barChart(usdRows, { fmt: fmtUsd, empty: 'Nenhum run com custo em US$ ainda.' })}</section>
-        <section class="chart"><h3>Custo por tipo de ticket</h3><p class="csub">${priced.length ? 'Média em US$ por run, por tipo do Redmine.' : 'Média de tokens por run, por tipo do Redmine (sem custo em US$ ainda).'}</p>${priced.length
-          ? barChart(usdTrackerRows, { fmt: fmtUsd })
-          : barChart(trackerRows, { fmt: fmtTok, empty: 'Nenhum run com custo medido ainda.' })}</section>
-        <section class="chart"><h3>Retrabalho</h3><p class="csub">Tentativas extras registradas em state.json.retries.</p>${barChart(retryRows, { fmt: v => `${v} tentativa${v > 1 ? 's' : ''}`, empty: 'Nenhuma tentativa extra registrada.' })}</section>
-        <section class="chart"><h3>Pull requests por estado</h3><p class="csub">${liveKnown ? 'Estado do Bitbucket onde já foi consultado; senão, o gravado no state.json.' : 'Estado gravado no state.json. Consulte o Bitbucket para o estado real.'}</p>
-          ${barChart(prRows, { fmt: v => `${v} PR${v > 1 ? 's' : ''}`, empty: 'Nenhum PR registrado.' })}
-          <button class="ghost-btn" type="button" data-vact="loadall" ${bulk.running ? 'disabled' : ''}>${bulk.running ? `Consultando… ${bulk.done}/${bulk.total}` : '↻ Consultar Redmine e Bitbucket'}</button></section>
-      </div>`;
-  }
+  // Relatório semanal (chave metricas): weekly-report.js (window.WeeklyReportView), PRI-327.
 
-  // ------------------------------------------------------------------ Tickets e PRs
+  // ------------------------------------------------------------------ Redmine e Bitbucket dos runs
+  // (tela Tickets, redmine.js, e Relatório semanal: ticketCache/prCache)
   // Busca em lote (sob demanda: ao abrir a visão ou no botão), 4 por vez, reaproveitando
   // os mesmos caches e endpoints do painel do run.
   async function pool(tasks, n) {
@@ -471,7 +488,7 @@
       tasks.push(async () => {
         try {
           const res = await apiStatus(`/api/runs/${encodeURIComponent(taskId)}/ticket`);
-          if (res.ok) ticketCache.set(taskId, { data: res.body });
+          if (res.ok) { ticketCache.set(taskId, { data: res.body }); ticketErrors.delete(taskId); }
           else ticketErrors.set(taskId, res.status);
         } catch { ticketErrors.set(taskId, 0); }
       });
@@ -483,7 +500,7 @@
       tasks.push(async () => {
         try {
           const res = await apiStatus(`/api/runs/${encodeURIComponent(r.taskId)}/pr`);
-          if (res.ok) prCache.set(r.taskId, { data: res.body, at: Date.now() });
+          if (res.ok) { prCache.set(r.taskId, { data: res.body, at: Date.now() }); prErrors.delete(r.taskId); }
           else prErrors.set(r.taskId, res.status);
         } catch { prErrors.set(r.taskId, 0); }
       });
@@ -501,116 +518,22 @@
   }
   const ticketErrors = new Map();
   const prErrors = new Map();
-  const CLOSED_RE = /conclu|encerr|fechad|closed|rejeit|cancel/i;
-
-  function ticketFor(runsOfTicket) {
-    for (const r of runsOfTicket) { const c = ticketCache.get(r.taskId); if (c?.data) return c.data; }
-    return null;
-  }
-  function livePrs(r) {
-    const live = prCache.get(r.taskId)?.data?.prs;
-    return prsOf(r).map(p => {
-      const l = live?.find(x => x.id === p.id && (!p.repo || x.repo === p.repo));
-      return { ...p, state: (l?.state || p.state || '').toUpperCase(), title: l?.title, approvals: l?.participants || [], created_on: l?.created_on, error: l?.error };
-    });
-  }
-  function alertsFor(ticket, rs, prs) {
-    const out = [];
-    // Run sem state.json legível (unknown) não conta como ativo nem como concluído.
-    const known = rs.filter(r => r.status !== 'unknown');
-    const anyActive = known.some(r => !isDone(r));
-    const allDone = known.length > 0 && known.every(r => isDone(r));
-    if (ticket && CLOSED_RE.test(ticket.status || '') && anyActive) out.push(`Ticket está “${ticket.status}” no Redmine, mas há run ativo.`);
-    for (const p of prs) {
-      if (p.state === 'DECLINED' && allDone) out.push(`PR ${p.repo || ''} #${p.id} foi recusado no Bitbucket, mas o run está concluído.`);
-      if (p.state === 'DECLINED' && anyActive) out.push(`PR ${p.repo || ''} #${p.id} foi recusado no Bitbucket.`);
-      if (p.state === 'OPEN' && !p.approvals.length && p.created_on && Date.now() - Date.parse(p.created_on) > 7 * DAY) {
-        out.push(`PR ${p.repo || ''} #${p.id} está aberto há ${dur(Date.now() - Date.parse(p.created_on))} sem aprovação.`);
-      }
-    }
-    if (ticket && prs.length && prs.every(p => p.state === 'MERGED') && !CLOSED_RE.test(ticket.status || '') && allDone) {
-      out.push(`Todos os PRs estão mergeados; o ticket segue “${ticket.status}”.`);
-    }
-    return out;
-  }
-  function renderTickets() {
-    const list = shownRuns();
-    const groups = new Map();
-    for (const r of list) {
-      const id = ticketIdOfRun(r) || 'sem';
-      if (!groups.has(id)) groups.set(id, []);
-      groups.get(id).push(r);
-    }
-    let items = [...groups.entries()].map(([id, rs]) => {
-      const ticket = id === 'sem' ? null : ticketFor(rs);
-      const prs = rs.flatMap(r => livePrs(r).map(p => ({ ...p, taskId: r.taskId })));
-      const seen = new Set();
-      const uniq = prs.filter(p => { const k = `${p.repo}#${p.id || p.url}`; if (seen.has(k)) return false; seen.add(k); return true; });
-      const alerts = id === 'sem' ? [] : alertsFor(ticket, rs, uniq);
-      const errCode = rs.map(r => ticketErrors.get(r.taskId)).find(x => x !== undefined);
-      return { id, rs, ticket, prs: uniq, alerts, errCode, latest: Math.max(...rs.map(r => Date.parse(r.updatedAt) || 0)) };
-    });
-    const counts = {
-      all: items.length, alert: items.filter(i => i.alerts.length).length,
-      open: items.filter(i => i.prs.some(p => p.state === 'OPEN')).length, nopr: items.filter(i => !i.prs.length).length,
-    };
-    if (tk.filter === 'alert') items = items.filter(i => i.alerts.length);
-    if (tk.filter === 'open') items = items.filter(i => i.prs.some(p => p.state === 'OPEN'));
-    if (tk.filter === 'nopr') items = items.filter(i => !i.prs.length);
-    items.sort((a, b) => (a.id === 'sem') - (b.id === 'sem') || (b.alerts.length > 0) - (a.alerts.length > 0)
-      || (b.rs.some(needsYou) - a.rs.some(needsYou)) || b.latest - a.latest);
-    const chip = (k, label) => `<button type="button" data-vact="tkfilter" data-filter="${k}" aria-pressed="${tk.filter === k}">${label} <span class="count">${counts[k]}</span></button>`;
-    const config = [...ticketErrors.values(), ...prErrors.values()].includes(503);
-    const card = i => {
-      const t = i.ticket;
-      const first = i.rs[0];
-      const title = t?.subject || ticketOf(first).text;
-      const redmine = i.id === 'sem' ? '<span class="muted">Runs sem número de ticket</span>'
-        : t ? `${ticketStatusBadge(t.status) || '<span class="muted">—</span>'}<span>${esc(t.assigned_to || 'sem responsável')}</span>
-               ${t.done_ratio != null ? `<span>${t.done_ratio}%<span class="progress"><i style="width:${Math.max(0, Math.min(100, t.done_ratio))}%"></i></span></span>` : ''}
-               ${t.estimated_hours != null ? `<span>${String(t.estimated_hours).replace('.', ',')} h estimadas</span>` : ''}
-               <a class="ext" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">Redmine ↗</a>`
-          : i.errCode === 503 ? '<span class="muted">Redmine não configurado</span>'
-            : i.errCode !== undefined ? '<span class="muted">Ticket não encontrado ou Redmine indisponível</span>'
-              : `<span class="muted">${bulk.running ? 'Consultando o Redmine…' : 'Ainda não consultado'}</span>`;
-      const prs = i.prs.length ? i.prs.map(p => {
-        const st = ['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED'].includes(p.state) ? p.state : '';
-        const label = `${p.repo || 'PR'}${p.id ? ` #${p.id}` : ''}`;
-        const inner = `<span class="pr-badge ${st || 'unknown'}">${esc(st || '?')}</span><span class="pr-id">${esc(label)}</span>${p.approvals.length ? `<span class="approved">✓ ${p.approvals.length}</span>` : ''}`;
-        const tipText = [p.title, p.approvals.length ? `Aprovado por ${p.approvals.join(', ')}` : '', p.error || ''].filter(Boolean).join(' — ');
-        return p.url ? `<a class="pr-line" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="${esc(tipText)}">${inner}</a>`
-          : `<span class="pr-line" title="${esc(tipText)}">${inner}</span>`;
-      }).join('') : '<span class="muted">Nenhum PR</span>';
-      const runsHtml = i.rs.map(r => `<span class="run-chip" role="button" tabindex="0" ${openAttr(r)}>${lamp(r)}${esc(r.taskId.replace(/^\d{4,6}-/, ''))}
-        <small>${esc(stageOf(r) === 'done' ? 'concluído' : NODE_LABEL[stageOf(r)] || '')}</small></span>`).join('');
-      return `<article class="tcard ${i.alerts.length ? 'has-alert' : ''}">
-        <header><span class="tnum">${i.id === 'sem' ? '—' : `#${esc(i.id)}`}</span><span class="tsubj">${esc(i.id === 'sem' ? 'Sem ticket' : title)}</span></header>
-        <div class="tline"><span class="tlabel">Redmine</span><div class="tvals">${redmine}</div></div>
-        <div class="tline"><span class="tlabel">Bitbucket</span><div class="tvals prs">${prs}</div></div>
-        <div class="tline"><span class="tlabel">Runs</span><div class="tvals">${runsHtml}</div></div>
-        ${i.alerts.length ? `<ul class="talerts">${i.alerts.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
-      </article>`;
-    };
-    return `<div class="vhead"><h2>Tickets e PRs</h2><p>Um cartão por ticket do Redmine, com os PRs do Bitbucket e os runs do agente. Alertas apontam quando os três não batem.</p>
-      <div class="vtools"><div class="seg-ctl" role="group" aria-label="Filtro">${chip('all', 'Todos')}${chip('alert', 'Com alerta')}${chip('open', 'PR aberto')}${chip('nopr', 'Sem PR')}</div>
-        <button class="ghost-btn" type="button" data-vact="loadall" ${bulk.running ? 'disabled' : ''}>${bulk.running ? `Consultando… ${bulk.done}/${bulk.total}` : '↻ Atualizar Redmine e Bitbucket'}</button></div>
-      ${config ? '<p class="fold-msg warn">Redmine ou Bitbucket não configurado — defina REDMINE_URL/REDMINE_API_KEY e BITBUCKET_API_TOKEN.</p>' : ''}</div>
-      <div class="tgrid">${items.map(card).join('') || '<div class="vempty">Nenhum ticket com esse filtro.</div>'}</div>`;
-  }
 
   // ------------------------------------------------------------------ render
   const RENDER = {
-    quadro: renderBoard, tabela: renderTable, timeline: renderTimeline, metricas: renderMetrics, tickets: renderTickets,
-    // graph.js/patterns.js/prs.js/redmine.js (carregados depois) montam as abas —
-    // ver window.GraphView/PatternsView/PrsView/RedmineView.
+    quadro: renderBoard, tabela: renderTable, timeline: renderTimeline,
+    metricas: () => (window.WeeklyReportView ? window.WeeklyReportView.render() : '<div class="vempty">Carregando…</div>'),
+    // weekly-report.js/graph.js/patterns.js/prs.js/redmine.js (carregados depois) montam as abas —
+    // ver window.WeeklyReportView/GraphView/PatternsView/PrsView/RedmineView.
     grafo: () => (window.GraphView ? window.GraphView.render() : '<div class="vempty">Carregando…</div>'),
     padroes: () => (window.PatternsView ? window.PatternsView.render() : '<div class="vempty">Carregando…</div>'),
+    'verificacoes-ui': () => (window.UiVerifyView ? window.UiVerifyView.render() : '<div class="vempty">Carregando…</div>'),
     prs: () => (window.PrsView ? window.PrsView.render() : '<div class="vempty">Carregando…</div>'),
     redmine: () => (window.RedmineView ? window.RedmineView.render() : '<div class="vempty">Carregando…</div>'),
   };
   let pending = false;
   function refresh() {
-    if (view === 'tickets' && runs.size && !bulk.running && !bulk.loadedOnce) loadAll(false);
+    renderTabs(); // contador "pedem você" do item Runs acompanha os runs
     if (view === 'runs' || pending) return;
     pending = true;
     requestAnimationFrame(() => {
@@ -619,16 +542,55 @@
       const el = $('view');
       const keepY = el.scrollTop;
       const focusKey = document.activeElement?.dataset?.tfilter;
-      const domView = { coordenacao: window.CoordinationView, versao: window.VersionView }[view];
-      if (domView) el.replaceChildren(domView.render());
-      else el.innerHTML = view in { coordenacao: 1, versao: 1 } ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
+      // Filtro do Relatório semanal (weekly-report.js): mantém foco e cursor durante a consulta em lote.
+      const wrq = document.activeElement?.matches?.('[data-wrq]') ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
+      const domView = {
+        roteamento: window.RoutingView,
+        versao: window.VersionView,
+        computador: window.OnboardingView,
+        redmine: window.RedmineView,
+        comparar: window.Compare, // compare.js: nó persistente (select aberto e foco não caem)
+      }[view];
+      // Visão que devolve sempre o mesmo nó (formulário do onboarding) não é remontada: manter foco e digitação.
+      const domNode = domView?.render();
+      if (domNode) { if (el.firstChild !== domNode || el.lastChild !== domNode) el.replaceChildren(domNode); }
+      else el.innerHTML = view in { roteamento: 1, versao: 1, computador: 1, redmine: 1, comparar: 1 }
+        ? '<div class="vempty">Carregando…</div>' : RENDER[view]();
       el.scrollTop = keepY;
       if (focusKey) el.querySelector(`[data-tfilter="${focusKey}"]`)?.focus();
+      if (wrq) { const q = el.querySelector('[data-wrq]'); if (q) { q.focus(); q.setSelectionRange(...wrq); } }
     });
   }
 
-  window.Views = { refresh, openRun, setView, loadAll, current: () => view };
+  // weekly-report.js: estado da consulta em lote (Redmine/Bitbucket), falhas e segmentos do agent_log.
+  window.Views = {
+    refresh, openRun, setView, loadAll, current: () => view, segmentsOf,
+    // Aba que só existe quando o servidor a liga (flag): ui-verify.js (PRI-361) chama depois de a API
+    // responder 200. Entra no grupo existente do menu. Link direto `#verificacoes-ui` na carga não abre a
+    // aba: o hash já foi reescrito antes de ela existir; vale a navegação pelo menu.
+    addView(key, label, group, d) {
+      if (VIEWS.some(([k]) => k === key)) return;
+      const g = NAV.find(([name]) => name === group);
+      if (!g) return;
+      VIEWS.push([key, label]);
+      g[1].push([key, label, d]);
+      renderTabs();
+    },
+    bulkState: () => ({ ...bulk }),
+    // 503 = integração não configurada (não é falha de consulta; o dado só fica sem medição).
+    bulkErrors: () => ({
+      tickets: [...ticketErrors.values()].filter(s => s !== 503).length, prs: [...prErrors.values()].filter(s => s !== 503).length,
+      unconfigured: [...ticketErrors.values(), ...prErrors.values()].includes(503),
+    }),
+  };
   renderTabs();
   document.body.dataset.view = view;
   if (view !== 'runs') setView(view);
+  else {
+    // Tela descartada que cai em Runs (alias): limpa o hash e a pref antigos sem passar por
+    // setView, que trocaria um #run/<id> válido pelo selecionado (ainda nulo na carga).
+    const raw = location.hash.slice(1);
+    if (raw && raw !== 'runs' && alias(raw) === 'runs') history.replaceState(null, '', location.pathname);
+    if (prefs.view && prefs.view !== 'runs' && alias(prefs.view) === 'runs') { prefs.view = 'runs'; persist(); }
+  }
 })();

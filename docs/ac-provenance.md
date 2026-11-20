@@ -6,6 +6,9 @@
 
 # AC Provenance
 
+Os números de ticket e de journal deste documento são marcadores fictícios (`10001`,
+`20001`, …). O caso descrito em "Exemplo real" aconteceu; só os identificadores foram trocados.
+
 Implementação: `scripts/lib/ac-provenance.js`. Levantamento que originou este desenho,
 incluindo os conflitos de evidência EC-1..EC-4 que fizeram o desenho final divergir da
 hipótese inicial: [`docs/ac-provenance-sources.md`](ac-provenance-sources.md).
@@ -32,8 +35,8 @@ só referências.
 AC = (ticket_id, ac_id)
 ```
 
-`ac_id` **não** é global: todo ticket tem o seu `AC-01`. `(43666, AC-01)` e
-`(43703, AC-01)` são ACs diferentes. Nenhum código usa só `ac_id` como identidade. O log é
+`ac_id` **não** é global: todo ticket tem o seu `AC-01`. `(10001, AC-01)` e
+`(10002, AC-01)` são ACs diferentes. Nenhum código usa só `ac_id` como identidade. O log é
 por ticket, o `event_id` começa por `<ticket>:<ac>`, e a API exige o ticket (ou devolve
 409 quando ele é ambíguo).
 
@@ -150,13 +153,13 @@ Dry-run (`DRY_RUN=true` ou run com `dry_run: true`) nunca grava provenance.
 
 ```bash
 # Autoria humana (o único caminho de HUMAN_AUTHORED)
-node "$PRISMA_ROOT/scripts/lib/ac-provenance.js" declare 43703 AC-02 --type=HUMAN_AUTHORED --role=ORIGIN \
+node "$PRISMA_ROOT/scripts/lib/ac-provenance.js" declare 10002 AC-02 --type=HUMAN_AUTHORED --role=ORIGIN \
   --ref='{"declared_by":"<quem escreveu>","spec_hash":"<hash da spec>"}'
 # Origem num comentário/anexo específico
-node "$PRISMA_ROOT/scripts/lib/ac-provenance.js" declare 43584 AC-01 --type=REDMINE_COMMENT --role=ORIGIN --ref='{"ticket_id":"43584","journal_id":123}'
-node "$PRISMA_ROOT/scripts/lib/ac-provenance.js" declare 43584 AC-03 --type=ATTACHMENT --role=ORIGIN --ref='{"attachment_id":77,"filename":"print.png","content_type":"image/png"}'
+node "$PRISMA_ROOT/scripts/lib/ac-provenance.js" declare 10003 AC-01 --type=REDMINE_COMMENT --role=ORIGIN --ref='{"ticket_id":"10003","journal_id":123}'
+node "$PRISMA_ROOT/scripts/lib/ac-provenance.js" declare 10003 AC-03 --type=ATTACHMENT --role=ORIGIN --ref='{"attachment_id":77,"filename":"print.png","content_type":"image/png"}'
 # Consulta
-node "$PRISMA_ROOT/scripts/lib/ac-provenance.js" show 43666 AC-01
+node "$PRISMA_ROOT/scripts/lib/ac-provenance.js" show 10001 AC-01
 ```
 
 Uma referência com campo de conteúdo ou credencial (`text`, `notes`, `content`,
@@ -206,17 +209,17 @@ perde provenance (EC-1).
 Log (no checkout principal, mesmo quando o evento nasce num worktree; resolvido via
 `git rev-parse --git-common-dir`, com `AC_PROVENANCE_ROOT` como override de teste):
 
-(Formato ilustrativo: é como ficaria o `SC-001` do 43666 se fosse aprovado hoje. O
-`approval_journal_id` e o `recorded_at` abaixo são placeholders, e o log real do 43666 não
+(Formato ilustrativo: é como ficaria o `SC-001` do 10001 se fosse aprovado hoje. O
+`approval_journal_id` e o `recorded_at` abaixo são placeholders, e o log real do 10001 não
 existe, ver "Exemplo real".)
 
 ```json
 {
   "version": 1,
-  "ticket_id": "43666",
+  "ticket_id": "10001",
   "events": [
     {
-      "event_id": "43666:AC-01:SPEC_CHANGE:MODIFICATION:SC-001",
+      "event_id": "10001:AC-01:SPEC_CHANGE:MODIFICATION:SC-001",
       "ac_id": "AC-01",
       "type": "SPEC_CHANGE",
       "role": "MODIFICATION",
@@ -224,14 +227,14 @@ existe, ver "Exemplo real".)
       "reference": {
         "change_id": "SC-001",
         "approval_ref": "spec-change-audit.json#entry-1",
-        "proposal_comment_id": 45411,
-        "approval_journal_id": 45999,
+        "proposal_comment_id": 20001,
+        "approval_journal_id": 20002,
         "spec_hash_before": "e4ca706a…",
         "spec_hash_after": "adad9d6c…",
         "previous_version": null,
         "new_version": null,
         "action": "add",
-        "task_id": "43666-sincroniza-produtos-nfe"
+        "task_id": "10001-sincroniza-produtos-nfe"
       }
     }
   ]
@@ -245,7 +248,7 @@ Projeção no Registry (só aparece quando há eventos; `criteria[]` legado cont
 intocado, e `getRelatedACs`/`plan-scorer` ignoram a chave nova):
 
 ```json
-"43666": { "ticket_id": "43666", "spec_hash": "…", "ac_ids": ["AC-01"],
+"10001": { "ticket_id": "10001", "spec_hash": "…", "ac_ids": ["AC-01"],
            "ac_sources": { "AC-01": [ { "event_id": "…", "type": "SPEC_CHANGE", "role": "MODIFICATION", "recorded_at": "…", "reference": { … } } ] } }
 ```
 
@@ -266,20 +269,20 @@ GET /api/provenance/:ac_id                  sem ticket: só resolve se UM ticket
 | AC existe (spec principal, spec do worktree do ticket, `ac_ids` do Registry ou log) | 200 |
 | AC existe, sem nenhum evento | 200, `legacy: true`, `sources: []` |
 | não existe | 404 com mensagem; ticket legado sem IDs explica isso |
-| sem ticket e o AC existe em mais de um ticket | 409, `candidates: ["43666", "43703", …]` (nunca escolhe um) |
+| sem ticket e o AC existe em mais de um ticket | 409, `candidates: ["10001", "10002", …]` (nunca escolhe um) |
 | ticket/AC malformado | 400 |
 | log ilegível | 500 (o log não é tocado) |
 
 ```json
 {
-  "ticket_id": "43666",
+  "ticket_id": "10001",
   "ac_id": "AC-01",
   "legacy": false,
   "sources": [ { "event_id": "…", "type": "SPEC_CHANGE", "role": "MODIFICATION", "recorded_at": "…", "reference": { "change_id": "SC-001", "…": "…" } } ],
-  "task_id": "43666-sincroniza-produtos-nfe",
+  "task_id": "10001-sincroniza-produtos-nfe",
   "spec_version": null,
   "spec_hash": "adad9d6c…",
-  "evidence_ref": "memory/runs/43666-sincroniza-produtos-nfe/acceptance-evidence.json#AC-01",
+  "evidence_ref": "memory/runs/10001-sincroniza-produtos-nfe/acceptance-evidence.json#AC-01",
   "pr_ref": null
 }
 ```
@@ -343,27 +346,27 @@ Esta task entrega só os dados, sem UI.
 - `scripts/spec-change-audit.js` não existe e não foi criado: a auditoria é
   `scripts/lib/spec-change.js` (`readAudit`/`appendAudit`).
 
-## Exemplo real: ticket 43666
+## Exemplo real: ticket 10001 (número fictício)
 
-Situação real do 43666 em 2026-10-01, sem backfill:
+Situação real do 10001 em 2026-10-01, sem backfill:
 
 - `human-input.processed.md` do run: o solicitante pediu, pelo dashboard, a validação dos
   produtos do JSON contra o XML.
 - `/implement` registrou `SC-001` (SPEC_CHANGE, `ac_changes: add`), com o human input
   citado **só em texto** no `rationale`.
-- O watcher publicou a proposta no journal **45411** (`comment_id`). A resposta
+- O watcher publicou a proposta no journal **20001** (`comment_id`). A resposta
   "aprovado" veio depois, em outro journal, que não foi persistido (antes do EC-4).
 - A aprovação criou `AC-01` (`ac_added`), com `spec_hash` `e4ca706a…` → `adad9d6c…`. Sem
   `spec_version`, porque o run é anterior ao versionamento.
 - O `/test` gerou `acceptance-evidence.json`. Não há PR (run `escalated`).
 
-Hoje, `GET /api/provenance/43666/AC-01` responde (dados reais):
+Hoje, `GET /api/provenance/10001/AC-01` responde (dados reais):
 
 ```json
-{ "ticket_id": "43666", "ac_id": "AC-01", "legacy": true, "sources": [],
-  "task_id": "43666-sincroniza-produtos-nfe", "spec_version": null,
+{ "ticket_id": "10001", "ac_id": "AC-01", "legacy": true, "sources": [],
+  "task_id": "10001-sincroniza-produtos-nfe", "spec_version": null,
   "spec_hash": "adad9d6c766f95744fb2077f017e15082c052e095f18d9d2de1ed7035b4c8eb9",
-  "evidence_ref": "memory/runs/43666-sincroniza-produtos-nfe/acceptance-evidence.json#AC-01",
+  "evidence_ref": "memory/runs/10001-sincroniza-produtos-nfe/acceptance-evidence.json#AC-01",
   "pr_ref": null }
 ```
 
@@ -372,11 +375,11 @@ o mesmo fluxo acontecer agora, a cadeia fica assim:
 
 ```
 Source:   SPEC_CHANGE/MODIFICATION  SC-001 · approval_ref spec-change-audit.json#entry-1
-                                    · proposal_comment_id 45411 · approval_journal_id <id da resposta>
+                                    · proposal_comment_id 20001 · approval_journal_id <id da resposta>
           (+ HUMAN_CLARIFICATION/CLARIFICATION antes, só se a proposta trouxer human_input_refs)
-AC:       (43666, AC-01)
+AC:       (10001, AC-01)
 Version:  spec_hash adad9d6c… (spec_version quando o run é versionado)
-Evidence: memory/runs/43666-…/acceptance-evidence.json#AC-01
+Evidence: memory/runs/10001-…/acceptance-evidence.json#AC-01
 PR:       state.pull_request do run (quando houver)
 ```
 

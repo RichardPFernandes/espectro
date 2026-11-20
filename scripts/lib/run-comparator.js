@@ -345,11 +345,44 @@ function executedNodes(state, ct) {
     return counts;
 }
 
+// Provider de cada tentativa gravada no cost_tracking (attempts[].provider); UNKNOWN fica fora.
+function nodeProviders(n) {
+    const out = new Set();
+    for (const at of Array.isArray(n?.attempts) ? n.attempts : []) {
+        if (typeof at?.provider === 'string' && at.provider && at.provider !== 'UNKNOWN') out.add(at.provider);
+    }
+    return [...out].sort();
+}
+
+// Detalhe de um nó num run (tela Comparar runs): modelos, provider, duração, custo e tokens
+// do cost_tracking; execuções do history. null = o nó não executou nesse run. Campo sem
+// medição fica null (a tela mostra N/A com o motivo), nunca 0.
+function nodeDetail(execs, n, coveredBy = null) {
+    if (!execs) return null;
+    const known = isObj(n);
+    return {
+        coveredBy: known ? null : coveredBy,
+        executions: execs,
+        models: known && Array.isArray(n.models) ? n.models.filter(m => typeof m === 'string' && m) : [],
+        providers: known ? nodeProviders(n) : [],
+        durationMs: known ? num(n.duration_ms) : null,
+        costUsd: known ? num(n.cost_usd) : null,
+        tokens: known ? nodeTokens(n) : null,
+        runsWithoutCost: known ? num(n.runs_without_cost) || 0 : null,
+        runsWithoutTokens: known ? num(n.runs_without_tokens) || 0 : null,
+        tracked: known,
+    };
+}
+
 function diffNodes(runA, runB) {
     const ca = executedNodes(runA.state, runA.cost_tracking);
     const cb = executedNodes(runB.state, runB.cost_tracking);
     const all = orderNodes(new Set([...Object.keys(ca), ...Object.keys(cb)]));
+    const na = costNodes(runA.cost_tracking), nb = costNodes(runB.cost_tracking);
+    // also_covers: o nó rodou na sessão de outro (fetch_ticket dentro do plan); custo e tokens estão lá.
+    const coverOf = (nodes, node) => Object.keys(nodes).find(k => Array.isArray(nodes[k]?.also_covers) && nodes[k].also_covers.includes(node)) || null;
     return {
+        detail: Object.fromEntries(all.map(n => [n, { a: nodeDetail(ca[n], na[n], coverOf(na, n)), b: nodeDetail(cb[n], nb[n], coverOf(nb, n)) }])),
         onlyInA: all.filter(n => n in ca && !(n in cb)),
         onlyInB: all.filter(n => n in cb && !(n in ca)),
         both: all.filter(n => n in ca && n in cb),
@@ -498,6 +531,23 @@ function summarySentence(runA, runB, verdict, tokens) {
     return verdict.reason === 'status' ? `${lead} (Run ${other} ${outcomePhrase(otherState?.status)})` : lead;
 }
 
+// Entradas e evidências do run para a tela Comparar runs. Ausente = null (N/A na tela).
+function runFacts(run) {
+    const s = run.state || {};
+    const providers = new Set();
+    for (const n of Object.values(costNodes(run.cost_tracking))) for (const p of nodeProviders(n)) providers.add(p);
+    const transcripts = num(s.transcripts_total) ?? (Array.isArray(s.transcripts) ? s.transcripts.length : null);
+    return {
+        specPath: typeof s.spec_path === 'string' && s.spec_path ? s.spec_path : null,
+        specHash: typeof s.spec_hash === 'string' && s.spec_hash ? s.spec_hash : null,
+        providers: [...providers].sort(),
+        planScore: num(s.planScore),
+        transcripts,
+        startedAt: typeof s.started_at === 'string' ? s.started_at : null,
+        updatedAt: typeof s.updated_at === 'string' ? s.updated_at : null,
+    };
+}
+
 function describeRun(run) {
     return {
         ref: run.ref ?? NA,
@@ -521,6 +571,7 @@ function compareRuns(runA, runB) {
         runA: describeRun(a),
         runB: describeRun(b),
         metrics: buildMetrics(a, b, testResultsDiff, planScoreDiff),
+        facts: { a: runFacts(a), b: runFacts(b) },
         stateDiff: diffState(a.state, b.state),
         stateDiffIgnored: STATE_DIFF_IGNORED,
         tokenDiff,

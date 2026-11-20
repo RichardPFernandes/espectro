@@ -1,0 +1,57 @@
+{
+  "issues": {
+    "PRI-399": {
+      "id": "uuid-399",
+      "identifier": "PRI-399",
+      "description": "**Estado:** PR #215 em revisão.\n**Próximo passo:** mesclar o PR #215.\n**Decisão pendente:** nenhuma.\n\nCorpo.",
+      "state": { "type": "started", "name": "In Review" },
+      "team": { "states": [
+        { "id": "st-review", "name": "In Review", "type": "started" },
+        { "id": "st-done", "name": "Done", "type": "completed" }
+      ] },
+      "children": [{ "identifier": "PRI-398", "state": { "type": "completed" } }],
+      "attachments": [{ "url": "https://github.com/acme/prisma/pull/215" }]
+    },
+    "PRI-400": {
+      "id": "uuid-400",
+      "identifier": "PRI-400",
+      "description": "**Estado:** em curso.\n**Próximo passo:** PR #216.",
+      "state": { "type": "started", "name": "In Progress" },
+      "team": { "states": [{ "id": "st-done", "name": "Done", "type": "completed" }] },
+      "children": [],
+      "attachments": [{ "url": "https://github.com/acme/prisma/pull/216" }]
+    },
+    "PRI-401": {
+      "id": "uuid-401",
+      "identifier": "PRI-401",
+      "description": "**Estado:** em curso.\n**Próximo passo:** entregar o AC-03.\n\n## Pronto quando\n- [x] AC-01: entregue no PR #215.\n* [X] AC-02: entregue no PR #215.\n- [ ] AC-03: fica para o próximo PR.",
+      "state": { "type": "started", "name": "In Progress" },
+      "team": { "states": [{ "id": "st-done", "name": "Done", "type": "completed" }] },
+      "children": [],
+      "attachments": [{ "url": "https://github.com/acme/prisma/pull/215" }]
+    }
+  },
+  "pulls": {
+    "acme/prisma#215": {
+      "id": 9215,
+      "number": 215,
+      "html_url": "https://github.com/acme/prisma/pull/215",
+      "state": "closed",
+      "merged": true,
+      "merged_at": "2026-11-18T15:00:00Z",
+      "title": "feat(ci): estado no merge, F0.9 (Refs PRI-399)",
+      "body": "**Nível:** médio\n**Issue:** Refs PRI-399\nTambém Refs PRI-400 e Refs PRI-401.",
+      "labels": [{ "name": "processo:medio" }],
+      "base": { "ref": "main", "repo": { "full_name": "acme/prisma" } },
+      "head": { "repo": { "full_name": "acme/prisma" } }
+    },
+    "acme/prisma#216": {
+      "id": 9216,
+      "number": 216,
+      "html_url": "https://github.com/acme/prisma/pull/216",
+      "state": "open",
+      "merged": false,
+      "base": { "ref": "main", "repo": { "full_name": "acme/prisma" } }
+    }
+  }
+}

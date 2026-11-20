@@ -108,6 +108,19 @@ function same(a, b) {
     return (a ?? null) === (b ?? null);
 }
 
+// Contador de versão de um registro fora do state.json (PRI-205 S3b: seleção do
+// classificador, memory/routing/classifier-selection.json). Mesma regra do resto do
+// arquivo: a comparação do que o caller leu com o que está no disco mora só aqui (AC-02).
+function isCounter(v) {
+    return Number.isInteger(v) && v >= 0;
+}
+
+/** @returns {{ ok: true } | { ok: false, code: 'INVALID'|'CONFLICT', expected: any, actual: any }} */
+function compareCounter(expected, actual) {
+    if (!isCounter(expected)) return { ok: false, code: 'INVALID', expected, actual };
+    return expected === actual ? { ok: true } : { ok: false, code: 'CONFLICT', expected, actual };
+}
+
 /**
  * Compara as expectativas com o estado atual. Pura (não loga, não lança).
  * @returns {{ code: string|null, conflicts: Array<{field, expected, actual}>, alreadyProcessed: boolean }}
@@ -493,6 +506,7 @@ module.exports = {
     STATE_CONFLICT, SESSION_CONFLICT, CONFLICT_ABORTED, CONFLICT_MESSAGE, LOG_FILE, REQUIRED, OPERATION_TYPES, SKIP,
     CASError, isConflict, httpBody,
     specHashOf, effectiveVersion, isProcessed, compare, validate, assertFreshBase, assertRebasable,
+    isCounter, compareCounter,
     validateAndLock, transact, transactWithRetry, snapshotOf, expectations,
     runGoneConflict, reserveOperation, finishOperation, RESERVATION_TTL_MS,
     logConflict, logPath, mainRootOf, taskIdOf,

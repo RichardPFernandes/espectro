@@ -10,10 +10,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { execSync, execFileSync, spawn } = require('child_process');
+const { execSync, execFileSync, spawn, spawnSync } = require('child_process');
 const specValidator = require('./lib/spec-validator');
 const specRepairer = require('./lib/spec-repairer');
-const { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, accountCostMetadata } = require('./lib/claude-account');
+const { withClaudeAccount, resolveClaudeAccount, listClaudeAccounts, accountCostMetadata, routedPluginProof, evaluatePluginProof } = require('./lib/claude-account');
 const nodeLease = require('./lib/node-lease');
 const invalidate = require('./invalidate');
 const nodeEvents = require('./lib/node-events');
@@ -24,6 +24,14 @@ const sanitizeLog = require('./sanitize-log');
 const serviceDetector = require('./lib/service-detector');
 const buildValidator = require('./lib/build-validator');
 const planScorer = require('./lib/plan-scorer');
+const planSignals = require('./lib/plan-signals');
+const wouldRoute = require('./lib/would-route');
+const modelRoutingPolicy = require('./lib/model-routing-policy');
+const modelRouting = require('./lib/model-routing');
+const classifierAuthority = require('./lib/classifier-authority');
+const classifierShadow = require('./lib/classifier-shadow');
+const classifierSelection = require('./lib/classifier-selection');
+const routingRun = require('./lib/routing-run');
 const schemaWatcher = require('./lib/schema-watcher');
 const prStatusPoll = require('./lib/pr-status-poll');
 const { getPRStatus } = require('./check-pr-status');
@@ -44,6 +52,8 @@ const churnDetector = require('./lib/churn-detector');
 const cycleReplayer = require('./lib/cycle-replayer');
 const qaJournal = require('./lib/redmine-journal-fetcher');
 const qaCycles = require('./lib/qa-cycles');
+const qaIngest = require('./lib/qa-rejection-ingest');
+const qaProtocol = require('./lib/qa-diagnosis-protocol');
 const { GracefulShutdown } = require('./lib/graceful-shutdown');
 const watcherLock = require('./lib/watcher-lock');
 const dispatchReservation = require('./lib/dispatch-reservation');
@@ -54,6 +64,13 @@ const specGenerator = require('./lib/spec-generator');
 const cycleNotifications = require('./lib/cycle-notifications');
 const humanInputIntent = require('./lib/human-input-intent');
 const dom06 = require('./lib/dom06-attempt');
+const decompositionRuntime = require('./lib/decomposition-runtime');
+const decompositionVisit = require('./lib/decomposition-visit');
+const subagentBlock = require('./lib/subagent-block');
+const cliResult = require('./lib/cli-result');
+const phaseEffort = require('./lib/phase-effort');
+const handoffLint = require('./lib/handoff-lint');
+const planImplementChain = require('./lib/plan-implement-chain');
 
 // Consumer env loads before watcher initialization. Explicit REPO_PATH wins;
 // otherwise the caller must run in the consumer root. Candidate code has no .env.
@@ -334,7 +351,7 @@ async function fetchTicketById(id) {
 // ticket cuja task já está em andamento deixa de aparecer em
 // fetchAssignedTickets() (que só pega Aprovada/Recusa QA) — sem isto, o watcher
 // nunca mais re-descobriria esse ticket pra continuar o grafo depois do primeiro
-// segmento. Achado ao vivo (ticket #43387: "0 tickets" depois do fetch_ticket).
+// segmento. Achado ao vivo (ticket #10020: "0 tickets" depois do fetch_ticket).
 function findLocallyActiveTicketIds() {
     // DRY-RUN: os tickets do fixture já vêm todo tick; reidratar tickets reais dos
     // worktrees faria o agente simulado andar com tasks de verdade.
@@ -375,8 +392,59 @@ async function fetchQaFeedback(id) {
 // antigo). O botão deixa retry-signal.json no run; consumeQaRetrySignals o traz de
 // volta pro worktree e o tick despacha o implement.
 const QA_AUTO_NEW_CYCLE = /^(1|true|sim)$/i.test(process.env.WATCHER_RECUSA_QA_NOVO_CICLO || '');
+// PRI-181 c0b (RRC-PRI181-004 r5.1 §3.2): C1–C3 (identidade, store, diagnóstico) só com
+// WATCHER_QA_DIAGNOSTICO=1. Desligado (padrão, inclusive ausente) = comportamento C0 de
+// 2cb6b89^ (syncQaRejectionC0). Ligar no consumidor é gate próprio (Promotion Gate, DB-06,
+// RRC-PRI263-001) — não basta editar o .env.
+const QA_DIAGNOSTICO = /^(1|true|sim)$/i.test(process.env.WATCHER_QA_DIAGNOSTICO || '');
 const QA_RETRY_SIGNAL = 'retry-signal.json';
 const qaRetryTasks = new Set(); // task-ids cujo sinal foi consumido neste processo (nota no prompt)
+// Motivos estáveis de qa_retry_blocked (PRI-184) — alinhados a .graph/schemas/state.schema.json.
+const QA_RETRY_BLOCKED_REASONS = new Set([
+    'destino_ocupado', 'spec_ausente', 'changelog_invalido',
+    'state_fora_schema', 'ticket_ausente', 'worktree_ausente',
+]);
+
+// Persiste bloqueio do sinal de retry: campo atual + evento append-only uma vez por motivo.
+// Não mexe em updated_at (mesmo critério de syncQaRejection). DRY_RUN/SIMULATE: no-op.
+function recordQaRetryBlocked(dir, reason) {
+    if (!QA_RETRY_BLOCKED_REASONS.has(reason)) {
+        console.warn(`[qa-retry] ${path.basename(dir)}: motivo de bloqueio não catalogado (${reason}) — não gravado.`);
+        return;
+    }
+    if (DRY_RUN || SIMULATE) return;
+    const check = readStateChecked(dir);
+    const state = check.state || check.raw;
+    if (!state || typeof state !== 'object') {
+        console.warn(`[qa-retry] ${path.basename(dir)}: não dá para gravar qa_retry_blocked (${reason}) — state ilegível.`);
+        return;
+    }
+    const events = Array.isArray(state.events) ? state.events : [];
+    const already = events.some(e => e && e.type === 'qa_retry_blocked' && e.detail === reason);
+    const current = state.qa_retry_blocked;
+    if (already && current && current.reason === reason) return;
+    const ts = new Date().toISOString();
+    const next = { ...state, qa_retry_blocked: { reason, at: ts } };
+    if (!already) {
+        next.events = [...events, {
+            type: 'qa_retry_blocked', node: state.node || 'implement', ts, at: ts, detail: reason,
+        }];
+    }
+    stateWriter.write(dir, next, { operation: 'qa_retry_blocked', actor: 'watcher', base: baseOf(state) });
+    if (check.valid) checkWrittenState(dir);
+}
+
+function clearQaRetryBlocked(state) {
+    if (!state || state.qa_retry_blocked === undefined) return state;
+    const { qa_retry_blocked: _blocked, ...rest } = state;
+    return rest;
+}
+
+function mapSpecBlockReason(message) {
+    const text = String(message || '');
+    if (/changelog|JSON inválido|versão .*changelog|Branch Liberação/i.test(text)) return 'changelog_invalido';
+    return 'spec_ausente';
+}
 
 // Diretórios onde um run do ticket pode estar: ativo/arquivado no worktree, e o
 // checkout principal (runs/ e _archive/). A rotação (memory/archive/) fica de fora de
@@ -413,10 +481,11 @@ function latestRunForTicket(ticketId) {
     return best;
 }
 
-// Grava a mudança de status do ticket no run mais recente. Não mexe em updated_at
-// (decide findActiveTask/mostRecentArchivedCommit) nem em run com nó rodando (o agente
-// reescreve o state.json ao sair — fica pro próximo tick).
-async function syncQaRejection(ticket) {
+// Comportamento C0 (cópia literal de syncQaRejection em 2cb6b89^, PR #50/#60): usado com
+// WATCHER_QA_DIAGNOSTICO desligado. Não grava rejection_key/identity_quality/
+// transition_journal_id/qa_diagnosis, não promove legado e não toma lock de ingestão.
+// Oráculos: lib/qa-rejection-c0-oracle.test.js e lib/qa-retry-watcher-c0-oracle.test.js.
+async function syncQaRejectionC0(ticket) {
     const name = ticket.status?.name;
     if (!name) return null;
     const latest = latestRunForTicket(ticket.id);
@@ -443,6 +512,84 @@ async function syncQaRejection(ticket) {
     return { ...latest, state: next };
 }
 
+// Grava a mudança de status do ticket no run mais recente. Não mexe em updated_at
+// (decide findActiveTask/mostRecentArchivedCommit) nem em run com nó rodando (o agente
+// reescreve o state.json ao sair — fica pro próximo tick).
+//
+// PRI-181 C1: com status Recusa QA, relê journals mesmo se ticket_status não mudou
+// (DB-01b / between_polls). Identidade = journal → 13 + rejection_key; N-08 via
+// trava por chave no ingest. Sem Diagnosis Record (C2).
+async function syncQaRejection(ticket) {
+    if (!QA_DIAGNOSTICO) return syncQaRejectionC0(ticket);
+    const name = ticket.status?.name;
+    if (!name) return null;
+    const latest = latestRunForTicket(ticket.id);
+    if (!latest || latest.state.status === 'running') return latest;
+
+    const statusChanged = latest.state.ticket_status !== name;
+    const rejected = qaJournal.isQaRejectedStatus(name);
+    // Fora de Recusa QA: só grava quando o status mudou (comportamento anterior).
+    if (!statusChanged && !rejected) return latest;
+
+    const next = { ...latest.state, ticket_status: name };
+    let changed = statusChanged;
+
+    if (rejected) {
+        let contextMd = '';
+        try { contextMd = fs.readFileSync(`${latest.dir}/context.md`, 'utf8'); } catch { /* sem context.md */ }
+        const journals = await qaIngest.fetchIssueJournals(ticket.id);
+        const found = journals ? qaJournal.noteFromJournals(journals) : null;
+        const at = new Date().toISOString();
+        const result = qaIngest.ingestFromJournals({
+            ticketId: ticket.id,
+            journals: journals || [],
+            state: next,
+            contextMd,
+            noteSource: found,
+            at,
+            repoPath: REPO_PATH,
+            ticketFallbackRejectedAt: ticket.updated_on || at,
+        });
+        if (result.blocked.length) {
+            console.warn(`Ticket #${ticket.id}: ingestão C1 bloqueada por N-08 (contention): ${result.blocked.map(b => b.rejection_key).join(', ')}`);
+        }
+        if (result.changed) {
+            Object.assign(next, {
+                qa_rejection: result.state.qa_rejection,
+                qa_rejections: result.state.qa_rejections,
+            });
+            changed = true;
+            if (result.ingested.length) {
+                console.log(`Ticket #${ticket.id}: Recusa QA C1 — ${result.ingested.length} identidade(s) em ${latest.taskId} (retry pelo botão "Corrigir recusa QA" do dashboard).`);
+            }
+            // PRI-181 c2b-1 (Q1=A): o store por repo (memory/qa-diagnosis/) e o ponteiro
+            // state.qa_diagnosis deixam de ter writer. O Diagnosis Record passa ao store por
+            // run (qa-diagnosis-store/-model), que a c2b-2 liga com reserva e commit (SDD §4.3).
+            // Até lá, com a flag ligada, só a ingestão C1 roda; qa_diagnosis legado fica intacto.
+        } else if (statusChanged && !next.qa_rejection) {
+            // Transporte falhou / sem journals: fallback legado (C0) sem inventar chave.
+            const rejection = {
+                note: null,
+                rejected_at: ticket.updated_on || at,
+                journal_id: null,
+                rejection_key: null,
+                identity_quality: 'UNKNOWN',
+                transition_journal_id: null,
+            };
+            next.qa_rejections = qaCycles.recordRejection(latest.state, contextMd, { ...rejection, at });
+            next.qa_rejection = rejection;
+            changed = true;
+            console.log(`Ticket #${ticket.id}: Recusa QA detectada (fallback UNKNOWN) — gravada em ${latest.taskId}.`);
+        }
+    }
+
+    if (!changed) return latest;
+    if (DRY_RUN) return { ...latest, state: next };
+    stateWriter.write(latest.dir, next, { operation: 'qa_rejection_detected', actor: 'watcher', base: baseOf(latest.state) });
+    if (latest.valid) checkWrittenState(latest.dir);
+    return { ...latest, state: next };
+}
+
 // Sinais de retry deixados pelo dashboard. Pra cada um: garante o worktree do ticket
 // (o merge pode tê-lo apagado), move o run pra <worktree>/memory/runs/<task-id> se ele
 // estiver em outro lugar (_archive, checkout principal), copia os artefatos de spec
@@ -451,6 +598,48 @@ async function syncQaRejection(ticket) {
 // ausente nos dois checkouts, ou spec_path fora de memory/spec/, mantém o sinal.
 // Problema com um sinal (ticket sumiu, sem base, destino ocupado) mantém o arquivo —
 // tenta de novo no próximo tick.
+// PRI-181 c2b-2 (SPEC-c2b-2-protocol r5.1, premissa 2): raízes de DESCOBERTA do protocolo —
+// as da varredura de retry mais a rotação. A localização autoritativa de um K usa só
+// ticketRunRoots(ticket de K) + rotatedArchiveDirs() (qaDiagnosisLocationRoots).
+function qaDiagnosisDiscoveryRoots() {
+    const roots = [RUNS_DIR, ARCHIVE_DIR];
+    const worktreesDir = `${REPO_PATH}/.claude/worktrees`;
+    try {
+        for (const d of fs.readdirSync(worktreesDir, { withFileTypes: true })) {
+            if (d.isDirectory()) roots.push(`${worktreesDir}/${d.name}/memory/runs`, `${worktreesDir}/${d.name}/memory/runs/_archive`);
+        }
+    } catch { /* sem worktrees */ }
+    return [...roots, ...rotatedArchiveDirs()];
+}
+
+function qaDiagnosisLocationRoots(ticketId) {
+    return [...ticketRunRoots(ticketId), ...rotatedArchiveDirs()];
+}
+
+// PRI-181 c2b-2 (premissa 1, Q1 = A): um passo de tick, só com WATCHER_QA_DIAGNOSTICO, antes de
+// consumeQaRetrySignals. No-op em DRY_RUN/SIMULATE (o DRY_RUN não toma a trava de instância e um
+// segundo reconciliador concorrente não é admitido). Erros não saem do passo; o tick segue.
+function qaDiagnosisTickSafe(opts = {}) {
+    if (!QA_DIAGNOSTICO) return null;
+    if (DRY_RUN || SIMULATE) {
+        console.log('[qa-diagnostico] protocolo c2b-2: no-op em DRY_RUN/SIMULATE');
+        return null;
+    }
+    try {
+        return qaProtocol.tick({
+            stateWriter, cas,
+            discoveryRoots: qaDiagnosisDiscoveryRoots,
+            locationRoots: qaDiagnosisLocationRoots,
+            onlyTicket: ONLY_TICKET,
+            log: msg => console.log(msg),
+            ...opts,
+        });
+    } catch (e) {
+        console.error('[qa-diagnostico] passo do protocolo falhou (tick segue):', e.message);
+        return null;
+    }
+}
+
 async function consumeQaRetrySignals() {
     if (SIMULATE) return []; // sinais do dashboard são de runs reais — DRY-RUN não consome
     const roots = [RUNS_DIR, ARCHIVE_DIR];
@@ -483,6 +672,11 @@ async function consumeQaRetrySignal(dir) {
     const taskId = path.basename(dir);
     const check = readStateChecked(dir);
     const state = check.state || check.raw;
+    if (state && typeof state === 'object' && check.valid === false && check.reason === 'schema') {
+        console.warn(`[qa-retry] ${taskId}: state fora do schema — sinal mantido, implement não despachado.`);
+        recordQaRetryBlocked(dir, 'state_fora_schema');
+        return null;
+    }
     const ticketId = Number(ticketIdOfTask(taskId, state));
     if (!ticketId) {
         console.warn(`[qa-retry] ${taskId}: sinal de retry em run sem ticket numérico — ignorado.`);
@@ -497,14 +691,23 @@ async function consumeQaRetrySignal(dir) {
     const preview = specArtifacts.assess({ mainRoot: REPO_PATH, workRoot: existingWorktree, state, taskId });
     if (preview.blocked) {
         console.warn(`[qa-retry] ${taskId}: ${preview.reason} — sinal mantido, implement não despachado.`);
+        recordQaRetryBlocked(dir, mapSpecBlockReason(preview.reason));
         return null;
     }
     const target = `${taskRunsDir(ticketId)}/${taskId}`;
     if (path.resolve(dir) !== path.resolve(target)) {
         const ticket = await fetchTicketById(ticketId);
-        if (!ticket) { console.warn(`[qa-retry] ${taskId}: ticket #${ticketId} não encontrado no Redmine — sinal mantido.`); return null; }
+        if (!ticket) {
+            console.warn(`[qa-retry] ${taskId}: ticket #${ticketId} não encontrado no Redmine — sinal mantido.`);
+            recordQaRetryBlocked(dir, 'ticket_ausente');
+            return null;
+        }
         const base = BASE_BY_LIBERACAO[branchLiberacao(ticket)];
-        if (!base) { console.warn(`[qa-retry] ${taskId}: "Branch Liberação" do #${ticketId} ausente/não reconhecida — sinal mantido.`); return null; }
+        if (!base) {
+            console.warn(`[qa-retry] ${taskId}: "Branch Liberação" do #${ticketId} ausente/não reconhecida — sinal mantido.`);
+            recordQaRetryBlocked(dir, 'changelog_invalido');
+            return null;
+        }
         for (const repo of SIBLING_REPOS) {
             const repoPath = `${WORKSPACE}/${repo}`;
             if (!fs.existsSync(repoPath)) continue;
@@ -512,10 +715,12 @@ async function consumeQaRetrySignal(dir) {
         }
         if (!ensureTicketWorktree(REPO_PATH, ticketId, base)) {
             console.warn(`[qa-retry] ${taskId}: sem worktree do #${ticketId} — sinal mantido.`);
+            recordQaRetryBlocked(dir, 'worktree_ausente');
             return null;
         }
         if (fs.existsSync(target)) {
             console.error(`[qa-retry] ${taskId}: já existe ${target} — não sobrescrevo; resolva manualmente (sinal mantido em ${dir}).`);
+            recordQaRetryBlocked(dir, 'destino_ocupado');
             return null;
         }
         fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -533,6 +738,7 @@ async function consumeQaRetrySignal(dir) {
     });
     if (imported.blocked) {
         console.warn(`[qa-retry] ${taskId}: ${imported.reason} — sinal mantido, implement não despachado.`);
+        recordQaRetryBlocked(target, mapSpecBlockReason(imported.reason));
         return null;
     }
     // Não consome o sinal nem reabre o implement se a spec sumir entre a
@@ -549,12 +755,16 @@ async function consumeQaRetrySignal(dir) {
     }
     const fresh = readStateJson(target) || state;
     // Carimbo da limpeza pós-PR e churn são do ciclo anterior: o próximo /commit tem que
-    // limpar de novo e o portão de churn recomeça a contagem.
+    // limpar de novo e o portão de churn recomeça a contagem. Limpa também qa_retry_blocked
+    // (campo atual; events append-only permanecem).
     const staleChurn = ['churnReport', 'churnAccepted', 'churnEscalationNotifiedAt'].some(k => fresh[k] !== undefined);
-    if (fresh.node !== 'implement' || fresh.status !== 'in_progress' || fresh.worktrees_removed_on_pr_open_at || staleChurn) {
+    const needsReopen = fresh.node !== 'implement' || fresh.status !== 'in_progress'
+        || fresh.worktrees_removed_on_pr_open_at || staleChurn || fresh.qa_retry_blocked;
+    if (needsReopen) {
         const {
             worktrees_removed_on_pr_open_at: _cleaned,
             churnReport: _churnReport, churnAccepted: _churnAccepted, churnEscalationNotifiedAt: _churnNotified,
+            qa_retry_blocked: _blocked,
             ...reopened
         } = fresh;
         stateWriter.write(target, { ...reopened, node: 'implement', status: 'in_progress' }, { operation: 'qa_retry_reopen', actor: 'watcher', base: baseOf(fresh) });
@@ -568,13 +778,13 @@ async function consumeQaRetrySignal(dir) {
                 type: 'spec_imported', node: 'implement', ts: at, at,
                 detail: `retry de Recusa QA: artefatos copiados do checkout principal sem sobrescrever: ${imported.copied.join(', ')}`,
             }];
-            stateWriter.write(target, current, { operation: 'qa_retry_spec_import', actor: 'watcher', base: baseOf(current) });
+            stateWriter.write(target, clearQaRetryBlocked(current), { operation: 'qa_retry_spec_import', actor: 'watcher', base: baseOf(current) });
             checkWrittenState(target);
         }
     }
     fs.rmSync(`${target}/${QA_RETRY_SIGNAL}`, { force: true });
     qaRetryTasks.add(taskId);
-    console.log(`[qa-retry] ${taskId}: retry de Recusa QA #${fresh.qa_retry_count || 1} — run em ${path.relative(REPO_PATH, target)}, implement a despachar.`);
+    console.log(`[qa-retry] ${taskId}: retry de Recusa QA #${(readStateJson(target) || fresh).qa_retry_count || 1} — run em ${path.relative(REPO_PATH, target)}, implement a despachar.`);
     return ticketId;
 }
 
@@ -591,6 +801,7 @@ function rebaselineSpecForQaRetry(dir, taskId) {
         if (!probe) {
             if (!s.spec_hash) return true; // run legado sem spec/sem baseline
             console.warn(`[qa-retry] ${taskId}: spec ${rel} ausente ou ilegível no rebaseline — sinal mantido, implement não despachado.`);
+            recordQaRetryBlocked(dir, 'spec_ausente');
             return false;
         }
         if (probe.spec_hash === s.spec_hash) return true;
@@ -608,11 +819,12 @@ function rebaselineSpecForQaRetry(dir, taskId) {
             type: 'spec_baseline', node: 'implement', ts: at, at,
             detail: `retry de Recusa QA: spec_hash ${fields.spec_hash.slice(0, 12)} de ${fields.spec_path} (spec pós-/commit) vira o baseline`,
         }];
-        stateWriter.write(dir, { ...next, updated_at: at }, { operation: 'qa_retry_rebaseline', actor: 'watcher', base: baseOf(s) });
+        stateWriter.write(dir, { ...clearQaRetryBlocked(next), updated_at: at }, { operation: 'qa_retry_rebaseline', actor: 'watcher', base: baseOf(s) });
         checkWrittenState(dir);
         return true;
     } catch (e) {
         console.error(`[qa-retry] ${taskId}: falha regravando spec_hash — sinal mantido, implement não despachado:`, e.message);
+        recordQaRetryBlocked(dir, mapSpecBlockReason(e.message));
         return false;
     }
 }
@@ -862,7 +1074,7 @@ function mostRecentArchivedCommit(ticketId) {
 // despachado sem supervisão (cron, ou --follow sem ninguém olhando o terminal). O
 // grafo já modela isso com status "blocked"/"escalated" em state.json
 // (dispatchTicket já para de redespachar esses), mas até aqui isso era silencioso
-// — achado ao vivo: o ticket #43293 ficou blocked 6 dias sem ninguém notar, só
+// — achado ao vivo: o ticket #10017 ficou blocked 6 dias sem ninguém notar, só
 // descoberto vasculhando o worktree manualmente. Isto não reabre interatividade
 // (impossível sem mudar como o agente é invocado) — só avisa que HÁ uma
 // pergunta/bloqueio esperando resposta assíncrona (editando context.md/handoff.md
@@ -1224,7 +1436,7 @@ async function notifyBlocked(ticket, taskId, node, status, dir, state, noteOverr
 // redespachava fetch_ticket do zero a cada tick, com uma sessão nova (sem memória da
 // anterior) fazendo a MESMA pergunta de novo pra sempre — a pergunta anterior e
 // qualquer resposta digitada só no log (memory/runs/<ticket>.log, que é write-only,
-// nunca relido) se perdiam. Achado ao vivo no ticket #42359: ~15 rodadas da mesma
+// nunca relido) se perdiam. Achado ao vivo no ticket #10007: ~15 rodadas da mesma
 // pergunta sobre working tree sujo, com respostas do usuário no meio que nenhum
 // despacho seguinte via.
 //
@@ -1294,6 +1506,493 @@ async function notifyPretaskBlocked(ticket, ticketId) {
     }
 
     markNotified(markerPath, signature);
+}
+
+// PRI-233 (PRI-205 S4, T6): admissão recusada por roteamento ON com configuração
+// inválida. Um aviso por projeto e por assinatura (routing-run.blockedNotice), pelo
+// mesmo canal do bloqueio pré-task: comentário no Redmine (fora de --follow) e
+// notificação local. O marcador em RUNS_DIR guarda os tickets barrados (Dashboard, T9)
+// e sai quando a configuração volta a ser OFF ou ON válida.
+function routingBlockedMarkerPath() {
+    return `${RUNS_DIR}/routing-admission-blocked.json`;
+}
+
+function clearRoutingBlockedMarker() {
+    try { fs.rmSync(routingBlockedMarkerPath(), { force: true }); } catch { /* best-effort */ }
+}
+
+async function notifyRoutingAdmissionBlocked(ticket, cfg) {
+    const markerPath = routingBlockedMarkerPath();
+    let previous = null;
+    try { previous = JSON.parse(fs.readFileSync(markerPath, 'utf8')); } catch { previous = null; }
+    const { notify, marker } = routingRun.blockedNotice(previous, cfg, { ticketId: ticket.id, at: new Date().toISOString() });
+    fs.mkdirSync(RUNS_DIR, { recursive: true });
+    fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+    if (!notify) return;
+
+    const msg =
+        `[Watcher] Roteamento de modelo ligado (mode ON) com configuração inválida neste projeto: ` +
+        `${cfg.cause} (${cfg.detail}${cfg.transient ? ', leitura transitória repetida' : ''}). ` +
+        `Nenhuma Run nova é admitida enquanto isso durar (este ticket #${ticket.id} e os próximos); ` +
+        `Runs já em andamento não mudam.\n\n` +
+        (cfg.detail === 'decomposition_requires_subagent_roles'
+            ? `"decomposition": "on" exige que a policy declare subagent_roles: adicione a seção (nova versão da policy) ou remova a chave / use "off". `
+            : '') +
+        `Saídas: corrigir a policy ou o policy_ref (id, versão, sha256) em ${modelRoutingPolicy.ROUTING_CONFIG_REL}, ` +
+        `ou desligar explicitamente com { "mode": "OFF" } nesse arquivo. ` +
+        `Confira com: node scripts/validate-config.js --severity error. O próximo tick retoma sozinho.`;
+    const delivered = await deliverRoutingNotice(marker, {
+        ticketId: ticket.id, msg, title: 'Roteamento ON inválido: admissão recusada',
+        localBody: `${cfg.cause} — ver ${modelRoutingPolicy.ROUTING_CONFIG_REL}`,
+    });
+    fs.writeFileSync(markerPath, JSON.stringify(delivered, null, 2));
+}
+
+// Aviso de roteamento pelo canal existente: comentário no Redmine (fora de --follow, como
+// notifyBlocked) e notificação local. Devolve true só se o aviso saiu: com --follow o canal
+// é a notificação local (o Redmine fica de fora de propósito); sem --follow, o PUT tem que
+// voltar 2xx. Falha de rede ou HTTP de erro = false, para o chamador tentar no próximo tick.
+// Revisão independente (MAJOR-1, AGENTS.md regra 5): um PUT com resultado incerto
+// (timeout, ECONNRESET, 5xx exceto 503) pode ter gravado a nota; repetir duplicaria o
+// comentário (mesma razão de lib/redmine-fetch.js não repetir não-GET). Três desfechos:
+// - sent (2xx) → notified_at;
+// - failed (certeza de que não gravou: conexão recusada/sem DNS, 429, 503, 4xx) → tenta de
+//   novo nos próximos ticks até NOTICE_MAX_ATTEMPTS, depois desiste com notice_failed_at;
+// - uncertain → notice_uncertain_at; antes de reenviar, confere nos journals do ticket o
+//   token único da nota; achou = dado; não achou = reenvia; não deu para conferir = espera.
+// A notificação local sai uma vez por assinatura (local_notified_at).
+const NOTICE_MAX_ATTEMPTS = 5;
+const CERTAIN_NETWORK_FAILURES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']);
+
+function noticeToken(signature) {
+    return `[aviso-roteamento ${crypto.createHash('sha256').update(String(signature)).digest('hex').slice(0, 12)}]`;
+}
+
+async function putRoutingNote(ticketId, notes) {
+    try {
+        const res = await redmineFetch(`${REDMINE_URL}/issues/${ticketId}.json`, {
+            method: 'PUT',
+            headers: { 'X-Redmine-API-Key': REDMINE_API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ issue: { notes } }),
+        });
+        if (res && res.ok) return 'sent';
+        const status = res?.status;
+        if (status === 503 || status === 429 || (status >= 400 && status < 500)) return 'failed';
+        return 'uncertain';
+    } catch (e) {
+        const code = e?.code || e?.cause?.code;
+        return CERTAIN_NETWORK_FAILURES.has(code) ? 'failed' : 'uncertain';
+    }
+}
+
+// true = a nota com o token está no ticket; false = não está; null = não deu para conferir.
+async function journalHasToken(ticketId, token) {
+    try {
+        const res = await redmineFetch(`${REDMINE_URL}/issues/${ticketId}.json?include=journals`, {
+            headers: { 'X-Redmine-API-Key': REDMINE_API_KEY },
+        });
+        if (!res || !res.ok) return null;
+        const body = await res.json();
+        const journals = Array.isArray(body?.issue?.journals) ? body.issue.journals : null;
+        if (!journals) return null;
+        return journals.some(j => typeof j?.notes === 'string' && j.notes.includes(token));
+    } catch {
+        return null;
+    }
+}
+
+/** Entrega o aviso conforme o estado do marcador; devolve o marcador atualizado (o chamador grava). */
+async function deliverRoutingNotice(marker, { ticketId, msg, title, localBody }) {
+    const now = new Date().toISOString();
+    const m = { ...marker };
+    if (!m.local_notified_at) {
+        try {
+            execFileSync('osascript', ['-e', `display notification ${JSON.stringify(localBody)} with title ${JSON.stringify(title)}`], { stdio: 'ignore' });
+        } catch {
+            // Não é macOS, ou sem permissão de notificação — não bloqueia o tick.
+        }
+        m.local_notified_at = now;
+    }
+    // --follow: o canal é a notificação local (Redmine fora de propósito, como notifyBlocked).
+    if (FOLLOW) return { ...m, notified_at: now };
+    if (m.notice_failed_at) return m;
+    const token = noticeToken(m.signature);
+    if (m.notice_uncertain_at) {
+        const found = await journalHasToken(ticketId, token);
+        if (found === true) return { ...m, notified_at: now, notice_uncertain_at: null };
+        if (found === null) {
+            console.warn(`Aviso de roteamento #${ticketId}: resultado anterior incerto e journals ilegíveis — não reenvio (sem duplicar); confiro no próximo tick.`);
+            return m;
+        }
+    }
+    m.notice_attempts = (m.notice_attempts || 0) + 1;
+    const outcome = await putRoutingNote(ticketId, `${msg}\n\n${token}`);
+    if (outcome === 'sent') return { ...m, notified_at: now, notice_uncertain_at: null };
+    if (outcome === 'uncertain') {
+        console.error(`Aviso de roteamento #${ticketId}: resultado incerto — confiro os journals antes de reenviar.`);
+        return { ...m, notice_uncertain_at: now };
+    }
+    if (m.notice_attempts >= NOTICE_MAX_ATTEMPTS) {
+        console.error(`Aviso de roteamento #${ticketId}: Redmine recusou ${m.notice_attempts} vezes — desisto (a recusa segue visível no Dashboard e no log).`);
+        return { ...m, notice_failed_at: now };
+    }
+    console.error(`Aviso de roteamento #${ticketId}: Redmine recusou (tentativa ${m.notice_attempts}/${NOTICE_MAX_ATTEMPTS}) — tento de novo no próximo tick.`);
+    return m;
+}
+
+// PRI-233 (PRI-205 S4, T7): resolução do §4.7 no início de cada Attempt de uma Run
+// admitida com mode ON. Capacidades de produção: mecanismo de esforço UNAVAILABLE (U1), e
+// o despacho roteado vai só com --model (SP-1 revista); a prova do plugin (SP-2,
+// --settings próprio) roda em todo despacho roteado e é obrigatória. Provider: ACTIVE (um
+// provider, sem dono de estado operacional: UNK-AR-005). Override humano: T8, de
+// state.routing_overrides. Núcleo 2 (Jev): só registro, coletado antes (collectNucleus2, S3b).
+function routingCapabilities(runDir, projectDir) {
+    const effortMechanism = modelRouting.PRODUCTION_EFFORT_MECHANISM;
+    // runDir null = pré-checagem sem worktree (ticket novo): só a avaliação de leitura
+    // (conta, managed e settings do projeto em projectDir). Neutralizável → DEFERRED (a
+    // gravação do --settings fica para depois do worktree); LOADED/UNKNOWN recusa já,
+    // antes de qualquer branch/worktree (revisão independente, MAJOR-2). Com runDir, a
+    // prova completa roda sempre: o despacho só por modelo também exige o plugin desligado.
+    if (!runDir) {
+        const ev = evaluatePluginProof({ accountDir: resolveClaudeAccount().dir, projectDir });
+        return { effortMechanism, pluginProof: ev.status === 'NEUTRALIZABLE' ? { status: 'DEFERRED' } : { status: ev.status, reason: ev.reason } };
+    }
+    // projectDir = cwd do despacho (worktree do ticket): os settings do projeto também valem.
+    return { effortMechanism, pluginProof: routedPluginProof({ accountDir: resolveClaudeAccount().dir, runDir, projectDir }) };
+}
+
+// state = state.json da task (null no ticket novo, que ainda não tem Run nem override).
+// T8 (P-2): overrides humanas de state.routing_overrides, vigentes a partir do início da
+// visita atual ao nó (D-4; routing-run.nodeVisitStart).
+// `decomposed` (PRI-311, S5.2b, B5.3): Attempt com papel da Run decomposta — sinais só do grupo
+// (`signalsKey`), `subtaskKey` para o override de subtarefa, piso da linhagem, rota fixa da
+// integração e os papéis de subagente declarados (B8). Ausente = resolução da S4, sem mudança.
+function resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir, state = null, stateReadAt = null, nucleus2 = null, decomposed = null }) {
+    if (!runSnapshot.ok) {
+        return { ok: false, result: 'NOT_STARTED', cause: 'CONFIG_UNVERIFIABLE', detail: runSnapshot.detail, decision: null };
+    }
+    let signals = node === modelRouting.ROUTED_NODE
+        ? prospectiveSignalsForRun('claude', [node], { ticket, worktreePath, base: signalBaseBranch(ticket), isRecusaQA }).signals_prospective
+        : undefined;
+    if (decomposed && decomposed.signalsKey) signals = decompositionVisit.groupSignals(signals, decomposed.signalsKey);
+    const overrides = Array.isArray(state?.routing_overrides) ? state.routing_overrides : [];
+    // MINOR-1: o "agora" da visita nova é o instante da leitura do state (não o fim da
+    // resolução), senão uma override gravada entre a leitura e aqui valeria no retry.
+    const now = stateReadAt || new Date().toISOString();
+    const boundary = state ? routingRun.nodeVisitStart(state, node, now) : null;
+    const resolution = modelRouting.resolveRoute({
+        snapshot: runSnapshot.snapshot, node, signals, provider: { state: 'ACTIVE' },
+        capabilities: routingCapabilities(runDir, worktreePath), overrides, nodeBoundaryAt: boundary, nucleus2,
+        ...(decomposed ? {
+            subtaskKey: decomposed.subtaskKey ?? null, classFloor: decomposed.classFloor ?? null,
+            fixedRoute: decomposed.fixedRoute === true, subagentRoles: decomposed.subagentRoles,
+            subagentMechanism: decomposed.subagentMechanism ?? null,
+        } : {}),
+    });
+    // Visita nova: o chamador grava o limite usado (state.routing_visit), para o retry da
+    // mesma visita não usar o node_start, que é posterior (Bugbot, PR #97).
+    return state ? { ...resolution, visit: routingRun.visitToRecord(state, node, boundary, now) } : resolution;
+}
+
+// PRI-205 S3b (T7): opiniões do Jev em SOMBRA para os grupos do Implement, antes da
+// resolução. Só roda com o núcleo 2 efetivo no snapshot da Run e sob a reserva do
+// ticket; nunca em --dry-run/simulação (nada externo). Nunca lança e nunca bloqueia: o
+// resultado só entra como registro na RoutingDecision (classifier-shadow).
+async function collectNucleus2({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir, state, taskId }) {
+    try {
+        const signals = prospectiveSignalsForRun('claude', [node], { ticket, worktreePath, base: signalBaseBranch(ticket), isRecusaQA }).signals_prospective;
+        const active = findActiveTask(ticket.id);
+        const { planContent, specContent } = active && !active.corrupted ? readPlanArtifacts(ticket, active.dir) : { planContent: '', specContent: '' };
+        const envelopes = planSignals.classifierEnvelopes(planContent, specContent);
+        const groups = (signals && Array.isArray(signals.groups) ? signals.groups : []).map(g => {
+            const e = envelopes.get(g.subtask_key);
+            return e && e.ok ? { ...g, envelope: e.envelope } : { ...g, envelope: undefined, envelope_reason: e ? e.reason : 'ENVELOPE_MISSING' };
+        });
+        // Chave estável da visita (achado MAJOR 1 da revisão): não depende do instante do
+        // tick, então um re-despacho antes do node_start não reenvia um pedido UNCERTAIN.
+        return await classifierShadow.collectOpinions({
+            runDir, root: REPO_PATH, snapshot: runSnapshot.snapshot, taskId, visit: routingRun.nucleus2VisitKey(state, node), groups,
+        });
+    } catch (e) {
+        console.error(`[núcleo 2] #${ticket.id}: falha coletando opiniões (seguindo sem elas):`, e.message);
+        return { status: 'OFF', reason: 'CLASSIFIER_COLLECTION_FAILED', opinions: [] };
+    }
+}
+
+function routingRefusalNote(node, resolution) {
+    return `Roteamento de modelo (mode ON) não iniciou o nó "${node}": NOT_STARTED / ${resolution.cause} ` +
+        `(${resolution.detail}). Nenhum modelo foi herdado e nada foi despachado. ` +
+        (resolution.detail === 'EFFORT_MECHANISM_UNAVAILABLE'
+            ? 'O mecanismo para fixar o esforço no despacho ainda não foi verificado (U1); com mode ON nenhum despacho roteado inicia. '
+            : '') +
+        `Saída: desligar o roteamento (mode OFF) vale só para Runs novas; esta Run mantém o snapshot da admissão.`;
+}
+
+// Task existente: grava o Attempt NOT_STARTED, põe a Run em blocked (caminho humano
+// existente) e avisa uma vez (notifyBlocked, assinatura nó:status). Nos ticks seguintes
+// o status blocked impede novo Attempt.
+async function refuseRoutedNode({ ticket, taskId, node, state, dir, resolution }) {
+    dom06.beginAttempt(dir, {
+        node, cause: dom06.causeFromState(state),
+        admission: { status: 'NOT_STARTED', cause: resolution.cause, detail: resolution.detail },
+        ...(resolution.decision ? { routing: resolution.decision } : {}),
+    });
+    const note = routingRefusalNote(node, resolution);
+    const at = new Date().toISOString();
+    // Mutação no próprio objeto lido: writeTaskState passa a base do CAS e não
+    // sobrescreve o que outro escritor gravou no mesmo tick (MINOR-1).
+    state.status = 'blocked';
+    state.agent_log = [...(state.agent_log || []), { agent: 'watcher', nodes: [node], at, note }];
+    writeTaskState(dir, state, 'routing_not_started');
+    appendEvent(taskId, { type: 'checkpoint', node, agent: 'watcher', ts: at, detail: `routing NOT_STARTED: ${resolution.cause} (${resolution.detail})` }, dir);
+    console.warn(`Task ${taskId}: ${note}`);
+    // A Run acabou de entrar em blocked: um aviso de bloqueio anterior do mesmo nó (ex.:
+    // retomada manual que não limpou o marcador) não pode calar este (MINOR-3). Os ticks
+    // seguintes usam a mesma assinatura nó:blocked e não repetem.
+    try { fs.rmSync(notifiedMarkerPath(dir), { force: true }); } catch { /* best-effort */ }
+    await notifyBlocked(ticket, taskId, node, 'blocked', dir, state, note);
+    return { action: 'skip', reason: 'routing_not_started', taskId, node, cause: resolution.cause, detail: resolution.detail };
+}
+
+// PRI-311 (S5.2a, H6): writer do `blocked` da Run decomposta, pelo mesmo caminho da recusa de
+// roteamento da S4 (writeTaskState com CAS + notifyBlocked uma vez por assinatura). Marca o
+// Attempt aplicado em decomposition_block_applied: o desbloqueio humano (unblocked) não é
+// desfeito no tick seguinte. Nota só com códigos (motivo do aceite), nunca caminhos.
+async function applyDecompositionBlock({ ticket, taskId, node, state, dir, pending }) {
+    const at = new Date().toISOString();
+    const note = `Run decomposta (PRI-287 S5): o Attempt ${pending.attempt_id} do nó "${pending.node}" não foi aceito ` +
+        `(${pending.reason}). Retry automático só sem mutação observada no workspace; aqui há mutação possível ou o teto ` +
+        `foi atingido, então a Run para no caminho humano. O diff parcial fica preservado no worktree (sem reset).`;
+    state.status = 'blocked';
+    state.decomposition_block_applied = { attempt_id: pending.attempt_id, reason: pending.reason, at };
+    state.agent_log = [...(state.agent_log || []), { agent: 'watcher', nodes: [node], at, note }];
+    writeTaskState(dir, state, 'decomposition_blocked');
+    appendEvent(taskId, { type: 'checkpoint', node, agent: 'watcher', ts: at, detail: `decomposição: blocked (${pending.reason})` }, dir);
+    console.warn(`Task ${taskId}: ${note}`);
+    try { fs.rmSync(notifiedMarkerPath(dir), { force: true }); } catch { /* best-effort */ }
+    await notifyBlocked(ticket, taskId, node, 'blocked', dir, state, note);
+    return { action: 'skip', reason: 'decomposition_blocked', taskId, node, attempt: pending.attempt_id, cause: pending.reason };
+}
+
+// ---------------------------------------------------------------------------------
+// Run decomposta (PRI-311 / PRI-287 S5.2b; SPEC B2, B5, B6, B8 e adendo H7). Atrás da flag:
+// só uma Run cujo snapshot de admissão traz `decomposition: "on"` entra aqui, e a admissão
+// real aceita "on" só com policy que declare subagent_roles (PRI-341). Sem engine novo: o mesmo despacho do nó, com o
+// Attempt criado por prepareRoleDispatch (baseline + cadeia + DOM-06) e o comando de passo.
+
+const DECOMPOSED_GATES = new Set(['review', 'test', 'verify']);
+// Attempt com papel STARTED, sem aceite e com a Run fora de `running` por mais que isto: o
+// processo nunca subiu (exceção entre o Attempt e o lease) ou morreu sem lease. Fecha como
+// órfão (H4: sem mutação → um retry; com mutação/UNKNOWN → blocked), nunca espera para sempre.
+const DECOMPOSITION_ORPHAN_GRACE_MS = 2 * 60 * 1000;
+
+// Versão da CLI do agente (B8): o mecanismo `--agents` só vale para a versão provada na tarefa 0.
+let claudeCliVersionCache;
+function claudeCliVersion() {
+    if (claudeCliVersionCache !== undefined) return claudeCliVersionCache;
+    try {
+        const out = spawnSync('claude', ['--version'], { encoding: 'utf8', timeout: 15000, env: cleanAgentEnv() });
+        const m = /(\d+\.\d+\.\d+)/.exec(String(out.stdout || ''));
+        claudeCliVersionCache = out.status === 0 && m ? m[1] : null;
+    } catch {
+        claudeCliVersionCache = null;
+    }
+    return claudeCliVersionCache;
+}
+
+function decompositionBlockPending(attemptId, reason, node) {
+    return { attempt_id: attemptId || null, reason, node };
+}
+
+// B5.6: integração aceita e `execute_node` cumprida pela agregação → o watcher faz a
+// transição implement → review pelo writer existente (CAS) e acrescenta `implement` ao
+// history (o comando de integração não transiciona).
+// CAS com expected_node (como o `state-writer transition` do /implement): o nó ainda é o
+// implement e a versão é a lida no tick; conflito lança e nada é gravado.
+function transitionDecomposedImplement({ taskId, state, dir, aggregate }) {
+    const at = new Date().toISOString();
+    const note = `Run decomposta: subtarefas e integração aceitas, agregação ${aggregate.duplicate ? 'já gravada' : 'gravada'} ` +
+        `no Attempt ${aggregate.attempt_id}; transição implement → review feita pelo watcher.`;
+    const written = stateWriter.update(dir, draft => {
+        draft.node = 'review';
+        draft.history = [...(draft.history || []), 'implement'];
+        draft.updated_at = at;
+        draft.agent_log = [...(draft.agent_log || []), { agent: 'watcher', nodes: ['implement'], at, note }];
+    }, { operation: 'node_transition', actor: 'watcher', expect: { expected_state_version: cas.effectiveVersion(state), expected_node: 'implement' } });
+    if (written) { Object.assign(state, written); rememberBase(written); checkWrittenState(dir); }
+    appendEvent(taskId, { type: 'checkpoint', node: 'implement', agent: 'watcher', ts: at, detail: 'decomposição: implement → review (agregação)' }, dir);
+    return { action: 'transitioned', taskId, node: 'implement', to: 'review', aggregate: aggregate.attempt_id };
+}
+
+/**
+ * Prepara o despacho de um nó da Run decomposta. Devolve:
+ * - `{ result }`: o tick termina aqui (em voo, blocked, transição);
+ * - `{ decomposed: null }`: não decomponível ou nó fora do ramo → caminho da S4;
+ * - `{ decomposed }`: ação, resolução, comandos, bloco de contexto e `admit()` (H0 + H6 +
+ *   DOM-06), chamado pelo despacho depois dos portões.
+ */
+async function prepareDecomposedNode({ ticket, taskId, id, node, state, dir, worktreePath, base, isRecusaQA, stateReadAt, runSnapshot }) {
+    const snapshot = runSnapshot.snapshot;
+    const sections = modelRoutingPolicy.decompositionSections(snapshot.policy);
+    const specHash = () => dom06SpecHash(state, worktreePath, id);
+    const block = (attemptId, reason) => ({ result: applyDecompositionBlock({ ticket, taskId, node, state, dir, pending: decompositionBlockPending(attemptId, reason, node) }) });
+
+    if (DECOMPOSED_GATES.has(node)) {
+        const dec = state.decomposition;
+        if (!dec || dec.status !== 'DECOMPOSABLE') return { decomposed: null };
+        // Defesa da Review (B5.6, AC-22): sem agregação da versão vigente, não despacha.
+        if (node === 'review' && !decompositionVisit.reviewAllowed(dir, dec.plan_version)) return block(null, 'REVIEW_WITHOUT_AGGREGATE');
+        const resolution = resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt });
+        return {
+            decomposed: {
+                action: { kind: 'gate' }, resolution, commands: null, contextBlock: null,
+                admit: () => decompositionRuntime.prepareRoleDispatch({
+                    runDir: dir, checkoutRoot: REPO_PATH, task: taskId, worktree: worktreePath,
+                    decomposition: { role: 'gate', plan_version: dec.plan_version },
+                    scopePaths: dec.scope_paths, watchGlobs: sections.workspace_watch_globs, limits: sections.manifest_limits, state,
+                    dispatch: {
+                        node, ticketId: id, baseBranch: base, specHash: specHash(), cause: dom06.causeFromState(state),
+                        ...(resolution.ok ? { routing: snapshot, routingDecision: resolution.decision } : {}),
+                    },
+                }),
+            },
+        };
+    }
+    if (node !== 'implement') return { decomposed: null };
+
+    // B2: decomposição da visita, gravada pelo writer existente.
+    const { planContent } = readPlanArtifacts(ticket, dir);
+    const rec = decompositionVisit.recordDecomposition(state, planContent);
+    if (rec.changed) {
+        state.decomposition = rec.decomposition;
+        writeTaskState(dir, state, 'decomposition_recorded');
+    }
+    if (rec.refused) return block(null, rec.refused);
+    const dec = state.decomposition;
+    if (dec.status !== 'DECOMPOSABLE') {
+        console.warn(`Task ${taskId}: plano não decomponível (${dec.cause}) — Implement segue como um Attempt (caminho da S4).`);
+        return { decomposed: null };
+    }
+    // B5.7: volta de gate → rework mapeado (uma vez por gate).
+    const rework = decompositionVisit.pendingRework({ runDir: dir, state, decomposition: dec });
+    if (rework) {
+        state.decomposition = { ...dec, rework };
+        writeTaskState(dir, state, 'decomposition_rework');
+    }
+    const current = state.decomposition;
+    // B5.8: scope_violation das subtarefas já fechadas (registro no Attempt, uma vez).
+    for (const a of decompositionVisit.versionAttempts(dir, current.plan_version)) {
+        if (a.role !== 'subtask' || !a.acceptance || a.scope_check) continue;
+        try {
+            const r = decompositionVisit.scopeCheck({ checkoutRoot: REPO_PATH, task: taskId, attempt: a, decomposition: current });
+            dom06.recordScopeViolation(path.join(dir, 'dom06', 'attempts', `${a.attempt_id}.json`), r);
+        } catch (e) {
+            console.error(`Task ${taskId}: falha conferindo o escopo do Attempt ${a.attempt_id} (fica sem registro):`, e.message);
+        }
+    }
+
+    let action = decompositionVisit.nextAction({ runDir: dir, state, decomposition: current });
+    if (action.kind === 'wait' && state.status !== 'running') {
+        const open = dom06.listAttempts(dir).find(a => a.attempt_id === action.attempt_id);
+        if (open && Date.now() - Date.parse(open.created_at) > DECOMPOSITION_ORPHAN_GRACE_MS) {
+            decompositionRuntime.closeRoleOrphan({ runDir: dir, node, task: taskId, checkoutRoot: REPO_PATH, orphanReason: 'agent_dead' });
+            action = decompositionVisit.nextAction({ runDir: dir, state, decomposition: current });
+        }
+    }
+    if (action.kind === 'wait') {
+        return { result: { action: 'skip', reason: 'decomposition_attempt_open', taskId, node, attempt: action.attempt_id } };
+    }
+    if (action.kind === 'blocked') return block(action.attempt_id, action.reason);
+    if (action.kind === 'rework_pending') return block(null, 'REWORK_NOT_RECORDED');
+    if (action.kind === 'aggregate') {
+        const agg = dom06.aggregateImplement(dir, current.plan_version, action.keys);
+        if (!agg.ok) return block(null, 'AGGREGATE_PENDING');
+        return { result: transitionDecomposedImplement({ taskId, state, dir, aggregate: agg }) };
+    }
+
+    // Subtarefa ou integração.
+    const isSubtask = action.kind === 'subtask';
+    const allKey = dom06.allKey(current.plan_version);
+    const group = isSubtask ? decompositionVisit.keyGroup(current, action.key) : null;
+    const agents = decompositionVisit.readProjectAgents(worktreePath);
+    const mechanism = snapshot.policy && snapshot.policy.subagent_roles ? modelRouting.subagentMechanism(claudeCliVersion()) : null;
+    const roles = modelRouting.subagentRoles({ snapshot, agents, mechanism });
+    const resolution = resolveNodeRoute({
+        runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt,
+        decomposed: isSubtask
+            ? {
+                signalsKey: action.key === allKey ? null : action.key,
+                subtaskKey: action.key === allKey ? null : action.key, // ALL: só override de nó/ticket
+                classFloor: decompositionVisit.classFloor({ runDir: dir, decomposition: current, key: action.key }),
+                subagentRoles: roles.roles, subagentMechanism: mechanism,
+            }
+            : { fixedRoute: true, subagentRoles: roles.roles, subagentMechanism: mechanism },
+    });
+    if (resolution.ok) {
+        resolution.agentsJson = roles.agentsJson;
+        if (roles.agents_sha256) resolution.decision.subagent_agents_sha256 = roles.agents_sha256;
+    }
+    const dod = isSubtask ? decompositionVisit.deriveDod({ group, planContent }) : null;
+    const ctx = isSubtask
+        ? decompositionVisit.stepContextBlock({ taskId, group, planContent, dod, rework: action.rework })
+        : decompositionVisit.integrationContextBlock({ taskId, decomposition: current });
+    return {
+        decomposed: {
+            action, resolution, contextBlock: ctx.block,
+            commands: [isSubtask ? `/implement-step ${taskId} ${action.key}` : `/implement-integrate ${taskId}`],
+            admit: () => {
+                const r = decompositionRuntime.prepareRoleDispatch({
+                    runDir: dir, checkoutRoot: REPO_PATH, task: taskId, worktree: worktreePath,
+                    decomposition: {
+                        role: isSubtask ? 'subtask' : 'integration', plan_version: current.plan_version,
+                        ...(isSubtask ? { subtask_key: action.key, steps: group.steps, rework: action.rework, dod } : {}),
+                        parent_attempt_id: action.parent_attempt_id, context_record_sha256: ctx.sha256,
+                    },
+                    scopePaths: current.scope_paths, watchGlobs: sections.workspace_watch_globs, limits: sections.manifest_limits, state,
+                    dispatch: {
+                        node, ticketId: id, baseBranch: base, specHash: specHash(), cause: action.cause,
+                        ...(resolution.ok ? { routing: snapshot, routingDecision: resolution.decision } : {}),
+                    },
+                });
+                return r;
+            },
+        },
+    };
+}
+
+// Ticket novo: o fetch_ticket recusado não cria Run nem worktree (Bugbot, PR #97: um
+// worktree por ticket recusado esgotaria o pool). Sem Run não há Attempt: a recusa e a
+// RoutingDecision ficam no marcador RUNS_DIR/<ticket>-routing-not-started.json, como a
+// admissão recusada por config inválida. Um aviso por assinatura (causa|detalhe|snapshot),
+// marcado como dado só depois de sair; falhou = o próximo tick tenta de novo.
+function routingNotStartedMarkerPath(ticketId) {
+    return `${RUNS_DIR}/${ticketId}-routing-not-started.json`;
+}
+
+async function refuseRoutedFetch({ ticket, resolution, snapshotSha }) {
+    const markerPath = routingNotStartedMarkerPath(ticket.id);
+    const signature = `${resolution.cause}|${resolution.detail}|${snapshotSha}`;
+    const base = { action: 'skip', reason: 'routing_not_started', node: 'fetch_ticket', cause: resolution.cause, detail: resolution.detail };
+    let marker = null;
+    try { marker = JSON.parse(fs.readFileSync(markerPath, 'utf8')); } catch { marker = null; }
+    if (marker && marker.signature === signature && marker.notified_at) return base;
+    if (!marker || marker.signature !== signature) {
+        marker = {
+            signature, node: 'fetch_ticket', result: 'NOT_STARTED', cause: resolution.cause, detail: resolution.detail,
+            snapshot_sha256: snapshotSha, routing: resolution.decision || null,
+            first_refused_at: new Date().toISOString(), notified_at: null,
+        };
+        fs.mkdirSync(RUNS_DIR, { recursive: true });
+        fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+    }
+    const note = routingRefusalNote('fetch_ticket', resolution);
+    console.warn(`Ticket #${ticket.id}: ${note}`);
+    const delivered = await deliverRoutingNotice(marker, {
+        ticketId: ticket.id, msg: `[Watcher] Ticket #${ticket.id}: ${note}`,
+        title: `Ticket #${ticket.id}: roteamento não iniciou`, localBody: `${resolution.cause} (${resolution.detail})`,
+    });
+    fs.writeFileSync(markerPath, JSON.stringify(delivered, null, 2));
+    return base;
 }
 
 // ---------------------------------------------------------------------------------
@@ -1385,7 +2084,7 @@ async function notifySpecClarification(ticket, result, signature, specLocation) 
 // Ao achar um aceite novo, grava accepted_at/accepted_by no gate file (fora de dry-run).
 // Comentários (não do watcher) feitos no ticket DEPOIS do último pedido de spec do
 // watcher — é onde chega a resposta: um "aceito", ou a própria spec complementada
-// (achado ao vivo no #43584, Recusa QA: Problema/Solução/Critérios vieram num
+// (achado ao vivo no #10003, Recusa QA: Problema/Solução/Critérios vieram num
 // comentário, não na descrição). [] se o watcher nunca pediu ou se o Redmine falhar.
 async function fetchSpecReplies(ticketId) {
     // Pedido = comentário de pendência do portão OU comentário do auto-repair (draft).
@@ -2622,7 +3321,7 @@ async function runPreBuildGate(ticket, active, worktreePath, { validate = buildV
             return { proceed: true, note: preBuildAcceptedNote(state) };
         }
         // Mesmo worktree E mesmo JDK => o resultado seria o mesmo. JDK diferente (ou não
-        // registrado: falha anterior à resolução de JDK, ex #43646) recompila.
+        // registrado: falha anterior à resolução de JDK, ex #10005) recompila.
         const fp = worktreeFingerprint(worktreePath);
         const javaHome = buildValidator.resolveJavaHome(worktreePath, env).javaHome || null;
         if (fp && fp === state.preBuildFingerprint && 'preBuildJavaHome' in state && state.preBuildJavaHome === javaHome) {
@@ -2823,7 +3522,7 @@ function sessionNameFor(ticketId, isRecusaQA, label) {
 // CLAUDE_CODE_CHILD_SESSION=1 do pai e passa a resolver caminhos relativos
 // (memory/runs/...) contra o projeto REGISTRADO do pai (o checkout principal) em vez
 // do seu próprio cwd (o worktree do ticket) — bug real observado disparando o
-// ticket #43425 de dentro desta própria sessão: os arquivos foram escritos de
+// ticket #10006 de dentro desta própria sessão: os arquivos foram escritos de
 // verdade, só que no checkout principal, não no worktree. Um watcher disparado por
 // cron/terminal comum (uso normal em produção) não teria essas variáveis pra
 // começo de conversa, mas remover explicitamente é defesa em profundidade — nunca
@@ -2832,7 +3531,7 @@ function sessionNameFor(ticketId, isRecusaQA, label) {
 // padrão desta máquina aponta pro JDK 17 (usado por outros projetos) — sem isso, todo
 // `mvnw compile`/`test` que os agentes tentam rodar falha com "release version 25 not
 // supported", mascarando resultado real de build atrás de um problema de ambiente
-// (visto 2x ao vivo: implement do ticket #43425, nas duas rodadas). Só sobrescreve
+// (visto 2x ao vivo: implement do ticket #10006, nas duas rodadas). Só sobrescreve
 // pro PROCESSO FILHO — não mexe no JAVA_HOME/perfil de shell do usuário, que pode
 // ter outros projetos em JDK diferente.
 const JDK25_HOME = process.env.WATCHER_JAVA_HOME;
@@ -2860,37 +3559,15 @@ function cleanAgentEnv() {
 // modo --follow (o único em que dá pra inspecionar a saída antes do processo sair;
 // modo normal é fire-and-forget por design, detecção fica pro próximo tick perceber
 // que state.json não avançou). Encontrado ao vivo validando o orquestrador: Claude
-// bateu "session limit" no meio do teste com o ticket #43425 — motivo real da
+// bateu "session limit" no meio do teste com o ticket #10006 — motivo real da
 // lista, não hipotético. Sem um segundo agente pra assumir no mesmo tick (ver
 // memory/decisions/2026-09-18-remocao-codex-workflow.md), a única ação possível
 // aqui é logar e deixar o próximo tick tentar de novo.
 // `\b429\b` isolado foi removido depois de um falso positivo real: bateu com
 // "14:19:15,429" (milissegundos de timestamp) num log de build do Quarkus durante o
-// /test do ticket #43425. Todo padrão aqui precisa de contexto textual específico o
+// /test do ticket #10006. Todo padrão aqui precisa de contexto textual específico o
 // bastante pra não colidir com números soltos em log de build/teste normal.
-const UNAVAILABLE_SIGNATURES = [
-    /session limit/i, /usage limit/i, /rate limit exceeded/i, /quota exceeded/i,
-    /401 unauthorized/i, /missing bearer/i, /429 too many requests/i,
-];
-function looksUnavailable(output) {
-    return UNAVAILABLE_SIGNATURES.some(re => re.test(output));
-}
-
-// Estouro de janela de contexto/tokens da PRÓPRIA sessão (não indisponibilidade do
-// provedor) — diferente de UNAVAILABLE_SIGNATURES acima: ali a ação é "deixa o
-// próximo tick tentar de novo sozinho"; aqui o run precisa ficar visível e travado
-// (status="session_limit") até uma retomada manual pelo dashboard (POST
-// /api/runs/:taskId/resume-session), porque simplesmente redespachar do zero
-// perderia o que a sessão anterior tinha acumulado. "session limit" aparece nas
-// duas listas de propósito — texto igual, ação diferente — por isso a checagem
-// desta lista tem precedência (ver dispatchTicket, comentário "estouro de
-// contexto/tokens" perto do looksUnavailable(output) existente).
-const SESSION_LIMIT_SIGNATURES = [
-    /context window/i, /max_tokens/i, /token limit/i, /session limit/i,
-];
-function looksLikeSessionLimit(stderrText) {
-    return SESSION_LIMIT_SIGNATURES.some(re => re.test(stderrText));
-}
+const { looksUnavailable, looksLikeSessionLimit } = require('./lib/agent-exit-signals');
 
 // Spawna o processo `claude` do jeito certo pro modo --follow ou não — mesma
 // lógica de robustez do watcher original: sem --follow, o pai sai logo, então
@@ -2906,25 +3583,67 @@ function looksLikeSessionLimit(stderrText) {
 // é a recuperação de órfão no próximo startup (recoverOrphanedNodes).
 // code: exit code do agente (null = sinal/falha no spawn) — vira os eventos de saída
 // do nó em state.json.events (nodeEvents.recordNodeExit; falha lá só é logada).
+// PRI-311 (S5.2a, H1/O-03): Attempt com papel (Run decomposta) não fecha aqui. O release
+// (claim + plan_version do mesmo snapshot) roda no exit do processo, como sempre; o aceite
+// só é decidido depois do `drained`, com a saída completa (closeRoleAttempt). Devolve o
+// contexto do release para esse fechamento adiado (null para Attempt sem papel).
 function releaseLease(lease, code) {
-    if (!lease) return;
+    if (!lease) return null;
     try {
+        let claim = null;
+        let planVersion = null;
         if (lease.dir) {
-            nodeLease.releaseNode(lease);
+            ({ reason: claim, plan_version: planVersion } = nodeLease.releaseNodeWithContext(lease));
             nodeEvents.recordNodeExit(lease, code);
         } else if (lease.runsDir) {
             const dir = nodeLease.stampNewTask(lease.runsDir, lease.prefix, lease);
             nodeLease.clearFetchDispatch(lease.gatePath, lease.startedAt);
             if (dir) nodeEvents.recordNodeExit(lease, code, dir);
         }
-        dom06.fulfillOnExit({
+        if (lease.dom06Role) return { claim, planVersion };
+        // PRI-310 (S5.1): mesma saída única do wrapper destacado (node-lease.js release).
+        // PRI-354: segmento [plan, implement] fecha os dois Attempts (ver plan-implement-chain.js).
+        dom06.closeOnExit({
+            attemptFile: lease.dom06AttemptFile,
+            attemptId: lease.dom06AttemptId,
+            node: lease.node || (Array.isArray(lease.nodes) ? lease.nodes[0] : null),
+            // Aqui a saída é sempre final (exit/erro do child em --follow, ou simulação): code nulo = sinal.
+            code: lease.chain ? planImplementChain.planExitCode(lease, code, planImplementChain.readLeaseState(lease), { claim, signalled: code == null }) : code,
+            claim,
+        });
+        if (lease.chain) planImplementChain.closeChainOnExit(lease, code, { claim, signalled: code == null });
+    } catch (e) {
+        console.error('[recovery] falha liberando lease do nó:', e.message);
+    }
+    return null;
+}
+
+// PRI-311 (S5.2a, H1/H2): fechamento do Attempt com papel em --follow, depois do `drained`
+// (output e stderr completos). Mesma saída única do wrapper destacado: exitContext (post no
+// escopo do baseline, versão do release) + causa operacional, e closeOnExit.
+// Falha no release (releaseCtx null) → claim desconhecido (não aceita, bloqueia); saída sem
+// código (sinal, erro de spawn) → fechada como falha (C-O-02): Attempt com papel nunca fica
+// STARTED sem acceptance depois de liberado o lease.
+function closeRoleAttempt(lease, code, releaseCtx, output = '', stderr = '') {
+    if (!lease || !lease.dom06Role) return null;
+    const ctx = releaseCtx || { claim: 'CLAIM_UNKNOWN', planVersion: null };
+    try {
+        const { manifestPost, currentPlanVersion } = decompositionRuntime.exitContext({ lease, planVersion: ctx.planVersion });
+        const operationalCause = require('./lib/agent-exit-signals').operationalCause({ code, output, stderr });
+        return dom06.closeOnExit({
             attemptFile: lease.dom06AttemptFile,
             attemptId: lease.dom06AttemptId,
             node: lease.node || (Array.isArray(lease.nodes) ? lease.nodes[0] : null),
             code,
+            claim: ctx.claim,
+            manifestPost,
+            currentPlanVersion,
+            operationalCause,
+            signalled: code === null || code === undefined,
         });
     } catch (e) {
-        console.error('[recovery] falha liberando lease do nó:', e.message);
+        console.error('[recovery] falha fechando o Attempt com papel:', e.message);
+        return null;
     }
 }
 
@@ -2986,8 +3705,11 @@ function spawnAgent(bin, args, cwd, logPath, lease = null, extraEnv = {}) {
             const complete = code => {
                 if (completed) return;
                 completed = true;
-                releaseLease(lease, code);
-                drained.then(() => resolve({ code, output, stderr: stderrBuffer }));
+                const releaseCtx = releaseLease(lease, code);
+                drained.then(() => {
+                    closeRoleAttempt(lease, code, releaseCtx, output, stderrBuffer);
+                    resolve({ code, output, stderr: stderrBuffer });
+                });
             };
             child.once('exit', complete);
             child.once('error', () => {
@@ -3000,6 +3722,12 @@ function spawnAgent(bin, args, cwd, logPath, lease = null, extraEnv = {}) {
         });
     }
     const logFd = fs.openSync(logPath, 'a');
+    // PRI-311 (S5.2a, H2): Attempt com papel leva no lease o log do ticket e o tamanho dele
+    // no spawn; o release destacado lê só daí em diante (texto de despacho anterior não conta).
+    if (lease && lease.dom06Role) {
+        lease.logPath = logPath;
+        try { lease.logOffset = fs.fstatSync(logFd).size; } catch { lease.logOffset = null; }
+    }
     const [cmd, cmdArgs] = lease
         ? ['/bin/sh', ['-c', `n=$1; l=$2; a=$3; shift 3; ${bin} "$@"; c=$?; "$n" "$l" release "$a" "$c"; exit $c`,
             'sh', process.execPath, NODE_LEASE_SCRIPT, JSON.stringify(lease), ...args]]
@@ -3091,7 +3819,7 @@ function writeCostLedger(ticketId, ledger) {
     fs.writeFileSync(costLedgerPath(ticketId), JSON.stringify(ledger, null, 2));
 }
 
-function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = null }) {
+function startCostRun(ticketId, { agent, nodes, commands = null, sessionId, admissionDecision = null, signalContext = null, routing = null, phaseEffortLevel = null }) {
     if (DRY_RUN) return null;
     try {
         const selected = agent === 'claude' ? resolveClaudeAccount() : null;
@@ -3100,7 +3828,11 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
         const run = { session_id: sessionId, agent, nodes, started_at_ms: Date.now(), pid: null,
             ...costTracking.admissionForCost(admissionDecision, ticketId, taskRunsDir(ticketId)), ...metadata,
             pricing_snapshot: costTracking.pricingSnapshot(),
-            ...(selected?.dir ? { claude_config_dir: selected.dir } : {}) };
+            ...(selected?.dir ? { claude_config_dir: selected.dir } : {}),
+            ...prospectiveSignalsForRun(agent, nodes, signalContext),
+            ...(routing?.ok ? { routing_decision: routing.decision } : {}),
+            ...(phaseEffortLevel ? { phase_effort: { level: phaseEffortLevel, effort_applied: true } } : {}),
+            ...cliResultRunFields(ticketId, agent, nodes, commands) };
         const ledger = readCostLedger(ticketId);
         ledger.pending.push(run);
         writeCostLedger(ticketId, ledger);
@@ -3108,6 +3840,161 @@ function startCostRun(ticketId, { agent, nodes, sessionId, admissionDecision = n
     } catch (e) {
         console.error(`[custo] #${ticketId}: falha registrando início do despacho (seguindo sem métrica):`, e.message);
         return null;
+    }
+}
+
+// PRI-381 (F1.5, AC-04/AC-05): só com WATCHER_CLI_RESULT_JSON ligada e despacho Claude (o
+// único com `--output-format json`). log_offset = tamanho do log do ticket antes do spawn:
+// sem --follow, o fechamento lê o JSON da CLI só dali em diante. Desligada: nenhum campo.
+// prompt_hashes: dos templates dos comandos do despacho (run decomposta lê /implement-step ou
+// /implement-integrate, não implement.md); sem comandos, dos nós.
+function cliResultRunFields(ticketId, agent, nodes, commands) {
+    if (agent !== 'claude' || !cliResult.cliResultJsonEnabled()) return {};
+    let logOffset = 0;
+    try { logOffset = fs.statSync(logPathFor(ticketId)).size; } catch { /* log ainda não existe */ }
+    return { cli_result_json: true, log_offset: logOffset,
+        prompt_hashes: cliResult.promptHashes(PRISMA_ROOT, cliResult.promptTemplates(commands, nodes)) };
+}
+
+// Log do ticket a partir do log_offset, onde procurar o JSON da CLI quando a saída do processo
+// (--follow) não o tem, sem o carimbo de hora que o spawnAgent põe antes de `[claude] `.
+// Log menor que o offset (truncado/rotacionado): lê do início; o session_id filtra.
+function cliResultLogText(ticketId, run) {
+    try {
+        const buf = fs.readFileSync(logPathFor(ticketId));
+        const offset = Number.isSafeInteger(run.log_offset) && run.log_offset <= buf.length ? run.log_offset : 0;
+        return buf.subarray(offset).toString('utf8').replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z (?=\[claude\] )/gm, '');
+    } catch {
+        return null;
+    }
+}
+
+// ---------------------------------------------------------------------------------
+// Sinais prospectivos e retrospectivos do Implement (PRI-222 / PRI-205 S2).
+// SÓ OBSERVACIONAL: gravados no registro de Attempt da S1 (cost_tracking.nodes.implement
+// .attempts[].signals); nada aqui classifica, roteia ou altera o despacho. Coleta
+// best-effort: qualquer falha vira UNKNOWN com causa e o nó/despacho segue igual.
+function prospectiveSignalsForRun(agent, nodes, signalContext) {
+    if (agent !== 'claude' || nodes[nodes.length - 1] !== 'implement') return {};
+    const out = { signals_prospective: { status: 'UNKNOWN', cause: 'COLLECTION_FAILED', groups: [] } };
+    if (!signalContext?.ticket || !signalContext.worktreePath) {
+        out.signals_prospective.cause = 'NO_SIGNAL_CONTEXT';
+        return out;
+    }
+    const { ticket, worktreePath, base = null, isRecusaQA = false } = signalContext;
+    // Só o diretório local de trabalho, para o fim do despacho; nunca vai para o Attempt.
+    out.signal_ctx = { worktree_path: worktreePath, base };
+    try {
+        const active = findActiveTask(ticket.id);
+        if (!active || active.corrupted) { out.signals_prospective.cause = 'NO_ACTIVE_TASK'; return out; }
+        const { planContent, specContent } = readPlanArtifacts(ticket, active.dir);
+        const root = path.resolve(worktreePath);
+        out.signals_prospective = planSignals.buildProspective(planContent, {
+            specContent, state: active.state, costTracking: active.state?.cost_tracking, isRecusaQA,
+            fileExists: rel => {
+                const abs = path.resolve(root, rel);
+                if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error('caminho fora do worktree');
+                return fs.existsSync(abs);
+            },
+        });
+    } catch (e) {
+        out.signals_prospective = { status: 'UNKNOWN', cause: 'COLLECTION_FAILED', groups: [] };
+        console.error(`[sinais] #${ticket.id}: falha nos sinais prospectivos (seguindo sem eles):`, e.message);
+    }
+    return out;
+}
+
+// Base do diff dos sinais; avaliada com guarda para nunca lançar fora da coleta best-effort.
+function signalBaseBranch(ticket) {
+    try { return BASE_BY_LIBERACAO[branchLiberacao(ticket)] ?? null; } catch { return null; }
+}
+
+// Estatística de linhas do diff do ticket (tracked desde o merge-base + untracked).
+// Qualquer leitura impossível => null (UNKNOWN); nunca subconta em silêncio.
+// git para os sinais: saída NUL-delimitada, sem aspas/escape octal em nomes com acento ou
+// espaço (core.quotepath=false + -z) e com timeout, para não travar o fechamento do run.
+function gitZ(cwd, args) {
+    return execFileSync('git', ['-c', 'core.quotepath=false', ...args],
+        { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024, timeout: 30000 })
+        .split('\0').filter(Boolean);
+}
+
+function collectDiffStat(worktreePath, mergeBase) {
+    let added = 0, removed = 0;
+    // --no-renames: renomeação vira remoção + adição, sem "old => new" no caminho.
+    // Com -z cada registro é "<add>\t<rem>\t<caminho>".
+    for (const record of gitZ(worktreePath, ['diff', '--numstat', '-z', '--no-renames', mergeBase])) {
+        const [a, r, ...rest] = record.split('\t');
+        if (planSignals.isFlowArtifact(rest.join('\t'))) continue;
+        if (a === '-' || r === '-') return null; // binário: sem contagem de linhas
+        if (!/^\d+$/.test(a) || !/^\d+$/.test(r)) return null; // formato inesperado: UNKNOWN
+        added += Number(a); removed += Number(r);
+    }
+    for (const f of gitZ(worktreePath, ['ls-files', '--others', '--exclude-standard', '-z'])) {
+        if (planSignals.isFlowArtifact(f)) continue;
+        const abs = path.join(worktreePath, f);
+        const st = fs.statSync(abs);
+        if (!st.isFile() || st.size > 2 * 1024 * 1024) return null;
+        const text = fs.readFileSync(abs, 'utf8');
+        if (text.includes('\0')) return null;
+        added += text === '' ? 0 : text.replace(/\n$/, '').split('\n').length;
+    }
+    return { added, removed };
+}
+
+function collectRetrospectiveSignals(run, target) {
+    const ctx = run.signal_ctx;
+    if (!ctx?.worktree_path) return { status: 'UNKNOWN', cause: 'NO_SIGNAL_CONTEXT' };
+    const parts = { changedFiles: null, diffStat: null, affected: null, schema: null,
+        declaredPaths: planSignals.declaredUnion(run.signals_prospective), state: null };
+    try { parts.state = target ? readStateJson(target.dir) : null; } catch { /* sem state */ }
+    let mergeBase = null;
+    try { mergeBase = findMergeBase(ctx.worktree_path, ctx.base); } catch { /* UNKNOWN */ }
+    if (!mergeBase) return planSignals.retrospectiveSignals(parts);
+    try {
+        parts.changedFiles = [...new Set([
+            ...gitZ(ctx.worktree_path, ['diff', '--name-only', '-z', '--no-renames', mergeBase]),
+            ...gitZ(ctx.worktree_path, ['ls-files', '--others', '--exclude-standard', '-z']),
+        ])];
+    } catch { /* UNKNOWN */ }
+    if (parts.changedFiles) {
+        try { parts.affected = serviceDetector.analyzeChangedFiles(parts.changedFiles); } catch { /* UNKNOWN */ }
+        try {
+            const r = schemaWatcher.detectSchemaChanges(parts.changedFiles, collectSchemaDiff(ctx.worktree_path, ctx.base, parts.changedFiles));
+            parts.schema = { detected: r.detected, riskLevel: r.riskLevel ?? null };
+        } catch { /* UNKNOWN */ }
+    }
+    try { parts.diffStat = collectDiffStat(ctx.worktree_path, mergeBase); } catch { /* UNKNOWN */ }
+    return planSignals.retrospectiveSignals(parts);
+}
+
+// Valor final de attempts[].signals para o run que acabou de fechar. Nunca lança.
+function attemptSignalsForRun(run, target) {
+    if (!run.signals_prospective) return undefined; // nó sem sinais (não-implement): 'UNAVAILABLE' no registro
+    try {
+        return { ...run.signals_prospective, retrospective: collectRetrospectiveSignals(run, target) };
+    } catch (e) {
+        console.error('[sinais] falha nos sinais retrospectivos (seguindo sem eles):', e.message);
+        return { ...run.signals_prospective, retrospective: { status: 'UNKNOWN', cause: 'COLLECTION_FAILED' } };
+    }
+}
+
+// PRI-223 S3: decisão sombra would_route a partir dos sinais S2. Best-effort; falha
+// não altera despacho. cheap_rule → R1–R8 (default da policy sombra); off → NO_DECISION.
+// Nunca aplica --model / esforço (S4 fora de escopo).
+function attemptWouldRouteForRun(signals) {
+    if (!signals || signals === 'UNAVAILABLE') return 'UNAVAILABLE';
+    try {
+        return wouldRoute.shadowDecide({ signals });
+    } catch (e) {
+        console.error('[would_route] falha na decisão sombra (seguindo sem ela):', e.message);
+        return {
+            status: 'NO_DECISION',
+            cause: 'COLLECTION_FAILED',
+            detail: e.message,
+            decisions: [],
+            applied: false,
+        };
     }
 }
 
@@ -3155,18 +4042,28 @@ function findCostTargetTask(ticketId, node) {
     return best;
 }
 
-function collectRunMetrics(run, target, endMs) {
+function collectRunMetrics(run, target, endMs, { ticketId = null, cliOutput = null } = {}) {
     const node = run.nodes[run.nodes.length - 1];
     let tokens = { input_tokens: null, output_tokens: null };
     let observedEnd = null;
+    let cli = null;
     if (run.agent === 'claude') {
         const files = findRunTranscripts(run);
-        const usage = costTracking.sumClaudeUsage(files.map(f => ({
+        const contents = files.map(f => ({
             role: f.includes(`${path.sep}subagents${path.sep}`) ? 'subagent' : 'main',
             file_ref: f.includes(`${path.sep}subagents${path.sep}`) ? path.basename(f) : 'main',
             content: fs.readFileSync(f, 'utf8'),
-        })), run.pricing_snapshot);
+        }));
+        const usage = costTracking.sumClaudeUsage(contents, run.pricing_snapshot);
         tokens = usage;
+        // PRI-381 (F1.5): JSON ausente ou ilegível => null, nunca zero (reserva: o transcript).
+        if (run.cli_result_json) {
+            // --follow: a saída do processo primeiro; sem o objeto result nela, o log do ticket.
+            const parsed = cliResult.parseCliResult(cliOutput, run.session_id)
+                ?? cliResult.parseCliResult(cliResultLogText(ticketId, run), run.session_id);
+            const main = contents.find(c => c.role === 'main');
+            cli = { cli_cost_usd: parsed?.cost_usd ?? null, cli_version: main ? cliResult.cliVersionFromTranscript(main.content) : null };
+        }
         observedEnd = usage.last_timestamp_ms
             ?? (files.length ? Math.max(...files.map(f => fs.statSync(f).mtimeMs)) : null);
     } else if (run.agent === 'codex' && target) {
@@ -3183,12 +4080,28 @@ function collectRunMetrics(run, target, endMs) {
     for (const field of ['usage', 'unpriced_models', 'read_order', 'dedup_conflicts', 'role_attribution', 'first_turn', 'cost_estimated', 'pricing_sha256', 'pricing_source']) {
         if (tokens[field] !== undefined) metrics[field] = tokens[field];
     }
+    if (cli) Object.assign(metrics, cli);
     return { node, metrics };
 }
 
 // Fecha um run pendente: mede, acumula no cost_tracking da task e grava no state.json.
 // Nunca toca state.updated_at — ele decide findActiveTask e o "já tratado neste ciclo"
 // de mostRecentArchivedCommit; métrica não pode mexer nisso.
+// PRI-311 (S5.2b, B8): `observed_model` por papel depois da saída, pela trilha de uso da S1
+// (subagents/*.jsonl casados com o papel pelo subagent_type). Só Attempt com papel e com
+// subagent_roles declarados; falha aqui nunca muda o despacho nem o aceite.
+function recordSubagentObservation(run, attempt, attemptFile) {
+    try {
+        if (!attempt.role || run.agent !== 'claude') return;
+        const declared = attempt.routing && Array.isArray(attempt.routing.subagent_roles) ? attempt.routing.subagent_roles : null;
+        if (!declared) return;
+        const attribution = decompositionVisit.attributionFromTranscripts(findRunTranscripts(run));
+        dom06.recordSubagentObservation(attemptFile, modelRouting.observeSubagentRoles(declared, attribution));
+    } catch (e) {
+        console.error(`[custo] falha observando subagentes do Attempt ${attempt.attempt_id}:`, e.message);
+    }
+}
+
 function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
     if (DRY_RUN) return;
     try {
@@ -3197,7 +4110,7 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
         if (idx === -1) return;
         const run = ledger.pending[idx];
         const target = findCostTargetTask(ticketId, run.nodes[run.nodes.length - 1]);
-        const { node, metrics } = collectRunMetrics(run, target, endMs);
+        const { node, metrics } = collectRunMetrics(run, target, endMs, { ticketId, cliOutput: outcome.cliOutput });
         // Só leitura do arquivo admitido; nunca deriva identidade do lease ou latest.
         let attemptResult = 'UNKNOWN';
         const ref = run.admission?.attempt_ref;
@@ -3205,8 +4118,12 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
             !path.isAbsolute(ref.path) && !ref.path.startsWith('..') &&
             ref.runs_root === `worktree:${ticketId}/memory/runs`) {
             try {
-                const attempt = JSON.parse(fs.readFileSync(path.join(taskRunsDir(ticketId), ref.path), 'utf8'));
-                if (attempt.attempt_id === run.admission.attempt_id) attemptResult = attempt.result || 'UNKNOWN';
+                const attemptFile = path.join(taskRunsDir(ticketId), ref.path);
+                const attempt = JSON.parse(fs.readFileSync(attemptFile, 'utf8'));
+                if (attempt.attempt_id === run.admission.attempt_id) {
+                    attemptResult = attempt.result || 'UNKNOWN';
+                    recordSubagentObservation(run, attempt, attemptFile);
+                }
             } catch { /* arquivo não observável (ex.: arquivamento): UNKNOWN */ }
         }
         const observedOutcome = { ...outcome, attemptResult };
@@ -3223,8 +4140,10 @@ function finishCostRun(ticketId, sessionId, endMs = null, outcome = {}) {
 
         const state = readStateJson(target.dir) || {};
         const current = ledger.tasks[target.taskId] || state.cost_tracking || costTracking.emptyCostTracking();
+        const signals = attemptSignalsForRun(run, target);
         const updated = costTracking.mergeRun(current, {
-            node, agent: run.agent, alsoCovers: run.nodes.slice(0, -1), metrics, run, outcome: observedOutcome,
+            node, agent: run.agent, alsoCovers: run.nodes.slice(0, -1), metrics,
+            run: { ...run, signals, would_route: attemptWouldRouteForRun(signals) }, outcome: observedOutcome,
         });
         ledger.tasks[target.taskId] = updated;
         writeCostLedger(ticketId, ledger);
@@ -3361,9 +4280,9 @@ function siblingAddDirArgs(ticketId) {
         // Convenção legada: worktree do repo irmão aninhado dentro do PRÓPRIO
         // app-back (REPO_PATH/.claude/worktrees/<ticket>-<repo>), em vez de
         // <repo>/.claude/worktrees/<ticket> (a convenção atual, acima). Achado ao
-        // vivo no ticket #42359: o WIP real de retrabalho (branch
-        // fix/42359-recusas-qa) só existia aqui — o caminho padrão apontava pra uma
-        // branch obsoleta (`42359`, 1652 commits defasada de origin/development).
+        // vivo no ticket #10007: o WIP real de retrabalho (branch
+        // fix/10007-recusas-qa) só existia aqui — o caminho padrão apontava pra uma
+        // branch obsoleta (`10007`, 1652 commits defasada de origin/development).
         // Implement ficou "blocked" com acesso de leitura à raiz errada e nenhum
         // acesso à raiz certa. Inclui as duas se ambas existirem (não são
         // conflitantes — são worktrees em branches diferentes do mesmo repo); cabe
@@ -3395,11 +4314,18 @@ function dom06SpecHash(state, worktreePath, ticketId) {
     return crypto.createHash('sha256').update(fs.readFileSync(specFile)).digest('hex');
 }
 
-function attachDom06Lease(lease, decision, node) {
+function attachDom06Lease(lease, decision, node, { task = null } = {}) {
     if (!lease || !decision?.attempt || node === 'commit') return lease;
     lease.dom06AttemptFile = decision.attemptFile;
     lease.dom06AttemptId = decision.attempt.attempt_id;
     if (!lease.node) lease.node = node;
+    // PRI-311 (S5.2a, H1): Attempt com papel. As adições do DOM-06 ao lease são só o papel, o
+    // diretório de manifestos e a task: nunca a chave nem o escopo.
+    if (decision.attempt.role) {
+        lease.dom06Role = decision.attempt.role;
+        lease.dom06ManifestsDir = decompositionRuntime.manifestPaths(REPO_PATH).manifestsDir;
+        lease.task = task || path.basename(lease.dir || '');
+    }
     return lease;
 }
 
@@ -3427,27 +4353,80 @@ function nodeContextBlock(node, { ticket, dir = null, worktreePath }) {
     return '';
 }
 
-// Nós que nunca abrem subagente: no plan, um Explore em Opus custou 2,5× a sessão
-// inteira (#43590) lendo arquivos Java completos. O review ainda pode chamar o
-// subagente de domínio (security-reviewer/schema-guardian) — ver review.md.
-const NO_SUBAGENT_NODES = new Set(['plan']);
+// Nós sem subagente (NO_SUBAGENT_NODES) e a forma do bloqueio: lib/subagent-block.js.
+// PRI-315: WATCHER_PLAN_DENY_SETTINGS (desligada por padrão) troca `--disallowedTools` por
+// `permissions.deny` via `--settings`, preservando o prefixo do cache; sem ela, argv do AS-IS.
+// Lida a cada despacho (como o env do agente), não na carga do módulo.
 
 // Segmento Claude: encadeia comandos de barra dentro de UMA sessão `claude -p`.
 // Só existem dois pontos de entrada usados hoje: fetch_ticket(+plan) para task nova,
 // e um único comando (`/plan`, `/review` ou `/verify`) pra resumir uma task ativa —
 // nunca encadeia através de um nó com veredito (review/test/verify), porque o
 // resultado desses só se sabe depois de rodar.
-async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null }) {
+// PRI-353: tabela inválida com a flag ligada não derruba o watcher nem despacha em silêncio:
+// registra o erro e despacha sem --effort (o Attempt não grava phase_effort).
+function resolvePhaseEffort(nodes, routing) {
+    const none = { args: [], level: null };
+    if (!phaseEffort.phaseEffortEnabled()) return none;
+    const loaded = phaseEffort.loadPhaseEffortTable();
+    if (!loaded.ok) {
+        console.error(`[esforço] ${loaded.error}: despacho segue sem --effort.`);
+        return none;
+    }
+    return phaseEffort.phaseEffortArgs({ nodes, enabled: true, table: loaded.table, routedEffortApplied: routing?.decision?.effort_applied === true });
+}
+
+// PRI-353 (T4, AC4): instrução de handoff (`## Decisões` no plan.md) para fase em esforço alto, só com
+// WATCHER_PHASE_EFFORT ligada. Desligada = '' e o prompt fica idêntico. Tabela inválida: sem instrução
+// (o erro já foi registrado por resolvePhaseEffort); nunca derruba o despacho.
+function resolveHandoffNote(nodes) {
+    if (!phaseEffort.phaseEffortEnabled()) return '';
+    const loaded = phaseEffort.loadPhaseEffortTable();
+    if (!loaded.ok) return '';
+    return handoffLint.handoffNote({ nodes, enabled: true, table: loaded.table, prismaRoot: PRISMA_ROOT });
+}
+
+// Argv da CLI `claude` do despacho, sem efeito colateral além de checar os worktrees irmãos.
+// PRI-381 (F1.5, AC-04): com WATCHER_CLI_RESULT_JSON=on, acrescenta `--output-format json` ao
+// fim; desligada, o argv é o de antes (teste golden em lib/cli-result-dispatch.test.js).
+function buildClaudeArgs({ prompt, sessionName, sessionId, nodes, routing = null, ticketId, effortArgs = [], env = process.env }) {
+    const args = [
+        '-p', prompt,
+        '--name', sessionName,
+        '--session-id', sessionId,
+        '--permission-mode', 'acceptEdits',
+        '--allowedTools', 'mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob',
+        ...subagentBlock.subagentBlockArgs({ nodes, routed: !!routing, denySettings: subagentBlock.planDenySettingsEnabled(env), chain: subagentBlock.planImplementChainEnabled(env) }),
+        // Sem isto, Claude ficava confinado ao cwd (worktree do consumidor) e não
+        // enxergava os worktrees irmãos mesmo com branch/worktree já criados pelo
+        // watcher, apesar da instrução em plan.md/commit.md dizer pra tratá-los
+        // simetricamente (ver decision 2026-09-02-push-pr-siblings.md — corrigiu a
+        // instrução, não este despacho).
+        '--add-dir', PRISMA_ROOT,
+        ...siblingAddDirArgs(ticketId),
+    ];
+    // PRI-233 T7: só com resolução ok (Run ON); sem routing o argv é o do AS-IS.
+    // PRI-311 (S5.2b, B8): `--agents` só em Attempt com papel e com subagent_roles na policy.
+    if (routing) args.push(...modelRouting.routedArgs([], routing, { agentsJson: routing.agentsJson || null }));
+    // PRI-353: esforço fixo por fase, só com WATCHER_PHASE_EFFORT ligada (desligada = argv inalterado).
+    args.push(...effortArgs);
+    if (cliResult.cliResultJsonEnabled(env)) args.push('--output-format', 'json');
+    return args;
+}
+
+async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreePath, commands, nodes, extraNote, contextBlock = '', lease = null, extraEnv = {}, admissionDecision = null, routing = null }) {
     const qaSection = isRecusaQA
         ? `\n\nEste ticket voltou como Recusa QA — é retrabalho, não trabalho novo. ` +
           `Motivo(s) da recusa (comentários do QA, mais recente primeiro):\n${qaFeedback.join('\n')}\n` +
           `Trate isso como o critério de aceite principal do /plan.`
         : '';
 
+    const handoffNote = resolveHandoffNote(nodes);
     const prompt =
         `Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ` +
         `ticket #${ticket.id} (tipo: ${ticket.tracker?.name || '?'}). Rode, nesta ordem: ` +
         `${commands.join(', ')}. ${extraNote} ` +
+        (handoffNote ? `${handoffNote} ` : '') +
         `Leia cada template correspondente em ${PRISMA_ROOT}/.claude/commands/ e siga-o ` +
         `como instrução do nó; use ${PRISMA_ROOT}/scripts para os executáveis da plataforma. ` +
         `PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. ` +
@@ -3467,27 +4446,18 @@ async function dispatchClaudeSegment({ ticket, isRecusaQA, qaFeedback, worktreeP
     const logPath = logPathFor(ticket.id);
     // Id de sessão fixado pelo watcher só pra achar o transcript depois (custo por nó).
     const sessionId = crypto.randomUUID();
-    const args = [
-        '-p', prompt,
-        '--name', sessionName,
-        '--session-id', sessionId,
-        '--permission-mode', 'acceptEdits',
-        '--allowedTools', 'mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob',
-        ...(nodes.some(n => NO_SUBAGENT_NODES.has(n)) ? ['--disallowedTools', 'Agent,Task'] : []),
-        // Sem isto, Claude ficava confinado ao cwd (worktree do consumidor) e não
-        // enxergava os worktrees irmãos mesmo com branch/worktree já criados pelo
-        // watcher, apesar da instrução em plan.md/commit.md dizer pra tratá-los
-        // simetricamente (ver decision 2026-09-02-push-pr-siblings.md — corrigiu a
-        // instrução, não este despacho).
-        '--add-dir', PRISMA_ROOT,
-        ...siblingAddDirArgs(ticket.id),
-    ];
+    const phaseEffortResolved = resolvePhaseEffort(nodes, routing);
+    const args = buildClaudeArgs({ prompt, sessionName, sessionId, nodes, routing, ticketId: ticket.id, effortArgs: phaseEffortResolved.args });
     if (SIMULATE) return simulateClaudeSegment({ ticket, nodes, lease, extraNote });
     console.log(`Despachando Claude (${commands.join(', ')}) para #${ticket.id} em ${worktreePath}`);
-    const costRun = startCostRun(ticket.id, { agent: 'claude', nodes, sessionId, admissionDecision });
+    const costRun = startCostRun(ticket.id, {
+        agent: 'claude', nodes, commands, sessionId, admissionDecision, routing, phaseEffortLevel: phaseEffortResolved.level,
+        signalContext: { ticket, worktreePath, isRecusaQA, base: signalBaseBranch(ticket) },
+    });
     const result = await spawnAgent('claude', args, worktreePath, logPath, lease, extraEnv);
     if (costRun) {
-        if (FOLLOW) finishCostRun(ticket.id, sessionId, Date.now(), { exitCode: result.code, output: result.stderr });
+        if (FOLLOW) finishCostRun(ticket.id, sessionId, Date.now(), { exitCode: result.code, output: result.stderr,
+            ...(costRun.cli_result_json ? { cliOutput: result.output } : {}) });
         else setCostRunPid(ticket.id, sessionId, result.pid);
     }
     return result;
@@ -3510,7 +4480,8 @@ async function simulateClaudeSegment({ ticket, nodes, lease, extraNote }) {
         console.error(`[dry-run] agente simulado falhou no(s) nó(s) ${nodes.join('+')}:`, e.message);
         result = { code: 1, output: e.message, stderr: e.message, simulated: true };
     }
-    releaseLease(lease, result.code);
+    const releaseCtx = releaseLease(lease, result.code);
+    closeRoleAttempt(lease, result.code, releaseCtx, result.output || '', result.stderr || '');
     try {
         result.finalize?.();
     } catch (e) {
@@ -3745,6 +4716,10 @@ function dropUnspawnedFetchDispatch(id, lease) {
 }
 
 async function dispatchTicketReserved(ticket) {
+    // PRI-233 (revisão independente, MINOR-1): instante da leitura do state neste tick. É o
+    // limite D-4 do 1º Attempt de uma visita: override gravada depois dele (no meio da
+    // resolução) não entra neste Attempt e também não pode entrar no retry da mesma visita.
+    const stateReadAt = new Date().toISOString();
     const id = ticket.id;
     const isRecusaQA = ticket.status?.name === 'Recusa QA';
     const liberacao = branchLiberacao(ticket);
@@ -3836,6 +4811,41 @@ async function dispatchTicketReserved(ticket) {
             return { action: 'skip', reason: 'spec_aguardando_aceite', status: 'spec-invalid', errors };
         }
 
+        // PRI-233 (PRI-205 S4): admissão da Run com roteamento. Ausente/OFF = AS-IS (sem
+        // snapshot). ON válido fixa o snapshot routing no Attempt fetch_ticket. ON inválido
+        // (ou mode malformado) recusa a admissão antes de worktree, marcador ou Attempt:
+        // nenhuma Run é criada (RC-5/D12 b, DP-3).
+        const routingConfig = modelRoutingPolicy.readRoutingConfig(REPO_PATH);
+        if (routingConfig.status === 'INVALID') {
+            console.warn(`Ticket #${id}: roteamento ON com configuração inválida (${routingConfig.cause}: ${routingConfig.detail}) — admissão recusada, nenhuma Run criada.`);
+            if (!DRY_RUN) await notifyRoutingAdmissionBlocked(ticket, routingConfig);
+            return {
+                action: 'skip', reason: 'routing_admission_blocked', node: 'fetch_ticket',
+                cause: routingConfig.cause, detail: routingConfig.detail, transient: routingConfig.transient,
+            };
+        }
+        if (!DRY_RUN) clearRoutingBlockedMarker();
+        // PRI-205 S3b (T5): núcleo 2 efetivo decidido aqui e fixado no snapshot. Nunca
+        // bloqueia a admissão: sem Authority Ref (hoje) fica off com o motivo.
+        // Seleção do classificador (B11): registro próprio do consumidor; sem registro,
+        // vale a policy. Registro ilegível = núcleo 2 off, sem bloquear.
+        const classifierSel = routingConfig.status === 'ON'
+            ? classifierSelection.effectiveClassifier(REPO_PATH, routingConfig.policy)
+            : null;
+        if (classifierSel && classifierSel.source === 'INVALID') {
+            console.warn(`Ticket #${id}: registro de seleção do classificador ilegível — núcleo 2 off nesta Run (${classifierSel.reason}).`);
+        }
+        const classifierEffective = classifierSel
+            ? classifierAuthority.evaluateClassifier({
+                classifier: classifierSel.classifier, classifierConfig: routingConfig.classifier_config,
+                root: REPO_PATH, project: path.basename(REPO_PATH),
+            })
+            : null;
+        if (classifierEffective && classifierEffective.provider === 'off') {
+            console.warn(`Ticket #${id}: núcleo 2 (jev) declarado na policy, efetivo off nesta Run (${classifierEffective.reason}${classifierEffective.detail ? `: ${classifierEffective.detail}` : ''}).`);
+        }
+        const routingSnapshot = routingConfig.status === 'ON' ? modelRouting.buildRoutingSnapshot(routingConfig, { classifierEffective, classifierSelection: classifierSel }) : undefined;
+
         let qaFeedback = [];
         if (isRecusaQA) {
             qaFeedback = await fetchQaFeedback(id);
@@ -3848,6 +4858,24 @@ async function dispatchTicketReserved(ticket) {
         if (DRY_RUN) {
             console.log(`[dry-run] #${id} (${ticket.subject}) — dispararia fetch_ticket+plan, base origin/${base}`);
             return { action: 'dry-run', node: 'fetch_ticket' };
+        }
+
+        // PRI-233 (Bugbot, PR #97; revisão independente MAJOR-2): pré-checagem do
+        // roteamento ANTES de qualquer branch ou worktree, com a avaliação de leitura do
+        // plugin (conta, managed e settings do REPO_PATH). Toda recusa sai aqui, sem tocar no
+        // git; só a gravação/conferência do --settings fica para depois do worktree.
+        if (routingSnapshot) {
+            const pre = resolveNodeRoute({
+                runSnapshot: { ok: true, snapshot: routingSnapshot }, node: 'fetch_ticket', ticket,
+                worktreePath: REPO_PATH, isRecusaQA, runDir: null,
+            });
+            // DEFERRED = plugin neutralizável, só falta gravar o --settings (depois do worktree).
+            const deferredProofOnly = pre.detail === 'PLUGIN_NOT_PROVEN_OFF' && pre.decision?.effort_router_plugin === 'DEFERRED';
+            if (!pre.ok && !deferredProofOnly) {
+                return refuseRoutedFetch({ ticket, resolution: pre, snapshotSha: routingSnapshot.sha256 });
+            }
+        } else {
+            try { fs.rmSync(routingNotStartedMarkerPath(id), { force: true }); } catch { /* best-effort */ }
         }
 
         for (const repo of SIBLING_REPOS) {
@@ -3864,6 +4892,24 @@ async function dispatchTicketReserved(ticket) {
         if (!worktreePath) {
             console.warn(`Ticket #${id}: sem worktree livre — não disparo agente, tento de novo no próximo tick.`);
             return { action: 'skip', reason: 'worktree_indisponivel' };
+        }
+
+        // PRI-233 (PRI-205 S4, T7): com mode ON, o segmento fetch_ticket+plan (nós fixos,
+        // D6) é resolvido por inteiro (com a prova do plugin) antes do marcador/lease.
+        // Depois da pré-checagem só resta gravar/conferir o --settings no worktree (e
+        // reavaliar os settings dele); recusa = NOT_STARTED sem Run.
+        let fetchRouting = null;
+        if (routingSnapshot) {
+            const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
+            fs.mkdirSync(fetchRunDir, { recursive: true });
+            fetchRouting = resolveNodeRoute({
+                runSnapshot: { ok: true, snapshot: routingSnapshot }, node: 'fetch_ticket', ticket, worktreePath, isRecusaQA,
+                runDir: fetchRunDir,
+            });
+            if (!fetchRouting.ok) {
+                return refuseRoutedFetch({ ticket, resolution: fetchRouting, snapshotSha: routingSnapshot.sha256 });
+            }
+            try { fs.rmSync(routingNotStartedMarkerPath(id), { force: true }); } catch { /* best-effort */ }
         }
 
         // state.json ainda não existe (quem cria é o próprio fetch_ticket) — não há o
@@ -3900,6 +4946,7 @@ async function dispatchTicketReserved(ticket) {
                 baseBranch: base,
                 specHash: null,
                 cause: 'dispatch',
+                ...(routingSnapshot ? { routing: routingSnapshot, routingDecision: fetchRouting.decision } : {}),
             });
         } catch (e) {
             dropUnspawnedFetchDispatch(id, newTaskLease);
@@ -3910,6 +4957,16 @@ async function dispatchTicketReserved(ticket) {
             console.warn(`Ticket #${id}: admissão DOM06 ${fetchAdmission.attempt.result} — fetch_ticket não despachado e não conta como PASS.`);
             return { action: 'skip', reason: `dom06_${String(fetchAdmission.attempt.result).toLowerCase()}`, node: 'fetch_ticket' };
         }
+        // PRI-233 (MAJOR-1): ponteiro determinístico da admissão para a task que o agente
+        // vai criar. OFF apaga o ponteiro de um ciclo ON anterior (no-op sem ponteiro).
+        try {
+            const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
+            if (routingSnapshot) routingRun.recordAdmission(fetchRunDir, fetchAdmission.attempt);
+            else routingRun.clearAdmission(fetchRunDir);
+        } catch (e) {
+            dropUnspawnedFetchDispatch(id, newTaskLease);
+            throw e;
+        }
         attachDom06Lease(newTaskLease, fetchAdmission, 'fetch_ticket');
         beginCycle({ ticketId: id, node: 'fetch_ticket' });
         logRun(id, '[watcher]', 'iniciando nós: fetch_ticket, plan');
@@ -3917,7 +4974,7 @@ async function dispatchTicketReserved(ticket) {
         try {
         fetchResult = await dispatchClaudeSegment({
             ticket, isRecusaQA, qaFeedback, worktreePath, lease: newTaskLease,
-            extraEnv: dom06AttemptEnv(fetchAdmission), admissionDecision: fetchAdmission,
+            extraEnv: dom06AttemptEnv(fetchAdmission), admissionDecision: fetchAdmission, routing: fetchRouting,
             commands: [`/fetch-ticket ${id}`, '/plan (use o task-id que acabou de gerar)'],
             nodes: ['fetch_ticket', 'plan'],
             contextBlock: nodeContextBlock('plan', { ticket, worktreePath }),
@@ -4021,6 +5078,14 @@ async function dispatchTicketReserved(ticket) {
             unblock = result.entry;
             ({ node, status } = state);
         }
+    }
+    // PRI-311 (S5.2a, H6): `blocked` a partir do acceptance gravado por um Attempt com papel
+    // (no modo destacado, o wrapper só grava o Attempt; o bloqueio vem neste tick). Só com a
+    // Run em in_progress e uma vez por Attempt; nunca sobrescreve session_limit nem status
+    // gravado pelo comando.
+    if (!DRY_RUN && status === 'in_progress') {
+        const pending = decompositionRuntime.pendingBlock(dir, state);
+        if (pending) return applyDecompositionBlock({ ticket, taskId, node, state, dir, pending });
     }
     if (status === 'escalated' || status === 'blocked' || status === 'needs_human_review' || status === 'state_corrupted') {
         console.warn(`Task ${taskId}: status "${status}" no nó "${node}" — precisa de intervenção humana, não despacho.`);
@@ -4144,17 +5209,77 @@ async function dispatchTicketReserved(ticket) {
         return { action: 'dry-run', taskId, node };
     }
 
+    // PRI-233 (PRI-205 S4): roteamento ANTES dos portões com efeito (pré-build, churn,
+    // consumo de human-input), para que uma recusa não os execute nem sobrescreva o que
+    // eles gravaram (revisão do Checkpoint B, MINOR-1).
+    // Ligação: ponteiro da admissão (MAJOR-1). Run admitida OFF não ganha campo nenhum;
+    // rastro de ON que não dá para ligar recusa. Run ON resolve o §4.7 antes do Attempt.
+    let nodeRouting = null;
+    let nodeRoutingSnapshot = null;
+    // PRI-311 (S5.2b): ramo da Run decomposta (snapshot com decomposition "on"; atrás da flag).
+    let decomposed = null;
+    {
+        const fetchRunDir = path.join(taskRunsDir(id), '_dom06');
+        const binding = routingRun.bindingFor(state, fetchRunDir, taskId);
+        if (binding.action === 'refuse') {
+            return refuseRoutedNode({ ticket, taskId, node, state, dir,
+                resolution: { ok: false, result: 'NOT_STARTED', cause: 'CONFIG_UNVERIFIABLE', detail: binding.detail, decision: null } });
+        }
+        if (binding.action === 'bind') {
+            state.routing_snapshot = binding.binding;
+            writeTaskState(dir, state, 'routing_snapshot_bind');
+            routingRun.markConsumed(fetchRunDir, taskId);
+        }
+        const runSnapshot = routingRun.loadRunSnapshot(state, fetchRunDir);
+        if (runSnapshot.mode === 'ON') {
+            if (runSnapshot.ok && decompositionVisit.isDecomposedSnapshot(runSnapshot.snapshot) && (node === 'implement' || DECOMPOSED_GATES.has(node))) {
+                const prep = await prepareDecomposedNode({ ticket, taskId, id, node, state, dir, worktreePath, base, isRecusaQA, stateReadAt, runSnapshot });
+                if (prep.result) return prep.result;
+                decomposed = prep.decomposed;
+            }
+            // Núcleo 2 (só registro) não é coletado por subtarefa: a visita da Run decomposta
+            // segue sem opinião do Jev (declarado na evidência da S5.2b).
+            const nucleus2 = !decomposed && node === modelRouting.ROUTED_NODE && !DRY_RUN && !SIMULATE
+                && runSnapshot.snapshot?.classifier_effective?.provider === 'jev'
+                ? await collectNucleus2({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, taskId })
+                : null;
+            nodeRouting = decomposed ? decomposed.resolution : resolveNodeRoute({ runSnapshot, node, ticket, worktreePath, isRecusaQA, runDir: dir, state, stateReadAt, nucleus2 });
+            if (nodeRouting.visit) state.routing_visit = nodeRouting.visit;
+            if (!nodeRouting.ok) return refuseRoutedNode({ ticket, taskId, node, state, dir, resolution: nodeRouting });
+            if (nodeRouting.visit) writeTaskState(dir, state, 'routing_visit');
+            nodeRoutingSnapshot = runSnapshot.snapshot;
+        }
+    }
+
+    // PRI-354: segmento [plan, implement] numa sessão (WATCHER_PLAN_IMPLEMENT_CHAIN, desligada).
+    // Fora das condições de plan-implement-chain.js o despacho é o de sempre, por nó.
+    let chainActive = false;
+    if (node === 'plan' && subagentBlock.planImplementChainEnabled()) {
+        const check = planImplementChain.chainEligibility({
+            enabled: true, node, state, routed: !!nodeRouting, decomposed: !!decomposed,
+            preBuildSkipped: buildValidator.skipRequested(),
+            specExists: fs.existsSync(path.join(worktreePath, 'memory', 'spec', `${id}-spec.md`)),
+        });
+        chainActive = check.eligible;
+        console.log(`Task ${taskId}: segmento plan+implement ${chainActive ? 'elegível' : `não elegível (${check.reason})`}.`);
+    }
+
     // Portão de build entre plan e implement — ver runPreBuildGate. Antes do lease:
     // o Maven roda aqui no watcher, não é o agente que está "running".
     let preBuildNote = '';
-    if (needsPreBuildGate(state)) {
+    // PRI-311 (S5.2b, B5.1/AC-23): na Run decomposta, pré-build uma vez, antes da primeira
+    // subtarefa (não antes da integração nem de cada passo).
+    const preBuildDue = decomposed
+        ? decomposed.action.kind === 'subtask' && needsPreBuildGate(state) && decompositionVisit.preBuildDue(dir)
+        : needsPreBuildGate(state);
+    if (preBuildDue) {
         // DRY-RUN: mesmo portão, com `mvn compile` simulado (sucesso) no lugar do Maven.
         const gate = await runPreBuildGate(ticket, active, worktreePath, SIMULATE ? { validate: dryRun.simulatedBuild } : undefined);
         if (!gate.proceed) {
             return { action: 'skip', reason: gate.reason, status: 'pre-build-failed', taskId, node };
         }
         preBuildNote = gate.note;
-    } else if (node === 'implement' && state.preBuildAccepted && state.preBuildStatus === 'failed') {
+    } else if (node === 'implement' && state.preBuildAccepted && state.preBuildStatus === 'failed' && (!decomposed || decomposed.action.kind === 'subtask')) {
         preBuildNote = preBuildAcceptedNote(state); // loop review→implement: erros aceitos continuam valendo
     }
 
@@ -4162,9 +5287,22 @@ async function dispatchTicketReserved(ticket) {
     // ver runChurnGate. Depois do pré-build: só conta se o implement vai mesmo sair.
     // DRY-RUN pula: o "worktree" é o checkout principal, e a âncora do churn gravaria
     // refs no repo de verdade (e o implement simulado não muda código pra medir).
-    if (SIMULATE && needsChurnGate(state)) {
+    // PRI-311 (S5.2b, B5.1/AC-23): churn uma vez por visita, antes da primeira subtarefa dela.
+    const churnDue = decomposed
+        ? needsChurnGate(state) && decompositionVisit.churnDue(dir, state.decomposition, decomposed.action)
+        : needsChurnGate(state);
+    // PRI-354: no segmento, a âncora do churn (1º implement) é gravada antes do plan, que só
+    // escreve em memory/. Sem implement no histórico, runChurnGate só grava a âncora.
+    if (chainActive && !SIMULATE) {
+        const anchor = await runChurnGate(ticket, active, worktreePath);
+        if (!anchor.proceed) {
+            console.warn(`Task ${taskId}: âncora de churn não confirmada — plan sai avulso.`);
+            chainActive = false;
+        }
+    }
+    if (SIMULATE && churnDue) {
         console.log(`[dry-run] Task ${taskId}: portão de churn pulado (sem worktree git do ticket).`);
-    } else if (needsChurnGate(state)) {
+    } else if (churnDue) {
         const gate = await runChurnGate(ticket, active, worktreePath);
         if (!gate.proceed) {
             console.warn(`Task ${taskId}: churn de implementação — aguardando revisão humana (churn-escalation).`);
@@ -4194,24 +5332,64 @@ async function dispatchTicketReserved(ticket) {
     } catch (e) {
         console.warn(`Task ${taskId}: execution_spec não registrada (${e.message}) — o carimbo do nó compara só com a spec atual.`);
     }
-    const nodeAdmission = dom06.prepareDispatch({
-        runDir: dir,
-        node,
-        ticketId: id,
-        baseBranch: base,
-        specHash: dom06SpecHash(state, worktreePath, id),
-        state,
-    });
+    let nodeAdmission;
+    if (decomposed) {
+        // H0 + H6 + DOM-06: baseline no escopo da versão vigente, cadeia contra o Attempt
+        // manifestado anterior e só então o Attempt com papel. Cadeia quebrada → blocked.
+        const admitted = decomposed.admit();
+        if (!admitted.ok) {
+            return applyDecompositionBlock({ ticket, taskId, node, state, dir, pending: decompositionBlockPending(null, admitted.reason, node) });
+        }
+        if (admitted.store_error) console.error(`Task ${taskId}: baseline local não gravado (${admitted.store_error}) — a saída fecha com post UNKNOWN (fail-closed).`);
+        nodeAdmission = admitted.admission;
+    } else {
+        nodeAdmission = dom06.prepareDispatch({
+            ...(nodeRouting ? { routing: nodeRoutingSnapshot, routingDecision: nodeRouting.decision } : {}),
+            runDir: dir,
+            node,
+            ticketId: id,
+            baseBranch: base,
+            specHash: dom06SpecHash(state, worktreePath, id),
+            state,
+        });
+    }
     if (!nodeAdmission.dispatch) {
         console.warn(`Task ${taskId}: admissão DOM06 ${nodeAdmission.attempt.result} (${nodeAdmission.reason}) — ${node} não despachado e não conta como PASS.`);
         return { action: 'skip', reason: `dom06_${String(nodeAdmission.attempt.result).toLowerCase()}`, taskId, node, admission: nodeAdmission.attempt.result };
     }
+    // PRI-354: segundo Attempt, do implement, admitido antes do spawn. Não admitido = plan avulso.
+    let implementAdmission = null;
+    if (chainActive) {
+        implementAdmission = dom06.prepareDispatch({
+            runDir: dir, node: 'implement', ticketId: id, baseBranch: base,
+            specHash: dom06SpecHash(state, worktreePath, id), cause: 'dispatch',
+        });
+        if (!implementAdmission.dispatch) {
+            console.warn(`Task ${taskId}: admissão DOM06 do implement ${implementAdmission.attempt.result} — plan sai avulso.`);
+            chainActive = false;
+            implementAdmission = null;
+        }
+    }
     const lease = nodeLease.acquireNode(dir, { node, timeoutMs: NODE_TIMEOUT_MS, extra: executionSpec ? { execution_spec: executionSpec } : null });
-    attachDom06Lease(lease, nodeAdmission, node);
+    attachDom06Lease(lease, nodeAdmission, node, { task: taskId });
     if (lease) lease.retriesBefore = Number(state.retries?.[node]) || 0; // node_retry na saída (nodeEvents)
+    if (lease && chainActive) {
+        lease.nodes = ['plan', 'implement'];
+        lease.chain = {
+            historyBase: Array.isArray(state.history) ? state.history.length : 0,
+            retriesBefore: { plan: Number(state.retries?.plan) || 0, implement: Number(state.retries?.implement) || 0 },
+            implementAttemptFile: implementAdmission.attemptFile,
+            implementAttemptId: implementAdmission.attempt.attempt_id,
+            specPath: path.join(worktreePath, 'memory', 'spec', `${id}-spec.md`),
+        };
+    } else if (chainActive) {
+        // Sem lease não há onde fechar o segundo Attempt: revoga e despacha o plan avulso.
+        dom06.revoke(implementAdmission.attemptFile, { reason: 'CHAIN_NO_LEASE' });
+        chainActive = false;
+    }
     appendEvent(taskId, {
         type: 'node_start', node, agent: 'claude', ts: lease?.startedAt,
-        detail: `Despachando ${node} para Claude` + (recovery ? ' (redespacho após nó órfão)' : ''),
+        detail: `Despachando ${chainActive ? 'plan+implement (mesma sessão)' : node} para Claude` + (recovery ? ' (redespacho após nó órfão)' : ''),
     }, dir);
     checkWrittenState(dir);
     beginCycle({ ticketId: id, taskId, node, dir, leaseStartedAt: lease?.startedAt || null });
@@ -4223,15 +5401,17 @@ async function dispatchTicketReserved(ticket) {
     const schemaResult = stampSchemaChecklist(taskId, dir, worktreePath, base);
 
     segment = await dispatchClaudeSegment({
-        ticket, isRecusaQA, qaFeedback, worktreePath, lease, admissionDecision: nodeAdmission,
-        commands: [`/${node} ${taskId}`],
-        nodes: [node],
-        contextBlock: nodeContextBlock(node, { ticket, dir, worktreePath }),
+        ticket, isRecusaQA, qaFeedback, worktreePath, lease, admissionDecision: nodeAdmission, routing: nodeRouting,
+        commands: decomposed && decomposed.commands ? decomposed.commands
+            : chainActive ? planImplementChain.chainCommands({ taskId, ticketId: id, prismaRoot: PRISMA_ROOT }) : [`/${node} ${taskId}`],
+        nodes: chainActive ? ['plan', 'implement'] : [node],
+        contextBlock: decomposed && decomposed.contextBlock ? decomposed.contextBlock : nodeContextBlock(node, { ticket, dir, worktreePath }),
         extraNote: (node === 'commit'
             ? commitRiskNote(state)
             : node === 'plan'
                 ? `Se memory/runs/${taskId}/context.md tiver o bloco entre ${specValidator.CONTEXT_BEGIN} e ` +
-                  `${specValidator.CONTEXT_END} (avisos do portão de spec), preserve-o ao reescrever o arquivo.` + planFeedbackNote(state) + invalidate.promptNote(state)
+                  `${specValidator.CONTEXT_END} (avisos do portão de spec), preserve-o ao reescrever o arquivo.` + planFeedbackNote(state) + invalidate.promptNote(state) +
+                  (chainActive ? ` ${planImplementChain.chainNote({ taskId, ticketId: id, prismaRoot: PRISMA_ROOT })}` : '')
                 : '') + (testScope ? testScopeNote(node, testScope.services) : '') + schemaChecklistNote(schemaResult) + preBuildNote + recovery + humanInputNote(humanInput, unblock) + cycleReplayer.replayPromptNote(state) + qaRetryNote(taskId, node),
         extraEnv: {
             ...(testScope ? { AFFECTED_SERVICES: testScope.services.join(',') } : {}),
@@ -4257,7 +5437,8 @@ async function dispatchTicketReserved(ticket) {
             ...fresh,
             status: 'session_limit',
             session_interrupted: true,
-            interrupted_node: node,
+            // PRI-354: no segmento, o nó interrompido é o que o state mostra (implement, se o plan concluiu).
+            interrupted_node: lease?.chain && fresh.node ? fresh.node : node,
             interrupted_at: at,
             updated_at: at,
         });
@@ -4313,6 +5494,9 @@ async function tick() {
 
     // Retry de Recusa QA pedido no dashboard: traz o run de volta pro worktree antes da
     // reidratação abaixo, que então o enxerga como task ativa (node=implement).
+    // PRI-181 c2b-2: protocolo do Diagnosis Record antes do retry (só com a flag).
+    qaDiagnosisTickSafe();
+
     let qaRetryIds = [];
     try {
         qaRetryIds = await consumeQaRetrySignals();
@@ -4368,7 +5552,9 @@ async function tick() {
         // e o ciclo plan→commit inteiro sai numa execução só.
         if ((FOLLOW || SIMULATE) && !DRY_RUN && claudeAvailable) {
             let segments = 1;
-            while (result.action === 'dispatched' && segments < MAX_FOLLOW_SEGMENTS && !watcherState.shuttingDown) {
+            // PRI-311 (S5.2b): a transição implement → review da Run decomposta (feita pelo watcher,
+            // sem agente) também avança — o próximo segmento despacha a Review.
+            while ((result.action === 'dispatched' || result.action === 'transitioned') && segments < MAX_FOLLOW_SEGMENTS && !watcherState.shuttingDown) {
                 result = await dispatchTicketSafe(ticket);
                 segments++;
                 log.tickets[ticket.id] = { subject: ticket.subject, status: ticket.status?.name, ...result, at: new Date().toISOString() };
@@ -4414,7 +5600,21 @@ function recoverOrphanedNodes() {
         defaultTimeoutMs: NODE_TIMEOUT_MS,
         dryRun: DRY_RUN,
         filter: taskScopeFilter(),
+        // PRI-311 (S5.2a, H4): Attempt com papel deixado STARTED fecha UNCERTAIN antes do
+        // redespacho; timeout sempre bloqueia. Sem Attempt com papel, nada muda.
+        // Mesma origem da task do lease e da varredura: o nome do diretório da Run (C-O-07).
+        onOrphan: (dir, state, reason) => decompositionRuntime.closeRoleOrphan({
+            runDir: dir, node: state.node, task: path.basename(dir), checkoutRoot: REPO_PATH, orphanReason: reason,
+        }),
     });
+}
+
+// PRI-311 (S5.2a, H5): chave e manifestos locais saem só quando a task não tem Run em
+// nenhuma raiz (checkout principal e cada worktree, runs e runs/_archive). O _archive não é
+// terminal: a Recusa QA revive a mesma Run. Idempotente.
+function sweepDecompositionKeys() {
+    // Mesmas raízes do recovery de órfãos (C-A-09); cada uma com runs/ e runs/_archive.
+    return decompositionRuntime.sweepKeys({ checkoutRoot: REPO_PATH, runsDirs: runsRootsForStartup(), filter: taskScopeFilter() || null });
 }
 
 // Filtro por task-id das varreduras de startup (órfãos, rotação de runs): --ticket=<id>
@@ -4751,7 +5951,7 @@ async function previewRunningViaDashboard(ticketId, base = dashboardBase()) {
 // de uma branch que ainda versiona memory/runs (ex.: development) carrega runs
 // legados de OUTROS tickets, committed e com URL de PR — sem esse filtro eles faziam
 // o worktree de um ticket recém-criado parecer "PR aberto" e ser apagado no meio do
-// /fetch-ticket (#43746, 2026-10-02).
+// /fetch-ticket (#10013, 2026-10-02).
 function worktreeTaskDirs(wtRuns, ticketId) {
     const ours = name => name === String(ticketId) || name.startsWith(`${ticketId}-`);
     return [wtRuns, `${wtRuns}/_archive`].flatMap(base => (fs.existsSync(base)
@@ -4934,6 +6134,18 @@ function writeWatcherModeFile() {
 }
 
 async function main() {
+    // PRI-381 (F1.5): valor inválido de WATCHER_CLI_RESULT_JSON falha na subida, antes da trava,
+    // de lease ou despacho; senão só lançaria no buildClaudeArgs, com o nó já em running.
+    try {
+        cliResult.cliResultJsonEnabled(process.env);
+    } catch (e) {
+        console.error(e.message);
+        process.exitCode = 1;
+        return;
+    }
+    // PRI-181 c0b: valor efetivo da flag a cada tick (sem dado de ticket). Fica em main(),
+    // depois do ramo --health-check, para não sujar testes, node-dispatcher nem o JSON do health.
+    console.log(QA_DIAGNOSTICO ? '[qa-diagnostico] LIGADO' : '[qa-diagnostico] desligado (C0)');
     // Um writer por REPO_PATH, antes de qualquer escrita do tick (custo, sync, recovery).
     // --dry-run só lê: não trava e não cria arquivo. Recusa = exit 75, sem seguir o tick.
     if (!DRY_RUN && !watcherLock.acquireForProcess({ repoPath: REPO_PATH, role: SIMULATE ? 'simulate' : 'watcher' })) {
@@ -4990,6 +6202,14 @@ async function main() {
             console.error('[cleanup] falha na rotação de runs (sigo com o tick):', e.message);
         }
     }
+    if (!DRY_RUN) {
+        try {
+            const swept = sweepDecompositionKeys();
+            if (swept.length) console.log(`[dom06] chave/manifestos locais removidos de ${swept.length} task(s) sem Run em nenhuma raiz.`);
+        } catch (e) {
+            console.error('[dom06] falha na varredura de chaves (sigo com o tick):', e.message);
+        }
+    }
     let prPoller = null;
     try {
         // DRY-RUN: o polling consulta o Bitbucket, e nenhum PR foi aberto de verdade.
@@ -5019,6 +6239,8 @@ module.exports = {
     handleCorruptedState, readStateJson,
     findActiveTask, mostRecentArchivedCommit, dispatchTicket, appendEvent,
     latestRunForTicket, syncQaRejection, consumeQaRetrySignals, qaRetryNote,
+    QA_DIAGNOSTICO, // PRI-181 c0b: valor efetivo da flag (testes)
+    qaDiagnosisTickSafe, qaDiagnosisDiscoveryRoots, qaDiagnosisLocationRoots, // PRI-181 c2b-2
     NEVER_AUTO_DISPATCH, looksUnavailable, looksLikeSessionLimit, findLocallyActiveTicketIds,
     notifyBlocked, alreadyNotified, markNotified,
     pretaskQuestionPath, pretaskAnswerPending, notifyPretaskBlocked,
@@ -5035,6 +6257,8 @@ module.exports = {
     needsPlanGate, runPlanGate, planFeedbackNote, PLAN_GATE_COMMENT_PREFIX, PLAN_MAX_REPLANS,
     needsPreBuildGate, runPreBuildGate, worktreeFingerprint, formatPreBuildComment, PRE_BUILD_COMMENT_PREFIX,
     needsChurnGate, runChurnGate, formatChurnComment, CHURN_COMMENT_PREFIX,
+    releaseLease, closeRoleAttempt, attachDom06Lease, applyDecompositionBlock, sweepDecompositionKeys,
+    prepareDecomposedNode, transitionDecomposedImplement, recordSubagentObservation, DECOMPOSED_GATES,
     syncAcRegistry, collectAcCandidates, AC_REGISTRY_PATH,
     syncKnowledgeGraph, collectKnowledgeFacts, KNOWLEDGE_GRAPH_PATH,
     runMemoryConsolidator, runMemoryConsolidatorSafe, CONSOLIDATOR_STATE_PATH, CONSOLIDATOR_PATTERNS_PATH,
@@ -5043,4 +6267,6 @@ module.exports = {
     fetchTicketById, postRedmineNote, BASE_BY_LIBERACAO,
     // Log de agente em tempo real (dashboard GET /api/runs/:taskId/agent-log[/stream]).
     logPathFor, logRun,
+    // PRI-381 (F1.5): argv do despacho (teste golden da flag WATCHER_CLI_RESULT_JSON).
+    buildClaudeArgs,
 };

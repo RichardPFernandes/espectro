@@ -1,7 +1,7 @@
-// Preview de ambiente de um worktree a partir do dashboard (dashboard/server.js >
+// Preview de ambiente de um ticket a partir do dashboard (dashboard/server.js >
 // /api/preview/:ticketId/*): builda mo-entity → app-core → app-back (só os que têm
 // worktree próprio; os outros vêm do ~/.m2) e sobe app-back (Quarkus, :8081) e
-// app-front (grunt serve, :9000) como filhos controlados. Mesmo padrão do
+// app-front (grunt serve, :9100) como filhos controlados. Mesmo padrão do
 // watcher-manager.js: spawn + ringbuffer + EventEmitter pro SSE.
 //
 // Só um preview por vez (porta fixa): start() de outro ticket com um ativo → 409.
@@ -16,14 +16,30 @@
 // roda via scripts/preview-gruntfile.js, que carrega o Gruntfile original e troca
 // porta e proxy pro back do preview.
 //
+// Fonte do código (start({ source })):
+//   - 'worktree' (padrão): .claude/worktrees/<id> e os worktrees irmãos do ticket;
+//   - 'commit': um commit da branch do ticket (origin/<id>, senão a local <id>) do
+//     app-back — o último se start() não receber `commit` — e a ponta da mesma branch
+//     no app-front. O código sai com `git archive` numa pasta temporária: só lê objetos,
+//     sem checkout, worktree, índice ou HEAD nos repos locais. Serve pro ticket cujo
+//     worktree o watcher já removeu e pra voltar a um commit anterior do ticket.
+//
+// Ambiente local intocado: portas próprias (8081/9100, não as 8080/9000 do ambiente de
+// sempre); todo mvn do preview grava num repositório Maven só dele (PREVIEW_M2_REPO) e lê
+// o ~/.m2 como somente leitura (maven.repo.local.tail, Maven 3.9+) — o `install` de
+// mo-entity/app-core nunca troca o SNAPSHOT que o checkout principal usa; libs vindas
+// de branch também saem por `git archive`. Nos repos locais o preview só faz
+// `git fetch` (refs remotas).
+//
 // Secrets: toda linha passa pelo mesmo redator do watcher-manager (env + .env do repo)
 // acrescido das senhas do application-<profile>.properties do worktree.
 const fs = require('fs');
 const net = require('net');
 const os = require('os');
 const path = require('path');
-const { spawn, execFile } = require('child_process');
+const { spawn, execFile, execFileSync } = require('child_process');
 const { EventEmitter } = require('events');
+const { pipeline: streamPipeline } = require('stream');
 const { createRedactor, levelOf } = require('./watcher-manager');
 const { resolveJavaHome } = require('./lib/build-validator');
 
@@ -32,7 +48,14 @@ const STOP_GRACE_MS = 8000;
 const BACK_STARTUP_TIMEOUT_MS = 120000;
 const FRONT_READY_FALLBACK_MS = 15000;
 const TICKET_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const ACTIVE_PHASES = ['building-mo-entity', 'building-app-core', 'building-app-back', 'starting-back', 'starting-front', 'running', 'stopping'];
+const SOURCES = ['worktree', 'commit'];
+const SHA_RE = /^[0-9a-f]{7,40}$/;
+const COMMITS_MAX = 30;
+// Ref escolhida no painel (origin/<branch>): vai como argumento do git (sem shell), mas não
+// pode começar com '-' (virar opção) nem ter '..'. Branch com '@{' ou espaço não passa.
+const LIB_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
+const LIB_REF_SCAN_MAX = 200;
+const ACTIVE_PHASES = ['exporting', 'building-mo-entity', 'building-app-core', 'building-app-back', 'starting-back', 'starting-front', 'running', 'stopping'];
 const BUILD_STEPS = [
     { key: 'mo-entity', dir: 'moEntity', phase: 'building-mo-entity', goal: 'install' },
     { key: 'app-core', dir: 'appCore', phase: 'building-app-core', goal: 'install' },
@@ -91,6 +114,45 @@ function git(cwd, args, timeout = 120000) {
     });
 }
 
+// Commit → pasta comum via `git archive | tar -x`. Diferente de `git worktree add`, não
+// registra nada no repo nem toca o working tree dele. onSpawn recebe [archive, tar] pro
+// stop() poder matar a extração no meio.
+const rmDir = dir => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+function exportCommit(repo, sha, dir, { archive: archiveCmd, onSpawn } = {}) {
+    rmDir(dir);
+    fs.mkdirSync(dir, { recursive: true });
+    return new Promise((resolve, reject) => {
+        const { cmd, args } = archiveCmd ? archiveCmd(sha) : { cmd: 'git', args: ['archive', '--format=tar', sha] };
+        const archive = spawn(cmd, args, { cwd: repo, stdio: ['ignore', 'pipe', 'pipe'] });
+        const tar = spawn('tar', ['-x', '-f', '-', '-C', dir], { stdio: ['pipe', 'ignore', 'pipe'] });
+        onSpawn?.([archive, tar]);
+        // pipeline: EPIPE no stdin do tar (tar morto pelo stop) não vira exceção sem dono.
+        streamPipeline(archive.stdout, tar.stdin, () => {});
+        let stderr = '', failed = null, pending = 2;
+        for (const p of [archive, tar]) p.stderr.on('data', d => { stderr += d; });
+        const done = who => code => {
+            if (code !== 0 && !failed) failed = `${who} saiu com código ${code}${stderr.trim() ? `: ${stderr.trim().split('\n').pop()}` : ''}`;
+            if (--pending === 0) failed ? reject(new Error(failed)) : resolve();
+        };
+        archive.on('close', done('git archive'));
+        tar.on('close', done('tar'));
+        archive.on('error', reject);
+        tar.on('error', reject);
+    });
+}
+
+const gitSync = (repo, args) => execFileSync('git', args, { cwd: repo, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim();
+
+// Branch do ticket: origin/<id> (o que foi pro PR) antes da local. Refs completas porque
+// `<id>` sozinho é ambíguo no app-back (refs/churn/<id>-*).
+function ticketBranch(repo, ticketId) {
+    if (!repo || !fs.existsSync(path.join(repo, '.git'))) return null;
+    for (const [full, ref] of [[`refs/remotes/origin/${ticketId}`, `origin/${ticketId}`], [`refs/heads/${ticketId}`, ticketId]]) {
+        try { return { ref, sha: gitSync(repo, ['rev-parse', '--verify', '--quiet', `${full}^{commit}`]) }; } catch {}
+    }
+    return null;
+}
+
 function createPreviewManager(options = {}) {
     const env = options.env || process.env;
     const repoRoot = path.resolve(options.repoRoot || env.REPO_PATH || process.cwd());
@@ -100,8 +162,9 @@ function createPreviewManager(options = {}) {
     const worktreesDir = options.worktreesDir || path.join(repoRoot, '.claude', 'worktrees');
     const envFile = options.envFile === undefined ? path.join(repoRoot, '.env') : options.envFile;
     const ports = {
-        back: options.ports?.back ?? (Number(env.PREVIEW_BACK_PORT) || 8080),
-        front: options.ports?.front ?? (Number(env.PREVIEW_FRONT_PORT) || 9000),
+        // Fora das 8080/9000 do ambiente local: preview e ambiente de sempre lado a lado.
+        back: options.ports?.back ?? (Number(env.PREVIEW_BACK_PORT) || 8081),
+        front: options.ports?.front ?? (Number(env.PREVIEW_FRONT_PORT) || 9100),
     };
     // Bancos que o painel oferece: "rótulo=profile" (application-<profile>.properties).
     // Lista explícita de propósito — vários profiles do repo apontam pra produção.
@@ -111,7 +174,7 @@ function createPreviewManager(options = {}) {
         .filter(o => o.key && /^[A-Za-z0-9._-]+$/.test(o.profile));
     const defaultProfile = options.profile || env.PREVIEW_PROFILE || dbOptions[0]?.profile || null;
     // Sem PREVIEW_JAVA_HOME, o JAVA_HOME herdado só vale se atender o release do pom;
-    // senão `java_home -v <release>` (mesma regra do portão de build). Achado no #43646:
+    // senão `java_home -v <release>` (mesma regra do portão de build). Achado no #10005:
     // dashboard subido de shell com JDK 17 → "release version 25 not supported".
     // JDK discovery happens only after an explicitly configured start.
     let javaHome = options.javaHome ?? env.PREVIEW_JAVA_HOME ?? '';
@@ -121,11 +184,17 @@ function createPreviewManager(options = {}) {
     const frontReadyMs = options.frontReadyMs ?? FRONT_READY_FALLBACK_MS;
     const stopGraceMs = options.stopGraceMs ?? STOP_GRACE_MS;
     const checkPorts = options.checkPorts ?? true;
+    // ~/.m2 do usuário: só leitura pro preview (tail). O que o preview instala ou baixa vai
+    // pro previewM2.
     const m2Repo = options.m2Repo || path.join(os.homedir(), '.m2', 'repository');
+    // `~/` vira o home: resolvido a partir do repoRoot criaria a pasta "~" dentro do checkout.
+    const userPath = p => (p === '~' || p.startsWith('~/') ? path.join(os.homedir(), p.slice(1)) : path.resolve(repoRoot, p));
+    const previewM2 = options.previewM2 || (env.PREVIEW_M2_REPO ? userPath(env.PREVIEW_M2_REPO) : path.join(os.homedir(), '.cache', 'prisma-preview', 'm2'));
+    if (path.resolve(previewM2) === path.resolve(m2Repo)) throw new Error('PREVIEW_M2_REPO não pode ser o ~/.m2 do usuário');
     // Lib sem worktree do ticket: builda do repo irmão (../mo-entity, ../app-core) na
     // primeira branch remota cuja versão bate com a do back — origin/<ticket>, depois
     // PREVIEW_LIB_REFS — em vez de confiar no ~/.m2 (que um install local de checkout
-    // velho sobrescreve sem aviso: #43646). PREVIEW_LIBS_FROM_BRANCH=false desliga.
+    // velho sobrescreve sem aviso: #10005). PREVIEW_LIBS_FROM_BRANCH=false desliga.
     const configuredRepo = key => env[key] ? path.resolve(repoRoot, env[key]) : null;
     const libRepos = options.libRepos || {
         moEntity: configuredRepo('PREVIEW_MO_ENTITY_REPO'),
@@ -135,9 +204,11 @@ function createPreviewManager(options = {}) {
     const libRefs = options.libRefs || (env.PREVIEW_LIB_REFS || '').split(',').map(r => r.trim()).filter(Boolean);
     const libsFromBranch = options.libsFromBranch ?? !/^(0|false|nao|não|no)$/i.test(env.PREVIEW_LIBS_FROM_BRANCH || '');
     const libTmpDir = options.libTmpDir || os.tmpdir();
+    // Código extraído no modo commit: <libTmpDir>/preview-src-<id>/{<id>,<id>-app-front}.
+    const srcDir = ticketId => path.join(libTmpDir, `preview-src-${ticketId}`);
     const gruntWrapper = options.gruntWrapper || path.join(__dirname, 'preview-gruntfile.js');
-    // 8080 é permitido (é a porta que o front espera); o portInUse do start recusa se o
-    // app-back principal estiver de pé nela.
+    // Porta ocupada (ex.: PREVIEW_BACK_PORT=8080 com o app-back principal de pé) é recusada
+    // pelo portInUse do start.
     if (ports.back === ports.front) throw new Error(`PREVIEW_BACK_PORT e PREVIEW_FRONT_PORT não podem ser iguais (${ports.back})`);
 
     const events = new EventEmitter();
@@ -152,18 +223,20 @@ function createPreviewManager(options = {}) {
     // Sobrescrevível nos testes (options.commands[step] = wt => ({ cmd, args })).
     const configFile = profile => path.join('src', 'main', 'resources', `application-${profile}.properties`);
     const defaults = {
-        build: (wt, step) => ({ cmd: 'mvn', args: [...(mvnOffline ? ['-o'] : []), 'clean', step.goal, '-DskipTests', '-q'] }),
+        build: (wt, step) => ({ cmd: 'mvn', args: [...(mvnOffline ? ['-o'] : []), 'clean', step.goal, '-DskipTests', '-q', `-Dmaven.repo.local=${previewM2}`, `-Dmaven.repo.local.tail=${m2Repo}`] }),
         back: (wt, profile) => ({
             cmd: javaHome ? path.join(javaHome, 'bin', 'java') : 'java',
             args: [
                 // Sem -Dquarkus.config.locations: com ele o Quarkus ignora o -Dquarkus.http.port
-                // e sobe na 8080 do application.properties (#43646). O profile já carrega o
+                // e sobe na 8080 do application.properties (#10005). O profile já carrega o
                 // application-<profile>.properties de dentro do jar.
                 `-Dquarkus.profile=${profile}`,
                 `-Dquarkus.http.port=${ports.back}`,
                 '-jar', path.join('target', 'quarkus-app', 'quarkus-run.jar'),
             ],
         }),
+        // Extração do modo commit (e das libs de branch); os testes trocam por um processo lento.
+        archive: sha => ({ cmd: 'git', args: ['archive', '--format=tar', sha] }),
         // = `grunt serve` do worktree, sem depender de grunt-cli global (ver preview-gruntfile.js).
         front: () => ({ cmd: process.execPath, args: [gruntWrapper, 'serve'] }),
     };
@@ -194,11 +267,16 @@ function createPreviewManager(options = {}) {
         };
     }
 
+    function detectBranches(ticketId) {
+        return { back: ticketBranch(repoRoot, ticketId), front: ticketBranch(libRepos.front, ticketId) };
+    }
+
     function blank(ticketId) {
         return {
             ticketId, phase: 'idle', processes: { back: null, front: null }, current: null,
             ports: { ...ports }, logBuffer: [], startedAt: null, runningAt: null, error: null,
             errorPhase: null, steps: {}, worktrees: null, timers: new Set(), runToken: 0,
+            libFallbacks: [], libRef: null, source: null, commit: null, refs: {},
         };
     }
     function get(ticketId) {
@@ -268,7 +346,8 @@ function createPreviewManager(options = {}) {
     // --------------------------------------------------------------- processos
     function run(s, source, { cmd, args }, cwd, extraEnv, onLine) {
         const proc = spawn(cmd, args, { cwd, env: childEnv(extraEnv), detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-        note(s, `${source}: ${path.basename(cmd)} ${args.join(' ')} (cwd ${path.relative(worktreesDir, cwd) || '.'}, PID ${proc.pid ?? '?'})`);
+        const where = path.relative(worktreesDir, cwd);
+        note(s, `${source}: ${path.basename(cmd)} ${args.join(' ')} (cwd ${where.startsWith('..') ? cwd : where || '.'}, PID ${proc.pid ?? '?'})`);
         const handle = line => { push(s, source, line); onLine?.(line); };
         lineReader(proc.stdout, handle);
         lineReader(proc.stderr, line => { push(s, source, line, levelOf('stderr', line)); onLine?.(line); });
@@ -371,13 +450,19 @@ function createPreviewManager(options = {}) {
     // package.json e bower.json são idênticos; senão avisa pra rodar npm/bower install.
     function linkFrontDeps(s, wt) {
         const main = libRepos.front;
-        if (!main || path.resolve(main) === path.resolve(wt)) return;
+        const missing = [];
+        if (!main || path.resolve(main) === path.resolve(wt)) return missing;
         const same = f => { try { return fs.readFileSync(path.join(main, f), 'utf8') === fs.readFileSync(path.join(wt, f), 'utf8'); } catch { return false; } };
         for (const [dir, manifest] of [['node_modules', 'package.json'], ['bower_components', 'bower.json']]) {
             if (fs.existsSync(path.join(wt, dir)) || !fs.existsSync(path.join(main, dir))) continue;
-            if (!same(manifest)) { note(s, `app-front: sem ${dir} no worktree e ${manifest} difere do checkout principal — rode o install no worktree`, 'WARN'); continue; }
+            if (!same(manifest)) {
+                missing.push(manifest);
+                if (s.source !== 'commit') note(s, `app-front: sem ${dir} no worktree e ${manifest} difere do checkout principal — rode o install no worktree`, 'WARN');
+                continue;
+            }
             try { fs.symlinkSync(path.join(main, dir), path.join(wt, dir), 'dir'); note(s, `app-front: ${dir} linkado do checkout principal (${manifest} idêntico)`); } catch (e) { note(s, `app-front: não linkou ${dir} (${e.message})`, 'WARN'); }
         }
+        return missing;
     }
 
     function startFront(s, token) {
@@ -385,7 +470,6 @@ function createPreviewManager(options = {}) {
             s.steps.front = 'running';
             setPhase(s, 'starting-front');
             const wt = s.worktrees.front;
-            linkFrontDeps(s, wt);
             let settled = false;
             const settle = ok => { if (!settled) { settled = true; if (ok) s.steps.front = 'done'; resolve(ok); } };
             let proc;
@@ -419,37 +503,53 @@ function createPreviewManager(options = {}) {
     // abortado (fail/stop); null = segue com o ~/.m2 (sem repo/branch com a versão).
     async function buildLibFromBranch(s, token, step) {
         const repo = libRepos[step.dir];
-        const fallback = why => { s.steps[step.key] = 'skipped'; note(s, `${step.key}: ${why} — usando a versão do ~/.m2`, 'WARN'); return null; };
-        if (!libsFromBranch) return fallback('PREVIEW_LIBS_FROM_BRANCH=false');
-        if (!repo || !fs.existsSync(path.join(repo, '.git'))) return fallback('sem worktree próprio nem repo irmão');
+        const libRef = s.libRef; // fixo neste start: um stop+start durante o fetch não pode trocá-lo
+        const stale = () => token !== s.runToken;
+        const fallback = (why, fixable = true) => {
+            if (stale()) return false; // pipeline velho não escreve no estado do start novo
+            s.steps[step.key] = 'skipped';
+            s.libFallbacks.push({ key: step.key, dir: step.dir, why, fixable });
+            // O repositório do preview vem antes do ~/.m2: uma cópia da mesma versão instalada
+            // por outro preview esconderia a do ~/.m2 (e o "rode o install da lib" do painel).
+            const shadow = need && libDir(repo, need);
+            if (shadow && fs.existsSync(shadow)) { try { rmDir(shadow); note(s, `${step.key}: ${need} do repositório do preview apagado`); } catch {} }
+            note(s, `${step.key}: ${why} — usando a versão do ~/.m2`, 'WARN');
+            return null;
+        };
         let need = null;
         try { need = pomCoords(fs.readFileSync(path.join(s.worktrees.back, 'pom.xml'), 'utf8'))?.v; } catch {}
-        if (!need) return fallback('versão do app-back não encontrada no pom');
-        try { await git(repo, ['fetch', '--quiet', 'origin']); } catch (e) { note(s, `${step.key}: git fetch falhou (${e.message}) — usando as refs remotas locais`, 'WARN'); }
+        if (!libsFromBranch) return fallback('PREVIEW_LIBS_FROM_BRANCH=false', false);
+        if (!repo || !fs.existsSync(path.join(repo, '.git'))) return fallback('sem worktree próprio nem repo irmão', false);
+        if (!need) return fallback('versão do app-back não encontrada no pom', false);
+        try { await git(repo, ['fetch', '--quiet', 'origin']); } catch (e) { if (!stale()) note(s, `${step.key}: git fetch falhou (${e.message}) — usando as refs remotas locais`, 'WARN'); }
+        if (stale()) return false;
         let ref = null, coords = null;
-        for (const r of [`origin/${s.ticketId}`, ...libRefs]) {
+        // Ref escolhida no painel vem primeiro; sem a versão do back nela, segue a ordem padrão.
+        const candidates = [...(libRef ? [libRef] : []), `origin/${s.ticketId}`, ...libRefs];
+        for (const r of candidates) {
             try { coords = pomCoords(await git(repo, ['show', `${r}:pom.xml`])); } catch { continue; }
+            if (stale()) return false;
             if (coords?.v === need) { ref = r; break; }
+            if (r === libRef) note(s, `${step.key}: ${r} tem a versão ${coords?.v ?? '?'}, não ${need} — tentando as refs padrão`, 'WARN');
         }
-        if (!ref) return fallback(`nenhuma branch (origin/${s.ticketId}, ${libRefs.join(', ')}) com a versão ${need}`);
+        if (stale()) return false;
+        if (!ref) return fallback(`nenhuma branch (${candidates.join(', ')}) com a versão ${need}`);
         const sha = (await git(repo, ['rev-parse', ref])).trim();
-        const dir = path.join(m2Repo, ...coords.g.split('.'), coords.a, coords.v);
+        const dir = path.join(previewM2, ...coords.g.split('.'), coords.a, coords.v);
         const jar = path.join(dir, `${coords.a}-${coords.v}.jar`);
         const marker = path.join(dir, '.preview-build.json');
         const jarMtime = () => { try { return fs.statSync(jar).mtimeMs; } catch { return null; } };
         try {
             const m = JSON.parse(fs.readFileSync(marker, 'utf8'));
             // mtime diferente = outro install sobrescreveu depois do nosso.
-            if (m.sha === sha && m.jarMtimeMs === jarMtime()) {
+            if (!libRef && m.sha === sha && m.jarMtimeMs === jarMtime()) {
                 s.steps[step.key] = 'done';
-                note(s, `${step.key}: ~/.m2 já tem ${coords.v} de ${ref} (${sha.slice(0, 10)}) — build pulado`);
+                note(s, `${step.key}: repositório do preview já tem ${coords.v} de ${ref} (${sha.slice(0, 10)}) — build pulado`);
                 return true;
             }
         } catch {}
         const wt = path.join(libTmpDir, `preview-${step.key}-${s.ticketId}`);
-        await git(repo, ['worktree', 'remove', '--force', wt]).catch(() => {});
-        fs.rmSync(wt, { recursive: true, force: true });
-        try { await git(repo, ['worktree', 'add', '--detach', '--quiet', wt, sha]); } catch (e) { fail(s, `${step.key}: git worktree add ${ref} falhou (${e.message})`); return false; }
+        try { await extract(s, repo, sha, wt); } catch (e) { if (!stale()) fail(s, `${step.key}: git archive ${ref} falhou (${e.message})`); return false; }
         note(s, `${step.key}: sem worktree próprio — buildando ${ref} (${sha.slice(0, 10)}, versão ${coords.v})`);
         try {
             if (token !== s.runToken) return false;
@@ -457,12 +557,56 @@ function createPreviewManager(options = {}) {
             if (ok) { try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(marker, JSON.stringify({ sha, ref, jarMtimeMs: jarMtime(), at: new Date().toISOString() })); } catch {} }
             return ok;
         } finally {
-            await git(repo, ['worktree', 'remove', '--force', wt]).catch(() => fs.rmSync(wt, { recursive: true, force: true }));
+            try { rmDir(wt); } catch {}
         }
+    }
+
+    // exportCommit com o comando do preview; o archive fica em s.current (pids.build) pro stop
+    // matá-lo — o tar termina sozinho quando a entrada fecha.
+    async function extract(s, repo, sha, dir) {
+        let archive = null;
+        try { await exportCommit(repo, sha, dir, { archive: commands.archive, onSpawn: ([a]) => { archive = a; s.current = a; } }); } finally {
+            if (s.current === archive) s.current = null;
+        }
+    }
+
+    // Modo commit: extrai o commit escolhido do app-back e a ponta da branch do ticket no
+    // app-front. Nos repos, só o fetch escreve — e só em refs/remotes/origin/<id>.
+    async function exportSources(s, token) {
+        setPhase(s, 'exporting');
+        const stale = () => token !== s.runToken;
+        const fetchTicket = async (repo, label) => {
+            try { await git(repo, ['fetch', '--quiet', 'origin', `+refs/heads/${s.ticketId}:refs/remotes/origin/${s.ticketId}`], 30000); } catch (e) { if (!stale()) note(s, `${label}: git fetch origin ${s.ticketId} falhou (${e.message}) — usando as refs locais`, 'WARN'); }
+        };
+        rmDir(srcDir(s.ticketId));
+        const out = async (dir, repo, label, hit) => {
+            const dest = path.join(srcDir(s.ticketId), dir === 'back' ? s.ticketId : `${s.ticketId}-app-front`);
+            try { await extract(s, repo, hit.sha, dest); } catch (e) { if (!stale()) fail(s, `${label}: git archive ${hit.sha.slice(0, 10)} falhou (${e.message})`); return false; }
+            if (stale()) return false;
+            s.worktrees[dir] = dest;
+            s.refs[dir] = hit;
+            note(s, `${label}: ${hit.ref} @ ${hit.sha.slice(0, 10)} extraído em ${dest} — repo local intocado`);
+            return true;
+        };
+        // O commit do back foi validado no start(); o fetch só traz o que mudou no remoto.
+        await fetchTicket(repoRoot, 'app-back');
+        if (stale() || !(await out('back', repoRoot, 'app-back', s.commit))) return false;
+        const front = libRepos.front;
+        if (front && fs.existsSync(path.join(front, '.git'))) {
+            await fetchTicket(front, 'app-front');
+            if (stale()) return false;
+            const hit = ticketBranch(front, s.ticketId);
+            if (!hit) { s.steps.front = 'skipped'; note(s, `app-front: sem branch ${s.ticketId} — front fica de fora`); }
+            else if (!(await out('front', front, 'app-front', hit))) return false;
+            else s.steps.front = 'pending';
+        }
+        if (!fs.existsSync(path.join(s.worktrees.back, configFile(s.profile)))) { fail(s, `application-${s.profile}.properties não existe no commit ${s.commit.sha.slice(0, 10)}`); return false; }
+        return true;
     }
 
     async function pipeline(s, token) {
         const alive = () => token === s.runToken && ACTIVE_PHASES.includes(s.phase) && s.phase !== 'stopping';
+        if (s.source === 'commit' && (!(await exportSources(s, token)) || !alive())) return;
         if (checkPorts) {
             const busy = [];
             if (await portInUse(ports.back)) busy.push(`back :${ports.back}`);
@@ -481,7 +625,15 @@ function createPreviewManager(options = {}) {
             if (!(await build(s, token, step)) || !alive()) return;
         }
         if (!(await startBack(s, token)) || !alive()) return;
-        if (s.worktrees.front && (!(await startFront(s, token)) || !alive())) return;
+        if (s.worktrees.front) {
+            const missing = linkFrontDeps(s, s.worktrees.front);
+            // Modo commit: a pasta é temporária, não dá pra instalar nela — o back sobe sozinho.
+            if (s.source === 'commit' && missing.length) {
+                s.worktrees.front = null;
+                s.steps.front = 'skipped';
+                note(s, `app-front: ${missing.join(' e ')} do commit difere do checkout principal — front fica de fora`, 'WARN');
+            } else if (!(await startFront(s, token)) || !alive()) return;
+        }
         s.runningAt = Date.now();
         note(s, `preview no ar — back http://localhost:${ports.back}${s.worktrees.front ? ` · front http://localhost:${ports.front}` : ''}`);
         setPhase(s, 'running');
@@ -501,25 +653,70 @@ function createPreviewManager(options = {}) {
             return { key: o.key, profile: o.profile, exists, db: dbLabel(props), sistema: props.sistema || null, ambiente: props.ambiente || null };
         });
     }
-    function resolveDb(worktrees, db) {
-        const choices = dbChoices(worktrees.back);
+    // backDir: worktree do back; no modo commit, o checkout principal (os .properties do
+    // commit só existem depois do export, que confere o profile de novo).
+    function resolveDb(backDir, db) {
+        const choices = dbChoices(backDir);
         const pick = db == null || db === '' ? (choices.find(c => c.profile === defaultProfile) || choices[0] || { key: null, profile: defaultProfile, exists: true })
             : choices.find(c => c.key === db);
         if (!pick) throw httpError(400, `banco inválido: ${db} (opções: ${choices.map(c => c.key).join(', ') || 'nenhuma — defina PREVIEW_DB_OPTIONS'})`);
-        if (!pick.exists && fs.existsSync(path.join(worktrees.back, 'src', 'main', 'resources'))) throw httpError(400, `application-${pick.profile}.properties não existe no worktree do app-back`);
+        if (!pick.exists && fs.existsSync(path.join(backDir, 'src', 'main', 'resources'))) throw httpError(400, `application-${pick.profile}.properties não existe no app-back`);
         return pick;
+    }
+
+    function validLibRef(ref) {
+        if (ref == null || ref === '') return null;
+        // Só refs remotas: HEAD/branch local/sha buildariam um checkout possivelmente sujo do repo irmão.
+        if (typeof ref !== 'string' || !ref.startsWith('origin/') || !LIB_REF_RE.test(ref) || ref.includes('..') || ref.endsWith('.lock')) throw httpError(400, `ref inválida (use origin/<branch>): ${String(ref).slice(0, 80)}`);
+        return ref;
+    }
+
+    // Commit do modo commit: tem de estar na branch do ticket do app-back (o painel lista
+    // de lá). Sem `commit`, a ponta da branch.
+    function resolveCommit(ticketId, commit) {
+        const given = commit != null && commit !== '';
+        // Formato antes de qualquer git: o valor vai como argumento (sem shell) e não pode virar opção.
+        if (given && (typeof commit !== 'string' || !SHA_RE.test(commit))) throw httpError(400, `commit inválido (use o SHA em hexadecimal): ${String(commit).slice(0, 80)}`);
+        const branch = ticketBranch(repoRoot, ticketId);
+        if (!branch) throw httpError(404, `branch ${ticketId} do app-back não encontrada (nem origin/${ticketId})`);
+        if (!given) return branch;
+        let sha;
+        try { sha = gitSync(repoRoot, ['rev-parse', '--verify', '--quiet', `${commit}^{commit}`]); } catch { throw httpError(400, `commit ${commit} não existe no app-back`); }
+        try { gitSync(repoRoot, ['merge-base', '--is-ancestor', sha, branch.sha]); } catch { throw httpError(400, `commit ${commit.slice(0, 10)} não está na branch ${branch.ref}`); }
+        return { ref: branch.ref, sha };
+    }
+
+    // Últimos commits da branch do ticket no app-back (o mais novo primeiro) pro painel.
+    async function listCommits(ticketId) {
+        validId(ticketId);
+        requireAdapter();
+        // Back e front: o painel mostra a ponta do front que vai subir junto.
+        await Promise.all([repoRoot, libRepos.front].filter(r => r && fs.existsSync(path.join(r, '.git'))).map(r =>
+            git(r, ['fetch', '--quiet', 'origin', `+refs/heads/${ticketId}:refs/remotes/origin/${ticketId}`], 30000).catch(() => {})));
+        const branch = ticketBranch(repoRoot, ticketId);
+        if (!branch) throw httpError(404, `branch ${ticketId} do app-back não encontrada (nem origin/${ticketId})`);
+        const raw = await git(repoRoot, ['log', `--max-count=${COMMITS_MAX}`, '--format=%H%x1f%cI%x1f%s', branch.sha]);
+        const commits = raw.split('\n').filter(Boolean).map(l => { const [sha, date, subject] = l.split('\x1f'); return { sha, date, subject }; });
+        return { ref: branch.ref, sha: branch.sha, commits, front: ticketBranch(libRepos.front, ticketId) };
     }
 
     function start(ticketId, opts = {}) {
         validId(ticketId);
+        const libRef = validLibRef(opts.libRef);
         requireAdapter();
         if (!defaultProfile) throw httpError(400, 'profile do preview não configurado');
         const other = activePreview();
         if (other && other.ticketId !== ticketId) throw httpError(409, `Preview do ticket ${other.ticketId} ainda está rodando — pare-o antes de iniciar um novo`);
         if (other) throw httpError(409, `Preview do ticket ${ticketId} já está em andamento (fase ${other.phase})`);
-        const worktrees = detectWorktrees(ticketId);
-        if (!worktrees.back) throw httpError(404, `worktree do app-back não encontrado para ticket ${ticketId}`);
-        const pick = resolveDb(worktrees, opts.db);
+        const source = opts.source == null || opts.source === '' ? 'worktree' : opts.source;
+        if (!SOURCES.includes(source)) throw httpError(400, `fonte inválida: ${String(source).slice(0, 40)} (opções: ${SOURCES.join(', ')})`);
+        const byCommit = source === 'commit';
+        // Modo commit: nada de worktree; mo-entity/app-core caem no buildLibFromBranch.
+        const worktrees = byCommit ? { back: null, moEntity: null, appCore: null, front: null } : detectWorktrees(ticketId);
+        if (!byCommit && !worktrees.back) throw httpError(404, `worktree do app-back não encontrado para ticket ${ticketId}`);
+        const commit = byCommit ? resolveCommit(ticketId, opts.commit) : null;
+        const frontBranch = byCommit ? ticketBranch(libRepos.front, ticketId) : null;
+        const pick = resolveDb(byCommit ? repoRoot : worktrees.back, opts.db);
         if (!javaResolved) {
             javaHome = resolveJavaHome(repoRoot, { ...env, PRE_BUILD_JAVA_HOME: '' }).javaHome || '';
             javaResolved = true;
@@ -529,16 +726,20 @@ function createPreviewManager(options = {}) {
         clearTimers(s);
         Object.assign(s, {
             worktrees, db: pick.key, profile: pick.profile, logBuffer: [], error: null, errorPhase: null, startedAt: Date.now(), runningAt: null,
+            libFallbacks: [], libRef, source, commit, refs: {},
             steps: Object.fromEntries([
-                ...BUILD_STEPS.map(b => [b.key, willBuild(b, worktrees) ? 'pending' : 'skipped']),
-                ['back', 'pending'], ['front', worktrees.front ? 'pending' : 'skipped'],
+                ...BUILD_STEPS.map(b => [b.key, (byCommit && b.dir === 'back') || willBuild(b, worktrees) ? 'pending' : 'skipped']),
+                ['back', 'pending'], ['front', (byCommit ? frontBranch : worktrees.front) ? 'pending' : 'skipped'],
             ]),
         });
         const token = ++s.runToken;
         redact.reset();
-        const first = BUILD_STEPS.find(b => willBuild(b, worktrees));
-        note(s, `preview iniciado — worktrees: ${Object.entries(worktrees).map(([k, v]) => `${k} ${v ? '✓' : '–'}`).join(' | ')}`);
-        setPhase(s, first.phase);
+        const first = byCommit ? 'exporting' : BUILD_STEPS.find(b => willBuild(b, worktrees)).phase;
+        note(s, byCommit
+            ? `preview iniciado — commit: back ${commit.ref} @ ${commit.sha.slice(0, 10)} | front ${frontBranch ? `${frontBranch.ref} (ponta)` : '–'}`
+            : `preview iniciado — worktrees: ${Object.entries(worktrees).map(([k, v]) => `${k} ${v ? '✓' : '–'}`).join(' | ')}`);
+        if (libRef) note(s, `libs sem worktree: reconstruindo a partir de ${libRef} (cache do repositório do preview ignorado)`);
+        setPhase(s, first);
         pipeline(s, token).catch(e => fail(s, e.message));
         return status(ticketId);
     }
@@ -552,6 +753,7 @@ function createPreviewManager(options = {}) {
         const was = s.phase;
         setPhase(s, 'stopping');
         await killAll(s);
+        if (s.source === 'commit') { try { rmDir(srcDir(ticketId)); } catch (e) { note(s, `não apagou ${srcDir(ticketId)} (${e.message})`, 'WARN'); } }
         s.startedAt = null;
         s.runningAt = null;
         s.error = null;
@@ -579,22 +781,37 @@ function createPreviewManager(options = {}) {
             pids: { back: s.processes.back?.pid ?? null, front: s.processes.front?.pid ?? null, build: s.current?.pid ?? null },
             // Detecção sempre fresca: o painel mostra o que existe agora, mesmo idle.
             worktrees: Object.fromEntries(Object.entries(detectWorktrees(ticketId)).map(([k, v]) => [k, !!v])),
+            branches: Object.fromEntries(Object.entries(detectBranches(ticketId)).map(([k, v]) => [k, v?.ref ?? null])),
+            source: s.source,
+            // Commits que estão no ar (ou subindo) no modo commit.
+            refs: Object.fromEntries(Object.entries(s.refs || {}).map(([k, v]) => [k, { ref: v.ref, sha: v.sha }])),
+            commit: s.commit ? { ref: s.commit.ref, sha: s.commit.sha } : null,
             activeTicket: active ? active.ticketId : null,
             db: s.db ?? null,
             profile: s.profile ?? null,
-            dbOptions: dbChoices(detectWorktrees(ticketId).back),
+            // Libs que caíram no ~/.m2 neste start; com erro no build do back, o snapshot de lá
+            // pode estar fora de sincronia com o código do ticket (assinatura que mudou, etc.).
+            libFallback: s.libFallbacks.map(f => ({ ...f })),
+            libRef: s.libRef ?? null,
+            dbOptions: dbChoices(detectWorktrees(ticketId).back || repoRoot),
         };
     }
 
-    // Cache do build do ticket: target/ dos worktrees (+ .tmp do grunt no front) e, pra
-    // mo-entity/app-core com worktree próprio, o que o `mvn install` do preview gravou
-    // no ~/.m2 — que é compartilhado: sem apagar, o checkout principal segue usando o
-    // SNAPSHOT do ticket. O próximo build baixa do repositório remoto ou pede install.
+    // Cache do build do ticket: target/ dos worktrees (+ .tmp do grunt no front), o código
+    // extraído no modo commit e, pra mo-entity/app-core com worktree próprio, o que o
+    // `mvn install` do preview gravou no repositório Maven do preview (nunca no ~/.m2).
+    // Pasta da lib (groupId/artifactId do pom do repo irmão) numa versão, no repositório do preview.
+    function libDir(repo, version) {
+        let c = null;
+        try { c = pomCoords(fs.readFileSync(path.join(repo, 'pom.xml'), 'utf8')); } catch {}
+        return c && !String(version).includes('..') ? path.join(previewM2, ...c.g.split('.'), c.a, version) : null;
+    }
+
     function artifactDir(pomDir) {
         let pom = '';
         try { pom = fs.readFileSync(path.join(pomDir, 'pom.xml'), 'utf8'); } catch { return null; }
         const c = pomCoords(pom);
-        return c && path.join(m2Repo, ...c.g.split('.'), c.a, c.v);
+        return c && path.join(previewM2, ...c.g.split('.'), c.a, c.v);
     }
 
     function clean(ticketId) {
@@ -606,16 +823,51 @@ function createPreviewManager(options = {}) {
         const targets = [];
         for (const dir of [wt.back, wt.moEntity, wt.appCore]) if (dir) targets.push(path.join(dir, 'target'));
         if (wt.front) targets.push(path.join(wt.front, '.tmp'));
+        targets.push(srcDir(ticketId));
         for (const dir of [wt.moEntity, wt.appCore]) { const a = dir && artifactDir(dir); if (a) targets.push(a); }
         const removed = [];
         for (const t of targets) {
             if (!fs.existsSync(t)) continue;
             fs.rmSync(t, { recursive: true, force: true });
             removed.push(t);
-            note(s, `cache removido: ${t.startsWith(m2Repo) ? `~/.m2/${path.relative(m2Repo, t)}` : path.relative(worktreesDir, t)}`);
+            const rel = path.relative(worktreesDir, t);
+            note(s, `cache removido: ${t.startsWith(previewM2) ? `repositório do preview/${path.relative(previewM2, t)}` : rel.startsWith('..') ? t : rel}`);
         }
         if (!removed.length) note(s, 'cache: nada a remover');
         return { ...status(ticketId), removed };
+    }
+
+    // Refs remotas de mo-entity/app-core cuja versão (pom.xml) bate com a do app-back do
+    // ticket: o que o painel oferece em "Reconstruir libs". Mais recentes primeiro.
+    async function listLibRefs(ticketId) {
+        validId(ticketId);
+        requireAdapter();
+        // Modo commit: o código extraído (fica até o stop) é o que falhou no build.
+        const s = previews.get(ticketId);
+        const wt = s?.source === 'commit' && s.worktrees?.back ? s.worktrees : detectWorktrees(ticketId);
+        if (!wt.back) throw httpError(404, `worktree do app-back não encontrado para ticket ${ticketId}`);
+        let need = null;
+        try { need = pomCoords(fs.readFileSync(path.join(wt.back, 'pom.xml'), 'utf8'))?.v; } catch {}
+        const out = { need, libs: [] };
+        if (!need) return out;
+        for (const step of BUILD_STEPS.filter(b => b.dir !== 'back')) {
+            const repo = libRepos[step.dir];
+            if (wt[step.dir] || !libsFromBranch || !repo || !fs.existsSync(path.join(repo, '.git'))) continue;
+            try { await git(repo, ['fetch', '--quiet', 'origin']); } catch {}
+            let names = [];
+            try {
+                names = (await git(repo, ['for-each-ref', '--sort=-committerdate', `--count=${LIB_REF_SCAN_MAX}`, '--format=%(refname:short)', 'refs/remotes/origin']))
+                    .split('\n').map(x => x.trim()).filter(x => x && x !== 'origin' && !x.endsWith('/HEAD') && LIB_REF_RE.test(x) && !x.includes('..'));
+            } catch {}
+            const refs = [];
+            for (let i = 0; i < names.length; i += 16) {
+                const batch = names.slice(i, i + 16);
+                const vs = await Promise.all(batch.map(r => git(repo, ['show', `${r}:pom.xml`], 15000).then(x => pomCoords(x)?.v).catch(() => null)));
+                batch.forEach((r, j) => { if (vs[j] === need) refs.push(r); });
+            }
+            out.libs.push({ key: step.key, refs });
+        }
+        return out;
     }
 
     function getLogBuffer(ticketId) {
@@ -633,12 +885,12 @@ function createPreviewManager(options = {}) {
         for (const s of previews.values()) {
             clearTimers(s);
             for (const p of [s.current, s.processes.back, s.processes.front]) {
-                if (!exited(p)) { try { process.kill(-p.pid, 'SIGTERM'); } catch {} }
+                if (!exited(p)) { try { process.kill(-p.pid, 'SIGTERM'); } catch { try { p.kill('SIGTERM'); } catch {} } }
             }
         }
     }
 
-    return { start, stop, clean, status, getLogBuffer, on, stopAll, killSync, ports, worktreesDir };
+    return { start, stop, clean, status, listLibRefs, listCommits, getLogBuffer, on, stopAll, killSync, ports, worktreesDir, previewM2 };
 }
 
 let singleton = null;

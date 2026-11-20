@@ -1,0 +1,140 @@
+# Maestri — Agent Handoff Contract v1.1. Regras: docs/handoff-contract.md
+handoff_version: "1.1"
+
+task:
+  id: "PRI-311"
+  objective: "S5.2a da PRI-287: ligar no watcher e nos dois caminhos de saída o contrato da S5.1 (baseline, post, versão vigente, causa operacional, blocked, cadeia, órfão, chave), seções opcionais da policy, papel do subagente na S1 e o probe do U10, com a flag decomposition reservada."
+  specification_ref: "tasks/pri-287-s5/SPEC-s5.2.md (v2.1, aprovado pelo Richard em 2026-11-09) sobre tasks/pri-287-s5/SPEC.md (v2.1)"
+  acceptance_criteria:
+    - "AC-36 a AC-45 e AC-35 do adendo (S5.2a = passos 0a a 6)."
+
+routing:
+  from: "Claude Opus 5.5 (sessão da PRI-287)"
+  to: "Richard (login no perfil isolado para a tarefa 0; revisão do PR draft; merge exclusivo dele)"
+  runtime: "claude"
+  fallback_reason: null
+
+risk:
+  level: "HIGH"
+  signals:
+    - "G3: muda os dois caminhos de saída do agente, o release do lease, o recovery de órfão e cria um novo dono de exclusão (chave/manifestos)"
+    - "Flag decomposition 'on' reservada: nenhum caminho de produção cria Attempt com role nesta fatia"
+  classified_by: "Claude Opus 5.5"
+
+execution:
+  agent: "Claude Opus 5.5"
+  status: "COMPLETED"
+  summary: "H0–H6, H3 e passo 0b implementados e testados (AC-36 a AC-40, AC-42 a AC-45 PASS; AC-43/AC-44 no nível da lib, ponto de chamada no despacho na S5.2b). AC-41 (tarefa 0): prova obtida para U10-a (--agents, sonnet nos dois papéis em 2 execuções, controle negativo vendo o frontmatter); U10-b (env) sem prova; 6/6 chamadas. G3 de código r1: Opus e Arquiteto APPROVED_WITH_CHANGES; MAJOR comum (blocked desfazia retomada humana) e MINORs corrigidos ou declarados. Suítes oficiais Node 22 e 24 sem falha."
+  branch: "fernandesrichard312/pri-311-selecao-de-modelo-s52-subtarefas"
+  commit: null
+
+artifacts:
+  - path: "scripts/lib/decomposition-runtime.js"
+    action: "CREATED"
+    description: "Baseline com scope_hmac, exitContext, closeRoleOrphan, readLogFrom, cadeia/reancoragens, pendingBlock, prepareRoleDispatch, sweepKeys."
+  - path: "scripts/lib/agent-exit-signals.js"
+    action: "CREATED"
+    description: "looksUnavailable/looksLikeSessionLimit extraídos do watcher sem mudança; operationalCause."
+  - path: "scripts/lib/dom06-attempt.js"
+    action: "MODIFIED"
+    description: "scope_hmac no Attempt; causa operacional e isenção do teto só sem mutação; teto reiniciado por âncora humana; saída sem código em --follow; órfão timeout bloqueia."
+  - path: "scripts/lib/node-lease.js"
+    action: "MODIFIED"
+    description: "releaseNodeWithContext (plan_version no snapshot do claim); wrapper destacado com post, versão e cauda do log; onOrphan no recovery."
+  - path: "scripts/readmine-watcher.js"
+    action: "MODIFIED"
+    description: "releaseLease/closeRoleAttempt pós-drained; offset do log no spawn; attachDom06Lease com papel; writer do blocked; onOrphan; varredura de chaves no startup; sinais da lib."
+  - path: "scripts/lib/model-routing-policy.js"
+    action: "MODIFIED"
+    description: "Seções opcionais subagent_roles, manifest_limits, workspace_watch_globs (só sintaxe, só mode ON)."
+  - path: "scripts/lib/cost-tracking.js"
+    action: "MODIFIED"
+    description: "subagentRoleAttribution (meta.json + tool_use), sem mudar sumClaudeUsage."
+  - path: "scripts/probes/u10-subagent-model.js"
+    action: "CREATED"
+    description: "Probe da tarefa 0 (fora do harness; perfil isolado, plugin desligado provado, teto 6, sem repetir incerto)."
+  - path: "scripts/probes/u10-subagent-model.test.js"
+    action: "CREATED"
+    description: "Avaliação pura da prova (sem chamada ao provider)."
+  - path: "scripts/lib/decomposition-runtime.test.js"
+    action: "CREATED"
+    description: "Testes AC-36 a AC-45 com repositórios git sintéticos."
+  - path: "scripts/fixtures/cost-usage-golden-pri311.json"
+    action: "CREATED"
+    description: "Golden de sumClaudeUsage gerado em cc72b55 (AC-45)."
+  - path: "scripts/lib/dom06-decomposition.test.js"
+    action: "MODIFIED"
+    description: "Regex do release atualizado para releaseNodeWithContext."
+  - path: ".graph/schemas/state.schema.json"
+    action: "MODIFIED"
+    description: "decomposition_block_applied."
+  - path: "ownership.yaml"
+    action: "MODIFIED"
+    description: "decomposition-runtime (novo dono de exclusão) e agent-exit-signals."
+  - path: "docs/concurrency-map.md"
+    action: "MODIFIED"
+    description: "Release com contexto, blocked da Run decomposta, exclusão de chave/manifestos."
+  - path: "tasks/pri-287-s5/SPEC-s5.2.md"
+    action: "CREATED"
+    description: "Adendo v2.1 aprovado."
+  - path: "tasks/pri-287-s5/evidence-s5.2a.md"
+    action: "CREATED"
+    description: "Evidência por AC, suítes, G3, desvios e pendências."
+
+decisions:
+  approved:
+    - "Adendo v2.1 e Q8–Q14 (Richard, 2026-11-09)."
+  proposed:
+    - "Desvios declarados em evidence-s5.2a.md: H0/H6 sem ponto de chamada até a S5.2b; campos extras do lease; espera do filtro por estabilidade de tamanho; teto reiniciado também por HUMAN_UNBLOCK."
+
+validation:
+  executed:
+    - command: "npm --prefix scripts test (harness oficial, Node 22.23.2 e 24.22.1)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "1876 testes: 1870 pass, 0 fail, 6 skipped em cada versão (TAP sha256 4e08178c4a02ec89 / b4e369ef8d32426b)."
+    - command: "npm --prefix dashboard test (harness oficial, Node 22.23.2 e 24.22.1)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "394/394 em cada versão (TAP sha256 3f5cf565524de1ea / 1a0e7a3f467f2914)."
+    - command: "npm run check:js && npm run lint:src && npm run arch:check (Node 22.23.2)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "exit 0 nos três."
+    - command: "node --test scripts/probes/u10-subagent-model.test.js"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "4/4."
+    - command: "node scripts/probes/u10-subagent-model.js (control/1 repetido com autorização, agents/1-2, env/1-2; perfil isolado, CLI 2.1.319)"
+      result: "PASSED"
+      expected: "PASSED"
+      evidence: "tasks/pri-287-s5/u10-probe-evidence.json: control CONTROL_DETECTS_FRONTMATTER; agents PROOF_OBTAINED x2; env PROOF_NOT_OBTAINED x2."
+  not_executed:
+    - "CI Linux (não disponível nesta sessão)."
+
+open_issues:
+  - "Gate do RC-1: prova do U10-a obtida; cumprir ou dispensar o gate é decisão do Richard (Portas, item 1). Esforço do subagente e subagentes embutidos não verificados."
+  - "C-A-08: igualdade subagent_roles.default = default_route a validar na policy de piloto ou no PR de liberação."
+  - "Falha intermitente observada uma vez em watcher-lock.test.js:175 (Node 24, rodada anterior às correções), não reproduzida na rodada final."
+  - "RC-1 a RC-6 e RRC-F31-001/002 seguem NOT APPLIED; a flag decomposition 'on' segue reservada."
+
+next:
+  recommended_agent: "Richard"
+  action: "Decidir o gate do RC-1 com a prova do U10-a; revisar o PR draft da S5.2a (merge é dele). Depois, S5.2b."
+  prerequisites: []
+
+context_refs:
+  - "tasks/pri-287-s5/SPEC-s5.2.md"
+  - "tasks/pri-287-s5/evidence-s5.2a.md"
+  - "https://linear.app/prisma-app/issue/PRI-311"
+  - "https://linear.app/prisma-app/issue/PRI-287"
+
+facts:
+  - "WATCHER_QA_DIAGNOSTICO e o polling de PR não foram tocados."
+  - "Trabalho em worktree isolado (.claude/worktrees/pri-311) a partir de cc72b55; o checkout principal tem mudanças não commitadas de outra sessão, não incluídas."
+assumptions: []
+
+usage:
+  duration: "UNKNOWN"
+  retries: 0
+  tokens: "UNKNOWN"

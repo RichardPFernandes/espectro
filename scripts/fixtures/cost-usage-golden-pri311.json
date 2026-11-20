@@ -1,0 +1,52 @@
+{
+  "input_tokens": 13,
+  "output_tokens": 7,
+  "models": [
+    "claude-opus-4-1",
+    "claude-sonnet-4-5"
+  ],
+  "usage": [
+    {
+      "model": "claude-opus-4-1",
+      "role": "main",
+      "speed": "standard",
+      "price_tier": "UNKNOWN",
+      "pricing_sha256": "d9b038581eccd93f85db383bdd8f97b2cdfd275459c1618ed11315e1682d42d2",
+      "messages": 1,
+      "input_tokens": 10,
+      "output_tokens": 5,
+      "cache_read_tokens": 0,
+      "cache_write_5m_tokens": 0,
+      "cache_write_1h_tokens": 0,
+      "cache_write_ttl_unknown_tokens": 0,
+      "role_provenance": "SELF_REPORTED",
+      "role_conflicted_messages": 0
+    },
+    {
+      "model": "claude-sonnet-4-5",
+      "role": "subagent",
+      "speed": "standard",
+      "price_tier": "UNKNOWN",
+      "pricing_sha256": "d9b038581eccd93f85db383bdd8f97b2cdfd275459c1618ed11315e1682d42d2",
+      "messages": 1,
+      "input_tokens": 3,
+      "output_tokens": 2,
+      "cache_read_tokens": 0,
+      "cache_write_5m_tokens": 0,
+      "cache_write_1h_tokens": 0,
+      "cache_write_ttl_unknown_tokens": 0,
+      "role_provenance": "SELF_REPORTED",
+      "role_conflicted_messages": 0
+    }
+  ],
+  "read_order": [
+    {
+      "role": "main",
+      "file_ref": "main"
+    },
+    {
+      "role": "subagent",
+      "file_ref": "agent-1.jsonl"
+    }
+  ]
+}

@@ -16,9 +16,9 @@ const sc = require('./lib/spec-change');
 
 const SPEC = `---
 spec_template_version: 1
-ticket: 43700
+ticket: 10004
 ---
-# Ticket #43700 — Desconto por volume
+# Ticket #10004 — Desconto por volume
 
 ## Objetivo
 Transportadora vê o desconto aplicado.
@@ -48,20 +48,20 @@ const cli = (script, args) => spawnSync(process.execPath, [path.join(__dirname, 
 let seq = 0;
 
 /** /fetch-ticket (init) + /plan (baseline sela v1) + plan.md/handoff.md. */
-function seedRun({ root = path.join(sandbox, `repo-${++seq}`), taskId = `43700-r-${++seq}` } = {}) {
+function seedRun({ root = path.join(sandbox, `repo-${++seq}`), taskId = `10004-r-${++seq}` } = {}) {
     const dir = path.join(root, 'memory', 'runs', taskId);
     fs.mkdirSync(dir, { recursive: true });
     fs.mkdirSync(path.join(root, 'memory', 'spec'), { recursive: true });
-    const specFile = path.join(root, 'memory', 'spec', '43700-spec.md');
+    const specFile = path.join(root, 'memory', 'spec', '10004-spec.md');
     if (!fs.existsSync(specFile)) fs.writeFileSync(specFile, SPEC);
     writeState(dir, {
         task_id: taskId, node: 'plan', history: ['fetch_ticket'], status: 'in_progress', started_at: '2026-10-01T10:00:00.000Z',
-        redmine_ticket: { id: 43700, subject: 'Desconto', tracker: 'Melhoria', base_branch: 'development' },
+        redmine_ticket: { id: 10004, subject: 'Desconto', tracker: 'Melhoria', base_branch: 'development' },
     });
     assert.strictEqual(cli('lib/spec-version.js', ['init', dir]).status, 0);
     assert.strictEqual(cli('lib/spec-authority.js', ['baseline', dir]).status, 0);
     fs.writeFileSync(path.join(dir, 'plan.md'), '# Plano\n\nACs: AC-01, AC-02\n\n## Plano de execução\n1. Desconto. Critérios: AC-01, AC-02\n');
-    fs.writeFileSync(path.join(dir, 'handoff.md'), '# Handoff\n\n- Spec: memory/spec/43700-spec.md\n- ACs: AC-01, AC-02\n');
+    fs.writeFileSync(path.join(dir, 'handoff.md'), '# Handoff\n\n- Spec: memory/spec/10004-spec.md\n- ACs: AC-01, AC-02\n');
     return { root, taskId, dir, specFile };
 }
 
@@ -88,15 +88,15 @@ function startNode(b, node) {
 // ── R1 ───────────────────────────────────────────────────────────────────────────
 test('R1. Plan lê state antigo → invalidation chega → Plan grava: pending_invalidation preservado e plano nunca VALID', () => {
     const a = seedRun();
-    const b = seedRun({ root: a.root, taskId: '43700-b-r1' });
+    const b = seedRun({ root: a.root, taskId: '10004-b-r1' });
     startNode(b, 'plan');
     // T0: o CLI baseline do /plan em B lê o state.
     const inflight = stateOf(b.dir);
     // T1: SPEC_CHANGE aprovada em A grava a transição para B.
     const out = approve(a, ADD_AC03);
-    assert.deepStrictEqual(out.propagated, [{ task: '43700-b-r1', case: 'plan_phase' }]);
+    assert.deepStrictEqual(out.propagated, [{ task: '10004-b-r1', case: 'plan_phase' }]);
     // T2: o plan de B persiste o resultado a partir da cópia lida em T0 (hash do disco = v2).
-    sa.applyBaseline(inflight, { root: b.root, specPath: 'memory/spec/43700-spec.md', taskId: b.taskId });
+    sa.applyBaseline(inflight, { root: b.root, specPath: 'memory/spec/10004-spec.md', taskId: b.taskId });
     Object.assign(inflight, { node: 'implement', status: 'in_progress' });
     writeState(b.dir, inflight);
     // T3: a transição continua existindo...
@@ -116,7 +116,7 @@ test('R1. Plan lê state antigo → invalidation chega → Plan grava: pending_i
 // ── R2 ───────────────────────────────────────────────────────────────────────────
 test('R2. Spec v2 escrita → Plan observa v2 → propagação: o run continua participante da transição e replaneja', () => {
     const a = seedRun();
-    const b = seedRun({ root: a.root, taskId: '43700-b-r2' });
+    const b = seedRun({ root: a.root, taskId: '10004-b-r2' });
     startNode(b, 'plan');
     // Spy na escrita da spec: no instante em que a v2 chega ao disco, B já tem a transição.
     const realWrite = fs.writeFileSync;
@@ -129,7 +129,7 @@ test('R2. Spec v2 escrita → Plan observa v2 → propagação: o run continua p
     assert.deepStrictEqual(atSpecWrite, [`SC-001@${a.taskId}`], 'transição registrada ANTES da spec nova ser gravada');
     // O plan de B observa a v2 (lê o disco depois da escrita) e carimba com o hash novo.
     const s = stateOf(b.dir);
-    sa.applyBaseline(s, { root: b.root, specPath: 'memory/spec/43700-spec.md', taskId: b.taskId });
+    sa.applyBaseline(s, { root: b.root, specPath: 'memory/spec/10004-spec.md', taskId: b.taskId });
     assert.strictEqual(inv.classify(s.spec_hash, inv.activeSpec(b.root, s, b.taskId).hash), 'VALID', 'B observou o hash v2');
     assert.strictEqual(s.artifact_validity.plan.validity.status, 'STALE', 'observar v2 não é ter participado da transição');
     Object.assign(s, { node: 'implement', status: 'in_progress' });
@@ -137,14 +137,14 @@ test('R2. Spec v2 escrita → Plan observa v2 → propagação: o run continua p
     assert.strictEqual(s.node, 'plan', 'replaneja');
 
     // E a propagação nunca pula um run só porque ele já tem o hash novo.
-    const c = seedRun({ root: path.join(sandbox, `repo-r2c-${++seq}`), taskId: '43700-c-r2' });
+    const c = seedRun({ root: path.join(sandbox, `repo-r2c-${++seq}`), taskId: '10004-c-r2' });
     const sc2 = startNode(c, 'plan');
     const res = inv.propagateSpecChange({
-        runsDir: path.dirname(c.dir), specPath: 'memory/spec/43700-spec.md', specRelFor: sa.specRelFor,
+        runsDir: path.dirname(c.dir), specPath: 'memory/spec/10004-spec.md', specRelFor: sa.specRelFor,
         oldSpec: { hash: 'a'.repeat(64), version: 1 }, newSpec: { hash: sc2.spec.hash, version: 2 },
         triggeredBy: 'SPEC_CHANGE SC-777', transitionId: 'SC-777@outro',
     });
-    assert.deepStrictEqual(res, [{ task: '43700-c-r2', case: 'plan_phase' }]);
+    assert.deepStrictEqual(res, [{ task: '10004-c-r2', case: 'plan_phase' }]);
     assert.strictEqual(inv.pendingTransitions(stateOf(c.dir), c.dir).length, 1);
 });
 
@@ -243,7 +243,7 @@ test('R7. Run normal sem mudança de spec: artefato novo fica VALID normalmente'
 for (const [label, decision] of [['hash diferente', ADD_AC03], ['hash igual (INV)', RULE_ONLY]]) {
     test(`R8. Nó manual (sem lease) começa em v1 → SPEC_CHANGE aplicada a ele como ocioso → nó termina: nunca VALID (${label})`, () => {
         const a = seedRun();
-        const b = seedRun({ root: a.root, taskId: `43700-b-r8-${++seq}` });
+        const b = seedRun({ root: a.root, taskId: `10004-b-r8-${++seq}` });
         // /test rodado à mão: status in_progress (sem lease); o portão de drift do nó grava
         // a execution_spec no início (T0).
         const t0 = new Date(Date.now() - 60_000).toISOString();
@@ -278,7 +278,7 @@ for (const [label, decision] of [['hash diferente', ADD_AC03], ['hash igual (INV
 
 test('R8b. /plan manual começa em v1 (invalidate.js begin) → SPEC_CHANGE aplicada como ocioso → baseline: plano nunca VALID', () => {
     const a = seedRun();
-    const b = seedRun({ root: a.root, taskId: '43700-b-r8b' });
+    const b = seedRun({ root: a.root, taskId: '10004-b-r8b' });
     const s0 = stateOf(b.dir);
     Object.assign(s0, { node: 'plan', status: 'in_progress' });
     writeState(b.dir, s0);
@@ -287,7 +287,7 @@ test('R8b. /plan manual começa em v1 (invalidate.js begin) → SPEC_CHANGE apli
     approve(a, ADD_AC03, new Date(Date.now() + 1000).toISOString());
     const s = stateOf(b.dir);
     assert.strictEqual(s.execution_spec.node, 'plan');
-    sa.applyBaseline(s, { root: b.root, specPath: 'memory/spec/43700-spec.md', taskId: b.taskId });
+    sa.applyBaseline(s, { root: b.root, specPath: 'memory/spec/10004-spec.md', taskId: b.taskId });
     assert.strictEqual(s.artifact_validity.plan.validity.status, 'STALE');
     assert.match(s.artifact_validity.plan.stale_reason, /começou sob v1|antes da última invalidação/);
 });

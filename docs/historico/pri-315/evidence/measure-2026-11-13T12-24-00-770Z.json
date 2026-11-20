@@ -1,0 +1,511 @@
+{
+  "meta": {
+    "issue": "PRI-315",
+    "mode": "measure",
+    "n": 5,
+    "claude_version": "2.1.323 (Claude Code)",
+    "prisma_commit": "5560d29024b0670ff460612b99af92591960244f",
+    "deny_settings": "{\"permissions\":{\"deny\":[\"Agent\",\"Task\"]}}",
+    "account": "default (~/.claude)",
+    "prompt": "Reply with the single word ok. Do not use any tool.",
+    "at": "2026-11-13T12:24:00.770Z"
+  },
+  "samples": [
+    {
+      "i": 0,
+      "arm": "A",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 13451,
+          "cache_write_5m": 0,
+          "cache_write_1h": 23946
+        },
+        "session": {
+          "input": 37399,
+          "output": 4,
+          "cache_read": 13451,
+          "cache_write": 23946,
+          "cost_usd": 0.194346,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 13540,
+          "cache_write_5m": 0,
+          "cache_write_1h": 18847
+        },
+        "session": {
+          "input": 32389,
+          "output": 4,
+          "cache_read": 13540,
+          "cache_write": 18847,
+          "cost_usd": 0.153572,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    },
+    {
+      "i": 1,
+      "arm": "B",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 15856,
+          "cache_write_5m": 0,
+          "cache_write_1h": 21705
+        },
+        "session": {
+          "input": 37563,
+          "output": 4,
+          "cache_read": 15856,
+          "cache_write": 21705,
+          "cost_usd": 0.176899,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 32387,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 32389,
+          "output": 4,
+          "cache_read": 32387,
+          "cache_write": 0,
+          "cost_usd": 0.006565,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    },
+    {
+      "i": 2,
+      "arm": "B",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 37561,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 37563,
+          "output": 4,
+          "cache_read": 37561,
+          "cache_write": 0,
+          "cost_usd": 0.0076,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 32387,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 32389,
+          "output": 4,
+          "cache_read": 32387,
+          "cache_write": 0,
+          "cost_usd": 0.006565,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    },
+    {
+      "i": 3,
+      "arm": "A",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 37561,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 37563,
+          "output": 4,
+          "cache_read": 37561,
+          "cache_write": 0,
+          "cost_usd": 0.0076,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 14122,
+          "cache_write_5m": 0,
+          "cache_write_1h": 18101
+        },
+        "session": {
+          "input": 32225,
+          "output": 4,
+          "cache_read": 14122,
+          "cache_write": 18101,
+          "cost_usd": 0.14772,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    },
+    {
+      "i": 4,
+      "arm": "A",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 37561,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 37563,
+          "output": 4,
+          "cache_read": 37561,
+          "cache_write": 0,
+          "cost_usd": 0.0076,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 32223,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 32225,
+          "output": 4,
+          "cache_read": 32223,
+          "cache_write": 0,
+          "cost_usd": 0.006533,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    },
+    {
+      "i": 5,
+      "arm": "B",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 37397,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 37399,
+          "output": 4,
+          "cache_read": 37397,
+          "cache_write": 0,
+          "cost_usd": 0.007567,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 14122,
+          "cache_write_5m": 0,
+          "cache_write_1h": 18200
+        },
+        "session": {
+          "input": 32324,
+          "output": 4,
+          "cache_read": 14122,
+          "cache_write": 18200,
+          "cost_usd": 0.148512,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    },
+    {
+      "i": 6,
+      "arm": "B",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 37561,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 37563,
+          "output": 4,
+          "cache_read": 37561,
+          "cache_write": 0,
+          "cost_usd": 0.0076,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 32223,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 32225,
+          "output": 4,
+          "cache_read": 32223,
+          "cache_write": 0,
+          "cost_usd": 0.006533,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    },
+    {
+      "i": 7,
+      "arm": "A",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 37561,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 37563,
+          "output": 4,
+          "cache_read": 37561,
+          "cache_write": 0,
+          "cost_usd": 0.0076,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 32387,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 32389,
+          "output": 4,
+          "cache_read": 32387,
+          "cache_write": 0,
+          "cost_usd": 0.006565,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    },
+    {
+      "i": 8,
+      "arm": "A",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 37561,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 37563,
+          "output": 4,
+          "cache_read": 37561,
+          "cache_write": 0,
+          "cost_usd": 0.0076,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 32387,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 32389,
+          "output": 4,
+          "cache_read": 32387,
+          "cache_write": 0,
+          "cost_usd": 0.006565,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    },
+    {
+      "i": 9,
+      "arm": "B",
+      "warm": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 37561,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 37563,
+          "output": 4,
+          "cache_read": 37561,
+          "cache_write": 0,
+          "cost_usd": 0.0076,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      },
+      "plan": {
+        "exit_code": 0,
+        "first_request": {
+          "cache_read": 32387,
+          "cache_write_5m": 0,
+          "cache_write_1h": 0
+        },
+        "session": {
+          "input": 32389,
+          "output": 4,
+          "cache_read": 32387,
+          "cache_write": 0,
+          "cost_usd": 0.006565,
+          "cost_estimated": false,
+          "models": [
+            "claude-opus-5-5"
+          ]
+        },
+        "transcripts": 1
+      }
+    }
+  ],
+  "summary": {
+    "A": {
+      "first_request_cache_read": {
+        "n": 5,
+        "median": 32223,
+        "min": 13540,
+        "max": 32387
+      },
+      "first_request_cache_write": {
+        "n": 5,
+        "median": 0,
+        "min": 0,
+        "max": 18847
+      },
+      "session_total_tokens": {
+        "n": 5,
+        "median": 64780,
+        "min": 64452,
+        "max": 64780
+      },
+      "session_cost_usd": {
+        "n": 5,
+        "median": 0.006565,
+        "min": 0.006533,
+        "max": 0.153572
+      },
+      "exit_nonzero": 0
+    },
+    "B": {
+      "first_request_cache_read": {
+        "n": 5,
+        "median": 32387,
+        "min": 14122,
+        "max": 32387
+      },
+      "first_request_cache_write": {
+        "n": 5,
+        "median": 0,
+        "min": 0,
+        "max": 18200
+      },
+      "session_total_tokens": {
+        "n": 5,
+        "median": 64780,
+        "min": 64452,
+        "max": 64780
+      },
+      "session_cost_usd": {
+        "n": 5,
+        "median": 0.006565,
+        "min": 0.006533,
+        "max": 0.148512
+      },
+      "exit_nonzero": 0
+    }
+  }
+}

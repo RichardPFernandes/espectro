@@ -1425,6 +1425,108 @@
       "format": "date-time",
       "description": "Lease: início do processo agent_pid (ps lstart, gravado logo depois do spawn). Com agent_pid forma a identidade do agente vivo (scripts/lib/process-identity.js); ausente = lease legado (removido no release)."
     },
+    "routing_snapshot": {
+      "type": "object",
+      "description": "PRI-233 (PRI-205 S4): ligação da task ao snapshot routing fixado na admissão da Run (admission.snapshot.routing do Attempt fetch_ticket em memory/runs/_dom06). Gravado pelo watcher uma vez, só para Run admitida com mode ON; ausente = Run OFF (despacho AS-IS). Nunca é trocado e a config corrente nunca é relida.",
+      "required": ["attempt_id", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "decomposition": {
+      "type": "object",
+      "description": "PRI-311 (PRI-287 S5.2b, SPEC B2): decomposição do Implement da Run decomposta (snapshot com decomposition \"on\"), gravada pelo watcher (writeTaskState com CAS) na primeira visita e no replan. plan_version = SHA-256 do bloco do plano (D14); groups = subtarefas por arquivos em comum (S2/S5.1); NOT_DECOMPOSABLE (sem plano ou grupos intercalados) segue o caminho da S4. superseded[] guarda as chaves de versões anteriores; plan_visits = visitas ao Plan na gravação (replan só depois de uma nova); a resolução inicial de cada chave é a classe da RoutingDecision do primeiro Attempt dela (DOM-06), sem cópia aqui; rework é o mapeamento da última volta de gate (B5.7). Só caminhos declarados no plano, nunca do manifesto.",
+      "required": ["plan_version", "status", "groups", "recorded_at"],
+      "additionalProperties": false,
+      "properties": {
+        "plan_version": { "type": ["string", "null"] },
+        "status": { "enum": ["DECOMPOSABLE", "NOT_DECOMPOSABLE"] },
+        "cause": { "type": ["string", "null"] },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["subtask_key", "steps", "paths_decl"],
+            "additionalProperties": false,
+            "properties": {
+              "subtask_key": { "type": "string" },
+              "steps": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+              "paths_decl": { "oneOf": [{ "type": "array", "items": { "type": "string" } }, { "const": "UNKNOWN" }] },
+              "acs": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "scope_paths": { "type": "array", "items": { "type": "string" } },
+        "plan_visits": { "type": "integer", "minimum": 0 },
+        "superseded": {
+          "type": "array",
+          "items": { "type": "object", "required": ["subtask_key", "plan_version", "status"], "properties": { "subtask_key": { "type": "string" }, "plan_version": { "type": "string" }, "status": { "const": "SUPERSEDED" } } }
+        },
+        "rework": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["gate_attempt_id", "gate_node", "after_seq", "keys", "failure_class", "recorded_at"],
+              "additionalProperties": false,
+              "properties": {
+                "gate_attempt_id": { "type": "string" },
+                "gate_node": { "enum": ["review", "test", "verify"] },
+                "after_seq": { "type": "integer" },
+                "keys": { "type": "array", "items": { "type": "string" } },
+                "mapped": { "type": "integer" },
+                "unmapped": { "type": "integer" },
+                "failure_class": { "type": "null" },
+                "recorded_at": { "type": "string", "format": "date-time" }
+              }
+            }
+          ]
+        },
+        "recorded_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "decomposition_block_applied": {
+      "type": "object",
+      "description": "PRI-311 (PRI-287 S5.2a, H6): último Attempt com papel (Run decomposta) cujo acceptance não aceito levou a Run a blocked. Gravado pelo watcher (writeTaskState com CAS) uma vez por Attempt, para o desbloqueio humano (unblocked) não ser desfeito no tick seguinte. Só códigos, nunca caminhos. PRI-311 (S5.2b): attempt_id null quando o bloqueio vem antes de existir Attempt (cadeia quebrada no despacho, Review sem agregação, agregação pendente, plano alterado fora do Plan).",
+      "required": ["attempt_id", "reason", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": { "type": ["string", "null"] },
+        "reason": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "routing_visit": {
+      "type": "object",
+      "description": "PRI-233 (D-4): limite de nó usado no 1º Attempt da visita atual (instante da resolução, anterior ao node_start). Os retries da mesma visita usam o menor entre ele e o node_start, para que uma override gravada no meio da visita nunca valha no retry. Gravado pelo watcher só para Run ON.",
+      "required": ["node", "at"],
+      "properties": { "node": { "type": "string" }, "at": { "type": "string", "format": "date-time" } }
+    },
+    "routing_overrides": {
+      "type": "array",
+      "description": "PRI-233 T8 (P-2): overrides humanas de roteamento, append-only. Gravadas só pelo dashboard (POST /api/runs/:taskId/routing-override → scripts/lib/authorization.js recordRoutingOverride), com aprovador autenticado e CAS; não pausam a Run. O resolver (scripts/lib/model-routing.js) aplica a partir do próximo limite de nó (D-4), com precedência subtarefa > nó > ticket; modelo/esforço fora do snapshot = NOT_STARTED/PROVIDER_NOT_ELIGIBLE.",
+      "items": {
+        "type": "object",
+        "required": ["ref", "scope", "value", "by", "recorded_at"],
+        "properties": {
+          "ref": { "type": "string" },
+          "scope": { "type": "string", "enum": ["ticket", "node", "subtask"] },
+          "node": { "type": "string" },
+          "subtask_key": { "type": "string" },
+          "value": {
+            "type": "object",
+            "required": ["model_id", "effort"],
+            "properties": { "model_id": { "type": "string" }, "effort": { "type": "string" } }
+          },
+          "by": { "type": "string" },
+          "via": { "type": "string" },
+          "recorded_at": { "type": "string", "format": "date-time" },
+          "operation_id": { "type": "string" }
+        }
+      }
+    },
     "recovered_from_orphan": {
       "type": "object",
       "description": "Marcador de redespacho após recuperação de nó órfão (consumido no próximo acquire).",
@@ -1449,7 +1551,7 @@
     },
     "events": {
       "type": "array",
-      "description": "Log estruturado de eventos por nó, gravado pelo watcher (append-only — nunca remover/reescrever; ausente = []). Emissão central em scripts/lib/node-events.js: node_start ao despachar (dispatchTicket), e na saída do agente (release do lease, nos dois modos) node_end (exit 0) + node_retry (retries[node] incrementado pelo comando) / escalation (status ou node \"escalated\"; max_retries de .graph/graph.yaml) / checkpoint (status blocked/needs_human_review/spec-invalid, ou pausa de NEVER_AUTO_DISPATCH), ou node_error (exit code != 0 / sem exit code). Outros tipos gravados por outros módulos: node_error (nó órfão redespachado; state.json inválido → state_corrupted), escalation (commit órfão; PR inconsistência cross-repo — um repo MERGED e outro DECLINED, gravado uma vez por combinação pelo polling de PRs), fully_merged, worktrees_removed/worktree_cleanup_failed (limpeza dos worktrees logo após o PR aberto — cleanupWorktreesAfterPrOpen, agent \"watcher\"), replay, plan_replan, plan_escalation, churn_escalation, churn_accepted (aceite do churn pelo botão do dashboard — dashboard/server.js), spec_drift/spec_change_accepted/spec_drift_resolved/spec_drift_replan/spec_baseline/spec_restored (portão de drift da spec — scripts/lib/spec-authority.js e runSpecDriftGate), spec_imported (retry de Recusa QA copia artefatos de spec ausentes a partir do checkout principal — readmine-watcher.js), spec_change_proposed/spec_change_approved/spec_change_rejected/stale_artifacts_replan (governança de SPEC_CHANGE — scripts/lib/spec-change.js), ac_provenance_failed (aprovação de SPEC_CHANGE aplicada, mas a provenance dos ACs não pôde ser gravada em memory/spec/<ticket>-ac-provenance.json — scripts/lib/ac-provenance.js), pre_build_failed, interrupted, human_input_interpreted (mensagem do dashboard interpretada com a task blocked — readmine-watcher.js interpretBlockedHumanInput, agent \"watcher\"). Eventos novos têm `ts` (ISO 8601) e `at` com o mesmo valor; eventos antigos só `at`.",
+      "description": "Log estruturado de eventos por nó, gravado pelo watcher (append-only — nunca remover/reescrever; ausente = []). Emissão central em scripts/lib/node-events.js: node_start ao despachar (dispatchTicket), e na saída do agente (release do lease, nos dois modos) node_end (exit 0) + node_retry (retries[node] incrementado pelo comando) / escalation (status ou node \"escalated\"; max_retries de .graph/graph.yaml) / checkpoint (status blocked/needs_human_review/spec-invalid, ou pausa de NEVER_AUTO_DISPATCH), ou node_error (exit code != 0 / sem exit code). Outros tipos gravados por outros módulos: node_error (nó órfão redespachado; state.json inválido → state_corrupted), escalation (commit órfão; PR inconsistência cross-repo — um repo MERGED e outro DECLINED, gravado uma vez por combinação pelo polling de PRs), fully_merged, worktrees_removed/worktree_cleanup_failed (limpeza dos worktrees logo após o PR aberto — cleanupWorktreesAfterPrOpen, agent \"watcher\"), replay, plan_replan, plan_escalation, churn_escalation, churn_accepted (aceite do churn pelo botão do dashboard — dashboard/server.js), spec_drift/spec_change_accepted/spec_drift_resolved/spec_drift_replan/spec_baseline/spec_restored (portão de drift da spec — scripts/lib/spec-authority.js e runSpecDriftGate), spec_imported (retry de Recusa QA copia artefatos de spec ausentes a partir do checkout principal — readmine-watcher.js), qa_retry_blocked (PRI-184: consumeQaRetrySignal manteve o sinal; detail = reason estável, uma vez por motivo — campo atual em qa_retry_blocked), spec_change_proposed/spec_change_approved/spec_change_rejected/stale_artifacts_replan (governança de SPEC_CHANGE — scripts/lib/spec-change.js), ac_provenance_failed (aprovação de SPEC_CHANGE aplicada, mas a provenance dos ACs não pôde ser gravada em memory/spec/<ticket>-ac-provenance.json — scripts/lib/ac-provenance.js), pre_build_failed, interrupted, human_input_interpreted (mensagem do dashboard interpretada com a task blocked — readmine-watcher.js interpretBlockedHumanInput, agent \"watcher\"), qa_diagnosis_reserved/qa_diagnosis_proposed/qa_diagnosis_failed/qa_diagnosis_stale/qa_diagnosis_stale_check/qa_diagnosis_superseded/qa_diagnosis_quarantined/qa_diagnosis_promotion_deferred (PRI-181 c2b-2: protocolo do Diagnosis Record — scripts/lib/qa-diagnosis-protocol.js, só com WATCHER_QA_DIAGNOSTICO; detail só de metadados: chave, vNNN, motivo e 12 hex do sha). Eventos novos têm `ts` (ISO 8601) e `at` com o mesmo valor; eventos antigos só `at`.",
       "items": {
         "type": "object",
         "required": [
@@ -1534,6 +1636,75 @@
         }
       }
     },
+    "effort_misses": {
+      "type": "array",
+      "description": "PRI-353: registro effort_miss da run, só acréscimo, gravado por scripts/effort-miss.js pelo state-writer. Campo ausente ou lista vazia = UNKNOWN, nunca zero erros. Não é campo crítico (não muda state_version).",
+      "items": {
+        "type": "object",
+        "description": "PRI-353: erro de fase em esforço médio que esforço alto provavelmente pegaria. Só fase em esforço médio na tabela (.claude/phase-effort.json). would_high_catch é julgamento registrado por quem detectou (review, verify ou humano), nunca inferido; começa unknown.",
+        "required": [
+          "id",
+          "phase",
+          "effort",
+          "what_missed",
+          "would_high_catch",
+          "class",
+          "evidence_ref",
+          "recorded_by",
+          "recorded_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^em-[0-9]+$"
+          },
+          "phase": {
+            "enum": [
+              "plan",
+              "implement",
+              "review",
+              "test",
+              "verify",
+              "commit"
+            ]
+          },
+          "effort": {
+            "const": "medium"
+          },
+          "what_missed": {
+            "type": "string",
+            "minLength": 1
+          },
+          "would_high_catch": {
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ]
+          },
+          "class": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "evidence_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recorded_by": {
+            "enum": [
+              "review",
+              "verify",
+              "human"
+            ]
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
     "cost_tracking": {
       "type": "object",
       "description": "Custo por nó (scripts/lib/cost-tracking.js), gravado pelo watcher ao fechar cada despacho. Cópia autoritativa em memory/runs/<ticket>-cost.json.",
@@ -1605,6 +1776,19 @@
                 "type": "integer",
                 "minimum": 0
               },
+              "cli_cost_usd": {
+                "description": "PRI-381 (F1.5): soma do total_cost_usd do JSON da CLI nos runs que o tinham. Só existe depois de um run com WATCHER_CLI_RESULT_JSON ligada; null quando nenhum run teve o JSON, nunca zero.",
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "runs_without_cli_cost": {
+                "description": "PRI-381 (F1.5): runs do nó sem custo da CLI (JSON ausente ou ilegível, flag desligada ou run de antes dela). > 0 = cli_cost_usd parcial.",
+                "type": "integer",
+                "minimum": 0
+              },
               "models": {
                 "type": "array",
                 "items": {
@@ -1649,6 +1833,19 @@
                 "number",
                 "null"
               ],
+              "minimum": 0
+            },
+            "cli_cost_usd": {
+              "description": "PRI-381 (F1.5): soma de cli_cost_usd dos nós. Ausente se nenhum nó tem custo da CLI.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "runs_without_cli_cost": {
+              "description": "PRI-381 (F1.5): soma de runs_without_cli_cost; nó sem custo da CLI conta todos os seus runs.",
+              "type": "integer",
               "minimum": 0
             }
           }
@@ -2014,7 +2211,7 @@
     },
     "qa_rejection": {
       "type": "object",
-      "description": "Última recusa do QA: gravada pelo watcher quando ticket_status entra em Recusa QA e atualizada pelo POST /api/runs/:taskId/retry-qa-rejection do dashboard (scripts/lib/redmine-journal-fetcher.js).",
+      "description": "Última recusa do QA: gravada pelo watcher quando ticket_status entra em Recusa QA (PRI-181 C1: também relê journals com status igual — DB-01b) e atualizada pelo POST /api/runs/:taskId/retry-qa-rejection do dashboard (scripts/lib/redmine-journal-fetcher.js + qa-rejection-identity/ingest).",
       "properties": {
         "note": {
           "type": [
@@ -2035,7 +2232,29 @@
             "integer",
             "null"
           ],
-          "description": "Id do journal de onde veio a nota."
+          "description": "Id do journal de onde veio a nota (heurística CURRENT; pode diferir do transition_journal_id)."
+        },
+        "rejection_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "PRI-181 C1: chave estável qa-rej:v1:t{ticket}:j{transition_journal_id} (DB-01). null = identidade UNKNOWN."
+        },
+        "identity_quality": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": ["OK", "DEGRADED", "UNKNOWN", null],
+          "description": "PRI-181 C1: qualidade da identidade (OK / DEGRADED / UNKNOWN). Não é Diagnosis Record."
+        },
+        "transition_journal_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "PRI-181 C1: journal da transição status_id → 13 (identidade DB-01)."
         },
         "retry_requested_at": {
           "type": "string",
@@ -2073,6 +2292,26 @@
               "null"
             ]
           },
+          "rejection_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "PRI-181 C1: chave estável da identidade (DB-01)."
+          },
+          "identity_quality": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": ["OK", "DEGRADED", "UNKNOWN", null]
+          },
+          "transition_journal_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "detected_at": {
             "type": [
               "string",
@@ -2104,7 +2343,76 @@
               "null"
             ],
             "description": "Tokens (entrada + saída) acumulados no início do retry."
+          },
+          "diagnosis": {
+            "description": "PRI-181 c2b-1/c2b-2 (SDD B v3 §4.2): bloco do Diagnosis Record desta recusa (rev, status, current_version, current_sha256, versions[], job, review, review_history, outcome, applied_ops, cost, fenced_tokens, blocked); job = null ou {token, kind, target_version, parent_version, snapshot (cópia do binding da entrada: execution_id, spec_hash, spec_version, reason), runner_binding, lease_until}, gravado pelo protocolo da c2b-2; versões imutáveis em memory/runs/<task-id>/qa-diagnosis/<slug>/vNNN.json. Gravado só pelo state-writer. Sem type de propósito: um bloco malformado não invalida o state.json nem muda o despacho (QRD-AC-10, DB-05); a validação estrita é do módulo scripts/lib/qa-diagnosis-model.js (validateBlock) e falha fechada só para a operação de diagnóstico. Preserve ao regravar o state.json."
           }
+        }
+      }
+    },
+    "qa_diagnosis": {
+      "type": "object",
+      "description": "Legado PRI-181 C2/C3, só leitura: ponteiro para o Diagnosis Record v1 do store por repo memory/qa-diagnosis/records/. Sem writer desde a c2b-1 (store por run; ver qa_rejections[].diagnosis). Não é removido nem reinterpretado. Não é Context Record (RR-03=A).",
+      "properties": {
+        "rejection_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "identity_quality": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": ["OK", "DEGRADED", "UNKNOWN", null]
+        },
+        "published_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "authority_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Path relativo ou absoluto da autoridade no store da plataforma (não conteúdo corporativo)."
+        },
+        "schema_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "findings_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "UNKNOWN (casca) ou EVALUATED (predicados C3)."
+        },
+        "taxonomy_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Versão da taxonomia de findings (C3); null na casca C2."
+        },
+        "findings_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Contagem de findings no record de autoridade (ponteiro; sem corpo)."
+        },
+        "is_context_record": {
+          "type": "boolean",
+          "const": false,
+          "description": "Sempre false (RR-03=A)."
         }
       }
     },
@@ -2113,6 +2421,34 @@
       "minimum": 0,
       "default": 0,
       "description": "Quantos retries de Recusa QA este run já teve (incrementado pelo dashboard; reaproveita o mesmo task-id)."
+    },
+    "qa_retry_blocked": {
+      "type": "object",
+      "description": "Bloqueio atual do consumo de retry-signal.json (PRI-184): o watcher gravou o motivo quando consumeQaRetrySignal devolveu null e o sinal permanece. Campo de leitura do dashboard (summarize.qaRetryBlocked); limpo quando o sinal é consumido com sucesso. Auditoria append-only fica em events[] com type=qa_retry_blocked (detail=reason), uma vez por motivo.",
+      "required": [
+        "reason",
+        "at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": [
+            "destino_ocupado",
+            "spec_ausente",
+            "changelog_invalido",
+            "state_fora_schema",
+            "ticket_ausente",
+            "worktree_ausente"
+          ],
+          "description": "Chave estável do motivo: destino_ocupado (run já no destino); spec_ausente (spec/artefato ausente, path inseguro ou rebaseline ilegível); changelog_invalido (Branch Liberação/base inválida ou changelog JSON ilegível); state_fora_schema (state.json fora do schema); ticket_ausente (ticket Redmine não encontrado); worktree_ausente (não foi possível garantir o worktree)."
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Quando este motivo corrente foi registrado (ISO 8601)."
+        }
+      }
     },
     "pending_authorization": {
       "type": "object",
@@ -2372,6 +2708,482 @@
         }
       }
     },
+    "costProspectiveSignals": {
+      "type": "object",
+      "description": "Sinais prospectivos de um grupo de passos (PRI-205 S2). Sinal ausente = UNKNOWN, nunca zero (desenho v9 §4.1–§4.2). Somente observacional.",
+      "properties": {
+        "paths_decl": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "n_files": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "n_new_files": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "sensitive",
+            "schema",
+            "behavior",
+            "config",
+            "code",
+            "test",
+            "docs",
+            "UNKNOWN"
+          ]
+        },
+        "n_services_decl": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "service_buckets": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "schema_decl": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "sensitive_decl": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "n_acs_step": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "code_local": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "rework_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ticket_rework": {
+          "type": "boolean"
+        },
+        "schema_risk_seen": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Maior schema_risk_level já observado no state; null = sem observação (não bloqueia)."
+        }
+      }
+    },
+    "costRetrospectiveSignals": {
+      "type": "object",
+      "description": "Sinais retrospectivos no fim do Implement (PRI-205 S2): só calibração e reclassificação para cima. Falha de coleta => UNKNOWN por campo ou status UNKNOWN com cause.",
+      "properties": {
+        "status": {
+          "enum": [
+            "COMPLETE",
+            "PARTIAL",
+            "UNKNOWN"
+          ]
+        },
+        "cause": {
+          "type": "string"
+        },
+        "files_touched": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "files_declared": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "undeclared_files": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "scope_violation": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "affected_services": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "full_suite": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "schema_changes_detected": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "schema_risk_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diff_lines_added": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "diff_lines_removed": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNKNOWN"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "risk_level_seen": {
+          "type": "string"
+        },
+        "tokens_vs_p90": {
+          "enum": [
+            "UNAVAILABLE"
+          ]
+        }
+      }
+    },
+    "costSignals": {
+      "type": "object",
+      "description": "Sinais por Attempt do nó implement (PRI-205 S2), gravados junto do registro de Attempt. Aditivo; não altera despacho nem classifica.",
+      "properties": {
+        "status": {
+          "enum": [
+            "COMPLETE",
+            "UNKNOWN"
+          ]
+        },
+        "cause": {
+          "type": "string"
+        },
+        "plan_version": {
+          "type": "string",
+          "description": "SHA-256 do bloco '## Plano de execução' normalizado, ou UNKNOWN."
+        },
+        "plan_steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "subtask_key": {
+                "type": "string"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "signals": {
+                "$ref": "#/definitions/costProspectiveSignals"
+              }
+            }
+          }
+        },
+        "retrospective": {
+          "$ref": "#/definitions/costRetrospectiveSignals"
+        }
+      }
+    },
+    "costWouldRoute": {
+      "type": "object",
+      "description": "Decisão sombra PRI-223. applied deve ser false nesta fatia.",
+      "properties": {
+        "status": {
+          "enum": [
+            "SHADOW",
+            "NO_DECISION"
+          ]
+        },
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policy_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policy_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "classifier_ref": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string"
+            }
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "subtask_key": {
+                "type": "string"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "class": {
+                "enum": [
+                  "C1",
+                  "C2",
+                  "C3",
+                  "C4",
+                  "C5"
+                ]
+              },
+              "tier": {
+                "enum": [
+                  "T1",
+                  "T2",
+                  "T3"
+                ]
+              },
+              "rule": {
+                "enum": [
+                  "R1",
+                  "R2",
+                  "R3",
+                  "R4",
+                  "R5",
+                  "R6",
+                  "R7",
+                  "R8"
+                ]
+              },
+              "leaves_opus_tier": {
+                "type": "boolean"
+              },
+              "requested_effort": {
+                "enum": [
+                  "UNAVAILABLE"
+                ]
+              },
+              "would_model": {
+                "type": "string"
+              },
+              "selection_source": {
+                "type": "string"
+              },
+              "signals_sha256": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "applied": {
+          "enum": [
+            false
+          ]
+        },
+        "planning_bias": {
+          "type": "object"
+        },
+        "aggregate": {
+          "type": "object"
+        },
+        "signals_seen": {
+          "type": "object"
+        }
+      }
+    },
     "costAttempt": {
       "type": "object",
       "properties": {
@@ -2457,17 +3269,54 @@
             }
           }
         },
+        "phase_effort": {
+          "type": "object",
+          "description": "PRI-353: esforço fixo por fase que foi de fato para o argv do despacho (WATCHER_PHASE_EFFORT). Ausente com a flag desligada ou sem entrada do nó na tabela. Não substitui requested.effort, que continua UNAVAILABLE sem roteamento (coerência do PRI-334).",
+          "required": [
+            "level",
+            "effort_applied"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "level": {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            },
+            "effort_applied": {
+              "const": true
+            }
+          }
+        },
         "requested": {
           "type": "object",
+          "description": "PRI-334: sem roteamento, UNAVAILABLE. Despacho roteado (PRI-233 T7): modelo fixado pela decisão e esforço do CLI quando foi de fato para o argv (senão UNAVAILABLE).",
           "properties": {
             "model": {
-              "enum": [
-                "UNAVAILABLE"
+              "anyOf": [
+                {
+                  "enum": [
+                    "UNAVAILABLE"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "minLength": 1
+                }
               ]
             },
             "effort": {
               "enum": [
-                "UNAVAILABLE"
+                "UNAVAILABLE",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
               ]
             }
           }
@@ -2506,13 +3355,60 @@
           }
         },
         "selection_source": {
-          "enum": [
-            "DEFAULT_INHERITED"
+          "description": "PRI-334: DEFAULT_INHERITED sem roteamento; com despacho roteado, a origem da escolha gravada na decisão.",
+          "anyOf": [
+            {
+              "enum": [
+                "DEFAULT_INHERITED"
+              ]
+            },
+            {
+              "$ref": "#/definitions/routingSelectionSource"
+            }
           ]
         },
         "routing_decision": {
-          "enum": [
-            "UNAVAILABLE"
+          "description": "PRI-334: UNAVAILABLE sem roteamento; com despacho roteado, a RoutingDecision do DOM-06 aplicada, amarrada ao snapshot fixado na admissão. Só o mínimo que identifica a escolha é exigido; o resto é registro.",
+          "anyOf": [
+            {
+              "enum": [
+                "UNAVAILABLE"
+              ]
+            },
+            {
+              "type": "object",
+              "required": [
+                "node",
+                "snapshot_sha256",
+                "chosen",
+                "selection_source"
+              ],
+              "properties": {
+                "node": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "snapshot_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "chosen": {
+                  "type": "object",
+                  "required": [
+                    "model_id"
+                  ],
+                  "properties": {
+                    "model_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "selection_source": {
+                  "$ref": "#/definitions/routingSelectionSource"
+                }
+              }
+            }
           ]
         },
         "subtask": {
@@ -2523,6 +3419,31 @@
         "workspace": {
           "enum": [
             "UNAVAILABLE"
+          ]
+        },
+        "signals": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNAVAILABLE"
+              ]
+            },
+            {
+              "$ref": "#/definitions/costSignals"
+            }
+          ]
+        },
+        "would_route": {
+          "description": "PRI-205 S3 / PRI-223: decisão sombra de roteamento por subtarefa. Nunca aplicada ao despacho (applied=false). classifier off → NO_DECISION; cheap_rule → classe/tier/regra R1–R8.",
+          "anyOf": [
+            {
+              "enum": [
+                "UNAVAILABLE"
+              ]
+            },
+            {
+              "$ref": "#/definitions/costWouldRoute"
+            }
           ]
         },
         "observed": {
@@ -2647,7 +3568,30 @@
                   ]
                 }
               ]
+            },
+            "cli_usd": {
+              "description": "PRI-381 (F1.5): total_cost_usd do JSON da CLI (--output-format json). Só com WATCHER_CLI_RESULT_JSON ligada; null = JSON ausente ou ilegível, nunca zero. usd segue sendo o do transcript.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
             }
+          }
+        },
+        "cli_version": {
+          "description": "PRI-381 (F1.5): versão da CLI que rodou, do campo version do transcript da sessão. Só com WATCHER_CLI_RESULT_JSON ligada; null = não encontrada.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_hashes": {
+          "description": "PRI-381 (F1.5): sha256 do template .claude/commands/<template>.md de cada comando do despacho (template = primeiro token do comando sem a /, ex. implement-step na run decomposta; sem comandos, o nó), no início do run; UNKNOWN = template ausente. Só com WATCHER_CLI_RESULT_JSON ligada.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^([a-f0-9]{64}|UNKNOWN)$"
           }
         },
         "duration_ms": {
@@ -2674,7 +3618,94 @@
         "result": {
           "type": "string"
         }
-      }
+      },
+      "allOf": [
+        {
+          "description": "PRI-334: despacho roteado. Decisão objeto ⇒ origem do vocabulário do roteamento e modelo pedido real.",
+          "if": {
+            "required": [
+              "routing_decision"
+            ],
+            "properties": {
+              "routing_decision": {
+                "type": "object"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "selection_source",
+              "requested"
+            ],
+            "properties": {
+              "selection_source": {
+                "$ref": "#/definitions/routingSelectionSource"
+              },
+              "requested": {
+                "properties": {
+                  "model": {
+                    "not": {
+                      "enum": [
+                        "UNAVAILABLE"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "PRI-334: sem roteamento (forma AS-IS). Decisão UNAVAILABLE ⇒ origem DEFAULT_INHERITED e nada pedido.",
+          "if": {
+            "required": [
+              "routing_decision"
+            ],
+            "properties": {
+              "routing_decision": {
+                "enum": [
+                  "UNAVAILABLE"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selection_source": {
+                "enum": [
+                  "DEFAULT_INHERITED"
+                ]
+              },
+              "requested": {
+                "properties": {
+                  "model": {
+                    "enum": [
+                      "UNAVAILABLE"
+                    ]
+                  },
+                  "effort": {
+                    "enum": [
+                      "UNAVAILABLE"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "routingSelectionSource": {
+      "description": "PRI-334: origens da escolha de modelo num despacho roteado. Fonte no código: scripts/lib/model-routing.js (SELECTION_SOURCES), conferida por teste.",
+      "enum": [
+        "FIXED_NODE",
+        "RULES",
+        "CONSERVATIVE_DEFAULT",
+        "PLAN_RAISED",
+        "LINEAGE_FLOOR",
+        "RISK_RECLASSIFIED",
+        "HUMAN_OVERRIDE"
+      ]
     },
     "validity": {
       "type": "object",

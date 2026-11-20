@@ -23,6 +23,15 @@ if (!m) process.exit(0);
 const [, node, taskId] = m;
 if (taskId.includes('boom')) process.exit(1);
 const file = path.join(process.cwd(), 'memory', 'runs', taskId, 'state.json');
+// Como o agente real (que leva segundos até a 1ª escrita), só grava depois que o watcher
+// registrou o agent_pid (recordAgentPid lê, roda ps e regrava o state). Gravar antes
+// fazia essa regravação perder a escrita do agente sob carga (PRI-233: review
+// despachado duas vezes). Teto de 10 s; sem pid registrado, segue mesmo assim.
+const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+for (let i = 0; i < 500; i++) {
+    try { if (JSON.parse(fs.readFileSync(file, 'utf8')).agent_pid) break; } catch { /* escrita em curso */ }
+    sleep(20);
+}
 const s = JSON.parse(fs.readFileSync(file, 'utf8'));
 s.retries = s.retries || {};
 s.history = [...(s.history || []), node];

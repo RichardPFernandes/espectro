@@ -12,7 +12,7 @@ function runDir() {
     return fs.mkdtempSync(path.join(tmpBase, 'dom06-attempt-'));
 }
 
-const snapshot = { ticket_id: 41948, node: 'implement', base_branch: 'development', spec_hash: 'hash-v1' };
+const snapshot = { ticket_id: 11948, node: 'implement', base_branch: 'development', spec_hash: 'hash-v1' };
 const admitted = { status: 'ADMITTED', owner: 'dom06', snapshot };
 
 test('AC1: Attempt só começa depois de ADMITTED; DENIED e UNKNOWN não despacham e não são PASS', () => {
@@ -89,7 +89,7 @@ test('AC2: obrigação não cumprida aparece no resultado e ausência não vira 
 test('AC3: retry, timeout e resume não fazem upgrade nem rebind de owner/snapshot', () => {
     const dir = runDir();
     const first = dom06.prepareDispatch({
-        runDir: dir, node: 'implement', ticketId: 41948, baseBranch: 'development', specHash: 'hash-v1',
+        runDir: dir, node: 'implement', ticketId: 11948, baseBranch: 'development', specHash: 'hash-v1',
     });
     assert.strictEqual(first.dispatch, true);
     assert.strictEqual(first.attempt.owner, 'dom06');
@@ -97,7 +97,7 @@ test('AC3: retry, timeout e resume não fazem upgrade nem rebind de owner/snapsh
 
     for (const cause of ['retry', 'timeout', 'resume']) {
         const next = dom06.prepareDispatch({
-            runDir: dir, node: 'implement', ticketId: 41948, baseBranch: 'development', specHash: 'hash-v2', cause,
+            runDir: dir, node: 'implement', ticketId: 11948, baseBranch: 'development', specHash: 'hash-v2', cause,
         });
         assert.strictEqual(next.dispatch, true, cause);
         assert.notStrictEqual(next.attempt.attempt_id, first.attempt.attempt_id);
@@ -114,7 +114,7 @@ test('AC3: retry, timeout e resume não fazem upgrade nem rebind de owner/snapsh
     };
     assert.strictEqual(dom06.causeFromState(state), 'timeout');
     const fromState = dom06.prepareDispatch({
-        runDir: dir, node: 'implement', ticketId: 41948, baseBranch: 'development', specHash: 'hash-v3', state,
+        runDir: dir, node: 'implement', ticketId: 11948, baseBranch: 'development', specHash: 'hash-v3', state,
     });
     assert.strictEqual(fromState.attempt.cause, 'timeout');
     assert.strictEqual(fromState.attempt.snapshot.spec_hash, 'hash-v1');
@@ -180,7 +180,7 @@ test('AC5: 401 no meio do ciclo revoga e o efeito seguinte não executa nem cont
     assert.ok(summary.pending_count > 0);
 
     const again = dom06.prepareDispatch({
-        runDir: dir, node: 'commit', ticketId: 41948, baseBranch: 'development', specHash: 'hash-v1', cause: 'retry',
+        runDir: dir, node: 'commit', ticketId: 11948, baseBranch: 'development', specHash: 'hash-v1', cause: 'retry',
     });
     assert.strictEqual(again.dispatch, false);
     assert.notStrictEqual(dom06.summarize(again.attempt).verdict, 'PASS');
@@ -240,7 +240,7 @@ test('exit 0 cumpre execute_node; commit, código diferente de 0 e repetição n
     assert.ok(dom06.readAttempt(commit.attemptFile).obligations.every(item => item.status === 'pending'));
 });
 
-// Regressão (#43511, #43782, #43812, #43819): o redmine-effect mandava o PUT sem
+// Regressão (#13511, #10014, #13812, #10029): o redmine-effect mandava o PUT sem
 // X-Redmine-API-Key, o Redmine respondia 401 e o Attempt era revogado — nenhum
 // /commit movia o ticket pra "Ag Merge". O Redmine falso aqui exige a chave.
 test('redmine-effect manda X-Redmine-API-Key do ambiente; sem chave não chama nem revoga', async () => {
@@ -290,4 +290,76 @@ test('redmine-effect manda X-Redmine-API-Key do ambiente; sem chave não chama n
     } finally {
         server.close();
     }
+});
+
+// ── PRI-233 (PRI-205 S4) T4 ──────────────────────────────────────────────────
+
+const decision = { node: 'implement', chosen: { model_id: 'm-t3', effort: 'alto' }, subagent: 'UNENFORCED' };
+
+for (const cause of ['CONFIG_UNVERIFIABLE', 'PROVIDER_NOT_ELIGIBLE']) {
+    test(`NOT_STARTED/${cause}: gravado sem spawn, com motivo e decisão, nunca PASS`, () => {
+        const dir = runDir();
+        let spawned = 0;
+        const r = dom06.spawnIfAdmitted(dom06.beginAttempt(dir, {
+            node: 'implement',
+            admission: { status: 'NOT_STARTED', cause, detail: 'EFFORT_MECHANISM_UNAVAILABLE' },
+            routing: decision,
+        }), () => { spawned += 1; });
+        assert.deepStrictEqual([r.dispatch, r.spawned, r.reason, spawned], [false, false, cause, 0]);
+        const onDisk = dom06.readAttempt(r.attemptFile);
+        assert.deepStrictEqual(
+            [onDisk.started, onDisk.result, onDisk.owner, onDisk.snapshot, onDisk.authority],
+            [false, 'NOT_STARTED', null, null, 'absent'],
+        );
+        assert.deepStrictEqual(onDisk.not_started, { cause, detail: 'EFFORT_MECHANISM_UNAVAILABLE' });
+        assert.deepStrictEqual(onDisk.routing, decision);
+        const summary = dom06.summarize(onDisk);
+        assert.deepStrictEqual([summary.result, summary.verdict, summary.pass], ['NOT_STARTED', 'NOT_STARTED', false]);
+    });
+}
+
+test('NOT_STARTED com causa fora do vocabulário vira UNKNOWN (nada é inventado)', () => {
+    const r = dom06.beginAttempt(runDir(), { node: 'implement', admission: { status: 'NOT_STARTED', cause: 'QUALQUER', detail: 'x' } });
+    assert.deepStrictEqual([r.dispatch, r.attempt.result, r.reason], [false, 'UNKNOWN', 'ADMISSION_UNKNOWN']);
+    assert.strictEqual(r.attempt.not_started, undefined);
+});
+
+test('Attempt admitido guarda a RoutingDecision só quando ela é passada', () => {
+    const dir = runDir();
+    const routed = dom06.beginAttempt(dir, { node: 'implement', admission: admitted, obligations: [{ id: 'execute_node' }], routing: decision });
+    assert.deepStrictEqual(dom06.readAttempt(routed.attemptFile).routing, decision);
+    const plain = dom06.beginAttempt(dir, { node: 'implement', admission: admitted, obligations: [{ id: 'execute_node' }] });
+    assert.ok(!('routing' in dom06.readAttempt(plain.attemptFile)), 'AS-IS: Attempt sem routing continua sem o campo');
+});
+
+test('AC-10: causa escalation é recusada em beginAttempt, retryAttempt e prepareDispatch, sem gravar Attempt', () => {
+    const dir = runDir();
+    const attemptsDir = path.join(dir, 'dom06', 'attempts');
+    assert.throws(() => dom06.beginAttempt(dir, { node: 'implement', admission: admitted, cause: 'escalation' }), /ESCALATION_CAUSE_RESERVED/);
+    assert.throws(() => dom06.retryAttempt(dir, { node: 'implement', cause: 'escalation', proposed: admitted }), /ESCALATION_CAUSE_RESERVED/);
+    assert.throws(() => dom06.prepareDispatch({
+        runDir: dir, node: 'implement', ticketId: 1, baseBranch: 'development', cause: 'escalation',
+    }), /ESCALATION_CAUSE_RESERVED/);
+    assert.ok(!fs.existsSync(attemptsDir) || fs.readdirSync(attemptsDir).length === 0, 'nenhum Attempt gravado');
+});
+
+test('causa desconhecida continua virando dispatch (AS-IS), mas escalation não', () => {
+    const r = dom06.beginAttempt(runDir(), { node: 'implement', admission: admitted, cause: 'qualquer' });
+    assert.strictEqual(r.attempt.cause, 'dispatch');
+    assert.ok(dom06.RESERVED_CAUSES.has('escalation'));
+});
+
+test('escalation_proposal: forma validada, sem autorização embutida e sem produtor', () => {
+    const ok = {
+        node: 'implement', subtask_key: null, failure_class: 'capacidade',
+        from: { model_id: 'm-t2a', effort: 'médio' }, to: { model_id: 'm-t3', effort: 'alto' },
+        proposed_at: '2026-11-06T12:00:00.000Z', authorization_ref: null,
+    };
+    assert.deepStrictEqual(dom06.validateEscalationProposal(ok), { ok: true, errors: [] });
+    const bad = dom06.validateEscalationProposal({ ...ok, to: { model_id: 'm-t3' }, proposed_at: 'ontem', authorization_ref: 'auto' });
+    assert.strictEqual(bad.ok, false);
+    assert.deepStrictEqual(bad.errors.sort(), ['authorization_ref_must_be_null', 'proposed_at_invalid', 'to_invalid']);
+    assert.deepStrictEqual(dom06.validateEscalationProposal(null), { ok: false, errors: ['not_object'] });
+    // Nenhum caminho do escritor consome a proposta (não há export que despache a partir dela).
+    assert.deepStrictEqual(Object.keys(dom06).filter(k => /escalat/i.test(k)).sort(), ['validateEscalationProposal']);
 });

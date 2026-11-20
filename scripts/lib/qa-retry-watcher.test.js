@@ -18,6 +18,9 @@ process.env.REPO_PATH = repo;
 process.env.REDMINE_URL = 'http://redmine.test';
 process.env.REDMINE_API_KEY = 'chave-watcher-teste';
 delete process.env.WATCHER_RECUSA_QA_NOVO_CICLO;
+// PRI-181 c0b: esta suíte cobre o caminho C1–C3 (flag ligada); o C0 está em qa-retry-watcher-c0-oracle.test.js.
+const savedQaDiagnostico = process.env.WATCHER_QA_DIAGNOSTICO;
+process.env.WATCHER_QA_DIAGNOSTICO = '1';
 
 const calls = [];
 const statusName = { 13: 'Recusa QA', 2: 'Em Desenvolvimento' };
@@ -65,14 +68,22 @@ test('syncQaRejection: grava ticket_status + qa_rejection no run arquivado, sem 
     await watcher.syncQaRejection(ticket(92001, 13));
     const st = read(dir);
     assert.strictEqual(st.ticket_status, 'Recusa QA');
-    assert.deepStrictEqual(st.qa_rejection, { note: 'Botão salvar não grava UF', rejected_at: '2026-09-24T09:00:00Z', journal_id: 71 });
+    // Campos legados C0 + identidade C1 (DB-01: transition journal 70; nota no journal 71).
+    assert.strictEqual(st.qa_rejection.note, 'Botão salvar não grava UF');
+    assert.strictEqual(st.qa_rejection.rejected_at, '2026-09-24T09:00:00Z');
+    assert.strictEqual(st.qa_rejection.journal_id, 71);
+    assert.strictEqual(st.qa_rejection.transition_journal_id, 70);
+    assert.strictEqual(st.qa_rejection.rejection_key, 'qa-rej:v1:t92001:j70');
+    assert.ok(['OK', 'DEGRADED'].includes(st.qa_rejection.identity_quality));
     assert.strictEqual(st.updated_at, UPDATED);
     assert.strictEqual(st.status, 'committed');
 
-    // Mesmo status no tick seguinte: nem busca journals de novo.
+    // PRI-181 C1/DB-01b: mesmo status ainda relê journals; sem transição nova, legado estável.
     const before = calls.length;
+    const beforeRejection = JSON.stringify(st.qa_rejection);
     await watcher.syncQaRejection(ticket(92001, 13));
-    assert.strictEqual(calls.length, before);
+    assert.ok(calls.length > before, 'C1 relê journals com status igual');
+    assert.strictEqual(JSON.stringify(read(dir).qa_rejection), beforeRejection);
 });
 
 test('dispatchTicket: Recusa QA com run anterior espera o botão, não abre fetch_ticket', async () => {
@@ -113,6 +124,10 @@ test('consumeQaRetrySignals: destino ocupado mantém o sinal e não sobrescreve'
     assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
     assert.ok(fs.existsSync(path.join(dir, 'retry-signal.json')));
     assert.ok(fs.existsSync(path.join(target, 'marker')));
+    const st = read(dir);
+    assert.strictEqual(st.qa_retry_blocked.reason, 'destino_ocupado');
+    assert.ok(st.qa_retry_blocked.at);
+    assert.strictEqual(st.events.filter(e => e.type === 'qa_retry_blocked' && e.detail === 'destino_ocupado').length, 1);
 });
 
 test('consumeQaRetrySignals: zera o churn do ciclo anterior (refs e campos do state)', async () => {
@@ -212,6 +227,7 @@ test('consumeQaRetrySignals: spec com spec_hash ausente em todo lugar mantém o 
     assert.ok(fs.existsSync(path.join(dir, 'retry-signal.json')), 'sinal mantido');
     assert.ok(!fs.existsSync(path.join(worktreeOf(id), 'memory', 'runs')), 'run não foi para o worktree');
     assert.strictEqual(read(dir).status, 'in_progress');
+    assert.strictEqual(read(dir).qa_retry_blocked.reason, 'spec_ausente');
 });
 
 test('consumeQaRetrySignals: spec_path fora de memory/spec mantém o sinal e não escreve fora', async () => {
@@ -530,6 +546,7 @@ test('PRI-177: changelog inválido impede rebaseline e mantém sinal, versão e 
     assert.strictEqual(after.spec_hash, state.spec_hash);
     assert.deepStrictEqual(after.spec, state.spec);
     assert.strictEqual(fs.readFileSync(path.join(worktreeOf(id), `memory/spec/${id}-spec-changelog.json`), 'utf8'), '{invalid');
+    assert.strictEqual(after.qa_retry_blocked.reason, 'changelog_invalido');
 });
 
 test('PRI-177: spec existente divergente não é sobrescrita e continua bloqueada pelo gate', async () => {
@@ -577,4 +594,120 @@ test('PRI-177: sinal ainda no arquivo impede o despacho normal de abrir outro ci
     assert.ok(!fs.existsSync(worktreeOf(id)));
 });
 
-test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+function assertBlockedOnce(dir, reason) {
+    const st = read(dir);
+    assert.ok(fs.existsSync(path.join(dir, 'retry-signal.json')), 'sinal mantido');
+    assert.strictEqual(st.qa_retry_blocked?.reason, reason);
+    assert.ok(st.qa_retry_blocked?.at);
+    assert.strictEqual(
+        (st.events || []).filter(e => e.type === 'qa_retry_blocked' && e.detail === reason).length, 1,
+        `um único evento qa_retry_blocked para ${reason}`,
+    );
+}
+
+test('PRI-184: destino_ocupado grava qa_retry_blocked uma vez e não despacha no tick seguinte', async () => {
+    const { taskId, dir } = archived(92140, { node: 'implement', status: 'in_progress' });
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), '{"node":"implement"}');
+    const target = path.join(repo, '.claude', 'worktrees', '92140', 'memory', 'runs', taskId);
+    fs.mkdirSync(target, { recursive: true });
+    fs.writeFileSync(path.join(target, 'marker'), 'x');
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    assertBlockedOnce(dir, 'destino_ocupado');
+    const at = read(dir).qa_retry_blocked.at;
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    assertBlockedOnce(dir, 'destino_ocupado');
+    assert.strictEqual(read(dir).qa_retry_blocked.at, at, 'campo não reescrito no mesmo motivo');
+    assert.deepStrictEqual(await watcher.dispatchTicket(ticket(92140, 2)), {
+        action: 'skip', reason: 'qa_retry_pendente', taskId,
+    });
+});
+
+test('PRI-184: spec_ausente grava qa_retry_blocked uma vez e não despacha', async () => {
+    const id = 92141;
+    const { dir } = archived(id, {
+        node: 'implement', status: 'in_progress',
+        spec_path: `memory/spec/${id}-spec.md`, spec_hash: 'c'.repeat(64), spec_hash_scope: 'legacy_normative',
+    });
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), JSON.stringify({ node: 'implement' }));
+    fs.mkdirSync(worktreeOf(id), { recursive: true });
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    assertBlockedOnce(dir, 'spec_ausente');
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    assertBlockedOnce(dir, 'spec_ausente');
+});
+
+test('PRI-184: changelog_invalido (Branch Liberação) grava uma vez e não despacha', async () => {
+    const id = 92142;
+    const { taskId, dir } = archived(id, { node: 'implement', status: 'in_progress' });
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), '{"node":"implement"}');
+    const orig = global.fetch;
+    global.fetch = async (url) => {
+        const m = String(url).match(/\/issues\/(\d+)\.json/);
+        const tid = m && Number(m[1]);
+        return {
+            ok: true, status: 200,
+            json: async () => ({
+                issue: {
+                    id: tid, subject: `Ticket ${tid}`, description: '',
+                    status: { id: 2, name: 'Em Desenvolvimento' }, tracker: { name: 'Melhoria' },
+                    custom_fields: [{ name: 'Branch Liberação', value: 'Liberação Inventada' }],
+                    updated_on: new Date().toISOString(),
+                },
+            }),
+        };
+    };
+    try {
+        assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+        assertBlockedOnce(dir, 'changelog_invalido');
+        assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+        assertBlockedOnce(dir, 'changelog_invalido');
+    } finally {
+        global.fetch = orig;
+    }
+    assert.ok(!fs.existsSync(path.join(repo, '.claude', 'worktrees', String(id), 'memory', 'runs', taskId)));
+});
+
+test('PRI-184: state_fora_schema grava qa_retry_blocked uma vez e não despacha', async () => {
+    const id = 92143;
+    const taskId = `${id}-entrega`;
+    const dir = path.join(repo, 'memory', 'runs', '_archive', taskId);
+    fs.mkdirSync(dir, { recursive: true });
+    // Sem `status` (obrigatório): falha mesmo no fallback manual sem ajv e no schema completo.
+    // raw permanece disponível para gravar qa_retry_blocked.
+    fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
+        task_id: taskId, node: 'implement', history: ['fetch_ticket'],
+        started_at: UPDATED, updated_at: UPDATED, redmine_ticket: { id },
+    }));
+    fs.writeFileSync(path.join(dir, 'context.md'), '# Contexto\n');
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), '{"node":"implement"}');
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    assertBlockedOnce(dir, 'state_fora_schema');
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), []);
+    assertBlockedOnce(dir, 'state_fora_schema');
+    assert.deepStrictEqual(await watcher.dispatchTicket(ticket(id, 2)), {
+        action: 'skip', reason: 'qa_retry_pendente', taskId,
+    });
+});
+
+test('PRI-184: consumo bem-sucedido limpa o campo qa_retry_blocked e preserva o evento', async () => {
+    const id = 92144;
+    const { taskId, dir } = archived(id, {
+        node: 'implement', status: 'in_progress', qa_retry_count: 1,
+        qa_retry_blocked: { reason: 'destino_ocupado', at: UPDATED },
+        events: [{ type: 'qa_retry_blocked', node: 'implement', at: UPDATED, ts: UPDATED, detail: 'destino_ocupado' }],
+    });
+    fs.writeFileSync(path.join(dir, 'retry-signal.json'), JSON.stringify({ node: 'implement' }));
+    fs.mkdirSync(worktreeOf(id), { recursive: true });
+    assert.deepStrictEqual(await watcher.consumeQaRetrySignals(), [id]);
+    const target = path.join(worktreeOf(id), 'memory', 'runs', taskId);
+    const st = read(target);
+    assert.strictEqual(st.qa_retry_blocked, undefined);
+    assert.ok(st.events.some(e => e.type === 'qa_retry_blocked' && e.detail === 'destino_ocupado'));
+    assert.ok(!fs.existsSync(path.join(target, 'retry-signal.json')));
+});
+
+test.after(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    if (savedQaDiagnostico === undefined) delete process.env.WATCHER_QA_DIAGNOSTICO;
+    else process.env.WATCHER_QA_DIAGNOSTICO = savedQaDiagnostico;
+});

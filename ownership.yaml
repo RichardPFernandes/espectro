@@ -1,0 +1,168 @@
+# ownership.yaml — documentação verificável (PRI-104 / D12).
+# Módulo → capacidade → owner lógico (DOMxx/APP-0x).
+# Regra R1: pasta/caminho NÃO atribui owner. Owner não confirmado = UNKNOWN
+# até o Arquiteto confrontar PRI-84/85 e Richard aprovar por lote.
+# Este arquivo não autoriza runtime, binding, gate nem cutover.
+
+version: 1
+issue: PRI-104
+decision: D12
+confirmation:
+  status: PENDING
+  against: [PRI-84, PRI-85]
+  by: Arquiteto
+  final_batch_approval: Richard
+
+modules:
+  # Writers / custódia (candidatos; owner lógico UNKNOWN até PRI-84/85)
+  - path: scripts/state-writer.js
+    capability: state-store-write
+    owner: UNKNOWN
+  - path: scripts/cas.js
+    capability: state-cas
+    owner: UNKNOWN
+  - path: scripts/invalidate.js
+    capability: dependency-invalidation
+    owner: UNKNOWN
+  - path: scripts/lib/dom06-attempt.js
+    capability: attempt-admission
+    owner: UNKNOWN
+  - path: scripts/lib/node-lease.js
+    capability: node-lease
+    owner: UNKNOWN
+  - path: scripts/lib/node-events.js
+    capability: node-events
+    owner: UNKNOWN
+  - path: scripts/lib/node-dispatcher.js
+    capability: dispatch-delegation
+    owner: UNKNOWN
+  # PRI-233 (PRI-205 S4): resolução §4.7 pura; não escreve estado (o Attempt é do DOM06).
+  - path: scripts/lib/model-routing.js
+    capability: model-routing-resolution
+    owner: UNKNOWN
+  # PRI-233 T5: lê o snapshot routing do Attempt de admissão (DOM06); não grava.
+  - path: scripts/lib/routing-run.js
+    capability: model-routing-run-snapshot
+    owner: UNKNOWN
+  # PRI-341 T3: comparador de custo decomposta × monomodelo. Só lê o state.json; não grava.
+  - path: scripts/lib/routing-cost-compare.js
+    capability: model-routing-cost-comparison
+    owner: UNKNOWN
+  - path: scripts/routing-cost-compare.js
+    capability: model-routing-cost-comparison
+    owner: UNKNOWN
+  # PRI-310 (PRI-287 S5.1): manifesto do workspace, só leitura do worktree; a chave por Run
+  # e os manifestos locais ficam fora do worktree. O resumo vai no Attempt (DOM06).
+  - path: scripts/lib/workspace-manifest.js
+    capability: workspace-manifest
+    owner: UNKNOWN
+  # PRI-310: identidade das subtarefas (plan_version + grupo), pura; não grava estado.
+  - path: scripts/lib/subtask-decomposition.js
+    capability: subtask-identity
+    owner: UNKNOWN
+  # PRI-311 (PRI-287 S5.2a): ligações da Run decomposta (baseline, saída, cadeia, blocked).
+  # Não grava estado direto: Attempt pelo DOM06, state.json pelo watcher (writeTaskState).
+  # Novo dono de EXCLUSÃO: a varredura sweepKeys apaga memory/runs/_dom06-keys/<task>.key e
+  # memory/runs/_dom06-manifests/<task>/ do checkout principal só quando a task não tem Run em
+  # nenhuma raiz (runs e runs/_archive do checkout e de cada worktree).
+  - path: scripts/lib/decomposition-runtime.js
+    capability: decomposition-runtime
+    owner: UNKNOWN
+  # PRI-311: sinais de saída do agente (texto), extraídos do watcher sem mudança.
+  - path: scripts/lib/agent-exit-signals.js
+    capability: agent-exit-signals
+    owner: UNKNOWN
+  # PRI-311 (S5.2b): visita ao Implement da Run decomposta — decomposição (B2), próxima ação
+  # (B5), rework mapeado, piso da linhagem, DoD e bloco de contexto (B6). Só decide; quem grava
+  # o state.json é o watcher (writeTaskState com CAS), inclusive a transição implement → review
+  # da Run decomposta (o comando de integração não transiciona), e quem grava Attempt é o DOM-06.
+  - path: scripts/lib/decomposition-visit.js
+    capability: decomposition-visit
+    owner: UNKNOWN
+  - path: .claude/commands/implement-step.md
+    capability: decomposition-visit
+    owner: UNKNOWN
+  - path: .claude/commands/implement-integrate.md
+    capability: decomposition-visit
+    owner: UNKNOWN
+
+  # SDD / evidence (candidatos)
+  - path: scripts/lib/spec-change.js
+    capability: spec-change
+    owner: UNKNOWN
+  - path: scripts/lib/spec-authority.js
+    capability: spec-authority
+    owner: UNKNOWN
+  - path: scripts/lib/spec-version.js
+    capability: spec-version
+    owner: UNKNOWN
+  - path: scripts/lib/acceptance-evidence.js
+    capability: acceptance-evidence
+    owner: UNKNOWN
+  - path: scripts/lib/review-result.js
+    capability: review-result
+    owner: UNKNOWN
+
+  # Aplicação / orquestração
+  - path: scripts/readmine-watcher.js
+    capability: watcher-orchestration
+    owner: UNKNOWN
+  - path: scripts/lib/cycle-replayer.js
+    capability: cycle-replay
+    owner: UNKNOWN
+  - path: scripts/lib/dry-run.js
+    capability: dry-run
+    owner: UNKNOWN
+  - path: scripts/lib/authorization.js
+    capability: human-authorization
+    owner: UNKNOWN
+
+  # Integrações (adapters concretos atuais)
+  - path: scripts/lib/bitbucket-pr.js
+    capability: bitbucket-pr
+    owner: UNKNOWN
+  - path: scripts/lib/redmine-fetch.js
+    capability: redmine-fetch
+    owner: UNKNOWN
+  - path: scripts/notify.js
+    capability: notifier
+    owner: UNKNOWN
+
+  # Dashboard / projeção (APP-01 candidato)
+  - path: dashboard/server.js
+    capability: dashboard-http
+    owner: UNKNOWN
+  - path: dashboard/coordination.js
+    capability: coordination-api
+    owner: UNKNOWN
+
+  # Fundação TS (PRI-103) — plataforma, sem owner de domínio
+  - path: scripts/src/platform/roots.ts
+    capability: platform-roots
+    owner: UNKNOWN
+  - path: scripts/src/index.ts
+    capability: scripts-public-entrypoint
+    owner: UNKNOWN
+
+  # Esqueleto de camadas (PRI-104) — pastas ainda sem módulos
+  - path: scripts/src/domain/
+    capability: domain-layer
+    owner: UNKNOWN
+  - path: scripts/src/ports/
+    capability: ports-layer
+    owner: UNKNOWN
+  - path: scripts/src/application/
+    capability: application-layer
+    owner: UNKNOWN
+  - path: scripts/src/adapters/
+    capability: adapters-layer
+    owner: UNKNOWN
+  - path: scripts/src/config/
+    capability: config-layer
+    owner: UNKNOWN
+  - path: scripts/src/composition/
+    capability: composition-layer
+    owner: UNKNOWN
+  - path: scripts/src/interface/
+    capability: interface-layer
+    owner: UNKNOWN

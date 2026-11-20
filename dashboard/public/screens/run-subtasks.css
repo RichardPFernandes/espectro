@@ -1,0 +1,35 @@
+/* screens/run-subtasks.css — subtarefas no detalhe/lista de Runs (sombra would_route). */
+
+.run-subtasks-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rst-wrap { overflow: auto; margin: 0 0 8px; }
+.rst-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rst-table th, .rst-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.rst-table th { color: var(--text-secondary); font-weight: 600; font-size: 12px; }
+.rst-table caption {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.rst-table code { font-size: 12px; }
+.rst-faixa-leve { color: var(--state-done); font-weight: 600; }
+.rst-faixa-medio { color: var(--state-waiting-fg); font-weight: 600; }
+.rst-faixa-opus { color: var(--text); font-weight: 600; }
+.rst-faixa-unknown { color: var(--muted); font-style: italic; }

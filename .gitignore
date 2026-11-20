@@ -3,6 +3,8 @@ node_modules/
 dist/
 build/
 coverage/
+# O repo usa npm; o pnpm-lock.yaml que aparece solto nas worktrees não entra
+pnpm-lock.yaml
 
 # Credenciais e configuração local
 .env
@@ -21,9 +23,16 @@ memory/knowledge-graph.json
 
 # Saída e preferências locais
 *.log
+**/logs/**/*.jsonl
 *.tmp
 *.pid
 .DS_Store
 dashboard/.env
 dashboard/local-checkout.json
 dashboard/dashboard-prefs.json
+
+# Nível de processo da sessão (Acordo v2), lido pelo hook .claude/hooks/processo-level.mjs
+.prisma/
+
+# Aprovações locais do navegador de verificação de UI (modelo: .claude/settings.local.json.example)
+.claude/settings.local.json

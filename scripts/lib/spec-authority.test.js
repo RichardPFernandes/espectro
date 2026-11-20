@@ -13,10 +13,10 @@ const { execFileSync } = require('child_process');
 const sa = require('./spec-authority');
 
 const FILLER = 'Texto descritivo suficiente para passar do limite mínimo de caracteres exigido pela validação. ';
-const SPEC_PATH = 'memory/spec/43646-spec.md';
-const TASK_ID = '43646-filtro';
+const SPEC_PATH = 'memory/spec/10005-spec.md';
+const TASK_ID = '10005-filtro';
 
-const SPEC = `# Spec 43646
+const SPEC = `# Spec 10005
 
 ## Problema
 ${FILLER}Hoje o filtro de transportadora lista todas as transportadoras cadastradas.
@@ -99,7 +99,7 @@ function matrix(over = {}, specContent = SPEC) {
 
 const codes = r => r.failures.map(f => f.code);
 
-// Run sintético: <root>/memory/spec/43646-spec.md + <root>/memory/runs/<task>/.
+// Run sintético: <root>/memory/spec/10005-spec.md + <root>/memory/runs/<task>/.
 const sandbox = fs.mkdtempSync(path.join(process.env.CLAUDE_JOB_DIR ? path.join(process.env.CLAUDE_JOB_DIR, 'tmp') : os.tmpdir(), 'spec-authority-'));
 // Raiz com o relatório surefire para as checagens puras (verifyConformance) acharem o artifact.
 const fixtureRoot = path.join(sandbox, 'fixture-root');
@@ -137,7 +137,7 @@ function seedRun(stateOver = {}, files = {}) {
     fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
         task_id: TASK_ID, node: 'verify', history: ['fetch_ticket', 'plan', 'implement', 'review', 'test'],
         status: 'in_progress', started_at: new Date().toISOString(), ac_ids: ['AC-01', 'AC-02', 'AC-03'],
-        redmine_ticket: { id: 43646 }, ...stateOver,
+        redmine_ticket: { id: 10005 }, ...stateOver,
     }, null, 2));
     return { root, dir, spec: path.join(root, SPEC_PATH) };
 }
@@ -159,7 +159,7 @@ test('hash: estável a CRLF/espaço no fim/comentário; ignora Decisões de Impl
     assert.strictEqual(sa.specHash(SPEC.replace(/\n/g, '\r\n')), h);
     assert.strictEqual(sa.specHash(SPEC.replace('## Solução', '## Solução   ')), h);
     assert.strictEqual(sa.specHash(SPEC + '\n<!-- nota -->\n'), h);
-    const appended = SPEC + '\n## Contexto Histórico\n- arquivo X tem retrabalho\n\n## Decisões de Implementação\n\n### implement · 2026-09-30T10:00Z · 43646-filtro\n- **Decisão**: x\n- **Motivo**: y\n- **Impacto no spec**: Nenhum critério alterado\n';
+    const appended = SPEC + '\n## Contexto Histórico\n- arquivo X tem retrabalho\n\n## Decisões de Implementação\n\n### implement · 2026-09-30T10:00Z · 10005-filtro\n- **Decisão**: x\n- **Motivo**: y\n- **Impacto no spec**: Nenhum critério alterado\n';
     assert.strictEqual(sa.specHash(appended), h, 'APPEND do /implement e do spec-enricher não é drift');
     assert.notStrictEqual(sa.specHash(SPEC.replace('somente transportadoras', 'todas as transportadoras')), h);
     assert.notStrictEqual(sa.specHash(SPEC.replace('- Não alterar o contrato', '- Pode alterar o contrato')), h);
@@ -206,6 +206,23 @@ test('2. Handoff diverge da Spec → Verify FAIL com motivo', () => {
     const noRef = conformance({ handoffContent: '# Handoff\n\nsem referência\n' });
     assert.ok(codes(noRef).includes('HANDOFF_SPEC_REF_MISSING'));
     assert.ok(codes(noRef).includes('HANDOFF_AC_LIST_MISSING'));
+});
+
+test('2c. "AC-NN:" como rótulo em seção de HOW (diagnóstico, passos, decisões) não é reescrita', () => {
+    const plan = PLAN
+        .replace('## Plano de execução\n', '## Diagnóstico (HOW)\n- **AC-02**: o filtro de operação é montado uma vez no `init()` do controller.\n\n## Plano de execução\n')
+        .replace('2. Criar filtro de operação dinâmico.', '2. AC-02: recalcular o filtro de operação a cada busca em `TorreService`.')
+        .replace('## Cobertura dos ACs\n', '### Detalhe do passo 2\n- AC-02: reaproveita o mesmo método do passo 1.\n\n## Cobertura dos ACs\n');
+    const handoff = HANDOFF + '\n## Decisões relevantes (conferir no Review)\n- AC-02: filtro recalculado no service, não no front (SPEC_CLARIFICATION).\n';
+    const r = conformance({ planContent: plan, handoffContent: handoff });
+    assert.strictEqual(r.verdict, 'PASS', JSON.stringify(r.failures));
+    assert.ok(!codes(r).some(c => /_AC_TEXT_/.test(c)), codes(r).join(','));
+
+    // Fora de seção de HOW a reescrita continua barrada, inclusive com "# Plano" de nível 1 acima.
+    const loose = conformance({ planContent: plan + '\n## Observações\n- AC-02: Filtro de operação estático, carregado uma vez.\n' });
+    assert.ok(loose.failures.some(f => f.code === 'PLAN_AC_TEXT_DIVERGES' && /AC-02/.test(f.message)), JSON.stringify(loose.failures));
+    const top = conformance({ handoffContent: '- AC-02: Filtro de operação estático, carregado uma vez.\n' + HANDOFF });
+    assert.ok(top.failures.some(f => f.code === 'HANDOFF_AC_TEXT_DIVERGES'), JSON.stringify(top.failures));
 });
 
 test('2b. Cópia literal de AC no handoff é aviso (duplicação), não falha', () => {

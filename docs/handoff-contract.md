@@ -1,4 +1,14 @@
-# Maestri — Agent Handoff Contract v1.1
+# Maestri — Agent Handoff Contract v1.2
+
+> **Acordo de desenvolvimento v2 (13/11/2026).** No desenvolvimento do Prisma,
+> o handoff YAML **deixou de ser obrigatório**: nenhuma fatia nova precisa de
+> `handoff-*.yaml` nem de `evidence-*.md`. A evidência mora na seção Evidência
+> do PR (`.github/pull_request_template.md`) e o status, no bloco de Estado no
+> topo da issue. Este contrato continua disponível como formato **opcional**
+> para transferência entre agentes coordenados pelo Maestri, quando o
+> coordenador pedir. Continuam valendo em todo nível: Done só com evidência
+> (no PR) e aceite do Richard, e pai não fecha com filha aberta. Handoffs já
+> gravados em `tasks/**` ficam como estão e não são reinterpretados.
 
 ## Objetivo
 
@@ -18,7 +28,7 @@ Validador: `node scripts/validate-handoff.js <handoff.yaml|handoff.md> [--check-
 
 ### Regras obrigatórias
 
-1. Todo agente deve produzir um handoff ao concluir, bloquear ou interromper uma tarefa.
+1. Quando o coordenador pedir uma transferência, o agente produz o handoff ao concluir, bloquear ou interromper a tarefa. Fora disso, vale o Acordo v2: Estado no topo da issue e evidência no PR.
 2. O handoff deve conter fatos verificáveis, não apenas afirmações de sucesso.
 3. Referenciar artefatos existentes em vez de reproduzir documentos completos.
 4. Separar decisões aprovadas de recomendações e hipóteses.
@@ -103,6 +113,30 @@ usage:                         # só valores observados; o que não foi medido �
   tokens: "UNKNOWN"
 ```
 
+## Versão 1.2 (aditiva)
+
+A 1.2 acrescenta o nível de processo do
+[acordo de desenvolvimento](https://linear.app/prisma-app/document/prisma-acordo-de-desenvolvimento-62a84790f75a)
+(seção «Níveis de processo» do `AGENTS.md`). Herda tudo da 1.1; handoffs 1.0 e
+1.1 continuam válidos nas próprias versões e não são reinterpretados.
+
+```yaml
+handoff_version: "1.2"
+
+nivel_processo: "medio"        # obrigatório na 1.2: leve | medio | alto (sem acento)
+nivel_processo_inicial: null   # nível com que a issue entrou, se mudou
+nivel_processo_motivo: null    # obrigatório quando inicial ≠ nivel_processo
+```
+
+- Na dúvida entre dois níveis, usa-se o maior e registra-se o motivo em
+  `nivel_processo_motivo`.
+- O revisor pode subir o nível. Descer só com o Richard: o handoff cita a
+  decisão em `decisions.approved`. Descida com essa lista vazia é
+  `ERROR NIVEL_PROCESSO_DESCEU_SEM_DECISAO`; com ela preenchida, `WARN
+  NIVEL_PROCESSO_DESCEU` (o validador não lê o conteúdo da decisão).
+- O nível é independente de `risk.level` e do perfil G0–G3; se apontarem
+  exigências diferentes, vale a mais exigente.
+
 Em `validation.executed`, o campo opcional `expected` (`PASSED` padrão, ou `FAILED`)
 declara o resultado esperado. Teste de injeção de falha — rodado contra código
 sabotado para provar que o teste detecta o defeito — usa `expected: "FAILED"`.
@@ -115,7 +149,8 @@ O receptor roda `node scripts/validate-handoff.js` antes de aceitar o handoff:
 - `ERROR` impede a aceitação: campo obrigatório ausente, status fora do enum,
   resultado sem evidência, `COMPLETED` com falha inesperada não explicada em
   `open_issues`, `NEEDS_HUMAN`/`BLOCKED` sem `open_issues`, credencial no arquivo,
-  `usage` com valor estimado.
+  `usage` com valor estimado, `nivel_processo` ausente ou fora do enum na 1.2,
+  mudança de nível sem `nivel_processo_motivo`, descida sem `decisions.approved`.
 - `WARN` é conferido e registrado, sem bloquear.
 - O validador confere forma e coerência, não verdade: não reexecuta testes. Com
   `--check-paths`, confere que artefatos e evidências citados existem.
@@ -137,13 +172,20 @@ Linear. `Done` registra o encerramento da issue no escopo aprovado, não prova
 implementação, validação ou promoção fora desse escopo. O coordenador confere
 evidências e registra as transições, sem substituir a decisão humana.
 
+**Acordo v2.** Sem handoff pedido pelo coordenador, o Done de qualquer tipo é:
+Evidência no PR (seção Evidência), aceite dos ACs pelo Richard e pai sem filha
+aberta. As exigências abaixo de handoff, Handoff FINAL, `--pre-done` e
+diretório `~/Workspace/prisma-evidence/` valem só quando houver handoff Maestri
+na tarefa. Os critérios por perfil G0–G3 e os artefatos de planejamento
+(Approved Document, Planning Ledger) não mudam.
+
 | Tipo de tarefa | Evidências mínimas para Done | Quem confirma |
 | -- | -- | -- |
 | Planejamento/documental — planejamento Prisma | Approved Document + Evidence + Handoff FINAL + Planning Ledger atualizado; após a confirmação, issue em Done. Preservar os gates aplicáveis à baseline da tarefa. | Richard confirma a aprovação humana; o coordenador confere a persistência das evidências e registra a transição. |
-| Planejamento/documental — demais entregas documentais | Handoff FINAL com fatos verificáveis e referências aos artefatos, conforme este contrato, e evidência persistida (abaixo). Critérios adicionais por perfil: G0 — só a confirmação do perfil; G1 — aceite do owner registrado na issue; G2 — G1 + duplicações e impactos explicitados no Handoff FINAL; G3 — G2 + candidato de reconciliação registrado, sem alterar o Roadmap, e revisão Claude **e** Codex. | Revisor confirma o perfil (abaixo); o coordenador confere o handoff e a persistência das evidências (`--pre-done`: exit 3); Richard confirma o Done com aceite explícito. |
-| Implementação (feature/refactor) | Handoff com artefatos, revisão independente, testes/Verify aplicáveis e evidências atribuíveis à versão, conforme o ciclo vigente; estado de cada AC pela regra por AC (abaixo). Critérios adicionais por perfil: G0 — testes existentes executados; G1 — G0 + cada AC ativo verificado ou com exceção humana própria, aceite dos ACs pelo owner e spec/RN só se pertinente; G2 — G1 + achados da revisão de outro runtime resolvidos, delta por capability atualizado como `Candidate` e aprovação do Richard; `INC`/Decision, quando não houver, declarado "N/A — operação protegida não liberada", o que não autoriza incorporação nem torna o `Candidate` vigente; G3 — G2 + revisão Claude **e** Codex, `risk.level` HIGH/MAX com `signals` e PR Draft. Relação entre merge e encerramento: a definir pelo Richard. | Revisor/QA confirmam somente os resultados técnicos do seu escopo e o perfil (abaixo); o coordenador confere (`--pre-done`: exit 3); Richard confirma o Done. Merge exclusivo do Richard. |
+| Planejamento/documental — demais entregas documentais | Handoff FINAL com fatos verificáveis e referências aos artefatos, conforme este contrato, e evidência persistida (abaixo). Critérios adicionais por perfil: G0 — só a confirmação do perfil; G1 — aceite do owner registrado na issue; G2 — G1 + duplicações e impactos explicitados no Handoff FINAL; G3 — G2 + candidato de reconciliação registrado, sem alterar o Roadmap, e revisão independente G3 (definição abaixo). | Revisor confirma o perfil (abaixo); o coordenador confere o handoff e a persistência das evidências (`--pre-done`: exit 3); Richard confirma o Done com aceite explícito. |
+| Implementação (feature/refactor) | Handoff com artefatos, revisão independente, testes/Verify aplicáveis e evidências atribuíveis à versão, conforme o ciclo vigente; estado de cada AC pela regra por AC (abaixo). Critérios adicionais por perfil: G0 — testes existentes executados; G1 — G0 + cada AC ativo verificado ou com exceção humana própria, aceite dos ACs pelo owner e spec/RN só se pertinente; G2 — G1 + achados da revisão independente resolvidos, delta por capability atualizado como `Candidate` e aprovação do Richard; `INC`/Decision, quando não houver, declarado "N/A — operação protegida não liberada", o que não autoriza incorporação nem torna o `Candidate` vigente; G3 — G2 + revisão independente G3 (definição abaixo), `risk.level` HIGH/MAX com `signals` e PR Draft. Relação entre merge e encerramento: a definir pelo Richard. | Revisor/QA confirmam somente os resultados técnicos do seu escopo e o perfil (abaixo); o coordenador confere (`--pre-done`: exit 3); Richard confirma o Done. Merge exclusivo do Richard. |
 | Correção de bug | Handoff com evidências exigidas pelos critérios de aceite da issue, revisão independente e testes/Verify aplicáveis, atribuíveis à versão. Não presumir reprodução, cobertura ou teste não executado. Estado de cada AC pela regra por AC (abaixo). Critérios adicionais por perfil: os mesmos de Implementação (feature/refactor). | Revisor/QA confirmam somente os resultados técnicos do seu escopo e o perfil (abaixo); o coordenador confere (`--pre-done`: exit 3); Richard confirma o Done. Merge exclusivo do Richard. |
-| Investigação/discovery (só leitura) | Handoff com fontes/versões, escopo observado, resultados e limites verificáveis; distinguir fatos, hipóteses e UNKNOWN. Critérios adicionais por perfil: G0 — fatos, hipóteses e UNKNOWN separados, e executado separado de não executado (`not_executed`); G1 — G0 + recibos de leitura das fontes; G2/G3 — G1 + revisão independente da auditoria por outro runtime antes de ela virar insumo de decisão. | Revisor confirma o perfil (abaixo); o coordenador confere o handoff, inclusive a presença de `not_executed` e as separações (`--pre-done`: exit 3); Richard confirma o Done. |
+| Investigação/discovery (só leitura) | Handoff com fontes/versões, escopo observado, resultados e limites verificáveis; distinguir fatos, hipóteses e UNKNOWN. Critérios adicionais por perfil: G0 — fatos, hipóteses e UNKNOWN separados, e executado separado de não executado (`not_executed`); G1 — G0 + recibos de leitura das fontes; G2/G3 — G1 + revisão independente da auditoria antes de ela virar insumo de decisão. | Revisor confirma o perfil (abaixo); o coordenador confere o handoff, inclusive a presença de `not_executed` e as separações (`--pre-done`: exit 3); Richard confirma o Done. |
 | Revisão/QA | Handoff com escopo/versão revisados, achados e evidências das verificações efetivamente executadas, separadas das não executadas. Critérios adicionais por perfil: os mesmos de Investigação/discovery. QA de uma implementação ainda não aceita herda o perfil dela. | Revisor/QA confirmam o resultado técnico da própria etapa e o perfil (abaixo); o coordenador confere (`--pre-done`: exit 3); Richard confirma o Done. |
 
 Os critérios adicionais por perfil usam o perfil G0–G3 (DS-06) declarado no Ready
@@ -156,6 +198,23 @@ O perfil só acrescenta: não dispensa nada da linha, e a linha de planejamento
 Prisma vale inteira em qualquer perfil. No handoff, o primeiro item de
 `risk.signals` é `G<n>: <sinal>`; o validador não confere esse texto. Ambíguo
 sobe; ninguém rebaixa o perfil sozinho.
+
+**Revisão independente.** O revisor não é o autor nem herda o contexto dele:
+sessão ou subagente novo que recebe só os artefatos revisados, os hashes desses
+artefatos (ou o commit) e o contrato pertinente, com briefing adversarial. O
+mesmo runtime é admitido. O handoff registra `routing.runtime`, o modelo do
+revisor em `facts` e declara "independência por contexto, mesmo fornecedor"
+quando for o caso; não a apresenta como revisão entre runtimes. Em G2 e G3 o
+revisor roda em Opus. **Revisão independente G3** = um revisor Opus
+independente **e** mais um destes: `/code-review high` (ou `max`), quando há
+código, ou o Arquiteto (papel de agente Claude do Coordenador, também em
+contexto limpo); em entrega sem código vale só o Arquiteto. Afirmação inferida
+que sustente decisão vira evidência executada pelo revisor, ou fica UNKNOWN.
+Substitui a exigência anterior de outro runtime / Claude **e** Codex (decisão
+do Richard em sessão, 2026-11-06, por haver só Claude disponível);
+reversível quando houver um segundo runtime. Esta troca não altera o Roadmap:
+se ele exigir outro runtime, a divergência vai para reconciliação e, até a
+decisão, vale a baseline do Roadmap para a operação afetada (AGENTS.md, regra 8).
 
 **Linha de encerramento.** Cada issue do Prisma cai em exatamente uma linha,
 registrada no Ready como
@@ -201,7 +260,7 @@ Em G0 isso não cria arquivo nem aprovação humana adicional.
 os resultados do schema de evidência (`.graph/schemas/acceptance-evidence.schema.json`)
 e do `/verify` (`.claude/commands/verify.md`). Conta para o Done só o AC
 verificado (PASS automatizado sem WARN para ele, sob Verify PASS da versão
-vigente; ou evidência conferida pelo revisor de outro runtime, no interativo) ou
+vigente; ou evidência conferida pelo revisor independente, no interativo) ou
 com exceção humana própria (ID do AC, motivo, alcance, aprovador e link). Verify
 PASS não promove `NOT_AUTOMATED` com "Validação humana pendente": a prova manual
 exige registro (quem, quando, versão, resultado, link). `BLOCKED` por ambiente
@@ -242,7 +301,15 @@ Antes de uma issue ir para Done, o coordenador roda:
 
 A checagem lê as citações do handoff. Não chama o Linear, não muda status e não
 registra Done. Exit 0 significa que as quatro citações do planejamento Prisma
-estão presentes e persistidas na forma exigida. A confirmação do Richard
+estão presentes e persistidas na forma exigida.
+
+As mensagens citam o nível de processo (`nivel_processo`, lido só em handoff 1.2;
+ausente, inválido ou em versão anterior, vale alto).
+Pelo Acordo v2: leve exige uma revisão, sem SPEC; médio, uma revisão G3 e SPEC
+de até 1 página só se precisar; alto, SPEC de 1 a 2 páginas, AUTORIZO próprio,
+uma rodada G3 com dois revisores e readback, conferido manualmente. Em todo
+nível continuam as regras fixas: evidência na seção Evidência do PR, aceite dos
+ACs pelo Richard e pai sem filha aberta. A checagem não consulta o Linear para conferi-las. A confirmação do Richard
 continua obrigatória. Exit 1 recusa essa linha. Exit 3 deixa o Done com o
 Richard porque o tipo não tem critério automático.
 

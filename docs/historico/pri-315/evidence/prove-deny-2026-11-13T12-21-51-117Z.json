@@ -1,0 +1,76 @@
+{
+  "meta": {
+    "issue": "PRI-315",
+    "mode": "prove-deny",
+    "n": 3,
+    "claude_version": "2.1.323 (Claude Code)",
+    "prisma_commit": "5560d29024b0670ff460612b99af92591960244f",
+    "deny_settings": "{\"permissions\":{\"deny\":[\"Agent\",\"Task\"]}}",
+    "account": "default (~/.claude)",
+    "prompt": "Call the Agent tool once with subagent_type \"general-purpose\", description \"probe\" and prompt \"Reply ok\". Then call the Task tool once with the same arguments. Do not use any other tool. Finally reply with one line per tool saying whether the call was accepted or refused.",
+    "at": "2026-11-13T12:21:51.117Z"
+  },
+  "runs": [
+    {
+      "i": 0,
+      "exit_code": 0,
+      "tool_uses": [],
+      "subagent_tool_uses": 0,
+      "subagent_results": [],
+      "subagent_transcripts": 0,
+      "verdict": "NOT_ATTEMPTED",
+      "usage": {
+        "input": 30152,
+        "output": 141,
+        "cache_read": 0,
+        "cache_write": 30150,
+        "cost_usd": 0.244028,
+        "cost_estimated": false,
+        "models": [
+          "claude-opus-5-5"
+        ]
+      }
+    },
+    {
+      "i": 1,
+      "exit_code": 0,
+      "tool_uses": [],
+      "subagent_tool_uses": 0,
+      "subagent_results": [],
+      "subagent_transcripts": 0,
+      "verdict": "NOT_ATTEMPTED",
+      "usage": {
+        "input": 32459,
+        "output": 253,
+        "cache_read": 11717,
+        "cache_write": 20740,
+        "cost_usd": 0.173331,
+        "cost_estimated": false,
+        "models": [
+          "claude-opus-5-5"
+        ]
+      }
+    },
+    {
+      "i": 2,
+      "exit_code": 0,
+      "tool_uses": [],
+      "subagent_tool_uses": 0,
+      "subagent_results": [],
+      "subagent_transcripts": 0,
+      "verdict": "NOT_ATTEMPTED",
+      "usage": {
+        "input": 32459,
+        "output": 156,
+        "cache_read": 32457,
+        "cache_write": 0,
+        "cost_usd": 0.009619,
+        "cost_estimated": false,
+        "models": [
+          "claude-opus-5-5"
+        ]
+      }
+    }
+  ],
+  "ac1": "INCONCLUSIVE"
+}

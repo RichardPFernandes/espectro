@@ -1,0 +1,757 @@
+{
+  "normalized_fields": [
+    "prisma_root",
+    "tmp_path",
+    "variant_dir",
+    "uuid",
+    "iso_timestamp"
+  ],
+  "scenarios": {
+    "new_ticket/dispatch": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233001 (tipo: Melhoria). Rode, nesta ordem: /fetch-ticket 233001, /plan (use o task-id que acabou de gerar). Ao terminar o /plan, o handoff.md já deve estar escrito (é o último passo do próprio comando /plan). Assim que o /fetch-ticket terminar de escrever memory/spec/233001-spec.md — antes do /plan, e independente do resultado do spec-validator abaixo —, rode `node <prisma_root>/scripts/lib/spec-enricher.js memory/spec/233001-spec.md <task-id que acabou de gerar>`: acrescenta (só APPEND, idempotente) uma seção \"## Contexto Histórico\" com o que memory/knowledge-graph.json e memory/patterns.md já sabem sobre os arquivos citados na spec (regra inviolável, retrabalho anterior, padrões conhecidos). É best-effort — sempre sai 0, nunca bloqueia o ciclo, não precisa conferir o resultado antes de seguir. Entre o /fetch-ticket e o /plan, rode `node <prisma_root>/scripts/lib/spec-validator.js memory/spec/233001-spec.md`: se sair com código 1, NÃO rode o /plan — grave status=\"spec-invalid\" no state.json da task e pare (o orquestrador pede aceite no Redmine no próximo tick; nunca \"conserte\" a spec inventando conteúdo).  Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó plan) ===\nUse isto como ponto de partida em vez de reler o ticket inteiro ou abrir arquivos pra \"conhecer o projeto\" (ver \"Orçamento de contexto\" em .claude/commands/plan.md).\n\n--- Ticket #233001: Ticket 233001 (descrição, primeiros 3000 caracteres) ---\n## Contexto\nFixture própria do harness, sem dados do consumidor.\n\n## Objetivo\nExercitar o ciclo simulado sem efeito externo.\n\n## Escopo\n- Somente fixture sintética\n\n## Problema\nVerificar persistência no ciclo simulado.\n\n## Solução\nRegistrar uma marca de teste.\n\n## Critérios de Aceite\n- AC-01: Marca sintética registrada no fluxo simulado\n- AC-02: Marca sintética preservada no retorno simulado\n\n## Restrições\n- Nenhum efeito externo\n\n## Arquivos Afetados\n- scripts/fixtures/ticket-example.json\n\n## Dependências\n- Nenhuma\n\n\n--- Arquivos citados diretamente no ticket (estes sim: leia completos) ---\n  (nenhum arquivo/classe versionado citado literalmente)\n\n--- Estrutura do projeto (só nomes; entre parênteses, nº de arquivos) ---\n\n\n--- Caminhos que casam com termos do ticket (contexto, fixture, propria, harness, consumidor, objetivo, exercitar, ciclo, simulado, efeito, externo, escopo, …) ---\n  (nenhum)\n\n--- context.md da task (primeiros 6000 caracteres) ---\n(ainda não existe)\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+            "--name",
+            "Ticket #233001 — /plan (use o task-id que acabou de gerar)",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--disallowedTools",
+            "Agent,Task",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233001/memory/runs/_dom06/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "plan/dispatch": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233100 (tipo: Melhoria). Rode, nesta ordem: /plan 233100-golden. Se memory/runs/233100-golden/context.md tiver o bloco entre <!-- spec-validator:avisos:inicio --> e <!-- spec-validator:avisos:fim --> (avisos do portão de spec), preserve-o ao reescrever o arquivo. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó plan) ===\nUse isto como ponto de partida em vez de reler o ticket inteiro ou abrir arquivos pra \"conhecer o projeto\" (ver \"Orçamento de contexto\" em .claude/commands/plan.md).\n\n--- Ticket #233100: Ticket 233100 (descrição, primeiros 3000 caracteres) ---\n## Contexto\nFixture própria do harness, sem dados do consumidor.\n\n## Objetivo\nExercitar o ciclo simulado sem efeito externo.\n\n## Escopo\n- Somente fixture sintética\n\n## Problema\nVerificar persistência no ciclo simulado.\n\n## Solução\nRegistrar uma marca de teste.\n\n## Critérios de Aceite\n- AC-01: Marca sintética registrada no fluxo simulado\n- AC-02: Marca sintética preservada no retorno simulado\n\n## Restrições\n- Nenhum efeito externo\n\n## Arquivos Afetados\n- scripts/fixtures/ticket-example.json\n\n## Dependências\n- Nenhuma\n\n\n--- Arquivos citados diretamente no ticket (estes sim: leia completos) ---\n  (nenhum arquivo/classe versionado citado literalmente)\n\n--- Estrutura do projeto (só nomes; entre parênteses, nº de arquivos) ---\n\n\n--- Caminhos que casam com termos do ticket (contexto, fixture, propria, harness, consumidor, objetivo, exercitar, ciclo, simulado, efeito, externo, escopo, …) ---\n  (nenhum)\n\n--- context.md da task (primeiros 6000 caracteres) ---\n# Contexto\n\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+            "--name",
+            "Ticket #233100 — /plan 233100-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--disallowedTools",
+            "Agent,Task",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233100/memory/runs/233100-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "plan/retry": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233101 (tipo: Melhoria). Rode, nesta ordem: /plan 233101-golden. Se memory/runs/233101-golden/context.md tiver o bloco entre <!-- spec-validator:avisos:inicio --> e <!-- spec-validator:avisos:fim --> (avisos do portão de spec), preserve-o ao reescrever o arquivo. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó plan) ===\nUse isto como ponto de partida em vez de reler o ticket inteiro ou abrir arquivos pra \"conhecer o projeto\" (ver \"Orçamento de contexto\" em .claude/commands/plan.md).\n\n--- Ticket #233101: Ticket 233101 (descrição, primeiros 3000 caracteres) ---\n## Contexto\nFixture própria do harness, sem dados do consumidor.\n\n## Objetivo\nExercitar o ciclo simulado sem efeito externo.\n\n## Escopo\n- Somente fixture sintética\n\n## Problema\nVerificar persistência no ciclo simulado.\n\n## Solução\nRegistrar uma marca de teste.\n\n## Critérios de Aceite\n- AC-01: Marca sintética registrada no fluxo simulado\n- AC-02: Marca sintética preservada no retorno simulado\n\n## Restrições\n- Nenhum efeito externo\n\n## Arquivos Afetados\n- scripts/fixtures/ticket-example.json\n\n## Dependências\n- Nenhuma\n\n\n--- Arquivos citados diretamente no ticket (estes sim: leia completos) ---\n  (nenhum arquivo/classe versionado citado literalmente)\n\n--- Estrutura do projeto (só nomes; entre parênteses, nº de arquivos) ---\n\n\n--- Caminhos que casam com termos do ticket (contexto, fixture, propria, harness, consumidor, objetivo, exercitar, ciclo, simulado, efeito, externo, escopo, …) ---\n  (nenhum)\n\n--- context.md da task (primeiros 6000 caracteres) ---\n# Contexto\n\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+            "--name",
+            "Ticket #233101 — /plan 233101-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--disallowedTools",
+            "Agent,Task",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233101/memory/runs/233101-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "plan/timeout": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233102 (tipo: Melhoria). Rode, nesta ordem: /plan 233102-golden. Se memory/runs/233102-golden/context.md tiver o bloco entre <!-- spec-validator:avisos:inicio --> e <!-- spec-validator:avisos:fim --> (avisos do portão de spec), preserve-o ao reescrever o arquivo. RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó plan) ===\nUse isto como ponto de partida em vez de reler o ticket inteiro ou abrir arquivos pra \"conhecer o projeto\" (ver \"Orçamento de contexto\" em .claude/commands/plan.md).\n\n--- Ticket #233102: Ticket 233102 (descrição, primeiros 3000 caracteres) ---\n## Contexto\nFixture própria do harness, sem dados do consumidor.\n\n## Objetivo\nExercitar o ciclo simulado sem efeito externo.\n\n## Escopo\n- Somente fixture sintética\n\n## Problema\nVerificar persistência no ciclo simulado.\n\n## Solução\nRegistrar uma marca de teste.\n\n## Critérios de Aceite\n- AC-01: Marca sintética registrada no fluxo simulado\n- AC-02: Marca sintética preservada no retorno simulado\n\n## Restrições\n- Nenhum efeito externo\n\n## Arquivos Afetados\n- scripts/fixtures/ticket-example.json\n\n## Dependências\n- Nenhuma\n\n\n--- Arquivos citados diretamente no ticket (estes sim: leia completos) ---\n  (nenhum arquivo/classe versionado citado literalmente)\n\n--- Estrutura do projeto (só nomes; entre parênteses, nº de arquivos) ---\n\n\n--- Caminhos que casam com termos do ticket (contexto, fixture, propria, harness, consumidor, objetivo, exercitar, ciclo, simulado, efeito, externo, escopo, …) ---\n  (nenhum)\n\n--- context.md da task (primeiros 6000 caracteres) ---\n# Contexto\n\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+            "--name",
+            "Ticket #233102 — /plan 233102-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--disallowedTools",
+            "Agent,Task",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233102/memory/runs/233102-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "plan/resume": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233103 (tipo: Melhoria). Rode, nesta ordem: /plan 233103-golden. Se memory/runs/233103-golden/context.md tiver o bloco entre <!-- spec-validator:avisos:inicio --> e <!-- spec-validator:avisos:fim --> (avisos do portão de spec), preserve-o ao reescrever o arquivo. RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó plan) ===\nUse isto como ponto de partida em vez de reler o ticket inteiro ou abrir arquivos pra \"conhecer o projeto\" (ver \"Orçamento de contexto\" em .claude/commands/plan.md).\n\n--- Ticket #233103: Ticket 233103 (descrição, primeiros 3000 caracteres) ---\n## Contexto\nFixture própria do harness, sem dados do consumidor.\n\n## Objetivo\nExercitar o ciclo simulado sem efeito externo.\n\n## Escopo\n- Somente fixture sintética\n\n## Problema\nVerificar persistência no ciclo simulado.\n\n## Solução\nRegistrar uma marca de teste.\n\n## Critérios de Aceite\n- AC-01: Marca sintética registrada no fluxo simulado\n- AC-02: Marca sintética preservada no retorno simulado\n\n## Restrições\n- Nenhum efeito externo\n\n## Arquivos Afetados\n- scripts/fixtures/ticket-example.json\n\n## Dependências\n- Nenhuma\n\n\n--- Arquivos citados diretamente no ticket (estes sim: leia completos) ---\n  (nenhum arquivo/classe versionado citado literalmente)\n\n--- Estrutura do projeto (só nomes; entre parênteses, nº de arquivos) ---\n\n\n--- Caminhos que casam com termos do ticket (contexto, fixture, propria, harness, consumidor, objetivo, exercitar, ciclo, simulado, efeito, externo, escopo, …) ---\n  (nenhum)\n\n--- context.md da task (primeiros 6000 caracteres) ---\n# Contexto\n\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+            "--name",
+            "Ticket #233103 — /plan 233103-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--disallowedTools",
+            "Agent,Task",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233103/memory/runs/233103-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "implement/dispatch": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233110 (tipo: Melhoria). Rode, nesta ordem: /implement 233110-golden.  Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233110 — /implement 233110-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233110/memory/runs/233110-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "implement/retry": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233111 (tipo: Melhoria). Rode, nesta ordem: /implement 233111-golden.  Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233111 — /implement 233111-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233111/memory/runs/233111-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "implement/timeout": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233112 (tipo: Melhoria). Rode, nesta ordem: /implement 233112-golden.  RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233112 — /implement 233112-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233112/memory/runs/233112-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "implement/resume": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233113 (tipo: Melhoria). Rode, nesta ordem: /implement 233113-golden.  RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233113 — /implement 233113-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233113/memory/runs/233113-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "review/dispatch": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233120 (tipo: Melhoria). Rode, nesta ordem: /review 233120-golden.  Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó review) ===\nRevise a partir disto (ver \"Orçamento de contexto\" em .claude/commands/review.md). Nenhum arquivo não modificado vem aqui; abra um arquivo completo só se um item do checklist exigir.\n\n--- Arquivos alterados (git diff HEAD --stat + novos) ---\n(nenhuma mudança não commitada em nenhum dos worktrees — confira se o Implement realmente escreveu código)\n\n--- Pré-checagens já rodadas pelo orquestrador ---\nItem 1 (secret no diff): nada encontrado (valores reais de BITBUCKET_API_TOKEN/REDMINE_API_KEY/*_TOKEN do ambiente e padrões de token checados nas linhas adicionadas).\nItem 3 (lint): OK — git diff --check limpo; .js alterados passam em node --check; .json alterados são JSON válido. (Sem linter Java configurado no projeto: compilação é coberta pelo pré-build/nó test.)\n\n--- Diff (git diff HEAD + arquivos novos; até 60000 caracteres) ---\n(vazio)\n\n\n--- context.md da task (primeiros 6000 caracteres) ---\n# Contexto\n\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+            "--name",
+            "Ticket #233120 — /review 233120-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233120/memory/runs/233120-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "review/retry": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233121 (tipo: Melhoria). Rode, nesta ordem: /review 233121-golden.  Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó review) ===\nRevise a partir disto (ver \"Orçamento de contexto\" em .claude/commands/review.md). Nenhum arquivo não modificado vem aqui; abra um arquivo completo só se um item do checklist exigir.\n\n--- Arquivos alterados (git diff HEAD --stat + novos) ---\n(nenhuma mudança não commitada em nenhum dos worktrees — confira se o Implement realmente escreveu código)\n\n--- Pré-checagens já rodadas pelo orquestrador ---\nItem 1 (secret no diff): nada encontrado (valores reais de BITBUCKET_API_TOKEN/REDMINE_API_KEY/*_TOKEN do ambiente e padrões de token checados nas linhas adicionadas).\nItem 3 (lint): OK — git diff --check limpo; .js alterados passam em node --check; .json alterados são JSON válido. (Sem linter Java configurado no projeto: compilação é coberta pelo pré-build/nó test.)\n\n--- Diff (git diff HEAD + arquivos novos; até 60000 caracteres) ---\n(vazio)\n\n\n--- context.md da task (primeiros 6000 caracteres) ---\n# Contexto\n\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+            "--name",
+            "Ticket #233121 — /review 233121-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233121/memory/runs/233121-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "review/timeout": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233122 (tipo: Melhoria). Rode, nesta ordem: /review 233122-golden.  RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó review) ===\nRevise a partir disto (ver \"Orçamento de contexto\" em .claude/commands/review.md). Nenhum arquivo não modificado vem aqui; abra um arquivo completo só se um item do checklist exigir.\n\n--- Arquivos alterados (git diff HEAD --stat + novos) ---\n(nenhuma mudança não commitada em nenhum dos worktrees — confira se o Implement realmente escreveu código)\n\n--- Pré-checagens já rodadas pelo orquestrador ---\nItem 1 (secret no diff): nada encontrado (valores reais de BITBUCKET_API_TOKEN/REDMINE_API_KEY/*_TOKEN do ambiente e padrões de token checados nas linhas adicionadas).\nItem 3 (lint): OK — git diff --check limpo; .js alterados passam em node --check; .json alterados são JSON válido. (Sem linter Java configurado no projeto: compilação é coberta pelo pré-build/nó test.)\n\n--- Diff (git diff HEAD + arquivos novos; até 60000 caracteres) ---\n(vazio)\n\n\n--- context.md da task (primeiros 6000 caracteres) ---\n# Contexto\n\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+            "--name",
+            "Ticket #233122 — /review 233122-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233122/memory/runs/233122-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "review/resume": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233123 (tipo: Melhoria). Rode, nesta ordem: /review 233123-golden.  RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.\n=== CONTEXTO PRÉ-MONTADO PELO ORQUESTRADOR (nó review) ===\nRevise a partir disto (ver \"Orçamento de contexto\" em .claude/commands/review.md). Nenhum arquivo não modificado vem aqui; abra um arquivo completo só se um item do checklist exigir.\n\n--- Arquivos alterados (git diff HEAD --stat + novos) ---\n(nenhuma mudança não commitada em nenhum dos worktrees — confira se o Implement realmente escreveu código)\n\n--- Pré-checagens já rodadas pelo orquestrador ---\nItem 1 (secret no diff): nada encontrado (valores reais de BITBUCKET_API_TOKEN/REDMINE_API_KEY/*_TOKEN do ambiente e padrões de token checados nas linhas adicionadas).\nItem 3 (lint): OK — git diff --check limpo; .js alterados passam em node --check; .json alterados são JSON válido. (Sem linter Java configurado no projeto: compilação é coberta pelo pré-build/nó test.)\n\n--- Diff (git diff HEAD + arquivos novos; até 60000 caracteres) ---\n(vazio)\n\n\n--- context.md da task (primeiros 6000 caracteres) ---\n# Contexto\n\n=== FIM DO CONTEXTO PRÉ-MONTADO ===",
+            "--name",
+            "Ticket #233123 — /review 233123-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233123/memory/runs/233123-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "test/dispatch": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233130 (tipo: Melhoria). Rode, nesta ordem: /test 233130-golden.  ESCOPO DE TESTE: configure TEST_COMMAND no consumidor antes de executar testes. Não assuma um comando de build/teste. Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233130 — /test 233130-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233130/memory/runs/233130-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "test/retry": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233131 (tipo: Melhoria). Rode, nesta ordem: /test 233131-golden.  ESCOPO DE TESTE: configure TEST_COMMAND no consumidor antes de executar testes. Não assuma um comando de build/teste. Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233131 — /test 233131-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233131/memory/runs/233131-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "test/timeout": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233132 (tipo: Melhoria). Rode, nesta ordem: /test 233132-golden.  ESCOPO DE TESTE: configure TEST_COMMAND no consumidor antes de executar testes. Não assuma um comando de build/teste. Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233132 — /test 233132-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233132/memory/runs/233132-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "test/resume": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233133 (tipo: Melhoria). Rode, nesta ordem: /test 233133-golden.  ESCOPO DE TESTE: configure TEST_COMMAND no consumidor antes de executar testes. Não assuma um comando de build/teste. Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233133 — /test 233133-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233133/memory/runs/233133-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "verify/dispatch": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233140 (tipo: Melhoria). Rode, nesta ordem: /verify 233140-golden.  Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233140 — /verify 233140-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233140/memory/runs/233140-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "verify/retry": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233141 (tipo: Melhoria). Rode, nesta ordem: /verify 233141-golden.  Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233141 — /verify 233141-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233141/memory/runs/233141-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "verify/timeout": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233142 (tipo: Melhoria). Rode, nesta ordem: /verify 233142-golden.  Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233142 — /verify 233142-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233142/memory/runs/233142-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "verify/resume": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233143 (tipo: Melhoria). Rode, nesta ordem: /verify 233143-golden.  Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233143 — /verify 233143-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233143/memory/runs/233143-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "commit/dispatch": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233150 (tipo: Melhoria). Rode, nesta ordem: /commit 233150-golden.  Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233150 — /commit 233150-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233150/memory/runs/233150-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "commit/retry": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233151 (tipo: Melhoria). Rode, nesta ordem: /commit 233151-golden.  Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233151 — /commit 233151-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233151/memory/runs/233151-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "commit/timeout": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233152 (tipo: Melhoria). Rode, nesta ordem: /commit 233152-golden.  Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233152 — /commit 233152-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233152/memory/runs/233152-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    },
+    "commit/resume": {
+      "action": "dispatched",
+      "reason": null,
+      "invocations": [
+        {
+          "argv": [
+            "-p",
+            "Você foi despachado pelo orquestrador (scripts/readmine-watcher.js) pra este ticket #233153 (tipo: Melhoria). Rode, nesta ordem: /commit 233153-golden.  Preserve o campo affectedServices do state.json (gravado pelo orquestrador) se reescrever o arquivo. RECUPERAÇÃO: o despacho anterior deste nó (iniciado em undefined) foi interrompido sem terminar (watcher/agente morreu). Pode haver trabalho parcial no worktree — confira git status/diff antes de recomeçar. Isto é recuperação, não falha do nó: não incremente state.json.retries por causa dela. Leia cada template correspondente em <prisma_root>/.claude/commands/ e siga-o como instrução do nó; use <prisma_root>/scripts para os executáveis da plataforma. PRISMA_ROOT aponta para esses assets; o cwd/worktree continua sendo o consumidor. Pare assim que terminar o último comando listado — o próximo nó do grafo é despachado pelo orquestrador num próximo tick. Não avance sozinho além do que foi pedido aqui. O orquestrador gravou status=\"running\", node_started_at e node_timeout_ms no state.json antes deste despacho: preserve node_started_at/node_timeout_ms e só troque status se o comando mandar (blocked/escalated/committed/spec-invalid) — ao você sair, o orquestrador devolve \"running\" pra \"in_progress\" sozinho.",
+            "--name",
+            "Ticket #233153 — /commit 233153-golden",
+            "--session-id",
+            "<uuid>",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "mcp__redmine__*,Read,Edit,Write,Bash,Grep,Glob",
+            "--add-dir",
+            "<prisma_root>"
+          ],
+          "env": {
+            "AFFECTED_SERVICES": "",
+            "DOM06_ATTEMPT_FILE": "<tmp>/<variant>/app-back/.claude/worktrees/233153/memory/runs/233153-golden/dom06/attempts/<uuid>.json",
+            "DOM06_AUTHORIZE_BIN": "<prisma_root>/scripts/lib/dom06-attempt.js",
+            "PRISMA_ROOT": "<prisma_root>",
+            "STATE_EXECUTION_ID": "<uuid>",
+            "WATCHER_MAIN_REPO_NAME": "app-back"
+          }
+        }
+      ]
+    }
+  }
+}

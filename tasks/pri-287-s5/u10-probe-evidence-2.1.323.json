@@ -1,0 +1,180 @@
+{
+  "probe": "U10 PRI-311",
+  "records": [
+    {
+      "candidate": "control",
+      "run": 1,
+      "at": "2026-11-13T13:10:44.318Z",
+      "cli_version": "2.1.323 (Claude Code)",
+      "repeat_authorized": null,
+      "argv": [
+        "-p",
+        "<PROMPT>",
+        "--model",
+        "opus",
+        "--session-id",
+        "dafa308b-e615-48f1-b2f1-07a2625aeffa",
+        "--settings",
+        "~/u10-probe-323/work/routing-settings.json",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--allowedTools",
+        "Agent,Task"
+      ],
+      "env_added": [],
+      "plugin_proof": {
+        "status": "NOT_LOADED",
+        "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+      },
+      "models": {
+        "main": "opus",
+        "frontmatter": "haiku",
+        "declared": "sonnet"
+      },
+      "exit_code": 0,
+      "roles": [
+        {
+          "role": "u10-role-a",
+          "declared": null,
+          "frontmatter": "haiku",
+          "observed": [
+            "haiku"
+          ],
+          "transcripts": 1,
+          "match": true
+        },
+        {
+          "role": "u10-role-b",
+          "declared": null,
+          "frontmatter": "haiku",
+          "observed": [
+            "haiku"
+          ],
+          "transcripts": 1,
+          "match": true
+        }
+      ],
+      "unattributed_transcripts": 0,
+      "result": "CONTROL_DETECTS_FRONTMATTER"
+    },
+    {
+      "candidate": "agents",
+      "run": 1,
+      "at": "2026-11-13T13:11:04.328Z",
+      "cli_version": "2.1.323 (Claude Code)",
+      "repeat_authorized": null,
+      "argv": [
+        "-p",
+        "<PROMPT>",
+        "--model",
+        "opus",
+        "--session-id",
+        "9d18d6ba-3d7e-4715-bbaa-edf10531b46f",
+        "--settings",
+        "~/u10-probe-323/work/routing-settings.json",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--allowedTools",
+        "Agent,Task",
+        "--agents",
+        "{\"u10-role-a\":{\"description\":\"Papel sintético da prova U10. Responde ok.\",\"prompt\":\"Responda apenas com a palavra ok.\",\"model\":\"sonnet\"},\"u10-role-b\":{\"description\":\"Papel sintético da prova U10. Responde ok.\",\"prompt\":\"Responda apenas com a palavra ok.\",\"model\":\"sonnet\"}}"
+      ],
+      "env_added": [],
+      "plugin_proof": {
+        "status": "NOT_LOADED",
+        "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+      },
+      "models": {
+        "main": "opus",
+        "frontmatter": "haiku",
+        "declared": "sonnet"
+      },
+      "exit_code": 0,
+      "roles": [
+        {
+          "role": "u10-role-a",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "sonnet"
+          ],
+          "transcripts": 1,
+          "match": true
+        },
+        {
+          "role": "u10-role-b",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "sonnet"
+          ],
+          "transcripts": 1,
+          "match": true
+        }
+      ],
+      "unattributed_transcripts": 0,
+      "result": "PROOF_OBTAINED"
+    },
+    {
+      "candidate": "agents",
+      "run": 2,
+      "at": "2026-11-13T13:11:21.928Z",
+      "cli_version": "2.1.323 (Claude Code)",
+      "repeat_authorized": null,
+      "argv": [
+        "-p",
+        "<PROMPT>",
+        "--model",
+        "opus",
+        "--session-id",
+        "e7b94758-95ce-4dc4-b7ca-fb478b970936",
+        "--settings",
+        "~/u10-probe-323/work/routing-settings.json",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--allowedTools",
+        "Agent,Task",
+        "--agents",
+        "{\"u10-role-a\":{\"description\":\"Papel sintético da prova U10. Responde ok.\",\"prompt\":\"Responda apenas com a palavra ok.\",\"model\":\"sonnet\"},\"u10-role-b\":{\"description\":\"Papel sintético da prova U10. Responde ok.\",\"prompt\":\"Responda apenas com a palavra ok.\",\"model\":\"sonnet\"}}"
+      ],
+      "env_added": [],
+      "plugin_proof": {
+        "status": "NOT_LOADED",
+        "settings_sha256": "49af361031bd2189f9bef7b69d054ed0eb96c2846227b98ef0ddd8b30fae62a2"
+      },
+      "models": {
+        "main": "opus",
+        "frontmatter": "haiku",
+        "declared": "sonnet"
+      },
+      "exit_code": 0,
+      "roles": [
+        {
+          "role": "u10-role-a",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "sonnet"
+          ],
+          "transcripts": 1,
+          "match": true
+        },
+        {
+          "role": "u10-role-b",
+          "declared": "sonnet",
+          "frontmatter": "haiku",
+          "observed": [
+            "sonnet"
+          ],
+          "transcripts": 1,
+          "match": true
+        }
+      ],
+      "unattributed_transcripts": 0,
+      "result": "PROOF_OBTAINED"
+    }
+  ]
+}

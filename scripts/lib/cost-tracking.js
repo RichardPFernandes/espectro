@@ -182,6 +182,18 @@ function recomputeTotals(ct) {
         totals.duration_ms += entry.duration_ms || 0;
         totals.loop_count += entry.retries || 0;
     }
+    // PRI-381 (F1.5): só quando algum nó já tem custo da CLI (flag ligada em algum run).
+    // Nó sem o campo tem todos os runs sem custo da CLI. Sem isso, os bytes ficam os de antes.
+    const nodes = Object.values(ct.nodes);
+    if (nodes.some(entry => Object.hasOwn(entry, 'cli_cost_usd'))) {
+        totals.cli_cost_usd = null;
+        totals.runs_without_cli_cost = 0;
+        for (const entry of nodes) {
+            const tracked = Object.hasOwn(entry, 'cli_cost_usd');
+            if (tracked) totals.cli_cost_usd = roundUsd(addNullable(totals.cli_cost_usd, entry.cli_cost_usd));
+            totals.runs_without_cli_cost += tracked ? entry.runs_without_cli_cost || 0 : entry.runs || 0;
+        }
+    }
     return { ...ct, totals, pricing_source: ct.pricing_source || PRICING_SOURCE };
 }
 
@@ -214,6 +226,17 @@ function mergeRun(ct, { node, agent, alsoCovers = [], metrics, run = {}, outcome
         entry.runs_without_tokens = (entry.runs_without_tokens || 0) + 1;
     }
     if (alsoCovers.length) entry.also_covers = [...new Set([...(entry.also_covers || []), ...alsoCovers])];
+    // PRI-381 (F1.5): custo da CLI só quando este run foi com a flag ou o nó já o acompanha.
+    // Runs do nó de antes da flag contam como sem custo da CLI; null nunca vira zero.
+    if (run.cli_result_json || Object.hasOwn(entry, 'cli_cost_usd')) {
+        if (!Object.hasOwn(entry, 'cli_cost_usd')) {
+            entry.cli_cost_usd = null;
+            entry.runs_without_cli_cost = entry.runs - 1;
+        }
+        const cliUsd = run.cli_result_json ? metrics.cli_cost_usd ?? null : null;
+        entry.cli_cost_usd = roundUsd(addNullable(entry.cli_cost_usd, cliUsd));
+        if (cliUsd == null) entry.runs_without_cli_cost = (entry.runs_without_cli_cost || 0) + 1;
+    }
     entry.attempts = [...(prev?.attempts || []), attemptRecord({ ...run, agent }, node, alsoCovers, metrics, outcome)];
     return recomputeTotals({ ...base, nodes: { ...base.nodes, [node]: entry } });
 }
@@ -369,16 +392,31 @@ function attemptRecord(run, node, alsoCovers, metrics, outcome) {
         session_id: run.session_id || 'UNKNOWN', runtime: run.agent,
         provider: run.agent === 'claude' ? 'anthropic' : run.agent === 'codex' ? 'openai' : 'UNKNOWN',
         account: run.account || { source: 'UNKNOWN', label: 'UNKNOWN' },
-        requested: { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' },
-        effort_router_plugin: run.effort_router_plugin || 'UNKNOWN',
+        // PRI-233 T7: despacho roteado grava o par fixado (modelo, esforço do CLI) e a decisão.
+        // Esforço só conta como pedido se foi de fato para o argv (SP-1 revista: só modelo).
+        // PRI-353: esforço por fase aplicado ao argv; chave só existe quando a flag estava ligada (AC2).
+        ...(run.phase_effort ? { phase_effort: run.phase_effort } : {}),
+        requested: run.routing_decision?.chosen
+            ? { model: run.routing_decision.chosen.model_id, effort: run.routing_decision.effort_applied ? run.routing_decision.chosen.cli_effort : 'UNAVAILABLE' }
+            : { model: 'UNAVAILABLE', effort: 'UNAVAILABLE' },
+        // Despacho roteado: o estado do plugin é o provado pela decisão (--settings do
+        // despacho), não o lido do perfil da conta (revisão do Checkpoint B, MINOR-4).
+        effort_router_plugin: run.routing_decision?.effort_router_plugin || run.effort_router_plugin || 'UNKNOWN',
         first_turn: metrics.first_turn || { cache_read_tokens: null, cache_write_5m_tokens: null, cache_write_1h_tokens: null },
-        selection_source: 'DEFAULT_INHERITED', routing_decision: 'UNAVAILABLE', subtask: 'UNAVAILABLE', workspace: 'UNAVAILABLE',
+        selection_source: run.routing_decision?.selection_source || 'DEFAULT_INHERITED',
+        routing_decision: run.routing_decision || 'UNAVAILABLE', subtask: 'UNAVAILABLE', workspace: 'UNAVAILABLE',
+        signals: run.signals || 'UNAVAILABLE',
+        // PRI-223 S3: decisão sombra (would_route). Nunca altera argv; applied=false.
+        would_route: run.would_route || 'UNAVAILABLE',
         observed: { usage: run.agent === 'codex' ? codexUsage : metrics.usage || [], effort: 'UNKNOWN' },
         usage_provenance: 'SELF_REPORTED',
         read_order: metrics.read_order || [], dedup_conflicts: metrics.dedup_conflicts || [],
         role_attribution: metrics.role_attribution || { status: 'UNKNOWN', conflicted_messages: 0 },
         cost: { usd: metrics.cost_usd ?? null, unpriced_models: metrics.unpriced_models || [],
-            pricing_source: metrics.pricing_source || PRICING_SOURCE, pricing_sha256: metrics.pricing_sha256 || PRICING_SHA256, estimated: metrics.cost_estimated ?? 'UNKNOWN' },
+            pricing_source: metrics.pricing_source || PRICING_SOURCE, pricing_sha256: metrics.pricing_sha256 || PRICING_SHA256, estimated: metrics.cost_estimated ?? 'UNKNOWN',
+            // PRI-381 (F1.5): custo do JSON da CLI; chave só com WATCHER_CLI_RESULT_JSON ligada.
+            ...(run.cli_result_json ? { cli_usd: metrics.cli_cost_usd ?? null } : {}) },
+        ...(run.cli_result_json ? { cli_version: metrics.cli_version ?? null, prompt_hashes: run.prompt_hashes || {} } : {}),
         duration_ms: Math.max(0, Math.round(metrics.duration_ms || 0)), wait_ms: 'UNAVAILABLE',
         exit: Number.isInteger(outcome.exitCode) ? outcome.exitCode : 'UNKNOWN', result: outcome.attemptResult || 'UNKNOWN',
     };
@@ -401,7 +439,41 @@ function parseCodexResultTokens(markdown) {
     return result;
 }
 
+// PRI-311 (PRI-287 S5.2a, passo 0b; O-09): papel de cada transcript de subagente, para o
+// `observed_model` por papel do RC-1 (B8) e a prova do U10. Função à parte: sumClaudeUsage,
+// usage[], read_order e os agregados legados não mudam. Fontes, só leitura:
+//   - <id>/subagents/agent-<x>.meta.json → agentType e toolUseId;
+//   - transcript principal → tool_use com input.subagent_type (casado pelo toolUseId).
+// Divergência entre as duas → CONFLICTED (papel null, nunca conta como prova); sem meta →
+// UNKNOWN. Modelos = message.model das mensagens assistant do próprio transcript.
+// Entrada: { main: <conteúdo jsonl>, subagents: [{ file_ref, content, meta }] } (meta = objeto
+// do .meta.json ou null). Saída sem caminho nem conteúdo.
+function subagentRoleAttribution({ main = '', subagents = [] } = {}) {
+    const lines = text => String(text || '').split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const toolTypes = new Map();
+    for (const ev of lines(main)) {
+        const blocks = ev && ev.type === 'assistant' && Array.isArray(ev.message?.content) ? ev.message.content : [];
+        for (const b of blocks) {
+            if (b && b.type === 'tool_use' && b.id && b.input && typeof b.input.subagent_type === 'string') toolTypes.set(b.id, b.input.subagent_type);
+        }
+    }
+    return subagents.map(({ file_ref: fileRef, content, meta }) => {
+        const models = new Set();
+        for (const ev of lines(content)) {
+            const m = ev && ev.type === 'assistant' ? ev.message?.model : null;
+            if (typeof m === 'string' && m && m !== '<synthetic>') models.add(m);
+        }
+        const metaType = meta && typeof meta.agentType === 'string' ? meta.agentType : null;
+        const toolType = meta && meta.toolUseId ? toolTypes.get(meta.toolUseId) || null : null;
+        let role = null;
+        let provenance = 'UNKNOWN';
+        if (metaType && toolType && metaType !== toolType) provenance = 'CONFLICTED';
+        else if (metaType) { role = metaType; provenance = toolType ? 'META+TOOL_USE' : 'META'; }
+        return { file_ref: fileRef, role, provenance, models: [...models].sort() };
+    });
+}
+
 module.exports = {
     TOKEN_FIELDS, METRIC_FIELDS, PRICES_USD_PER_MTOK, PRICING_SOURCE, PRICING_SHA256, pricingSnapshot, priceFor, projectUsageCost, admissionForCost, messageCostUsd, addNullable, emptyCostTracking, recomputeTotals, mergeRun,
-    findClaudeTranscripts, sumClaudeUsage, parseCodexResultTokens,
+    findClaudeTranscripts, sumClaudeUsage, parseCodexResultTokens, subagentRoleAttribution,
 };

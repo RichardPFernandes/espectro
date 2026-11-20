@@ -11,7 +11,7 @@
 // de um agente com shell não conseguir ler a senha em silêncio.
 //
 //   node scripts/lib/db-targets.js add <alias> --host=<h> --db=<banco> --user=<u> --env=<qa|stage|production>
-//        [--port=5432] [--label="QA – embarc"] [--display=masked|visible] [--allow-production] [--sslmode=require]
+//        [--port=5432] [--label="QA – app"] [--display=masked|visible] [--allow-production] [--sslmode=require]
 //   node scripts/lib/db-targets.js add <alias> --from-properties=<application.properties> [--datasource=default|<nome>]
 //        --env=<qa|stage|...> [--label=...] [--yes]
 //        lê host/porta/banco da jdbc.url, o usuário e a senha do .properties do consumidor

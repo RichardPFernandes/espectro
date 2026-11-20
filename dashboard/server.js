@@ -6,8 +6,11 @@ const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
 const { createCoordination, applyCoordinationDefault } = require('./coordination');
 const { createVersion } = require('./version');
+const { createOnboarding } = require('./onboarding');
+const { createObsidian } = require('./obsidian');
 const { createHoursBackfillJob } = require('./redmine-hours-backfill');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const http = require('http');
 const { execFile, execFileSync } = require('child_process');
@@ -17,7 +20,7 @@ function execFileSyncSafe(cmd, args, cwd) {
 // Controle do processo do watcher (start/stop/log). NÃO inicia nada no require — só
 // quando o usuário clica Start (ou marcou auto-start, ver main).
 const defaultWatcherManager = require('../scripts/watcher-manager');
-// Preview de ambiente de um worktree (build + app-back :8081 + app-front :9000).
+// Preview de ambiente de um ticket, por worktree ou por commit (build + app-back :8081 + app-front :9100).
 const { createPreviewManager } = require('../scripts/preview-manager');
 // "Usar na minha máquina": checkouts principais no commit do ticket (/api/local-checkout*).
 const { createLocalCheckout } = require('../scripts/local-checkout');
@@ -29,6 +32,9 @@ const churnDetector = require('../scripts/lib/churn-detector');
 const preBuildAiFix = require('../scripts/lib/pre-build-ai-fix');
 // Conta do Claude dos agentes + uso/limite dela (painel Watcher > Configurações).
 const claudeAccount = require('../scripts/lib/claude-account');
+// PRI-205 S3b (T12): exceção explícita à no-dashboard-scripts-internals (decisão do
+// Richard em 2026-11-06; registrada na lista de violações conhecidas, dívida da F12).
+const classifierSelection = require('../scripts/lib/classifier-selection');
 const claudeUsage = require('../scripts/lib/claude-usage');
 // Knowledge Graph de rastreabilidade ticket → spec → arquivos → PR (aba Grafo).
 const knowledgeGraph = require('../scripts/lib/knowledge-graph');
@@ -43,6 +49,16 @@ const acIdsLib = require('../scripts/lib/ac-ids');
 const cycleReplayer = require('../scripts/lib/cycle-replayer');
 const runComparator = require('../scripts/lib/run-comparator');
 const { projectCostTracking } = require('./cost-projection');
+const { buildWouldRouteMetrics } = require('./would-route-metrics');
+const routingProjection = require('./routing-projection');
+const uiVerifyProjection = require('./ui-verify-projection');
+const { runJsonReader } = require('./json-reader');
+// Leitor de roteamento por processo (G3: o dashboard não importa scripts/lib).
+const ROUTING_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'routing-read.js');
+// Leitor por processo do registro effort_miss (PRI-353, mesma fronteira G3).
+const EFFORT_MISS_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'effort-miss-read.js');
+// Leitor por processo do registro de flags docs/flags.md (PRI-399, F0.9 métrica 4, mesma fronteira G3).
+const FLAGS_READ_SCRIPT = path.join(__dirname, '..', 'scripts', 'flags-read.js');
 // Tira PR de Draft ("Marcar como pronto" no painel de preview).
 const { markPrReady } = require('../scripts/check-pr-status');
 // Lista/detalha/aprova PRs do Bitbucket, pra aba "PRs" (GET/POST /api/prs*).
@@ -71,7 +87,6 @@ const notify = require('../scripts/notify');
 const authorization = require('../scripts/lib/authorization');
 const dbEffect = require('../scripts/lib/db-effect');
 const qaHandback = require('../scripts/lib/qa-handback');
-const approvers = require('../scripts/lib/approvers');
 const REPLAY_SCRIPT = path.join(__dirname, '..', 'scripts', 'replay-cycle.js');
 
 // .env do próprio dashboard (cp .env.example .env). Nunca sobrescreve env já setada.
@@ -101,7 +116,7 @@ function loadDotEnv(envPath, only) {
 const INTEGRATION_KEYS = ['REDMINE_URL', 'REDMINE_API_KEY', 'BITBUCKET_WORKSPACE', 'BITBUCKET_REPO_SLUG', 'BITBUCKET_API_TOKEN'];
 // Configuração do preview (scripts/preview-manager.js), também lida do .env do repo.
 const PREVIEW_KEYS = ['PREVIEW_BACK_PORT', 'PREVIEW_FRONT_PORT', 'PREVIEW_JAVA_HOME', 'PREVIEW_PROFILE', 'PREVIEW_MVN_OFFLINE',
-    'PREVIEW_ADAPTER', 'PREVIEW_MO_ENTITY_REPO', 'PREVIEW_APP_CORE_REPO', 'PREVIEW_FRONT_REPO', 'MS_ROUTER', 'PREVIEW_DB_OPTIONS', 'PREVIEW_LIBS_FROM_BRANCH', 'PREVIEW_LIB_REFS', 'PREVIEW_GRUNT_FORCE', 'PREVIEW_GRUNT_WATCH'];
+    'PREVIEW_ADAPTER', 'PREVIEW_MO_ENTITY_REPO', 'PREVIEW_APP_CORE_REPO', 'PREVIEW_FRONT_REPO', 'MS_ROUTER', 'PREVIEW_DB_OPTIONS', 'PREVIEW_LIBS_FROM_BRANCH', 'PREVIEW_LIB_REFS', 'PREVIEW_M2_REPO', 'PREVIEW_GRUNT_FORCE', 'PREVIEW_GRUNT_WATCH'];
 // Palavra-chave de aprovação do draft de spec (spec-pending-approval). Não é segredo;
 // vem do .env do repo junto com as integrações, igual ao watcher.
 const APPROVAL_KEYS = ['SPEC_APPROVAL_KEYWORD', 'SPEC_REJECTION_KEYWORD'];
@@ -157,7 +172,7 @@ function extractPrs(pr, primaryRepo = null) {
 
 // Ativo x concluído. Diferente da regra "tem PR => concluído": um run que ainda
 // anda ou está parado esperando alguém continua ativo mesmo já tendo PR (caso real:
-// #43452 bloqueado com PR de front aberto) — senão sumiria dentro de "Concluídos".
+// #10021 bloqueado com PR de front aberto) — senão sumiria dentro de "Concluídos".
 // spec-pending-approval: o watcher postou um draft (IA) das seções que faltavam na spec
 // e espera um comentário com a palavra-chave no Redmine — parado, mas não falhou.
 // plan-escalation: plano abaixo do score mínimo depois dos re-plans (watcher, runPlanGate),
@@ -430,6 +445,9 @@ function createDashboard(options = {}) {
             out[state.node] = status === 'running' ? 'running'
                 : (status === 'failed' || status === 'needs_human_review') ? 'failed'
                     : 'pending';
+            // Retry (Recusa QA, review reprovado): history acumula os nós do ciclo anterior,
+            // mas o que vem depois do nó atual ainda vai rodar de novo — mostra pendente.
+            for (const n of NODES.slice(NODES.indexOf(state.node) + 1)) out[n] = 'pending';
         }
         return out;
     }
@@ -521,6 +539,32 @@ function createDashboard(options = {}) {
             qaRejected: !run.pretask && !!state && qaJournal.isQaRejectedStatus(run.demand?.status || state.ticket_status),
             qaRetryCount: Number.isInteger(state?.qa_retry_count) ? state.qa_retry_count : 0,
             qaRetryPending: !run.pretask && fs.existsSync(path.join(run.dir, 'retry-signal.json')),
+            // PRI-184: motivo do sinal parado (watcher gravou qa_retry_blocked); null se limpo/ausente.
+            // PRI-233 T8: overrides humanas de roteamento gravadas (append-only); [] sem nenhuma.
+            routingOverrides: !run.pretask && Array.isArray(state?.routing_overrides)
+                ? state.routing_overrides.map(o => ({
+                    ref: o.ref, scope: o.scope, node: o.node || null, subtaskKey: o.subtask_key || null,
+                    value: o.value, by: o.by, recordedAt: o.recorded_at,
+                }))
+                : [],
+            // PRI-233 T9: admissão recusada por roteamento ON inválido (pré-task sintética).
+            routingBlocked: run.pretask && state?.routing_admission_blocked
+                ? {
+                    scope: 'admission',
+                    cause: state.routing_admission_blocked.cause,
+                    detail: state.routing_admission_blocked.detail,
+                    transient: state.routing_admission_blocked.transient,
+                    firstBlockedAt: state.routing_admission_blocked.first_blocked_at,
+                    notifiedAt: state.routing_admission_blocked.notified_at,
+                    configFile: '.claude/model-routing.json',
+                }
+                : null,
+            qaRetryBlocked: (!run.pretask && state?.qa_retry_blocked
+                && typeof state.qa_retry_blocked === 'object'
+                && typeof state.qa_retry_blocked.reason === 'string'
+                && typeof state.qa_retry_blocked.at === 'string')
+                ? { reason: state.qa_retry_blocked.reason, at: state.qa_retry_blocked.at }
+                : null,
             // Cada recusa separada do ciclo principal (scripts/lib/qa-cycles.js); null = run
             // sem recusa. Só lê o context.md (blocos de recusa) de run que já teve alguma.
             qaCycles: run.pretask || !hasQaHistory(state) ? null : redactDeep(qaCycles.buildQaCycles(state, readContext(run.dir))),
@@ -561,7 +605,7 @@ function createDashboard(options = {}) {
     // ---------------------------------------------------------------------------
     // Arquivados com demanda em aberto. O /commit arquiva o run ao concluir o ciclo,
     // mas a demanda segue (PR aberto, "Ag Merge"/"Ag Teste" no Redmine) — e aí o run
-    // sumia do dashboard justo na fase de acompanhar o PR (caso real: #43609). Quem diz
+    // sumia do dashboard justo na fase de acompanhar o PR (caso real: #10023). Quem diz
     // se a demanda terminou é o status do ticket no Redmine, não o state.json (todo
     // arquivado diz "committed"). Varredura em segundo plano, com cache por ticket: 5 min
     // pra ticket aberto, 1 h pra fechado. Por ticket entra só o arquivado mais recente,
@@ -571,7 +615,38 @@ function createDashboard(options = {}) {
     const CLOSED_STATUS_RE = /conclu|encerr|fechad|closed|rejeit|cancel|finaliz/i;
     const ISSUE_TTL_OPEN_MS = 5 * 60 * 1000;
     const ISSUE_TTL_CLOSED_MS = 60 * 60 * 1000;
-    const issueCache = new Map(); // ticketId -> { at, status, closed }
+    // Status do Redmine sem resposta e sem nada conhecido: o arquivado entra marcado
+    // "Redmine sem resposta" (demand.unknown) — nem aberto, nem fechado (UNKNOWN não vira
+    // prova de nada). Antes ele sumia, e um restart com o Redmine instável escondia
+    // demandas abertas (13/11/2026: #10031, #10030, #10008).
+    const ISSUE_UNKNOWN = Object.freeze({ unknown: true });
+    // Cache persistido ao lado do registro (memory/ não versionado): restart não apaga o
+    // que já se sabia. Mesma regra de validade; em falha, vale o último status conhecido.
+    const ISSUE_CACHE_FILE = path.join(memoryDir, '_archive', 'dashboard-issue-status.json');
+    const issueCache = new Map(); // ticketId -> { at, status, closed, assigned_to }
+    {
+        const saved = readJson(ISSUE_CACHE_FILE);
+        if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+            for (const [id, e] of Object.entries(saved)) {
+                if (/^\d+$/.test(id) && e && typeof e.at === 'number' && typeof e.closed === 'boolean' && typeof e.status === 'string') {
+                    issueCache.set(Number(id), { at: e.at, status: e.status, closed: e.closed, assigned_to: e.assigned_to || null });
+                }
+            }
+        }
+    }
+    let issueCacheDirty = false;
+    function persistIssueCache() {
+        if (!issueCacheDirty) return;
+        try {
+            fs.mkdirSync(path.dirname(ISSUE_CACHE_FILE), { recursive: true });
+            const tmp = `${ISSUE_CACHE_FILE}.${process.pid}.tmp`;
+            fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(issueCache), null, 2));
+            fs.renameSync(tmp, ISSUE_CACHE_FILE);
+            issueCacheDirty = false;
+        } catch (e) {
+            console.error('[dashboard] falha gravando cache de status do Redmine:', e.message);
+        }
+    }
     let archivedOpen = new Map(); // taskId -> { taskId, dir, root, ticketId, demand }
     let archivedScan = null;
     let archivedScanAt = 0;
@@ -592,22 +667,25 @@ function createDashboard(options = {}) {
     }
 
     async function issueStatus(ticketId) {
-        const hit = issueCache.get(ticketId);
-        if (hit && Date.now() - hit.at < (hit.closed ? ISSUE_TTL_CLOSED_MS : ISSUE_TTL_OPEN_MS)) return hit;
+        // Sem Redmine configurado não dá pra saber — nem o cache persistido vale.
         const redmineUrl = (consumerEnv.REDMINE_URL || '').replace(/\/+$/, '');
         const apiKey = consumerEnv.REDMINE_API_KEY;
         if (!redmineUrl || !apiKey) return null;
+        const hit = issueCache.get(ticketId);
+        if (hit && Date.now() - hit.at < (hit.closed ? ISSUE_TTL_CLOSED_MS : ISSUE_TTL_OPEN_MS)) return hit;
         try {
             const { issue } = await fetchJson(`${redmineUrl}/issues/${ticketId}.json`, { 'X-Redmine-API-Key': apiKey, Accept: 'application/json' });
             const name = issue?.status?.name || '';
             const closed = typeof issue?.status?.is_closed === 'boolean' ? issue.status.is_closed : CLOSED_STATUS_RE.test(name);
             const entry = { at: Date.now(), status: name, closed, assigned_to: issue?.assigned_to?.name || null };
             issueCache.set(ticketId, entry);
+            issueCacheDirty = true;
             return entry;
         } catch (e) {
-            // Ticket removido do Redmine conta como fechado; erro de rede mantém o último valor.
-            if (e.status === 404) { const entry = { at: Date.now(), status: 'não encontrado', closed: true }; issueCache.set(ticketId, entry); return entry; }
-            return hit || null;
+            // Ticket removido do Redmine conta como fechado; erro de rede mantém o último valor
+            // e, sem valor conhecido, devolve UNKNOWN (nunca null, que é "sem Redmine configurado").
+            if (e.status === 404) { const entry = { at: Date.now(), status: 'não encontrado', closed: true }; issueCache.set(ticketId, entry); issueCacheDirty = true; return entry; }
+            return hit || ISSUE_UNKNOWN;
         }
     }
 
@@ -640,11 +718,16 @@ function createDashboard(options = {}) {
                     const it = items[i++];
                     const st = await issueStatus(it.ticketId);
                     if (!st || st.closed) continue;
-                    next.set(it.taskId, { taskId: it.taskId, dir: it.dir, root: it.root, ticketId: it.ticketId, demand: { status: st.status, assigned_to: st.assigned_to || null, checked_at: new Date(st.at).toISOString() } });
+                    const demand = st.unknown
+                        ? { status: null, unknown: true, assigned_to: null, checked_at: null }
+                        : { status: st.status, assigned_to: st.assigned_to || null, checked_at: new Date(st.at).toISOString() };
+                    next.set(it.taskId, { taskId: it.taskId, dir: it.dir, root: it.root, ticketId: it.ticketId, demand });
                 }
             }));
+            persistIssueCache();
             const changed = next.size !== archivedOpen.size || [...next.keys()].some(k => !archivedOpen.has(k))
-                || [...next.values()].some(v => archivedOpen.get(v.taskId)?.demand.status !== v.demand.status);
+                || [...next.values()].some(v => archivedOpen.get(v.taskId)?.demand.status !== v.demand.status
+                    || !!archivedOpen.get(v.taskId)?.demand.unknown !== !!v.demand.unknown);
             archivedOpen = next;
             archivedScanAt = Date.now();
             if (changed) broadcast({ type: 'runs_changed' });
@@ -734,6 +817,35 @@ function createDashboard(options = {}) {
                 },
             });
         }
+        // PRI-233 (PRI-205 S4, T9 / diretriz R-6 n.º 7): admissão recusada por roteamento
+        // ON com configuração inválida. O watcher guarda os tickets barrados no marcador do
+        // projeto (memory/runs/routing-admission-blocked.json); cada um sem run vira uma
+        // pré-task bloqueada, só leitura. Some quando o marcador sai (config corrigida).
+        const blocked = readJson(path.join(memoryDir, 'routing-admission-blocked.json'));
+        if (blocked && typeof blocked.cause === 'string' && Array.isArray(blocked.tickets)) {
+            for (const ticketId of blocked.tickets) {
+                if (!Number.isInteger(ticketId) || withRun.has(ticketId)) continue;
+                const taskId = `${ticketId}${PRETASK_SUFFIX}`;
+                if (out.some(r => r.taskId === taskId)) continue;
+                out.push({
+                    taskId, pretask: true, copies: 1,
+                    dir: path.join(memoryDir, taskId),
+                    root: { label: 'pretask', dir: memoryDir },
+                    state: {
+                        task_id: taskId, node: 'fetch_ticket', history: [], status: 'blocked',
+                        redmine_ticket: { id: ticketId },
+                        routing_admission_blocked: {
+                            cause: blocked.cause,
+                            detail: typeof blocked.detail === 'string' ? blocked.detail : null,
+                            transient: blocked.transient === true,
+                            first_blocked_at: typeof blocked.first_blocked_at === 'string' ? blocked.first_blocked_at : null,
+                            notified_at: typeof blocked.notified_at === 'string' ? blocked.notified_at : null,
+                        },
+                        updated_at: blocked.first_blocked_at || null, started_at: blocked.first_blocked_at || null,
+                    },
+                });
+            }
+        }
         return out;
     }
     // Marcador gravado pelo watcher ao despachar o /fetch-ticket (gate.fetch_dispatch).
@@ -805,10 +917,31 @@ function createDashboard(options = {}) {
         try { host = new URL(value.includes('://') ? value : `http://${value}`).hostname; } catch { return false; }
         return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
     }
+    // Sem aprovador (decisão de 2026-11-06), este filtro é a única fronteira das ações:
+    // - Origin, quando vier, tem de ser local E na MESMA porta do Dashboard. Outra página
+    //   do localhost (ex.: dev server em :5173) não fala com ele (revisão do Checkpoint B,
+    //   MAJOR-1: POST "simples" sem preflight escrevia).
+    // - Escrita com Sec-Fetch-Site diferente de same-origin/none é recusada. GET não, para
+    //   não quebrar abrir o Dashboard por um link (navegação cross-site).
+    const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+    const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+    const readOnlyMode = () => process.env.PRISMA_DASHBOARD_READONLY === '1';
+    function sameDashboardPort(origin, req) {
+        let u;
+        try { u = new URL(origin); } catch { return false; }
+        const port = Number(u.port || (u.protocol === 'https:' ? 443 : 80));
+        return Number.isInteger(req.socket?.localPort) && port === req.socket.localPort;
+    }
     function isLocalRequest(req) {
         if (!isLocalHost(req.headers.host)) return false;
+        // PRI-355: servidor subido pela verificação de UI nunca escreve (nem same-origin).
+        // Allowlist de método: qualquer coisa além de GET/HEAD/OPTIONS é recusada.
+        if (readOnlyMode() && !READ_METHODS.has(req.method)) return false;
         const origin = req.headers.origin;
-        return !origin || isLocalHost(origin);
+        if (origin && (!isLocalHost(origin) || !sameDashboardPort(origin, req))) return false;
+        const site = req.headers['sec-fetch-site'];
+        if (WRITE_METHODS.has(req.method) && site && site !== 'same-origin' && site !== 'none') return false;
+        return true;
     }
 
     app.disable('x-powered-by');
@@ -822,13 +955,198 @@ function createDashboard(options = {}) {
         last_file_change: lastFileChange,
         runs_tracked: collectCandidates().size,
     }));
-    app.use((req, res, next) => (isLocalRequest(req) ? next() : res.status(403).json({ error: 'somente localhost' })));
+    app.use((req, res, next) => {
+        if (isLocalRequest(req)) return next();
+        res.status(403).json({ error: readOnlyMode() && !READ_METHODS.has(req.method) ? 'somente leitura' : 'somente localhost' });
+    });
+    // PRI-355 (somente leitura): GETs com efeito colateral viram respostas neutras. Sem isto a tela
+    // dispararia `claude -p`, `git fetch` e uma consulta externa a cada verificação.
+    app.use((req, res, next) => {
+        // HEAD também passa pelas rotas GET do Express; o roteador ignora maiúsculas e barra final.
+        if (!readOnlyMode() || (req.method !== 'GET' && req.method !== 'HEAD')) return next();
+        const route = req.path.toLowerCase().replace(/\/+$/, '');
+        if (route === '/api/claude/usage') return res.json({ ok: false, error: 'somente leitura', cached: false });
+        if (route === '/api/fx') return res.json({ rate: null, source: 'somente leitura', date: null });
+        // PRI-390: a tela inicial não pode depender do 404 de flag desligada, e a verificação não lê
+        // vault nem prefs reais. Vale com PRISMA_OBSIDIAN ligada ou não.
+        if (route === '/api/obsidian') return res.json({ enabled: false, vault: null, ready: false, uri: null });
+        if (route === '/api/version' && req.query.refresh) req.query = { ...req.query, refresh: undefined };
+        next();
+    });
     app.use(express.json({ limit: '100kb' }));
     app.use(express.static(path.join(__dirname, 'public')));
     const coordination = createCoordination({ env, broadcast, redact: redactDeep });
     app.get('/api/coordination', (req, res) => {
         coordination.read().then(result => res.json(result))
             .catch(() => res.status(500).json({ error: 'não foi possível ler o estado de coordenação' }));
+    });
+
+    // Medição sombra would_route (PRI-223 / dashboard): contagem por faixa, economia
+    // potencial vs Opus-only, lista recente. Lê cost_tracking bruto; não aplica S4.
+    app.get('/api/would-route-metrics', (req, res) => {
+        try {
+            const recentLimit = req.query.limit != null ? Number(req.query.limit) : undefined;
+            const feeds = [];
+            const reg = readRegistry();
+            for (const [taskId, candidates] of collectCandidates()) {
+                if (archivedAway(taskId, candidates, reg)) continue;
+                const chosen = pickCandidate(taskId, candidates);
+                if (!chosen) continue;
+                const state = stateWriter.read(chosen.dir) || readJson(path.join(chosen.dir, 'state.json'));
+                feeds.push({
+                    taskId,
+                    ticketId: ticketIdOf(taskId, state),
+                    updatedAt: state?.updated_at || null,
+                    cost_tracking: state?.cost_tracking || null,
+                });
+            }
+            res.json(redactDeep(buildWouldRouteMetrics(feeds, { recentLimit })));
+        } catch (e) {
+            res.status(500).json({ error: redact(e.message) });
+        }
+    });
+
+    // Telas de roteamento de modelo (PRI-205; SPEC das telas, T4). Só leitura. Config e
+    // policy vigentes, snapshot de cada Run e NOT_STARTED vêm dos MESMOS leitores do
+    // watcher, por processo: scripts/routing-read.js (regra G3: o dashboard não importa
+    // scripts/lib; mesmo padrão do replay-cycle.js). Snapshot da Run nunca é relido da
+    // config corrente. A projeção (routing-projection.js) só deixa sair campos
+    // permitidos: sem caminhos locais. Snapshot íntegro é imutável e fica em cache pela
+    // ligação; NOT_STARTED, pelo mtime da pasta de Attempts do DOM-06 da Run. Um processo
+    // por requisição, só com o que não está em cache (a config é sempre relida).
+    const routingReadScript = options.routingReadScript || ROUTING_READ_SCRIPT;
+    const routingSnapshotCache = new Map();
+    const routingNotStartedCache = new Map();
+    const ROUTING_CACHE_MAX = 2000;
+    function cachePut(cache, key, value) {
+        if (cache.size >= ROUTING_CACHE_MAX) cache.clear();
+        cache.set(key, value);
+    }
+    function runRoutingRead(input) {
+        return new Promise(resolve => {
+            const child = execFile(process.execPath, [routingReadScript, '--json'],
+                { cwd: repoRoot, env: consumerEnv, timeout: 20000, maxBuffer: 8 * 1024 * 1024 },
+                (err, stdout) => {
+                    let out = null;
+                    try { out = JSON.parse(stdout); } catch { out = null; }
+                    if (err || !out || out.ok !== true) {
+                        if (err || out?.error) console.error(`[dashboard] routing-read: ${redact(out?.error || err?.message || 'sem saída')}`);
+                        return resolve(null);
+                    }
+                    resolve(out);
+                });
+            child.on('error', () => resolve(null));
+            child.stdin.on('error', () => {});
+            child.stdin.end(JSON.stringify(input));
+        });
+    }
+    const ROUTING_LIMIT_DEFAULT = 100;
+    const ROUTING_LIMIT_MAX = 500;
+    app.get('/api/routing', async (req, res) => {
+        let limit = ROUTING_LIMIT_DEFAULT;
+        if (req.query.limit != null) {
+            const n = Number(req.query.limit);
+            if (!Number.isInteger(n) || n < 1 || n > ROUTING_LIMIT_MAX) {
+                return res.status(400).json({ error: `limit deve ser inteiro entre 1 e ${ROUTING_LIMIT_MAX}` });
+            }
+            limit = n;
+        }
+        // ?task=<task-id>: só aquela Run (bloco "Roteamento" do detalhe da Run, T7).
+        const onlyTask = req.query.task != null ? String(req.query.task) : null;
+        if (onlyTask != null && !isRunDirName(onlyTask)) return res.status(400).json({ error: 'task inválida' });
+        try {
+            // 1) Lê os state.json e decide o que o leitor precisa buscar (cache vazio).
+            const entries = [];
+            const toRead = [];
+            const reg = readRegistry();
+            for (const [taskId, candidates] of collectCandidates()) {
+                if (onlyTask != null && taskId !== onlyTask) continue;
+                if (archivedAway(taskId, candidates, reg)) continue;
+                const chosen = pickCandidate(taskId, candidates);
+                if (!chosen) continue;
+                let state = null;
+                try { state = stateWriter.read(chosen.dir) || readJson(path.join(chosen.dir, 'state.json')); } catch { state = null; }
+                const entry = { taskId, dir: path.resolve(chosen.dir), state };
+                entries.push(entry);
+                const binding = state && typeof state === 'object' ? state.routing_snapshot : null;
+                if (!binding) continue;
+                const fetchRunDir = path.join(path.dirname(entry.dir), '_dom06');
+                // mtime e tamanho do arquivo do Attempt de admissão na chave: adulteração
+                // depois da 1ª leitura invalida o cache (revisão do Checkpoint B, MINOR-1).
+                let fileSig = 'absent';
+                if (typeof binding.attempt_id === 'string' && /^[0-9a-f-]{36}$/i.test(binding.attempt_id)) {
+                    try {
+                        const st = fs.statSync(path.join(fetchRunDir, 'dom06', 'attempts', `${binding.attempt_id}.json`));
+                        fileSig = `${st.mtimeMs}:${st.size}`;
+                    } catch { fileSig = 'absent'; }
+                }
+                entry.snapKey = `${fetchRunDir}|${binding.attempt_id}|${binding.sha256}|${fileSig}`;
+                let mtime = null;
+                try { mtime = fs.statSync(path.join(entry.dir, 'dom06', 'attempts')).mtimeMs; } catch { mtime = null; }
+                entry.nsKey = mtime == null ? null : `${entry.dir}|${mtime}`;
+                const needSnap = !routingSnapshotCache.has(entry.snapKey);
+                const needNs = entry.nsKey != null && !routingNotStartedCache.has(entry.nsKey);
+                if (needSnap || needNs) toRead.push({ key: taskId, run_dir: entry.dir, binding, not_started: needNs });
+            }
+            // 2) Um processo do leitor do dono (config sempre; Runs só o que faltou).
+            const read = await runRoutingRead({ repo_root: path.resolve(repoRoot), runs: toRead });
+            const config = routingProjection.projectConfig(read ? read.config : null);
+            const admission_blocked = routingProjection.projectAdmissionBlocked(readJson(path.join(memoryDir, 'routing-admission-blocked.json')));
+            // 3) Projeta.
+            const runs = [];
+            const modelRows = [];
+            const shadowRows = [];
+            const shadowSummary = { SAME: 0, REAL_HIGHER: 0, REAL_LOWER: 0, UNKNOWN: 0 };
+            for (const { taskId, dir, state, snapKey, nsKey } of entries) {
+                const ticketId = ticketIdOf(taskId, state);
+                const updatedAt = typeof state?.updated_at === 'string' ? state.updated_at : null;
+                const unknownRow = error => ({ task_id: taskId, ticket_id: Number.isInteger(ticketId) ? ticketId : null, mode: 'UNKNOWN', error, updated_at: updatedAt });
+                if (!state || typeof state !== 'object') { runs.push(unknownRow('STATE_UNREADABLE')); continue; }
+                try {
+                    const fresh = read?.runs?.[taskId];
+                    let snapshotResult;
+                    if (snapKey) {
+                        snapshotResult = routingSnapshotCache.get(snapKey) || fresh?.snapshot;
+                        if (snapshotResult?.ok === true) cachePut(routingSnapshotCache, snapKey, snapshotResult);
+                    }
+                    let notStarted = null;
+                    if (snapKey) {
+                        if (nsKey == null) notStarted = [];
+                        else if (routingNotStartedCache.has(nsKey)) notStarted = routingNotStartedCache.get(nsKey);
+                        else if (Array.isArray(fresh?.attempts)) {
+                            notStarted = routingProjection.projectNotStarted(fresh.attempts);
+                            cachePut(routingNotStartedCache, nsKey, notStarted);
+                        } else notStarted = 'UNKNOWN';
+                    }
+                    const run = routingProjection.projectRun({ taskId, ticketId, state, current: config, snapshotResult });
+                    const models = routingProjection.projectAttemptModels(state.cost_tracking);
+                    const shadow = routingProjection.projectShadowVsReal(state.cost_tracking);
+                    modelRows.push(...models);
+                    for (const k of Object.keys(shadowSummary)) shadowSummary[k] += shadow.summary[k];
+                    shadowRows.push(...shadow.rows.map(r => ({ task_id: run.task_id, ...r })));
+                    runs.push({ ...run, updated_at: updatedAt, models, not_started: run.mode === 'OFF' ? null : notStarted });
+                } catch {
+                    runs.push(unknownRow('PROJECTION_FAILED'));
+                }
+            }
+            runs.sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+            res.json(redactDeep({
+                generated_at: new Date().toISOString(),
+                // Leitor fora do ar: config e snapshots ficam UNKNOWN (nunca OFF).
+                reader: read ? 'OK' : 'FAILED',
+                config,
+                admission_blocked,
+                runs_total: runs.length,
+                runs: runs.slice(0, limit),
+                mix: routingProjection.buildMix(modelRows),
+                shadow_vs_real: { summary: shadowSummary, rows: shadowRows },
+            }));
+        } catch (e) {
+            // Sem e.message na resposta: erro de E/S cita caminho local (critério 7 da
+            // SPEC; revisão do Checkpoint B, MINOR-7). O detalhe vai só para o log.
+            console.error(`[dashboard] /api/routing: ${redact(e.message)}`);
+            res.status(500).json({ error: 'falha ao ler o roteamento' });
+        }
     });
 
     function withRun(req, res) {
@@ -1013,6 +1331,9 @@ function createDashboard(options = {}) {
                     worktree_indisponivel: 'Nenhum worktree livre no momento — tente de novo em instantes.',
                     ja_tratado_neste_ciclo: 'Este ticket já foi tratado neste ciclo (nenhuma mudança nova desde o último commit).',
                     recusa_qa_sem_comentarios: 'Ticket em Recusa QA sem comentário explicando o motivo — não há o que corrigir automaticamente.',
+                    // PRI-233: roteamento de modelo (mode ON).
+                    routing_admission_blocked: 'Roteamento de modelo ligado com configuração inválida — corrija .claude/model-routing.json (ou use mode OFF) para admitir Runs novas.',
+                    routing_not_started: 'Roteamento de modelo ligado: o despacho roteado não pôde iniciar (NOT_STARTED) — veja o motivo no Redmine ou no Attempt.',
                 };
                 return res.status(422).json({ error: messages[result.reason] || `não foi possível disparar (${result.reason})` });
             }
@@ -1046,8 +1367,8 @@ function createDashboard(options = {}) {
     });
 
     // Knowledge Graph (memory/knowledge-graph.json do checkout principal, gravado pelo
-    // watcher e pelo /commit). Sem filtro devolve tudo; ?taskId= (43425, TASK-43425 ou
-    // 43425-slug) ou ?file= recortam o subgrafo. `tickets` já vem montado como
+    // watcher e pelo /commit). Sem filtro devolve tudo; ?taskId= (10006, TASK-10006 ou
+    // 10006-slug) ou ?file= recortam o subgrafo. `tickets` já vem montado como
     // ticket → spec → [arquivos] → PRs pra aba Grafo não refazer a travessia.
     app.get('/api/graph', (req, res) => {
         let graph;
@@ -1074,6 +1395,38 @@ function createDashboard(options = {}) {
         }));
     });
 
+    // Aba "Verificações de UI" (PRI-361): lê .prisma/ui-verify/ do checkout da plataforma (veredito,
+    // achados e PNGs do /verify-ui, PRI-355). Só GET, nunca escreve. Atrás de PRISMA_UI_VERIFY_TAB=on
+    // (padrão desligada). Desligada, a listagem responde 200 `{enabled:false}` (a página pergunta a cada
+    // carga; um 404 aqui seria erro de console e requisição >= 400 em toda tela, e o /verify-ui da
+    // PRI-355 reprovaria o próprio dashboard) e a rota de imagem responde 404 como se não existisse.
+    const uiVerifyDir = path.resolve(options.uiVerifyDir || path.join(prismaRoot, '.prisma', 'ui-verify'));
+    const uiVerifyTabOn = () => env.PRISMA_UI_VERIFY_TAB === 'on';
+    const UI_VERIFY_LIMIT_MAX = 200;
+    app.get('/api/ui-verify', (req, res) => {
+        if (!uiVerifyTabOn()) return res.json({ enabled: false, tasks: [] });
+        let limit;
+        if (req.query.limit != null) {
+            const n = Number(req.query.limit);
+            if (!/^\d+$/.test(String(req.query.limit)) || n < 1 || n > UI_VERIFY_LIMIT_MAX) {
+                return res.status(400).json({ error: `limit deve ser inteiro entre 1 e ${UI_VERIFY_LIMIT_MAX}` });
+            }
+            limit = n;
+        }
+        try {
+            res.json(redactDeep({ enabled: true, tasks: uiVerifyProjection.listVerifications(uiVerifyDir, { limit }) }));
+        } catch {
+            res.status(500).json({ error: 'não foi possível ler as verificações de UI' });
+        }
+    });
+    app.get('/api/ui-verify/:task/:file', (req, res) => {
+        if (!uiVerifyTabOn()) return res.status(404).json({ error: 'not found' });
+        const png = uiVerifyProjection.readImage(uiVerifyDir, req.params.task, req.params.file);
+        if (!png) return res.status(404).json({ error: 'not found' });
+        res.set({ 'Content-Type': 'image/png', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
+        res.end(png);
+    });
+
     // memory/patterns.md (scripts/memory-consolidator.js) pra aba "Padrões" — arquivo
     // + metadata de quando/quantos runs a última consolidação analisou. Sem token
     // real esperado aqui, mas passa por redact() por consistência com a regra
@@ -1097,6 +1450,37 @@ function createDashboard(options = {}) {
             totalConsolidations: counterState.total_consolidations ?? 0,
             completedRunsAtLastRun: counterState.completed_runs_at_last_run ?? null,
         });
+    });
+
+    // PRI-353 (AC6): registro effort_miss das runs, só leitura. Ausência de registro é UNKNOWN,
+    // nunca zero. A projeção vem do leitor por processo (scripts/effort-miss-read.js): o dashboard
+    // não importa scripts/lib (G3). Texto livre passa por redact() como o resto.
+    const effortMissReadScript = options.effortMissReadScript || EFFORT_MISS_READ_SCRIPT;
+    const runEffortMissRead = input => runJsonReader({ script: effortMissReadScript, field: 'projection', label: 'effort-miss-read',
+        cwd: repoRoot, env: consumerEnv, redact, input, maxBuffer: 8 * 1024 * 1024 });
+    app.get('/api/effort-misses', async (req, res) => {
+        syncWatchedRoots();
+        const reg = readRegistry();
+        const entries = [];
+        for (const [taskId, candidates] of collectCandidates()) {
+            if (archivedAway(taskId, candidates, reg)) continue;
+            const chosen = pickCandidate(taskId, candidates);
+            if (!chosen) continue;
+            const state = readRunState({ ...chosen, copies: candidates.length });
+            entries.push({ taskId, effort_misses: Array.isArray(state?.effort_misses) ? state.effort_misses : null });
+        }
+        const projection = await runEffortMissRead({ entries });
+        if (!projection) return res.status(502).json({ status: 'UNKNOWN', total: null, error: 'leitor do registro effort_miss indisponível' });
+        res.json(JSON.parse(redact(JSON.stringify(projection))));
+    });
+
+    // PRI-399 (F0.9 AC-03, métrica 4): resumo do registro de flags (docs/flags.md), só leitura.
+    // Vem do leitor por processo (scripts/flags-read.js), pela fronteira G3. Falha é UNKNOWN, nunca zero.
+    const flagsReadScript = options.flagsReadScript || FLAGS_READ_SCRIPT;
+    app.get('/api/flags-summary', async (req, res) => {
+        const summary = await runJsonReader({ script: flagsReadScript, field: 'summary', label: 'flags-read', cwd: repoRoot, env: consumerEnv, redact });
+        if (!summary) return res.status(502).json({ status: 'UNKNOWN', error: 'leitor do registro de flags indisponível' });
+        res.json(summary);
     });
 
     // Força a varredura dos arquivados (botão Atualizar). Respeita o cache por ticket.
@@ -1667,8 +2051,8 @@ function createDashboard(options = {}) {
             fs.appendFileSync(path.join(run.dir, 'context.md'), qaJournal.contextBlock(found?.note, at), 'utf8');
             fs.writeFileSync(signalPath, JSON.stringify({ node: 'implement', task_id: run.taskId, requested_at: at }, null, 2));
 
-            const summary = summarizeAny({ ...run, demand: run.demand && { ...run.demand, status: next.ticket_status } });
-            if (run.archived && archivedOpen.has(run.taskId)) archivedOpen.get(run.taskId).demand.status = next.ticket_status;
+            const summary = summarizeAny({ ...run, demand: run.demand && { ...run.demand, status: next.ticket_status, unknown: false } });
+            if (run.archived && archivedOpen.has(run.taskId)) Object.assign(archivedOpen.get(run.taskId).demand, { status: next.ticket_status, unknown: false });
             broadcast({ type: 'state_update', taskId: run.taskId, state: summary.state, run: summary });
             broadcast({ type: 'runs_changed' });
             res.json({ ok: true, taskId: run.taskId, note: found?.note ?? null, qa_retry_count: next.qa_retry_count, ticket_status: next.ticket_status });
@@ -1891,30 +2275,16 @@ function createDashboard(options = {}) {
     const handbackFetch = options.handbackFetch || null;     // idem, Redmine
     // Config privilegiada: ~/.config/prisma do usuário do processo; override só por código (testes).
     const prismaConfigDir = options.prismaConfigDir || null;
-    // Aprovador: nome + senha de aprovação (hash scrypt em ~/.config/prisma/approvers.json,
-    // scripts/lib/approvers.js) em TODA ação privilegiada — o dashboard não tem login e
-    // qualquer página que alcance a porta faria POST. Sem credencial → 401; errada → 403;
-    // nada cadastrado → 403 (fail closed). Limites: 5 erros em 5 min por nome e 20 no
-    // total (qualquer nome) → 429; conferência assíncrona (não trava o servidor).
-    const approverFailures = new Map(); // nome → [timestamps]
-    let globalFailures = [];
-    async function requireApprover(req, res) {
-        const name = typeof req.body?.approver === 'string' ? req.body.approver.trim().slice(0, 64) : '';
-        const password = typeof req.body?.approver_password === 'string' ? req.body.approver_password : '';
-        const now = Date.now();
-        const recent = (approverFailures.get(name) || []).filter(t => now - t < 5 * 60 * 1000);
-        globalFailures = globalFailures.filter(t => now - t < 5 * 60 * 1000);
-        if (recent.length >= 5 || globalFailures.length >= 20) { res.status(429).json({ ok: false, code: 'TOO_MANY_ATTEMPTS', error: 'muitas tentativas erradas — espere alguns minutos' }); return null; }
-        const v = await approvers.verify(name, password, { configDir: prismaConfigDir });
-        if (v.ok) { approverFailures.delete(name); return v.name; }
-        if (v.code === 'DENIED') {
-            if (approverFailures.size > 1000) approverFailures.clear();
-            approverFailures.set(name, [...recent, now]);
-            globalFailures.push(now);
-        }
-        res.status(v.code === 'MISSING' ? 401 : 403).json({ ok: false, code: v.code === 'MISSING' ? 'APPROVER_REQUIRED' : v.code === 'NO_APPROVERS' ? 'NO_APPROVERS' : 'APPROVER_DENIED', error: v.error });
-        return null;
-    }
+    // Autoria das ações privilegiadas (autorização de SQL, devolução ao QA, override de
+    // roteamento). Decisão do Richard em 2026-11-06: sem aprovador nem senha até existirem
+    // roles — quem tem acesso ao Dashboard executa. O acesso continua restrito ao filtro
+    // global de localhost (Host e Origin locais: bloqueia páginas de terceiros e DNS
+    // rebinding). A autoria gravada é o usuário do sistema operacional que roda o
+    // Dashboard. scripts/lib/approvers.js fica para quando houver roles.
+    const LOCAL_ACTOR = (() => {
+        try { return os.userInfo().username || 'dashboard-local'; } catch { return 'dashboard-local'; }
+    })();
+    const actorOf = () => LOCAL_ACTOR;
     function pushRun(taskId) {
         const fresh = resolveRun(taskId);
         if (fresh) {
@@ -1973,8 +2343,6 @@ function createDashboard(options = {}) {
             const targetAlias = typeof req.query.target === 'string' && dbEffect.ALIAS_RE.test(req.query.target) ? req.query.target : null;
             request = authorization.describeRequest(run.dir, { targetAlias });
         }
-        let approversConfigured = false;
-        try { approversConfigured = Object.keys(approvers.loadApprovers({ configDir: prismaConfigDir }).approvers).length > 0; } catch { approversConfigured = false; }
         const executor = (dbExecutor || dbEffect.createChildExecutor({ configDir: prismaConfigDir })).available?.() || { ok: true };
         const ticketId = authorization.ticketOfTask(run.taskId);
         const showHandback = canHandback(state) || p?.then === 'handback_qa';
@@ -1982,15 +2350,13 @@ function createDashboard(options = {}) {
             taskId: run.taskId, ticketId, status: state.status, pending: p,
             history: Array.isArray(state.authorization_history) ? state.authorization_history : [],
             artifact, problems, request, executor, max_sql_bytes: dbEffect.MAX_SQL_BYTES,
-            approvers_configured: approversConfigured,
             handback: { available: !run.archived && canHandback(state), preview: showHandback ? qaHandback.preview(run.dir) : null },
         });
     });
 
-    // Bancos da allowlist para o seletor do Aprovar — só para aprovador autenticado; só
-    // alias, rótulo, ambiente e host/banco mascarados (display "visible" mostra).
+    // Bancos da allowlist para o seletor do Aprovar (acesso local, sem aprovador desde
+    // 2026-11-06); só alias, rótulo, ambiente e host/banco mascarados.
     app.post('/api/authorization/targets', async (req, res) => {
-        if (!await requireApprover(req, res)) return;
         const out = dbEffect.publicTargets({ configDir: prismaConfigDir });
         res.json({ ok: !out.error, targets: out.targets, error: out.error });
     });
@@ -1998,8 +2364,7 @@ function createDashboard(options = {}) {
     async function decideAndExecute(req, res, mode) {
         const ctx = authorizationRun(req, res);
         if (!ctx) return;
-        const by = await requireApprover(req, res);
-        if (!by) return;
+        const by = actorOf();
         const { run, state } = ctx;
         if (authorizing.has(run.taskId)) return res.status(409).json({ error: 'outra decisão deste run está em andamento' });
         const expect = humanExpect(req, state);
@@ -2049,8 +2414,7 @@ function createDashboard(options = {}) {
     app.post('/api/runs/:taskId/authorization/reject', async (req, res) => {
         const ctx = authorizationRun(req, res);
         if (!ctx) return;
-        const by = await requireApprover(req, res);
-        if (!by) return;
+        const by = actorOf();
         const { run, state } = ctx;
         const expect = humanExpect(req, state);
         const operationId = operationIdOf(req);
@@ -2068,6 +2432,62 @@ function createDashboard(options = {}) {
         res.json({ ok: true, taskId: run.taskId, status: 'blocked' });
     });
 
+    // PRI-233 T8 (P-2): override humano de roteamento. Mesma autoridade das decisões de
+    // autorização (acesso local + CAS/operation_id; sem aprovador desde 2026-11-06), mesmo writer
+    // (scripts/lib/authorization.js), sem pausar a Run e recusado com nó rodando (como as
+    // demais decisões). Vale a partir do próximo limite de nó; elegibilidade conferida
+    // pelo resolver contra o snapshot da Run.
+    // PRI-205 S3b (T12, SPEC §B11): seletor "Só policy" × "Policy + Jev" do projeto deste
+    // Dashboard. O writer governado (classifier-selection.writeSelection) é a guarda: valida
+    // na ordem do §4.8 e recusa com código; a tela só projeta. Vale para Runs novas.
+    app.get('/api/routing/classifier', (req, res) => {
+        res.json(classifierSelection.classifierState(repoRoot));
+    });
+
+    // Síncrono de propósito (achado MINOR 2 da revisão): o Express 4 só captura `throw`
+    // síncrono; erro inesperado (EACCES, ENOSPC) vira 500, nunca derruba o Dashboard.
+    app.post('/api/routing/classifier', (req, res) => {
+        const by = actorOf();
+        const b = req.body || {};
+        try {
+            const out = classifierSelection.changeClassifier(repoRoot, {
+                choice: b.choice, mode: b.mode ?? null, expectedVersion: b.expected_version,
+                operationId: b.operation_id, by, reason: b.reason, cas,
+            });
+            if (out.status === 'applied') console.log(`[dashboard] seleção do classificador v${out.version} (${out.choice}) por ${by}`);
+            return res.json({ ok: true, status: out.status, current: out.current });
+        } catch (e) {
+            if (e instanceof classifierSelection.SelectionError) {
+                return res.status(e.httpStatus).json({ ok: false, code: e.code, error: e.message, ...(e.detail ? { detail: e.detail } : {}) });
+            }
+            throw e;
+        }
+    });
+
+    app.post('/api/runs/:taskId/routing-override', async (req, res) => {
+        const ctx = authorizationRun(req, res);
+        if (!ctx) return;
+        const by = actorOf();
+        const { run, state } = ctx;
+        const expect = humanExpect(req, state);
+        const operationId = operationIdOf(req);
+        const str = v => (typeof v === 'string' ? v.slice(0, 200) : null);
+        try {
+            const out = authorization.recordRoutingOverride(run.dir, {
+                by, scope: str(req.body?.scope), node: str(req.body?.node), subtaskKey: str(req.body?.subtask_key),
+                value: { model_id: str(req.body?.model_id), effort: str(req.body?.effort) },
+                operationId, expectedStateVersion: expect.expected_state_version,
+            });
+            if (out.status === 'already_processed') return res.json({ ok: true, status: 'already_processed', operation_id: operationId });
+            console.log(`[dashboard] override de roteamento ${out.override.ref} em ${run.taskId} por ${by}`);
+            pushRun(run.taskId);
+            return res.json({ ok: true, taskId: run.taskId, override: out.override });
+        } catch (e) {
+            if (sendAuthorizationError(res, e)) return;
+            throw e;
+        }
+    });
+
     // "Devolver ao QA": run blocked/authorization-pending resolvido sem código. Reserva o
     // clique (cas.reserveOperation) antes do Redmine; desfecho incerto mantém a reserva e
     // o mesmo operation_id retoma conferindo o marcador no ticket (sem repostar às cegas).
@@ -2076,8 +2496,7 @@ function createDashboard(options = {}) {
         if (!ctx) return;
         const { run, state } = ctx;
         if (!canHandback(state)) return res.status(409).json({ error: `devolver ao QA só vale para run blocked/${authorization.STATUS} (status atual: ${state.status})` });
-        const by = await requireApprover(req, res);
-        if (!by) return;
+        const by = actorOf();
         if (authorizing.has(run.taskId)) return res.status(409).json({ error: 'outra decisão deste run está em andamento' });
         const expect = humanExpect(req, state);
         const operationId = operationIdOf(req);
@@ -2337,6 +2756,36 @@ function createDashboard(options = {}) {
         return index;
     }
 
+    // PRs gravados no state.json dos runs ATIVOS (não arquivados) que não vieram na lista do
+    // Bitbucket (outro autor, recusado, SUPERSEDED, estado vazio). Lado de PR da antiga
+    // "Tickets e PRs" (PRI-326): a aba "PRs" mostra o estado registrado no run, com a hora do
+    // polling (last_checked_at), sem nova chamada ao Bitbucket. MERGED fica de fora: a lista já
+    // traz os 20 mergeados mais recentes e o resto é histórico. Revisores e conflito: null =
+    // não consultado (a tela mostra "sem medição", nunca zero).
+    function runOnlyPrs(listedKeys, prIndex) {
+        const out = new Map();
+        for (const [taskId, candidates] of collectCandidates()) {
+            const chosen = pickCandidate(taskId, candidates);
+            const state = chosen && readJson(path.join(chosen.dir, 'state.json'));
+            if (!state) continue;
+            for (const p of projectPrs(state.pull_request)) {
+                if (!p.id) continue;
+                const repo = p.repo || primaryRepo;
+                const key = `${repo}#${p.id}`;
+                if (listedKeys.has(key) || out.has(key) || p.state === 'MERGED') continue;
+                out.set(key, {
+                    id: p.id, repo, title: null, url: p.url, state: p.state || null, draft: false,
+                    sourceBranch: null, targetBranch: null, author: null, reviewers: null,
+                    createdOn: null, updatedOn: p.last_checked_at, hasConflicts: null, conflictFiles: [],
+                    commentCount: null, taskCount: null,
+                    source: 'run', stateCheckedAt: p.last_checked_at,
+                    linkedRun: prIndex.get(key) || null, canApprove: false,
+                });
+            }
+        }
+        return [...out.values()];
+    }
+
     // Identidade dona do BITBUCKET_API_TOKEN (GET /2.0/user). Cacheada por 5 min,
     // inclusive a falha: token sem o escopo read:user:bitbucket dá 403 sempre.
     let currentUserCache = null;
@@ -2432,7 +2881,8 @@ function createDashboard(options = {}) {
             const open = await Promise.all(perRepo.flatMap(r => r?.open || []).map(pr => withConflicts(pr, cfg)));
             const merged = perRepo.flatMap(r => r?.merged || [])
                 .sort((a, b) => (Date.parse(b.updatedOn) || 0) - (Date.parse(a.updatedOn) || 0)).slice(0, 20);
-            const prs = [...open, ...merged].map(pr => decoratePr(pr, cfg, me, prIndex));
+            const listed = [...open, ...merged].map(pr => decoratePr(pr, cfg, me, prIndex));
+            const prs = [...listed, ...runOnlyPrs(new Set(listed.map(p => `${p.repo}#${p.id}`)), prIndex)];
             const linkedRuns = Object.fromEntries(prs.filter(p => p.linkedRun).map(p => [`${p.repo}#${p.id}`, p.linkedRun]));
             res.json(redactDeep({
                 prs, linkedRuns, repos: cfg.repos, warnings,
@@ -3012,6 +3462,26 @@ function createDashboard(options = {}) {
     });
     app.get('/api/watcher/prefs', (req, res) => res.json(readPrefs()));
 
+    // Tela "Este computador" (onboarding.js): ferramentas, configuração mínima e teste só leitura.
+    // Chave salva para o repo em uso passa a valer neste processo e entra na lista do redact.
+    const onboarding = createOnboarding({
+        repoRoot, prismaRoot, env: consumerEnv, redact: redactDeep,
+        envFile: options.onboardingEnvFile || path.join(__dirname, '.env'),
+        repoPathLocked: !!options.repoPathLocked,
+        listAccounts: () => listAccounts(),
+        probeUsage: args => probeUsage(args),
+        validateConfig: () => runValidateConfig(),
+        onSaved: updates => {
+            for (const [k, v] of Object.entries(updates)) {
+                consumerEnv[k] = v;
+                if (SECRET_KEY_RE.test(k) && v.length >= 6) secretValues.push(v);
+            }
+        },
+        ...(options.onboardingExec ? { exec: options.onboardingExec } : {}),
+        ...(options.onboardingFetch ? { fetchFn: options.onboardingFetch } : {}),
+    });
+    onboarding.mount(app);
+
     // Notificação via webhook (scripts/notify.js): o painel mostra se está configurada e
     // dispara um payload dummy pra conferir o webhook sem rodar ciclo. Nunca devolve a
     // URL (o token do Slack/Discord mora no caminho) — só o host.
@@ -3046,6 +3516,8 @@ function createDashboard(options = {}) {
         redmineFetch: options.hoursBackfillFetch,
     });
     hoursBackfill.mount(app);
+    // Botão "Abrir no Obsidian" (PRI-373): só monta as rotas com PRISMA_OBSIDIAN=on.
+    createObsidian({ env: consumerEnv, prefsFile, prismaRoot, exportFn: options.obsidianExport }).mount(app);
     app.put('/api/watcher/prefs', (req, res) => {
         const body = req.body || {};
         const patch = {};
@@ -3140,7 +3612,10 @@ function createDashboard(options = {}) {
             res.status(e.status || 500).json({ error: e.message });
         }
     };
-    app.post('/api/preview/:ticketId/start', previewAction(202, (id, req) => preview().start(id, { db: req.body?.db })));
+    app.post('/api/preview/:ticketId/start', previewAction(202, (id, req) => preview().start(id, { db: req.body?.db, libRef: req.body?.libRef, source: req.body?.source, commit: req.body?.commit })));
+    // Branches de mo-entity/app-core com a versão do back: alimenta "Reconstruir libs" no erro de build.
+    app.get('/api/preview/:ticketId/lib-refs', previewAction(200, id => preview().listLibRefs(id)));
+    app.get('/api/preview/:ticketId/commits', previewAction(200, id => preview().listCommits(id)));
     app.post('/api/preview/:ticketId/stop', previewAction(200, id => preview().stop(id)));
     app.post('/api/preview/:ticketId/clean', previewAction(200, id => preview().clean(id)));
     app.get('/api/preview/:ticketId/status', previewAction(200, id => preview().status(id)));
@@ -3271,7 +3746,7 @@ function createDashboard(options = {}) {
     // Root novo (worktree criada depois do start) é lido do disco aqui, e o chokidar
     // não emite nada pro que já existia dentro dele (ignoreInitial) — sem o broadcast,
     // um run criado antes do próximo tick deste timer ficava fora da tela aberta até
-    // recarregar. Caso real: #43584, worktree recriada pelo watcher e run criado pelo
+    // recarregar. Caso real: #10003, worktree recriada pelo watcher e run criado pelo
     // /fetch-ticket segundos depois.
     // Root que ainda não existe (checkout novo sem memory/runs) não entra: o chokidar não
     // passa a observá-lo quando é criado e o cache vazio nunca seria relido. Entra no
@@ -3366,6 +3841,10 @@ function createDashboard(options = {}) {
 }
 
 if (require.main === module) {
+    // REPO_PATH do ambiente (launcher do consumidor) trava a pasta; sem ele, vale a gravada
+    // pela tela "Este computador" no dashboard/.env do Prisma.
+    const repoPathLocked = !!process.env.REPO_PATH;
+    loadDotEnv(path.join(__dirname, '.env'), ['REPO_PATH']);
     const consumerRoot = path.resolve(process.env.REPO_PATH || process.cwd());
     loadDotEnv(path.join(consumerRoot, 'dashboard', '.env'));
     // Fallback: mesmas credenciais que o watcher já lê do .env do repo (uma fonte só,
@@ -3374,14 +3853,14 @@ if (require.main === module) {
     const repoKeys = [...INTEGRATION_KEYS, ...PREVIEW_KEYS, ...APPROVAL_KEYS, ...PRE_BUILD_KEYS, ...NOTIFY_KEYS,
         'WATCHER_SIBLING_REPOS', 'WATCHER_MAIN_REPO_NAME', 'BITBUCKET_PR_REPOS', 'BITBUCKET_ACCOUNT_ID', 'REDMINE_USER_ID'];
     loadDotEnv(path.join(consumerRoot, '.env'), key => repoKeys.includes(key) || AUTHORIZATION_KEYS(key));
-    // Default do operador só neste processo. Testes que criam o servidor sem
-    // COORD_STATUS_PATH ficam num arquivo temporário (coordination.js).
+    // Default do operador só neste processo; testes sem COORD_STATUS_PATH usam arquivo temporário (coordination.js).
     applyCoordinationDefault(process.env);
+    defaultWatcherManager.exitIfCheckoutRefused({ codeRoot: path.resolve(__dirname, '..'), env: process.env }); // guard do checkout (F1.2)
     const PORT = Number(process.env.PORT) || 3333;
     const HOST = process.env.HOST || '127.0.0.1';
     // Reinício pedido pelo painel Versão: mesmo caminho do SIGTERM (para o watcher e sai).
     // Se parar watcher/previews travar, sai assim mesmo: o processo novo espera este PID.
-    const dashboard = createDashboard({ requestExit: () => {
+    const dashboard = createDashboard({ repoPathLocked, requestExit: () => {
         setTimeout(() => process.exit(0), 15000).unref();
         process.kill(process.pid, 'SIGTERM');
     } });

@@ -53,9 +53,9 @@ existentes. Decisão e plano: `memory/decisions/2026-09-30-spec-versioning.md`.
 /review ───────── review_results.spec_version = 2, spec_hash = H2
 /test ─────────── acceptance-evidence.json: spec_version = 2, spec_hash = H2
 /verify ───────── confere cada artefato contra a v2; grava spec_conformance.spec_version
-/commit ───────── "43700 - Desconto por volume [spec_version=2]"
+/commit ───────── "10004 - Desconto por volume [spec_version=2]"
                   PR: título literal; descrição começa com
-                  "Spec: memory/spec/43700-spec.md · spec_version=2 · spec_hash=<12>"
+                  "Spec: memory/spec/10004-spec.md · spec_version=2 · spec_hash=<12>"
                   state.pull_request.app-back = {url, …, spec_version: 2, spec_hash: H2}
                   knowledge-graph: nó PR com spec_id / spec_version / spec_hash
 ```
@@ -148,13 +148,13 @@ escopo deles (`state.spec.hash_scope`).
 
 ```json
 "spec": {
-  "id": "43700",
-  "path": "memory/spec/43700-spec.md",
+  "id": "10004",
+  "path": "memory/spec/10004-spec.md",
   "version": 2,
   "hash": "<sha256 contratual>",
   "hash_scope": "contract_sections_v1",
   "status": "active",
-  "changelog_path": "memory/spec/43700-spec-changelog.json",
+  "changelog_path": "memory/spec/10004-spec-changelog.json",
   "created_at": "…", "created_by": "fetch_ticket", "initial_hash": "…",
   "sealed_at": "…", "sealed_by": "plan",
   "updated_at": "…", "updated_by": "spec-change-approval",
@@ -177,20 +177,20 @@ Schema: `.graph/schemas/spec-changelog.schema.json`.
 ```json
 {
   "schema_version": 1,
-  "spec_id": "43700",
-  "spec_path": "memory/spec/43700-spec.md",
+  "spec_id": "10004",
+  "spec_path": "memory/spec/10004-spec.md",
   "hash_scope": "contract_sections_v1",
   "versions": [
-    { "version": 1, "hash": "abc…", "created_at": "…", "created_by": "plan", "run_id": "43700-desconto",
+    { "version": 1, "hash": "abc…", "created_at": "…", "created_by": "plan", "run_id": "10004-desconto",
       "reason": "initial", "approval_ref": null, "spec_change_id": null, "diff_summary": null,
       "fingerprint": { "acs": { "AC-01": "<12>", "AC-02": "<12>" }, "sections": { "acceptance_criteria": "<12>" } } },
-    { "version": 2, "hash": "def…", "created_at": "…", "created_by": "spec-change-approval", "run_id": "43700-desconto",
+    { "version": 2, "hash": "def…", "created_at": "…", "created_by": "spec-change-approval", "run_id": "10004-desconto",
       "reason": "SPEC_CHANGE SC-001: desconto progressivo acima de 50 volumes",
       "approval_ref": "spec-change-audit.json#entry-2", "spec_change_id": "SC-001", "approved_by": "po.fulano",
       "diff_summary": "AC-04 adicionado", "fingerprint": { … } }
   ],
   "rebaselines": [
-    { "version": 2, "hash": "fed…", "at": "…", "by": "qa_retry", "run_id": "43700-desconto",
+    { "version": 2, "hash": "fed…", "at": "…", "by": "qa_retry", "run_id": "10004-desconto",
       "reason": "retry de Recusa QA: spec pós-/commit (notas de correção) vira o baseline — versão mantida",
       "diff_summary": "AC-02 reformulado", "fingerprint": { … } }
   ]
@@ -274,7 +274,7 @@ state ou matriz existente é migrada. Todo leitor degrada sem falhar:
 
 ```json
 {
-  "versioned": true, "spec_id": "43700", "version": 2, "hash": "…", "hash_short": "def123456789",
+  "versioned": true, "spec_id": "10004", "version": 2, "hash": "…", "hash_short": "def123456789",
   "status": "ACTIVE",
   "label": "SPEC v2 | hash: def123456789… | Status: ACTIVE",
   "history_label": "v1 → SPEC_CHANGE SC-001 → v2",
@@ -289,12 +289,12 @@ aguardando aprovação), `DRIFT` (spec-drift), `CHANGE_REJECTED` ou `UNVERSIONED
 ## Comandos
 
 ```bash
-node "$PRISMA_ROOT/scripts/lib/spec-hash.js" memory/spec/43700-spec.md [--canonical | --fingerprint]   # hash contratual
-node "$PRISMA_ROOT/scripts/lib/spec-authority.js" hash memory/spec/43700-spec.md --run=memory/runs/<task-id>  # hash no algoritmo do run
+node "$PRISMA_ROOT/scripts/lib/spec-hash.js" memory/spec/10004-spec.md [--canonical | --fingerprint]   # hash contratual
+node "$PRISMA_ROOT/scripts/lib/spec-authority.js" hash memory/spec/10004-spec.md --run=memory/runs/<task-id>  # hash no algoritmo do run
 node "$PRISMA_ROOT/scripts/lib/spec-version.js" init memory/runs/<task-id>                 # /fetch-ticket
 node "$PRISMA_ROOT/scripts/lib/spec-version.js" show memory/runs/<task-id> [--json]        # versão, status, histórico
 node "$PRISMA_ROOT/scripts/lib/spec-version.js" changelog memory/runs/<task-id>            # changelog da spec
-node "$PRISMA_ROOT/scripts/lib/spec-version.js" commit-message memory/runs/<task-id> "43700 - Título"
+node "$PRISMA_ROOT/scripts/lib/spec-version.js" commit-message memory/runs/<task-id> "10004 - Título"
 node "$PRISMA_ROOT/scripts/lib/spec-version.js" pr-line memory/runs/<task-id>
 node --test scripts/lib/spec-hash.test.js scripts/lib/spec-version.test.js
 ```

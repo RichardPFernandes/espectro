@@ -29,7 +29,7 @@ function skipRequested(env = process.env) {
 }
 
 // JDK do build. O watcher herda o JAVA_HOME de quem o lançou — achado ao vivo no
-// #43646: shell com JDK 17, pom com maven.compiler.release=25, e o portão acusou
+// #10005: shell com JDK 17, pom com maven.compiler.release=25, e o portão acusou
 // "release version 25 not supported" como se a base não compilasse. Ordem:
 // PRE_BUILD_JAVA_HOME > PREVIEW_JAVA_HOME (o mesmo do preview do dashboard) > o
 // herdado, se atende o release do pom > `/usr/libexec/java_home -v <release>` (macOS).
@@ -125,12 +125,12 @@ function parseCompileErrors(output, worktreePath = null) {
 
 // Dependência local desatualizada: todo erro é "cannot find symbol (symbol: class X)" e
 // X existe num repo irmão (app-core/mo-entity) — o código está certo, o jar do ~/.m2 é
-// que é velho. Achado ao vivo no #43646: FRecalculoOrdemCargaLoteService já estava no
+// que é velho. Achado ao vivo no #10005: FRecalculoOrdemCargaLoteService já estava no
 // app-core origin/master, mas o jar local não tinha. Devolve [{cls, repo, ref}] quando
 // TODOS os erros se explicam assim; null caso contrário (aí é erro de verdade).
 const SIBLING_REFS = ['HEAD', 'origin/master', 'origin/development'];
 
-// -w, não \\b: o git grep -E do macOS ignora \\b (achado no #43646).
+// -w, não \\b: o git grep -E do macOS ignora \\b (achado no #10005).
 function findClassInRepo(repoPath, cls) {
     for (const ref of SIBLING_REFS) {
         try {

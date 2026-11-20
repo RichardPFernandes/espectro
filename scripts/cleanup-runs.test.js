@@ -97,50 +97,50 @@ test('_archive/ também rotaciona; arquivado pelo dashboard fica (Restaurar depe
 
 test('worktree: run versionado no git fica; não versionado vai pro archive do checkout principal', () => {
     const repo = newRepo();
-    const wt = path.join(repo, '.claude', 'worktrees', '43000');
+    const wt = path.join(repo, '.claude', 'worktrees', '13000');
     const wtRuns = path.join(wt, 'memory', 'runs');
     fs.mkdirSync(wtRuns, { recursive: true });
     git(wt, 'init', '-q');
-    seed(wtRuns, '43000-versionado', { status: 'committed', updated_at: ago(60) });
-    seed(path.join(wtRuns, '_archive'), '43000-versionado-arq', { status: 'committed', updated_at: ago(60) });
+    seed(wtRuns, '13000-versionado', { status: 'committed', updated_at: ago(60) });
+    seed(path.join(wtRuns, '_archive'), '13000-versionado-arq', { status: 'committed', updated_at: ago(60) });
     git(wt, 'add', '-f', 'memory');
     git(wt, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'legado');
-    seed(wtRuns, '43000-solto', { status: 'committed', updated_at: ago(60) });
+    seed(wtRuns, '13000-solto', { status: 'committed', updated_at: ago(60) });
 
     const s = run(repo);
-    assert.deepStrictEqual(s.archived.map(a => a.taskId), ['43000-solto']);
+    assert.deepStrictEqual(s.archived.map(a => a.taskId), ['13000-solto']);
     assert.strictEqual(s.skippedTracked, 2);
-    assert.ok(fs.existsSync(archived(repo, ago(60).slice(0, 7), '43000-solto')));
-    assert.ok(fs.existsSync(path.join(wtRuns, '43000-versionado')));
+    assert.ok(fs.existsSync(archived(repo, ago(60).slice(0, 7), '13000-solto')));
+    assert.ok(fs.existsSync(path.join(wtRuns, '13000-versionado')));
     assert.ok(!fs.existsSync(path.join(wt, 'memory', 'archive')), 'nada vai pro archive do worktree (é apagado no merge)');
 });
 
 test('checkout sem git: não mexe em nada dele', () => {
     const repo = newRepo();
-    const wt = path.join(repo, '.claude', 'worktrees', '43001');
+    const wt = path.join(repo, '.claude', 'worktrees', '13001');
     const wtRuns = path.join(wt, 'memory', 'runs');
     // .git apontando pra lugar nenhum: `git ls-files` falha nesse checkout.
     fs.mkdirSync(wtRuns, { recursive: true });
     fs.writeFileSync(path.join(wt, '.git'), 'gitdir: /caminho/que/nao/existe\n');
-    seed(wtRuns, '43001-x', { status: 'committed', updated_at: ago(60) });
+    seed(wtRuns, '13001-x', { status: 'committed', updated_at: ago(60) });
     const s = run(repo);
     assert.strictEqual(s.archived.length, 0);
-    assert.ok(fs.existsSync(path.join(wtRuns, '43001-x')));
+    assert.ok(fs.existsSync(path.join(wtRuns, '13001-x')));
 });
 
 test('mesmo task-id em dois checkouts: o segundo ganha sufixo, nada é sobrescrito', () => {
     const repo = newRepo();
-    const wt = path.join(repo, '.claude', 'worktrees', '43002');
+    const wt = path.join(repo, '.claude', 'worktrees', '13002');
     fs.mkdirSync(path.join(wt, 'memory', 'runs'), { recursive: true });
     git(wt, 'init', '-q');
-    seed(path.join(repo, 'memory', 'runs'), '43002-dup', { status: 'committed', updated_at: ago(40), marca: 'main' });
-    seed(path.join(wt, 'memory', 'runs'), '43002-dup', { status: 'committed', updated_at: ago(40), marca: 'wt' });
+    seed(path.join(repo, 'memory', 'runs'), '13002-dup', { status: 'committed', updated_at: ago(40), marca: 'main' });
+    seed(path.join(wt, 'memory', 'runs'), '13002-dup', { status: 'committed', updated_at: ago(40), marca: 'wt' });
     const s = run(repo);
     assert.strictEqual(s.archived.length, 2);
     const month = ago(40).slice(0, 7);
     const marca = name => JSON.parse(fs.readFileSync(path.join(archived(repo, month, name), 'state.json'), 'utf8')).marca;
-    assert.strictEqual(marca('43002-dup'), 'main');
-    assert.strictEqual(marca('43002-dup__wt-43002'), 'wt');
+    assert.strictEqual(marca('13002-dup'), 'main');
+    assert.strictEqual(marca('13002-dup__wt-13002'), 'wt');
 });
 
 test('screenshots: > 14d apagados em browser*/ e screenshots/, novos ficam, run protegido intocado', () => {

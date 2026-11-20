@@ -71,7 +71,7 @@ test('listPrEntries entende os formatos reais de pull_request', () => {
     const e = poll.listPrEntries({
         'app-back': { url: url('app-back', 7658), id: 7658 },
         'app-front': url('app-front', 6082),
-        'app-core': { pr_url: url('app-core', 3846), branch: '43386' },
+        'app-core': { pr_url: url('app-core', 3846), branch: '13386' },
         'mo-entity': { url: url('mo-entity', 1722), status: 'open' },
         'app-log': { branch: 'x', pushed: true, pr_url: null },
     });

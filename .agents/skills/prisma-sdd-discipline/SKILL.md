@@ -5,6 +5,8 @@ description: Lembra a disciplina SDD do Prisma em modo somente leitura — Candi
 
 > Skill de produção do Prisma (workflow Cursor); não é runtime do produto; não substitui gates/scripts.
 
+**Faixa de modelo:** leve (só checklist) / médio (auditoria). Sem Opus no checklist. Ver `.agents/reference/skill-model-map.md`.
+
 # prisma-sdd-discipline
 
 Guia **somente leitura**. Navega e lembra disciplina; **não** muta spec, Active, writers ou H4.
@@ -28,7 +30,6 @@ Guia **somente leitura**. Navega e lembra disciplina; **não** muta spec, Active
 - Guiar mapeamento mental AC (change) → RN (capability) com rótulos **UNKNOWN** explícitos onde faltar fonte.
 - Apontar `docs/spec-guide.md`, `docs/spec-versioning.md`, templates `templates/spec*.md`, e ensaios/docs Linear (ex. PRI-132, PRI-174) **sem** copiar regra de negócio do consumidor para o Linear.
 - Entregar checklist + UNKNOWNs + **próxima pergunta humana**.
-- Citar que RRC-F31-001/002 continuam NOT APPLIED até decisão governada.
 
 ## O que é proibido
 

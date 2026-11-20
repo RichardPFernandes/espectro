@@ -150,7 +150,57 @@ test('Host/Origin não-locais são recusados (DNS rebinding / página de terceir
     });
     assert.strictEqual(await status({ Host: 'evil.example:3333' }), 403);
     assert.strictEqual(await status({ Host: 'localhost', Origin: 'https://evil.example' }), 403);
-    assert.strictEqual(await status({ Host: 'localhost', Origin: 'http://localhost:3333' }), 200);
+    const port = dash.server.address().port;
+    assert.strictEqual(await status({ Host: `localhost:${port}`, Origin: `http://localhost:${port}` }), 200, 'mesma origem passa');
+    // Revisão do Checkpoint B (MAJOR-1): outra porta do localhost é outra origem.
+    assert.strictEqual(await status({ Host: `localhost:${port}`, Origin: `http://localhost:${port === 5173 ? 5174 : 5173}` }), 403);
+    assert.strictEqual(await status({ Host: 'localhost', Origin: `http://127.0.0.1:${port}` }), 200, 'localhost e 127.0.0.1 na mesma porta');
+});
+
+test('escrita com Sec-Fetch-Site cross-site/same-site é recusada; navegação GET por link continua', async () => {
+    const port = dash.server.address().port;
+    const req = (method, headers) => new Promise((resolve, reject) => {
+        const r = http.request({ host: '127.0.0.1', port, path: '/api/runs', method, headers: { Host: `localhost:${port}`, ...headers } }, res => { res.resume(); resolve(res.statusCode); });
+        r.on('error', reject);
+        r.end();
+    });
+    assert.strictEqual(await req('POST', { 'Sec-Fetch-Site': 'same-site' }), 403);
+    assert.strictEqual(await req('POST', { 'Sec-Fetch-Site': 'cross-site' }), 403);
+    assert.strictEqual(await req('GET', { 'Sec-Fetch-Site': 'cross-site' }), 200, 'abrir por link não é escrita');
+});
+
+test('PRISMA_DASHBOARD_READONLY=1 (PRI-355): toda escrita é recusada, mesmo same-origin; leitura segue', async () => {
+    const port = dash.server.address().port;
+    const req = (method, headers = {}) => new Promise((resolve, reject) => {
+        const r = http.request({ host: '127.0.0.1', port, path: '/api/runs', method, headers: { Host: `localhost:${port}`, Origin: `http://localhost:${port}`, 'Sec-Fetch-Site': 'same-origin', ...headers } }, res => { res.resume(); resolve(res.statusCode); });
+        r.on('error', reject);
+        r.end();
+    });
+    const before = process.env.PRISMA_DASHBOARD_READONLY;
+    try {
+        delete process.env.PRISMA_DASHBOARD_READONLY;
+        assert.notStrictEqual(await req('POST'), 403, 'sem a flag, escrita same-origin não é barrada pelo filtro');
+        process.env.PRISMA_DASHBOARD_READONLY = '1';
+        for (const m of ['POST', 'PUT', 'PATCH', 'DELETE', 'PURGE', 'LINK']) assert.strictEqual(await req(m), 403, m);
+        assert.strictEqual(await req('GET'), 200, 'leitura continua');
+        assert.strictEqual(await req('HEAD'), 200, 'HEAD é leitura');
+        assert.notStrictEqual(await req('OPTIONS'), 403, 'OPTIONS não é escrita');
+        for (const v of ['true', '0', 'yes']) { process.env.PRISMA_DASHBOARD_READONLY = v; assert.notStrictEqual(await req('POST'), 403, `valor ${v} não ativa`); }
+        process.env.PRISMA_DASHBOARD_READONLY = '1';
+        const get = p => new Promise((resolve, reject) => {
+            http.get({ host: '127.0.0.1', port, path: p, headers: { Host: `localhost:${port}` } }, res => { let b = ''; res.on('data', d => { b += d; }); res.on('end', () => resolve({ status: res.statusCode, body: b })); }).on('error', reject);
+        });
+        const usage = await get('/api/claude/usage?refresh=1');
+        assert.deepStrictEqual([usage.status, JSON.parse(usage.body)], [200, { ok: false, error: 'somente leitura', cached: false }], 'usage é o stub, não roda claude -p');
+        assert.strictEqual(JSON.parse((await get('/api/fx')).body).source, 'somente leitura', 'fx não consulta rede');
+        const write = await new Promise((resolve, reject) => {
+            const r = http.request({ host: '127.0.0.1', port, path: '/api/runs', method: 'POST', headers: { Host: `localhost:${port}`, Origin: `http://localhost:${port}`, 'Sec-Fetch-Site': 'same-origin' } }, res => { let b = ''; res.on('data', d => { b += d; }); res.on('end', () => resolve(b)); });
+            r.on('error', reject); r.end();
+        });
+        assert.match(write, /somente leitura/, 'mensagem própria, não "somente localhost"');
+    } finally {
+        if (before === undefined) delete process.env.PRISMA_DASHBOARD_READONLY; else process.env.PRISMA_DASHBOARD_READONLY = before;
+    }
 });
 
 test('WebSocket: mudança em state.json chega como state_update em ≤3s', async () => {
@@ -525,6 +575,37 @@ test('pré-task: gate file com draft pendente vira run sintético só leitura; s
     seed(wtRuns('93005'), '93005-comecou', { node: 'plan', status: 'in_progress', history: ['fetch_ticket'], updated_at: t1 });
     await eventually(async () => !(await get2('/api/runs')).body.some(x => x.taskId === '93005-spec-gate'));
     assert.strictEqual((await get2('/api/runs/93005-spec-gate')).status, 404);
+});
+
+test('PRI-233 T9: admissão recusada por roteamento ON inválido aparece como pré-task bloqueada, só leitura', async () => {
+    const marker = path.join(mainRuns, 'routing-admission-blocked.json');
+    fs.writeFileSync(marker, JSON.stringify({
+        signature: 'POLICY_HASH_MISMATCH|expected:ff', cause: 'POLICY_HASH_MISMATCH', detail: 'expected:ff',
+        transient: false, transient_count: 0, tickets: [93210, 93003], first_blocked_at: t1, notified_at: t1,
+    }));
+    try {
+        const list = (await get2('/api/runs')).body;
+        const r = list.find(x => x.taskId === '93210-spec-gate');
+        assert.ok(r, 'ticket barrado listado');
+        assert.deepStrictEqual([r.pretask, r.status, r.node], [true, 'needs_human_review', 'fetch_ticket']);
+        assert.deepStrictEqual(r.routingBlocked, {
+            scope: 'admission', cause: 'POLICY_HASH_MISMATCH', detail: 'expected:ff', transient: false,
+            firstBlockedAt: t1, notifiedAt: t1, configFile: '.claude/model-routing.json',
+        });
+        // Ticket com run de verdade não ganha a pré-task duplicada.
+        assert.ok(!list.some(x => x.taskId === '93003-spec-gate'));
+        assert.strictEqual((await post2('/api/runs/93210-spec-gate/message', { message: 'oi' })).status, 409);
+        assert.ok(!fs.existsSync(path.join(mainRuns, '93210-spec-gate')), 'nada criado em disco');
+        // Marcador malformado não derruba a listagem nem inventa run.
+        fs.writeFileSync(marker, '{ x');
+        assert.ok(!(await get2('/api/runs')).body.some(x => x.taskId === '93210-spec-gate'));
+    } finally {
+        fs.rmSync(marker, { force: true });
+    }
+    // Sem marcador (config corrigida), a pré-task some.
+    assert.ok(!(await get2('/api/runs')).body.some(x => x.taskId === '93210-spec-gate'));
+    // Runs normais não ganham o campo.
+    assert.ok((await get2('/api/runs')).body.every(x => x.routingBlocked === null));
 });
 
 test('pré-task: spec rascunho (draft: true) do watcher aparece aguardando revisão, com "Ver spec"', async () => {
@@ -1055,7 +1136,7 @@ test('POST /pre-build/retry: recompila no worktree do ticket e grava o resultado
 });
 
 // ---------------------------------------------------------------------------------
-// Bolinhas das etapas: /test, /verify e /commit não gravam em history (ticket 43812)
+// Bolinhas das etapas: /test, /verify e /commit não gravam em history (ticket 13812)
 
 test('nodes: run commitado marca todas as etapas; node_end dos events conta como concluído', async () => {
     const endOf = node => [{ type: 'node_start', node }, { type: 'node_end', node }];

@@ -16,7 +16,7 @@ const repo = path.join(tmp, 'consumer');
 fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
 fs.copyFileSync(path.resolve(__dirname, '../../.claude/spec-hash-config.json'), path.join(repo, '.claude/spec-hash-config.json'));
 const envKeys = ['REPO_PATH', 'REDMINE_URL', 'REDMINE_API_KEY', 'REDMINE_MIN_INTERVAL_MS',
-    'REDMINE_RETRY_BASE_DELAY_MS', 'REDMINE_RETRY_MAX_ATTEMPTS', 'WATCHER_RECUSA_QA_NOVO_CICLO', 'REDMINE_STATUS_EM_DESENVOLVIMENTO_ID'];
+    'REDMINE_RETRY_BASE_DELAY_MS', 'REDMINE_RETRY_MAX_ATTEMPTS', 'WATCHER_RECUSA_QA_NOVO_CICLO', 'REDMINE_STATUS_EM_DESENVOLVIMENTO_ID', 'WATCHER_QA_DIAGNOSTICO'];
 const savedEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
 Object.assign(process.env, {
     REPO_PATH: repo, REDMINE_URL: 'https://redmine.synthetic.invalid', REDMINE_API_KEY: 'synthetic-key-pri221',
@@ -24,6 +24,8 @@ Object.assign(process.env, {
     REDMINE_STATUS_EM_DESENVOLVIMENTO_ID: '2',
 });
 delete process.env.WATCHER_RECUSA_QA_NOVO_CICLO;
+// PRI-181 c0b: esta suíte cobre o caminho C1–C3 (flag ligada); o C0 está em qa-rejection-c0-oracle.test.js.
+process.env.WATCHER_QA_DIAGNOSTICO = '1';
 
 // Todos os caminhos HTTP passam pelo stub, inclusive a releitura de ticket no retry.
 // Endpoint/método inesperado falha em vez de delegar ao fetch original.
@@ -69,6 +71,24 @@ function stableRejections(entries) {
         return entry;
     });
 }
+/** Oráculo C0: só campos legados (PRI-221). Campos C1 (rejection_key/…) ficam na suíte C1. */
+function legacyRejection(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    const { note, rejected_at, journal_id, retry_requested_at } = obj;
+    return retry_requested_at !== undefined
+        ? { note, rejected_at, journal_id, retry_requested_at }
+        : { note, rejected_at, journal_id };
+}
+function legacyRejections(entries) {
+    return stableRejections(entries).map(e => {
+        const { note, rejected_at, journal_id, retry_requested_at, n, history_len, cost_baseline_usd, tokens_baseline } = e;
+        const out = { n, note, rejected_at, journal_id, retry_requested_at };
+        if (history_len !== undefined) out.history_len = history_len;
+        if (cost_baseline_usd !== undefined) out.cost_baseline_usd = cost_baseline_usd;
+        if (tokens_baseline !== undefined) out.tokens_baseline = tokens_baseline;
+        return out;
+    });
+}
 
 for (const name of Object.keys(golden.fetch)) {
     test(`C0 golden fetchLastRejectionNote: ${name}`, async () => {
@@ -104,47 +124,67 @@ for (const name of Object.keys(golden.sync)) {
         const after = read(dir);
         assert.equal(calls.length, 1);
         assert.equal(after.ticket_status, 'Recusa QA');
-        assert.deepEqual(after.qa_rejection, golden.sync[name]);
-        assert.deepEqual(stableRejections(after.qa_rejections), [{ n: 1, ...golden.sync[name], retry_requested_at: null }]);
-        assert.deepEqual(cycles.buildQaCycles(after, '').pending, golden.sync[name]);
+        // Oráculo C0 nos campos legados de qa_rejection; C1 acrescenta rejection_key/….
+        assert.deepEqual(legacyRejection(after.qa_rejection), golden.sync[name]);
+        const pending = cycles.buildQaCycles(after, '').pending;
+        assert.ok(pending, 'recusa pendente enquanto ticket_status é Recusa QA');
+        assert.equal(pending.note, golden.sync[name].note);
+        // pending pode espelhar a entrada do histórico (transition_journal_id C1);
+        // o oráculo C0 de journal_id/rejected_at continua em qa_rejection.
+        if (after.qa_rejection.transition_journal_id != null) {
+            assert.ok(after.qa_rejections.some(e => e.transition_journal_id === after.qa_rejection.transition_journal_id));
+            assert.ok(after.qa_rejections.every(e => e.rejection_key));
+        } else {
+            assert.deepEqual(legacyRejections(after.qa_rejections), [{ n: 1, ...golden.sync[name], retry_requested_at: null }]);
+            assert.equal(after.qa_rejection.identity_quality, 'UNKNOWN');
+        }
         for (const key of ['node', 'status', 'updated_at', 'execution_id', 'history', 'redmine_ticket']) assert.deepEqual(after[key], state[key]);
         for (const key of ['qa_retry_count', 'qa_ingest', 'pending_authorization']) assert.equal(after[key], undefined);
 
-        const before = fs.readFileSync(path.join(dir, 'state.json'), 'utf8');
-        response = 'own'; // Fonte recuperada, mas status continua igual: hoje NÃO relê.
+        // C1/DB-01b: mesma fixture de novo — sem transição nova, legado de qa_rejection estável.
+        const beforeLegacy = legacyRejection(read(dir).qa_rejection);
+        const beforeKeys = (read(dir).qa_rejections || []).map(e => e.rejection_key).filter(Boolean).sort();
+        response = name;
         await watcher.syncQaRejection(ticket(id, '2026-01-02T13:00:00Z'));
-        assert.equal(calls.length, 1);
-        assert.equal(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'), before);
+        assert.equal(calls.length, 2);
+        assert.deepEqual(legacyRejection(read(dir).qa_rejection), beforeLegacy);
+        assert.deepEqual((read(dir).qa_rejections || []).map(e => e.rejection_key).filter(Boolean).sort(), beforeKeys);
     });
 }
 
-test('C0 golden: duas novas transições entre polls com status igual ficam invisíveis', async () => {
+test('C0→C1: between_polls — lacuna C0 fechada; novas transições com status igual são ingeridas', async () => {
+    // Caracterização histórica C0: sync não lia journals se status igual.
+    // PRI-181 C1 (DB-01b) fecha a lacuna — oráculo novo; ver também qa-rejection-ingest.test.js.
     const { id, dir } = archived();
     response = 'own';
     await watcher.syncQaRejection(ticket(id));
-    const before = fs.readFileSync(path.join(dir, 'state.json'), 'utf8');
+    assert.deepEqual(legacyRejection(read(dir).qa_rejection), golden.sync.own);
     calls = [];
     response = 'between_polls';
     await watcher.syncQaRejection(ticket(id, '2026-01-02T14:00:00Z'));
-    assert.equal(calls.length, 0);
-    assert.equal(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'), before);
-    assert.deepEqual(read(dir).qa_rejection, golden.sync.own);
+    assert.equal(calls.length, 1);
+    const after = read(dir);
+    assert.equal(after.qa_rejections.length, 3, 'transições 102, 402 e 404');
+    assert.equal(after.qa_rejection.transition_journal_id, 404);
+    assert.equal(after.qa_rejection.rejection_key, `qa-rej:v1:t${id}:j404`);
 });
 
 for (const name of ['legacy_unique', 'legacy_ambiguous']) {
-    test(`C0 golden ${name}: sem promoção de identidade; dedup atual só pela data`, async () => {
+    test(`C0 golden ${name}: fetch/recordRejection legado; C1 promove identity_quality no sync`, async () => {
         const { id, dir, state } = archived(fixture.states.legacy);
-        const before = fs.readFileSync(path.join(dir, 'state.json'), 'utf8');
         response = name;
         calls = [];
         await watcher.syncQaRejection(ticket(id));
-        assert.equal(calls.length, 0);
-        assert.equal(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'), before);
+        assert.equal(calls.length, 1, 'C1 relê journals mesmo com ticket_status já Recusa QA');
         const found = await qa.fetchLastRejectionNote(id, { fetch: fakeFetch });
         assert.deepEqual(found, golden.fetch[name]);
         assert.deepEqual(cycles.recordRejection(state, '', { ...found, at: fixture.poll_updated_on }), golden.legacy_record);
         const view = cycles.buildQaCycles(state, '');
         assert.deepEqual(view.cycles.map(c => [c.journal_id, c.reconstructed, c.cost_usd, c.tokens]), [[null, true, null, null]]);
+        const after = read(dir);
+        assert.ok(after.qa_rejection.rejection_key, 'C1 atribui rejection_key');
+        assert.ok(['OK', 'DEGRADED', 'UNKNOWN'].includes(after.qa_rejection.identity_quality));
+        assert.ok(after.qa_rejections.some(e => e.rejection_key), 'histórico ganha chave C1');
     });
 }
 
@@ -177,9 +217,15 @@ test('C0 golden consumeQaRetrySignals: destino ocupado mantém fonte, destino e 
     fs.mkdirSync(target, { recursive: true });
     fs.writeFileSync(path.join(target, 'sentinel.txt'), 'destino sintético intocado');
     fs.writeFileSync(path.join(dir, 'retry-signal.json'), '{"node":"implement"}');
-    const before = fs.readFileSync(path.join(dir, 'state.json'), 'utf8');
+    const before = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
     assert.deepEqual(await watcher.consumeQaRetrySignals(), []);
-    assert.equal(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'), before);
+    const after = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
+    // PRI-184: grava qa_retry_blocked (campo + evento) sem alterar node/status/histórico do run.
+    assert.equal(after.node, before.node);
+    assert.equal(after.status, before.status);
+    assert.deepEqual(after.history, before.history);
+    assert.equal(after.qa_retry_blocked.reason, 'destino_ocupado');
+    assert.equal((after.events || []).filter(e => e.type === 'qa_retry_blocked').length, 1);
     assert.equal(fs.readFileSync(path.join(target, 'sentinel.txt'), 'utf8'), 'destino sintético intocado');
     assert.ok(fs.existsSync(path.join(dir, 'retry-signal.json')));
 });
@@ -191,7 +237,8 @@ test('C0: árvore adversarial reproduz sentinelas únicas, symlink real e arquiv
     for (const item of corpus.sentinels) assert.ok(fs.readFileSync(path.join(tree, item.path), 'utf8').includes(item.marker));
     const link = path.join(tree, corpus.symlink.path);
     assert.ok(fs.lstatSync(link).isSymbolicLink());
-    assert.equal(fs.realpathSync(link), path.join(tree, 'outside/link-target.txt'));
+    // realpath dos dois lados: no macOS o TMPDIR fica sob /var, que é link para /private/var.
+    assert.equal(fs.realpathSync(link), fs.realpathSync(path.join(tree, 'outside/link-target.txt')));
     const large = path.join(tree, corpus.sentinels.find(item => item.kind === 'large').path);
     assert.equal(fs.statSync(large).size, corpus.large_file_bytes);
     assert.ok(fs.statSync(large).size > corpus.test_limit_bytes);

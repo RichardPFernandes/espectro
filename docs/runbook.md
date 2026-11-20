@@ -85,7 +85,9 @@ Status do Redmine que o sistema mexe:
 Procedimento de desenvolvimento da plataforma, não de operação do consumidor. Rode
 em checkout/floor descartável da revisão exata, com dependências já preparadas
 pelos locks de cada pacote. Não use o consumidor ativo como fixture. O ambiente
-de referência é Node 20.20.2/npm 10.8.2. Registre as versões efetivamente
+de referência é Node 24 (`.nvmrc`); o mínimo é Node 22 (`engines.node` do
+`package.json` da raiz), e o harness recusa versão mais antiga com exit 2,
+dizendo a exigida. Registre as versões efetivamente
 executadas, HEAD e diff: testes de árvore modificada não certificam o commit base
 sozinho.
 
@@ -185,7 +187,7 @@ find memory/runs .claude/worktrees -path '*/memory/runs/*/state.json' -not -path
 ```
 
 Atenção ao ler essa lista: os worktrees podem conter **cópias antigas** de runs de outros
-tickets (ex: `43499-...` dentro de `.claude/worktrees/43539/`). Para despachar, o watcher só
+tickets (ex: `<outro-ticket>-...` dentro de `.claude/worktrees/<ticket>/`). Para despachar, o watcher só
 considera, no worktree `.claude/worktrees/<ticket>/`, as pastas que começam com `<ticket>-`
 (`findActiveTask`). Ignore as demais ao diagnosticar um ticket.
 
@@ -493,7 +495,7 @@ Redmine para refletir o `state.json`, não o contrário.
 o `/commit` terminou, mas a transição para Ag Merge não aconteceu. Causas documentadas em
 `.claude/commands/commit.md` passo 7:
 - PR **não** abriu (credenciais Bitbucket ausentes) → transição pulada de propósito.
-- Redmine devolveu **422** exigindo campo customizado (achado no ticket #43425: "Necessita Lib.
+- Redmine devolveu **422** exigindo campo customizado (achado em um ticket: "Necessita Lib.
   Plano", id 7).
 - MCP do Redmine indisponível na sessão.
 
@@ -691,6 +693,20 @@ valor fora do enum — ex: `status: "cancelled"`, que **não existe** no schema)
   `previous_status`, `backup`) + evento `node_error`, e **nunca mais redespacha** até um humano
   trocar o status.
 
+**Antes de editar: o schema pode estar atrás do writer.** Se o erro aponta para um campo que o
+próprio Prisma grava (ex.: `/cost_tracking/nodes/<nó>/attempts/<i>/...` em várias tasks ao
+mesmo tempo, sempre no mesmo ponto do ciclo), o `state.json` provavelmente está certo e o
+contrato ficou para trás. Caso real: PRI-334, a tentativa roteada no `cost_tracking` era
+recusada com o roteamento `ON`. **Não corrija o dado nem apague o registro**: isso reescreve
+histórico. A ordem é:
+1. Contenha: desligue a flag que gera a forma nova, com AUTORIZO.
+2. Corrija o schema na plataforma (PR revisado; merge do Richard).
+3. Com AUTORIZO, faça o bump do checkout do consumidor e confira por readback. É o bump que
+   leva o schema novo ao watcher.
+4. Com AUTORIZO, faça a retomada abaixo **pulando o passo 3** (o dado está certo): só os passos
+   4 e 5, com o watcher parado.
+5. Religar a flag é um AUTORIZO à parte.
+
 **Inspecionar:**
 
 ```bash
@@ -760,15 +776,17 @@ Passos:
    curl -s -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8080/q/health
    curl -s http://localhost:8080/q/health | jq
    ```
-3. Subir a aplicação do ticket pelo preview do dashboard (back + front do worktree):
+3. Subir a aplicação do ticket pelo preview do dashboard (back :8081 + front :9100, ao lado do
+   ambiente local; do worktree ou, com `{"source":"commit"}`, da branch do ticket):
    ```bash
    curl -s -X POST localhost:3333/api/preview/<ticket>/start | jq
+   curl -s localhost:3333/api/preview/<ticket>/commits | jq        # commits da branch (modo commit)
    curl -s localhost:3333/api/preview/<ticket>/status | jq
    curl -sN localhost:3333/api/preview/<ticket>/log-stream      # log do build/boot
    ```
    Portas configuráveis por `PREVIEW_BACK_PORT`/`PREVIEW_FRONT_PORT` no `.env`. Se a porta estiver
    ocupada, o preview recusa com `porta em uso (...)`.
-4. Teste manual: abra `http://localhost:9000` no navegador e percorra o fluxo descrito em
+4. Teste manual: abra `http://localhost:9100` (front do preview) no navegador e percorra o fluxo descrito em
    "Como chegar no ponto do Desenvolvimento?" nos Apontamentos do ticket.
 5. Ao terminar: `curl -s -X POST localhost:3333/api/preview/<ticket>/stop`.
 
@@ -782,20 +800,26 @@ Passos:
 
 ## Autorização humana (ação privilegiada, SQL governado, devolução ao QA)
 
-Caso que originou (#42359): o `/implement` concluiu que a Recusa QA era do **banco** (check
+Caso que originou (um ticket do consumidor): o `/implement` concluiu que a Recusa QA era do **banco** (check
 constraint sem `SERVICO_ADICIONAL`; o SQL já estava versionado) e só podia parar em `blocked`
 com o motivo em texto. Agora o agente registra um **pedido estruturado** e um **aprovador
 cadastrado** decide no dashboard, escolhendo o banco.
 
-### Uma vez por máquina: aprovador e bancos
+### Uma vez por máquina: bancos
+
+> **Sem aprovador nem senha desde 2026-11-06.** Decisão do Richard: "se eu tenho acesso ja posso executar", até existirem roles.
+> - Quem tem acesso ao Dashboard decide.
+> - O acesso continua limitado a `localhost`: Host local e, quando vier, Origin local **na mesma porta do Dashboard**. Escrita com `Sec-Fetch-Site` diferente de `same-origin`/`none` é recusada. Isso barra páginas de terceiros, outras páginas do próprio localhost (outra porta) e DNS rebinding.
+> - A autoria gravada (`by`) é o usuário do sistema operacional que roda o Dashboard.
+> - O passo 1 abaixo (`approvers.js add`) não é mais necessário. A lib `scripts/lib/approvers.js` continua no repo para quando houver roles.
+> - O risco que isso abre está em **Limite que sobra**, no fim da seção.
 
 Tudo fica em `~/.config/prisma/` (dono = você, diretório 700, arquivos 600, sem symlink — se
 não estiver assim, o dashboard recusa) e no Keychain. **Nada** disso é lido do `.env` do
 consumidor ou de variável de ambiente: um agente escreve no worktree, no `state.json` e no `.env`.
 
 ```bash
-# 1. Aprovador (senha de aprovação pedida sem eco; só o hash scrypt vai para ~/.config/prisma/approvers.json)
-node "$PRISMA_ROOT/scripts/lib/approvers.js" add richard
+# 1. (Não é mais necessário desde 2026-11-06: o Dashboard não pede aprovador.)
 
 # 2. Banco do QA a partir do .properties do app-back (ISO-8859-1/CRLF; só o datasource padrão,
 #    os nomeados como "portal" ficam de fora). Mostra host/banco/usuário mascarados e pede
@@ -803,7 +827,7 @@ node "$PRISMA_ROOT/scripts/lib/approvers.js" add richard
 #    (nunca em argv, na tela ou em arquivo temporário):
 cd ~/Workspace/app-back
 node "$PRISMA_ROOT/scripts/lib/db-targets.js" add qa-app \
-     --from-properties=src/main/resources/application.properties --env=qa --label="QA – embarc_db_stage"
+     --from-properties=src/main/resources/application.properties --env=qa --label="QA – app_db_stage"
 #    (datasource nomeado: --datasource=portal). Sem o .properties: add qa-app --host= --db= --user= --env=qa
 #    e o macOS pede a senha.
 node "$PRISMA_ROOT/scripts/lib/db-targets.js" check qa-app     # item existe no Keychain (não lê a senha)
@@ -811,8 +835,8 @@ node "$PRISMA_ROOT/scripts/lib/db-targets.js" list             # alias, rótulo,
 # trocar a senha: db-targets.js secret qa-app · tirar: db-targets.js remove qa-app
 ```
 
-- **Atenção (app-back):** use o `application.properties` (`192.168.10.234/embarc_db_stage`). O
-  `application-qa.properties` aponta para `embarc_db_production` nesse mesmo host, um banco que **não
+- **Atenção (app-back):** use o `application.properties` (`192.0.2.24/app_db_stage`). O
+  `application-qa.properties` aponta para `app_db_production` nesse mesmo host, um banco que **não
   existe** lá: o cadastro passaria, mas a execução falharia na conexão.
 - **Keychain com ACL vazia:** o item é criado com `-T ''`, então **cada** leitura (cada execução
   aprovada) mostra o diálogo do macOS "security quer usar a informação confidencial prisma-db-qa-app".
@@ -824,22 +848,21 @@ node "$PRISMA_ROOT/scripts/lib/db-targets.js" list             # alias, rótulo,
   conexão, nada em env/argv) e devolve as saídas sem senha, usuário, host nem banco.
 - Produção (`env` contendo `prod`, `prd` ou `live`, ou `production: true`) não é selecionável sem
   `allow_production: true` na entrada (`--allow-production`). O nome do banco não decide — `--env` decide.
-- Sem aprovador cadastrado o dashboard recusa toda ação privilegiada (403).
+- Desde 2026-11-06 não há cadastro de aprovador: as ações privilegiadas não pedem senha.
 
 ### Fluxo
 
 1. **Pedido** — o agente roda `node "$PRISMA_ROOT/scripts/lib/authorization.js" request memory/runs/<task-id> --input=<pedido.json>` (esqueleto: `template`). O run vai para `authorization-pending` com o sha256 do `.sql`, o `verify_sql` (só leitura), o esperado, o `then` (`handback_qa` ou `resume:<nó>`) e, no máximo, um `target_hint` — o agente **sugere**, não escolhe o banco. O watcher pula a task (`status_authorization_pending`), **não** passa mensagem livre pelo intérprete e comenta no Redmine uma vez.
-2. **Decisão** — no detalhe do run, caixa "🔐 Autorização": informe aprovador + senha de aprovação e clique **Carregar bancos** (a lista só aparece autenticado: alias, rótulo, ambiente, host/banco mascarados — `"display": "visible"` na entrada mostra). Confira o SQL e o hash e:
+2. **Decisão** — no detalhe do run, caixa "🔐 Autorização": clique **Carregar bancos** (alias, rótulo, ambiente, host/banco mascarados — `"display": "visible"` na entrada mostra). Confira o SQL e o hash e:
    - A caixa mostra o ticket (derivado do task-id, não do `state.json`), o SQL **integral** (sem redação; acima de 200 KB bloqueia em vez de truncar), as checagens que recusaram algo, a nota da devolução ao QA (quando `then` é `handback_qa`) e o **hash do pedido** para o banco escolhido.
    - **Aprovar e executar** (escolhendo o banco): o servidor recalcula o hash do pedido (ticket, artefato + sha256, `verify_sql`, `expected_contains`, `then`, banco) e recusa com `REQUEST_CHANGED` se algo mudou desde a tela; congela a cópia aprovada (com o SQL) em `~/.config/prisma/approved/` e executa **essa** cópia: `verify_sql` antes numa conexão `default_transaction_read_only=on`, o artefato em **uma** transação aberta pelo Node (um comando por mensagem do protocolo estendido; `statement_timeout=60s`/`lock_timeout=5s` fixos na conexão), `verify_sql` depois. Saídas em `memory/runs/<task-id>/authorization/<AUTH-NNN>/` (`pre.txt`, `apply.txt`, `post.txt`, `result.json`). Cada execução é um Attempt DOM06 `db-effect` em `dom06/attempts/`.
    - O artefato é conferido por um tokenizer SQL (strings, `E'…'`, `$tag$…$tag$`, `"…"`, comentários aninhados): recusa `\` fora de literal, `BEGIN/COMMIT/ROLLBACK/END/SAVEPOINT/RELEASE/ABORT/PREPARE TRANSACTION`, `SET/RESET` de `*_timeout`/`ROLE`/`SESSION AUTHORIZATION`, `set_config`, `CONCURRENTLY`, `VACUUM`, `COPY` e afins. O `verify_sql` precisa ser **um** comando só leitura.
    - **Recusar**: volta para `blocked` com o motivo; "Responder ao agente" segue valendo.
    - **Já apliquei manualmente**: registra quem; com banco escolhido, roda só o `verify_sql` para conferir; depois segue o mesmo `then`.
-   - `authorization_history` (append-only) registra o aprovador autenticado, o alias escolhido e o horário — nunca o segredo. O alvo executado é o aprovado: trocar o alias depois exige nova aprovação (`TARGET_CHANGED`).
-   - Sem credencial → 401; aprovador/senha errados → 403 (5 erros em 5 min → 429).
+   - `authorization_history` (append-only) registra quem decidiu (usuário do sistema operacional que roda o Dashboard), o alias escolhido e o horário — nunca o segredo. O alvo executado é o aprovado: trocar o alias depois exige nova aprovação (`TARGET_CHANGED`).
 3. **Desfecho** — sucesso com `then: "resume:<nó>"` → `in_progress` no nó. Com `then: "handback_qa"` → devolução ao QA (abaixo). Falha certa (transação desfeita, alvo recusado, hash mudou, segredo ausente) → `blocked`, fase `failed`. Resultado **incerto** (conexão caiu no meio, timeout) → `blocked`, fase `uncertain`: o Prisma **não** repete; confira no banco e use "Já apliquei manualmente" (ou Recusar).
 
-**Devolver ao QA sem código** (botão "↩ Devolver ao QA" em run `blocked`/`authorization-pending`, também com aprovador; ou automático pelo `then`): nenhum agente é despachado. PUT governado no Redmine (Attempt DOM06 `handback_qa`, header `X-Redmine-API-Key`): status **Ag Teste** (`REDMINE_STATUS_AG_TESTE`, padrão 8), nota com o resumo (alvo/hora do SQL) e "Apontamentos Desenvolvedor" (`REDMINE_CF_APONTAMENTOS_ID`, padrão 2) — os dois textos são editáveis antes de confirmar. Só com o Redmine confirmando o run é arquivado em `<raiz do run>/_archive/` com `status: "handed_back_qa"` (sem entrar no `dashboard-archived.json`, como o arquivamento do `/commit`). 422 → mensagem com o campo exigido; qualquer falha **não** arquiva e o run fica `blocked`. Resultado incerto (5xx/rede) → o próximo clique reaproveita o `operation_id` e confere o marcador `[op handback:<id>]` nos journals antes de repostar. Nova Recusa QA depois: o watcher pula com `recusa_qa_aguardando_retry` e "Corrigir recusa QA" restaura o run arquivado (fluxo normal).
+**Devolver ao QA sem código** (botão "↩ Devolver ao QA" em run `blocked`/`authorization-pending`, sem aprovador desde 2026-11-06; ou automático pelo `then`): nenhum agente é despachado. PUT governado no Redmine (Attempt DOM06 `handback_qa`, header `X-Redmine-API-Key`): status **Ag Teste** (`REDMINE_STATUS_AG_TESTE`, padrão 8), nota com o resumo (alvo/hora do SQL) e "Apontamentos Desenvolvedor" (`REDMINE_CF_APONTAMENTOS_ID`, padrão 2) — os dois textos são editáveis antes de confirmar. Só com o Redmine confirmando o run é arquivado em `<raiz do run>/_archive/` com `status: "handed_back_qa"` (sem entrar no `dashboard-archived.json`, como o arquivamento do `/commit`). 422 → mensagem com o campo exigido; qualquer falha **não** arquiva e o run fica `blocked`. Resultado incerto (5xx/rede) → o próximo clique reaproveita o `operation_id` e confere o marcador `[op handback:<id>]` nos journals antes de repostar. Nova Recusa QA depois: o watcher pula com `recusa_qa_aguardando_retry` e "Corrigir recusa QA" restaura o run arquivado (fluxo normal).
 
 **Run bloqueado antes desta feature (registrar o pedido retroativamente)** — com o watcher **parado** e nenhum agente vivo no run, da raiz do worktree do ticket (o `.sql` é procurado no worktree e, se não estiver, no checkout principal):
 
@@ -852,7 +875,16 @@ JSON
 STATE_EXECUTION_ID= node "$PRISMA_ROOT/scripts/lib/authorization.js" request memory/runs/<task-id> --input=/tmp/pedido.json   # exit 4 = registrado
 ```
 
-**Limite que sobra:** o dashboard continua sem login (só localhost). A senha de aprovação impede
+**Limite que sobra (atualizado em 2026-11-06, sem aprovador):** o dashboard continua sem login e só
+aceita localhost, o que barra visitante de página de terceiros. Com a senha de aprovação removida,
+**nada mais impede "aprovação por texto"**: um processo do mesmo usuário (inclusive um agente
+despachado pelo watcher) pode chamar a API local e decidir sozinho.
+- A **execução de SQL** ainda exige a confirmação física do diálogo do Keychain ("Permitir").
+- **Já apliquei manualmente**, **Recusar**, **Devolver ao QA** (que escreve no Redmine) e o
+  **override de roteamento** não têm mais barreira física.
+- Isso vale até existirem roles.
+
+O texto anterior, mantido para o histórico: a senha de aprovação impedia
 visitante da página e aprovação por texto; a config fora do repo impede quem só escreve no
 worktree/`state.json`/`.env`; o Keychain com ACL vazia impede leitura silenciosa da senha. Mas, sem
 sandbox ou usuário do SO separado para os agentes, um processo do **mesmo usuário** com shell livre
@@ -864,10 +896,47 @@ usuário do macOS**, ou os agentes num sandbox sem acesso a `~/.config/prisma` e
 
 ---
 
+## Sonda de fumaça da CLI (antes de atualizar a CLI do watcher)
+
+O despacho usa `claude -p` e depende de três coisas que a CLI carrega do projeto: os comandos
+customizados (`.claude/commands/*.md`), os hooks (`.claude/settings.json`) e o `CLAUDE.md`. A
+documentação da CLI diz que o modo `--bare` não descobre nenhum deles e que ele "will become the
+default for `-p` in a future release" (<https://code.claude.com/docs/en/headless>, seção "Start
+faster with bare mode", lida em 16/11/2026). Se o padrão mudar, o despacho quebra sem erro.
+
+**Quando rodar:** a cada versão nova da CLI, na máquina do watcher, ANTES de trocar a CLI que o
+watcher usa. Só com o «sim» do Richard: são duas chamadas reais e curtas na conta da CLI. O projeto
+é sintético, em diretório temporário apagado ao final. Não toca watcher, estado nem consumidor.
+
+A sonda remove as variáveis `CLAUDE*` do ambiente do filho, então a CLI usa `~/.claude` e a conta
+padrão. A sessão das duas chamadas fica gravada em `~/.claude/projects` (onde as outras sondas do
+repositório leem os transcritos), mesmo com o diretório temporário apagado.
+
+```bash
+node "$PRISMA_ROOT/scripts/probes/cli-smoke-probe.js" --claude-bin <caminho da CLI nova>
+echo "exit=$?"   # sem --claude-bin usa CLI_SMOKE_CLAUDE_BIN ou `claude` do PATH
+```
+
+**Como ler:** uma linha por item (comando customizado, hook de projeto, CLAUDE.md) mais a versão
+da CLI, e o mesmo em JSON. O comando e o hook são medidos por marcador; o item do CLAUDE.md é
+inferido da resposta do modelo (ele diz a palavra do projeto ou `AUSENTE`).
+
+| Exit | Significado | O que fazer |
+| -- | -- | -- |
+| 0 | Os três CARREGADO e versão lida | Pode atualizar a CLI do watcher |
+| 2 | Algum NÃO CARREGADO | NÃO atualize a CLI do watcher. Mantenha a versão atual e abra uma fatia para fixar o modo explicitamente no despacho, lendo na página acima como a versão nova carrega cada item |
+| 3 | Algum DESCONHECIDO ou versão não lida (CLI ausente, autenticação, timeout, saída vazia, erro) | Não é aprovação. Resolva o motivo impresso e rode de novo. Erro de autenticação com login válido pode ser o próprio sintoma da mudança: segundo a mesma página, o modo bare não lê credencial OAuth nem o keychain. Nesse caso trate como exit 2 |
+| 1 | Argumento inválido ou exceção da sonda | Não mediu nada. Confira o uso com `--help` |
+
+A página não documenta, na leitura acima, uma flag que desligue o `--bare`; por isso este runbook
+não indica qual flag usar para fixar o modo.
+
+---
+
 ## Comandos úteis de diagnóstico
 
-Todos da raiz do consumidor, com PRISMA_ROOT explícito. Substitua `<ticket>` (ex: `43670`) e `<task-id>` (ex:
-`43670-rastreabilidade-spec`).
+Todos da raiz do consumidor, com PRISMA_ROOT explícito. Substitua `<ticket>` (ex: `12345`) e `<task-id>` (ex:
+`12345-rastreabilidade-spec`).
 
 ```bash
 # --- Watcher / laço ---

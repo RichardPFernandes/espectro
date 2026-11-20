@@ -8,9 +8,16 @@ const COUNTERS = ['messages', 'input_tokens', 'output_tokens', 'cache_read_token
     'cache_write_5m_tokens', 'cache_write_1h_tokens', 'cache_write_ttl_unknown_tokens'];
 const AGGREGATES = ['input_tokens', 'output_tokens', 'cache_read_input_tokens',
     'cache_creation_input_tokens', 'cost_usd', 'duration_ms', 'loop_count', 'runs',
-    'retries', 'runs_without_tokens', 'runs_without_cost'];
+    'retries', 'runs_without_tokens', 'runs_without_cost',
+    // PRI-381 (F1.5): só existem com WATCHER_CLI_RESULT_JSON ligada; `numeric` só projeta chave presente.
+    'cli_cost_usd', 'runs_without_cli_cost'];
 const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_<\[\]][a-zA-Z0-9_.:<\[\]> -]{0,199}$/.test(value) ? value : 'UNKNOWN';
+// subtask_key S2 usa barra (ex. abcdef012345/0-2); paths_decl relativos sem absolute/private.
+const subtaskKey = value => typeof value === 'string' && /^[a-zA-Z0-9_<\[\].:\/-]{1,120}$/.test(value) ? value : 'UNKNOWN';
+const relPath = value => typeof value === 'string' && value.length > 0 && value.length <= 400
+    && !value.includes('\0') && !/^[\\\/]|^[A-Za-z]:[\\\/]|^\.\.(?:\/|$)/.test(value)
+    && !value.includes('/dom06/') && !value.includes('/private/') ? value : null;
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : 'UNKNOWN';
 const list = value => Array.isArray(value) ? value : [];
 const numeric = (value, fields) => Object.fromEntries(fields.filter(k => Object.hasOwn(value || {}, k)).map(k => [k, number(value[k])]));
@@ -59,6 +66,95 @@ function usageOf(row) {
     return result;
 }
 
+function projectSignals(value) {
+    if (value === 'UNAVAILABLE') return 'UNAVAILABLE';
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return {
+        status: id(value.status),
+        cause: value.cause == null ? null : id(String(value.cause)),
+        plan_version: value.plan_version == null ? null : id(String(value.plan_version).slice(0, 64)),
+        groups: list(value.groups).slice(0, 200).map(g => ({
+            subtask_key: subtaskKey(g?.subtask_key),
+            steps: list(g?.steps).filter(n => Number.isInteger(n) && n >= 0).slice(0, 100),
+            signals: g?.signals && typeof g.signals === 'object' ? {
+                kind: id(g.signals.kind),
+                n_files: number(g.signals.n_files),
+                n_new_files: number(g.signals.n_new_files),
+                n_acs_step: number(g.signals.n_acs_step),
+                code_local: typeof g.signals.code_local === 'boolean' ? g.signals.code_local : id(g.signals.code_local),
+                sensitive_decl: typeof g.signals.sensitive_decl === 'boolean' ? g.signals.sensitive_decl : id(g.signals.sensitive_decl),
+                schema_decl: typeof g.signals.schema_decl === 'boolean' ? g.signals.schema_decl : id(g.signals.schema_decl),
+                // Paths relativos do plano (sem absolute / private / dom06).
+                paths_decl: list(g.signals.paths_decl).map(relPath).filter(Boolean).slice(0, 80),
+            } : null,
+        })),
+    };
+}
+
+function projectWouldRoute(value) {
+    if (value === 'UNAVAILABLE') return 'UNAVAILABLE';
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return {
+        status: id(value.status),
+        cause: value.cause == null ? null : id(String(value.cause)),
+        detail: value.detail == null ? null : (typeof value.detail === 'string' && value.detail.length <= 400
+            && !/[\/\\]/.test(value.detail.replace(/https?:\/\/[^\s]+/g, '')) ? value.detail : 'UNKNOWN'),
+        policy_version: value.policy_version == null ? null : id(String(value.policy_version)),
+        policy_hash: value.policy_hash == null ? null : hash(value.policy_hash),
+        classifier_ref: { provider: id(value.classifier_ref?.provider) },
+        applied: value.applied === true,
+        signals_seen: value.signals_seen && typeof value.signals_seen === 'object' && !Array.isArray(value.signals_seen)
+            ? {
+                status: id(value.signals_seen.status),
+                groups: number(value.signals_seen.groups) ?? 0,
+            }
+            : null,
+        decisions: list(value.decisions).slice(0, 200).map(d => ({
+            subtask_key: subtaskKey(d?.subtask_key),
+            steps: list(d?.steps).filter(n => Number.isInteger(n) && n >= 0).slice(0, 100),
+            class: id(d?.class),
+            tier: id(d?.tier),
+            rule: id(d?.rule),
+            leaves_opus_tier: d?.leaves_opus_tier === true,
+            would_model: id(d?.would_model),
+            selection_source: id(d?.selection_source),
+        })),
+    };
+}
+
+// PRI-233: RoutingDecision de um Attempt roteado (objeto de resolveRoute). Só o subconjunto
+// público: nunca plugin_proof, policy_ref.path, override_ref.by/recorded_at/value nem caminhos.
+const optId = value => value == null ? null : id(value);
+function projectRoutingDecision(value) {
+    if (typeof value === 'string') return id(value);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return 'UNKNOWN';
+    const chosen = value.chosen && typeof value.chosen === 'object' && !Array.isArray(value.chosen) ? value.chosen : null;
+    const override = value.override_ref && typeof value.override_ref === 'object' && !Array.isArray(value.override_ref) ? value.override_ref : null;
+    return {
+        class: optId(value.class), class_rule: optId(value.class_rule), selection_source: id(value.selection_source),
+        chosen: chosen ? { model_id: id(chosen.model_id), effort: id(chosen.effort), tier: id(chosen.tier) } : null,
+        effort_applied: typeof value.effort_applied === 'boolean' ? value.effort_applied : 'UNKNOWN',
+        effort_router_plugin: id(value.effort_router_plugin),
+        override_ref: override ? { ref: optId(override.ref), scope: id(override.scope) } : null,
+        policy_ref: { id: id(value.policy_ref?.id), version: id(value.policy_ref?.version), sha256: hash(value.policy_ref?.sha256) },
+        candidates: list(value.candidates).slice(0, 20).map(c => ({
+            tier: id(c?.tier), model_id: id(c?.model_id), status: id(c?.status), reason: optId(c?.reason),
+        })),
+    };
+}
+
+// PRI-381 (F1.5): campos do JSON da CLI, cada um só quando gravado (flag ligada). Versão fora do
+// formato vira null (o weekly a conta como desconhecida); hash inválido vira UNKNOWN; chave de nó inválida sai.
+const cliVersion = value => typeof value === 'string' && /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/.test(value) ? value : null;
+const promptHashes = value => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).filter(([key]) => id(key) === key).map(([key, h]) => [key, hash(h)])) : {};
+function cliFields(a) {
+    return {
+        ...(Object.hasOwn(a, 'cli_version') ? { cli_version: cliVersion(a.cli_version) } : {}),
+        ...(Object.hasOwn(a, 'prompt_hashes') ? { prompt_hashes: promptHashes(a.prompt_hashes) } : {}),
+    };
+}
+
 function attemptOf(value, context) {
     const a = value || {};
     return {
@@ -67,13 +163,18 @@ function attemptOf(value, context) {
         cause: id(a.cause), started_at: startOf(a, context), runtime: id(a.runtime), provider: id(a.provider),
         account: { label: typeof a.account?.label === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(a.account.label) ? a.account.label : 'UNKNOWN' },
         requested: { model: id(a.requested?.model), effort: id(a.requested?.effort) },
-        routing_decision: id(a.routing_decision), selection_source: id(a.selection_source),
+        routing_decision: projectRoutingDecision(a.routing_decision), selection_source: id(a.selection_source),
         observed: { usage: list(a.observed?.usage).map(usageOf), effort: id(a.observed?.effort) },
         role_attribution: { status: id(a.role_attribution?.status), conflicted_messages: number(a.role_attribution?.conflicted_messages) },
         cost: { usd: number(a.cost?.usd), unpriced_models: list(a.cost?.unpriced_models).map(id),
             pricing_source: pricingSource(a.cost?.pricing_source), pricing_sha256: hash(a.cost?.pricing_sha256),
-            estimated: typeof a.cost?.estimated === 'boolean' ? a.cost.estimated : 'UNKNOWN' },
+            estimated: typeof a.cost?.estimated === 'boolean' ? a.cost.estimated : 'UNKNOWN',
+            ...(a.cost && typeof a.cost === 'object' && Object.hasOwn(a.cost, 'cli_usd') ? { cli_usd: number(a.cost.cli_usd) } : {}) },
+        ...cliFields(a),
         duration_ms: number(a.duration_ms), exit: Number.isInteger(a.exit) ? a.exit : 'UNKNOWN', result: id(a.result),
+        // PRI-222/223: subtarefas e decisão sombra — só campos públicos; applied permanece false em S3.
+        signals: projectSignals(a.signals),
+        would_route: projectWouldRoute(a.would_route),
     };
 }
 
@@ -89,4 +190,4 @@ function projectCostTracking(value, context) {
     };
 }
 
-module.exports = { projectCostTracking };
+module.exports = { projectCostTracking, projectSignals, projectWouldRoute, projectRoutingDecision };

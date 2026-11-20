@@ -41,7 +41,7 @@
           "checkout": { "allOf": [{ "$ref": "#/components/schemas/Commit" }], "nullable": true },
           "drift": { "type": "boolean" },
           "latest": { "allOf": [{ "$ref": "#/components/schemas/Commit" }], "nullable": true },
-          "behind": { "type": "array", "maxItems": 200, "items": { "type": "object", "required": ["sha", "subject"], "properties": { "sha": { "type": "string" }, "subject": { "type": "string" } } } },
+          "behind": { "type": "array", "maxItems": 200, "items": { "type": "object", "required": ["sha", "date", "subject"], "properties": { "sha": { "type": "string" }, "date": { "type": "string", "format": "date-time" }, "subject": { "type": "string" } } } },
           "behind_truncated": { "type": "boolean" },
           "fetched_at": { "type": "string", "format": "date-time" },
           "fetch_error": { "type": "string", "nullable": true },

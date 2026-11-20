@@ -12,7 +12,7 @@
 | Estado/decisões | Linear e Ledger lógico: índice 90b7b08b…; D 0cb025a0…; U 158c56ff…; R bc7d0b41… |
 | Implementação/permanência técnica | Git privado RichardPFernandes/prisma; runtime/CI para provas executadas |
 | Destino entregue | Repo privado Prisma desde PRI-59; app-back consumidor fixado em a50ff9f na PRI-63 |
-| Caminho relacionado | /Users/richardfernandes/Workspace/app-back: origem identificada na F23 e presente na leitura F31 |
+| Caminho relacionado | ~/Workspace/app-back: origem identificada na F23 e presente na leitura F31 |
 | Captura limitada de metadata | Git root app-back; HEAD a1ac43307cc5f275caf5a70ad3068c9af099b127; 5 modificados e 32 untracked no instante observado |
 | Limite da captura | HEAD + contagens não identificam toda árvore suja, release, cobertura ou runtime. Não promovem UNK-F21-001/BND-001 a RESOLVED |
 

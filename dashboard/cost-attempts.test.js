@@ -62,6 +62,29 @@ multi = add(multi, 'commit', 'commit-a');
 // Synthetic extra fields must not travel with the public cost subtree.
 multi.nodes.plan.attempts[0].read_order = [{ role: 'main', file: '/private/transcript.jsonl' }];
 multi.nodes.plan.attempts[0].transcript = 'DO-NOT-EXPOSE-TRANSCRIPT';
+// Subtarefas sombra (PRI-223): viajam no read model público sem paths privados.
+multi.nodes.implement.attempts[0].signals = {
+    status: 'COMPLETE',
+    groups: [{
+        subtask_key: 'planhash00001/0-0',
+        steps: [0],
+        signals: { kind: 'docs', n_files: 1, paths_decl: ['README.md', '/private/nope'] },
+    }],
+};
+multi.nodes.implement.attempts[0].would_route = {
+    status: 'SHADOW',
+    applied: false,
+    classifier_ref: { provider: 'cheap_rule' },
+    decisions: [{
+        subtask_key: 'planhash00001/0-0',
+        class: 'C1',
+        tier: 'T1',
+        rule: 'R5',
+        leaves_opus_tier: true,
+        steps: [0],
+        would_model: 'UNAVAILABLE',
+    }],
+};
 const multiSeed = seed('96002-multi', multi, true);
 const unknownMetrics = cost.sumClaudeUsage([{ role: 'main', content: main + '\n' + line('unknown', 'future-model', { input_tokens: 12, output_tokens: 3 }) }]);
 seed('96003-unpriced', add(null, 'review', 'unpriced-a', 'dispatch', 'claude', unknownMetrics, '96003-unpriced'));
@@ -121,6 +144,12 @@ test('API: all admission paths, retry cause, model/role/TTL/fast and recorded to
         }
     }
     assert.equal(c.nodes.implement.attempts[1].cause, 'retry');
+    const wr = c.nodes.implement.attempts[0].would_route;
+    assert.equal(wr.status, 'SHADOW');
+    assert.equal(wr.applied, false);
+    assert.equal(wr.decisions[0].subtask_key, 'planhash00001/0-0');
+    assert.equal(wr.decisions[0].leaves_opus_tier, true);
+    assert.deepEqual(c.nodes.implement.attempts[0].signals.groups[0].signals.paths_decl, ['README.md']);
     assert.equal(fs.readFileSync(path.join(multiSeed.dir, 'state.json'), 'utf8'), before, 'reads never write authoritative state');
 });
 
@@ -239,6 +268,49 @@ test('projection: UNKNOWN speed never inherits the standard-mode price', () => {
     assert.match(UI.render(projected), /sem preço<br><small>modo não observado/);
 });
 
+// PRI-381 (F1.5): campos do JSON da CLI só existem com WATCHER_CLI_RESULT_JSON ligada. A projeção os
+// leva ao weekly só quando gravados; null continua null (nunca zero) e nada aparece com a flag desligada.
+test('projection: CLI cost, version and prompt hashes travel only when recorded; null stays null', () => {
+    const HASH = 'a'.repeat(64);
+    const cliRun = (ct, node, sessionId, m, hashes) => cost.mergeRun(ct, { node, agent: 'claude', metrics: { ...metrics, ...m },
+        run: { session_id: sessionId, cli_result_json: true, prompt_hashes: hashes }, outcome: { exitCode: 0 } });
+    let c = cliRun(null, 'plan', 'cli-a', { cli_cost_usd: 1.25, cli_version: '2.5.1' }, { plan: HASH, 'fetch-ticket': 'UNKNOWN' });
+    c = cliRun(c, 'review', 'cli-b', { cli_cost_usd: null, cli_version: null }, { review: 'UNKNOWN' });
+    const p = projectCostTracking(c);
+    assert.equal(p.totals.cli_cost_usd, 1.25);
+    assert.equal(p.totals.runs_without_cli_cost, 1);
+    assert.equal(p.nodes.plan.cli_cost_usd, 1.25);
+    assert.equal(p.nodes.plan.runs_without_cli_cost, 0);
+    assert.equal(p.nodes.review.cli_cost_usd, null, 'node without CLI cost stays null, never 0');
+    assert.equal(p.nodes.review.runs_without_cli_cost, 1);
+    const [plan, review] = [p.nodes.plan.attempts[0], p.nodes.review.attempts[0]];
+    assert.equal(plan.cost.cli_usd, 1.25);
+    assert.equal(plan.cli_version, '2.5.1');
+    assert.deepEqual(plan.prompt_hashes, { plan: HASH, 'fetch-ticket': 'UNKNOWN' });
+    assert.ok(Object.hasOwn(review.cost, 'cli_usd'));
+    assert.equal(review.cost.cli_usd, null);
+    assert.equal(review.cli_version, null);
+    assert.deepEqual(review.prompt_hashes, { review: 'UNKNOWN' });
+
+    const bad = clone(c);
+    const a = bad.nodes.plan.attempts[0];
+    a.cost.cli_usd = -1;
+    a.cli_version = '/private/claude';
+    a.prompt_hashes = { plan: '/etc/passwd', '../x': HASH };
+    bad.nodes.review.attempts[0].cli_version = 42;
+    bad.nodes.review.attempts[0].cost.cli_usd = 'abc';
+    const q = projectCostTracking(bad);
+    assert.equal(q.nodes.plan.attempts[0].cost.cli_usd, null);
+    assert.equal(q.nodes.plan.attempts[0].cli_version, null);
+    assert.deepEqual(q.nodes.plan.attempts[0].prompt_hashes, { plan: 'UNKNOWN' });
+    assert.equal(q.nodes.review.attempts[0].cli_version, null);
+    assert.equal(q.nodes.review.attempts[0].cost.cli_usd, null);
+
+    const CLI_KEYS = /"(cli_usd|cli_version|prompt_hashes|cli_cost_usd|runs_without_cli_cost)"/;
+    assert.doesNotMatch(JSON.stringify(projectCostTracking(multi)), CLI_KEYS, 'flag off: projection unchanged');
+    assert.doesNotMatch(JSON.stringify(projectCostTracking(legacy)), CLI_KEYS);
+});
+
 test('render: multimodel, unknowns, provenance, cache and unpriced/null counters', async () => {
     const html = UI.render((await get('96002-multi')).state.cost_tracking, { plan: 'Plano' });
     for (const text of ['Attempts por nó', 'initial-a', 'retry-b', started, 'COMPLETED', 'principal', 'subagente', 'fast', 'Cache read', 'Cache write 5 min', 'Cache write 1 h', 'TTL não observado', 'UNAVAILABLE', cost.PRICING_SHA256, '2026-10-20']) assert.ok(html.includes(text), text);
@@ -252,6 +324,87 @@ test('render: multimodel, unknowns, provenance, cache and unpriced/null counters
     assert.match(UI.render((await get('96005-hash')).state.cost_tracking), /tabela histórica indisponível/);
     assert.match(UI.render((await get('96006-conflict')).state.cost_tracking), /CONFLICTED \(atribuição parcial\)/);
     assert.match(UI.render((await get('96007-partial')).state.cost_tracking), /Detalhamento disponível para 1 de 2 despachos/);
+});
+
+// PRI-233: Attempt roteado grava a RoutingDecision como objeto (formato de resolveRoute).
+const routedDecision = () => ({
+    node: 'implement', snapshot_sha256: 'a'.repeat(64), eligible_set_ref: 'eligible-set@1',
+    policy_ref: { id: 'routing-pri205', version: 'p1-2026-11-06', sha256: 'b'.repeat(64), path: '/private/consumer/config/routing-policy.json' },
+    class: 'C2', class_rule: 'R6', signals_sha256: 'c'.repeat(64),
+    classifier_ref: { declared: 'off', nucleus2_effective: 'off', reason: 'DECLARED_OFF' },
+    candidates: [
+        { tier: 'T1', model_id: 'claude-haiku-5-5', status: 'DISCARDED', reason: 'INELIGIBLE' },
+        { tier: 'T2', model_id: 'claude-sonnet-5-5', status: 'CHOSEN', reason: 'HUMAN_OVERRIDE' },
+    ],
+    chosen: { model_id: 'claude-sonnet-5-5', effort: 'medium', cli_effort: 'medium', tier: 'T2' },
+    selection_source: 'HUMAN_OVERRIDE',
+    override_ref: { ref: 'ovr-0001', scope: 'node', by: 'richard@example.invalid', recorded_at: '2026-11-06T10:00:00.000Z',
+        value: { model_id: 'claude-sonnet-5-5', effort: 'medium' } },
+    overrides_pending: ['ovr-0002'],
+    subagent: 'UNENFORCED', effort_router_plugin: 'NOT_LOADED',
+    plugin_proof: { settings_path: '/Users/someone/.prisma/dispatch-settings.json', settings_sha256: 'd'.repeat(64) },
+    effort_mechanism: { status: 'UNAVAILABLE' }, effort_applied: false,
+});
+
+test('projection and render: routed Attempt keeps a public RoutingDecision; OFF stays UNAVAILABLE', () => {
+    let ct = add(null, 'plan', 'off-a');
+    ct = cost.mergeRun(ct, { node: 'implement', agent: 'claude', metrics, alsoCovers: [],
+        run: { admission: { attempt_id: 'routed-a', admitted_node: 'implement',
+            attempt_ref: { runs_root: 'worktree:96002/memory/runs', path: '96002-multi/dom06/attempts/routed-a.json' } },
+        cause: 'dispatch', account: { source: 'dashboard', label: 'team' }, routing_decision: routedDecision() },
+        outcome: { exitCode: 0, attemptResult: 'COMPLETED' } });
+    const stored = ct.nodes.implement.attempts[0];
+    assert.equal(typeof stored.routing_decision, 'object', 'writer grava a decisão como objeto');
+    const before = JSON.stringify(ct);
+    const projected = projectCostTracking(ct);
+    assert.equal(JSON.stringify(ct), before, 'projection never mutates');
+    assert.equal(projected.nodes.plan.attempts[0].routing_decision, 'UNAVAILABLE');
+    const rd = projected.nodes.implement.attempts[0].routing_decision;
+    assert.deepEqual(rd, {
+        class: 'C2', class_rule: 'R6', selection_source: 'HUMAN_OVERRIDE',
+        chosen: { model_id: 'claude-sonnet-5-5', effort: 'medium', tier: 'T2' },
+        effort_applied: false, effort_router_plugin: 'NOT_LOADED',
+        override_ref: { ref: 'ovr-0001', scope: 'node' },
+        policy_ref: { id: 'routing-pri205', version: 'p1-2026-11-06', sha256: 'b'.repeat(64) },
+        candidates: [
+            { tier: 'T1', model_id: 'claude-haiku-5-5', status: 'DISCARDED', reason: 'INELIGIBLE' },
+            { tier: 'T2', model_id: 'claude-sonnet-5-5', status: 'CHOSEN', reason: 'HUMAN_OVERRIDE' },
+        ],
+    });
+    const json = JSON.stringify(projected);
+    for (const secret of ['/private/', '/Users/', 'settings_path', 'routing-policy.json', 'richard@', 'recorded_at', '"by"', 'path"', 'd'.repeat(64)]) {
+        assert.ok(!json.includes(secret), secret);
+    }
+
+    const html = UI.render(projected);
+    for (const text of ['claude-sonnet-5-5', 'T2', 'C2', 'R6', 'override humano', 'esforço não aplicado',
+        'routing-pri205@p1-2026-11-06', 'b'.repeat(12), 'ovr-0001', 'node', 'claude-haiku-5-5', 'INELIGIBLE', 'NOT_LOADED']) {
+        assert.ok(html.includes(text), text);
+    }
+    assert.doesNotMatch(html, /RoutingDecision<\/dt><dd>UNKNOWN/);
+    assert.doesNotMatch(html, /<(script|img|button|form|input)\b|\son\w+="/);
+
+    // Valores hostis viram UNKNOWN; candidatos limitados a 20; tipo inválido não quebra o render.
+    const hostile = clone(ct);
+    const h = hostile.nodes.implement.attempts[0].routing_decision;
+    h.chosen.model_id = '<img src=x onerror=alert(1)>';
+    h.policy_ref.sha256 = '/private/x';
+    h.candidates = Array.from({ length: 30 }, (_, i) => ({ tier: 'T1', model_id: `m-${i}`, status: 'DISCARDED', reason: 'INELIGIBLE' }));
+    const hp = projectCostTracking(hostile).nodes.implement.attempts[0].routing_decision;
+    assert.equal(hp.chosen.model_id, 'UNKNOWN');
+    assert.equal(hp.policy_ref.sha256, 'UNKNOWN');
+    assert.equal(hp.candidates.length, 20);
+    assert.doesNotMatch(UI.render(projectCostTracking(hostile)), /<img\b/);
+    const bogus = clone(ct);
+    bogus.nodes.implement.attempts[0].routing_decision = ['not', 'a', 'decision'];
+    assert.equal(projectCostTracking(bogus).nodes.implement.attempts[0].routing_decision, 'UNKNOWN');
+    const noOverride = clone(ct);
+    Object.assign(noOverride.nodes.implement.attempts[0].routing_decision, { override_ref: null, selection_source: 'CONSERVATIVE_DEFAULT', effort_applied: true });
+    const np = projectCostTracking(noOverride).nodes.implement.attempts[0].routing_decision;
+    assert.equal(np.override_ref, null);
+    const npHtml = UI.render(projectCostTracking(noOverride));
+    assert.doesNotMatch(npHtml, /esforço não aplicado|Override/);
+    assert.match(npHtml, /default conservador/);
 });
 
 test('render: zero remains observed; HTML is escaped and no actions are introduced', () => {

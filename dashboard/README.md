@@ -1,6 +1,8 @@
-# Graph Dashboard
+# Espectro — Dashboard
 
-Dashboard local de observabilidade do watcher (`scripts/readmine-watcher.js`) com um
+Dashboard local (interface no design Espectro: tokens em `public/prisma-theme.css`, base e
+componentes em `public/theme.css`, padrões de tela do design — card de indicador com sparkline, filtro removível,
+ações em lote, painel de detalhe, atalhos J/K — em `public/ui-kit.js` (`window.UIKit`), CSS de cada tela em `public/screens/`) de observabilidade do watcher (`scripts/readmine-watcher.js`) com um
 canal humano→agente: você acompanha os runs do grafo em tempo real e manda instruções
 pro agente sem matar o processo.
 
@@ -16,6 +18,28 @@ npm start
 
 `npm run dev` reinicia sozinho quando `server.js` muda. `npm test` roda os testes do
 servidor (repo sintético, não toca nos runs reais).
+
+## Primeiro uso em outro computador (Este computador)
+
+Num computador sem configuração (pasta do projeto inválida ou Redmine sem endereço/chave), o
+dashboard abre sozinho a tela **Este computador** em tela cheia; depois ela fica em
+Plataforma › Este computador. Três etapas:
+
+1. **Reconhecer**: procura Git, Node 20+/npm, Claude Code e Codex (opcional) e mostra o
+   comando quando falta algo. Nada é instalado pelo painel.
+2. **Configurar**: pasta do repositório do projeto, conta do Claude, Redmine e Bitbucket
+   (opcional). A pasta vai para `REPO_PATH` no `dashboard/.env` do Prisma e vale depois de
+   reiniciar; se `REPO_PATH` vier do ambiente (launcher do consumidor), fica travada. Redmine
+   e Bitbucket vão para o `.env` da raiz do projeto (as mesmas chaves do watcher); a conta,
+   para `claude_config_dir` no `dashboard-prefs.json`. Chave em branco mantém a salva e
+   nenhuma chave volta pela API.
+3. **Pronto**: testa só com leitura (git do repo, `GET /users/current` no Redmine, `GET` do
+   repositório no Bitbucket, contrato de configuração) e a sondagem mínima do Claude, que
+   gasta um pouco da cota.
+
+Rotas: `GET /api/onboarding/tools`, `GET|PUT /api/onboarding/config`,
+`GET /api/onboarding/repo?path=`, `POST /api/onboarding/check` (`onboarding.js`, testes em
+`onboarding-api.test.js`).
 
 ## Configuração (`.env`)
 
@@ -36,9 +60,25 @@ As credenciais das integrações vêm, nesta ordem, do ambiente, do `dashboard/.
 `PREVIEW_*` e `SPEC_APPROVAL_KEYWORD` são lidas). Não é preciso copiá-las para `dashboard/.env`. `KEY=` vazio não conta.
 
 
-## Coordenação (somente leitura)
+## Medição de modelo (somente leitura · sombra)
 
-A aba **Coordenação** lê `GET /api/coordination`; não despacha agentes nem grava estado.
+A aba **Operação › Medição de modelo** lê `GET /api/would-route-metrics` e agrega
+`would_route` dos Attempts (`cost_tracking`): contagem por faixa (leve/médio/Opus),
+economia potencial vs Opus-only (hipótese de preço) e lista recente. **Não** liga
+troca real de modelo (S4). Doc: [`docs/dashboard-medicao-modelo-humano.md`](../docs/dashboard-medicao-modelo-humano.md).
+
+## Subtarefas nas Runs (somente leitura · sombra)
+
+No detalhe de cada run (e chip na lista), a plataforma mostra as **subtarefas do
+plano** a partir de `Attempt.signals` + `Attempt.would_route` (projetados em
+`cost-projection.js`). Fold **Subtarefas**: chave, passos, tipo, classe/faixa
+sombra e se sairia do Opus. Despacho continua AS-IS.
+
+## Coordenação (API somente leitura)
+
+`GET /api/coordination` expõe o estado do Coordenador; não despacha agentes nem grava estado. A aba
+Coordenação saiu do dashboard na onda 1 do design (PRI-323); a rota e o evento `coordination_update`
+continuam para outros clientes.
 `COORD_STATUS_PATH` configura o JSON do Coordenador. No `npm start`, a
 ausência da variável (ambiente e `.env` do dashboard) usa
 `~/.maestro-guard/coord-status.json`. Um servidor criado sem esse caminho,
@@ -290,6 +330,54 @@ todo dia, agende no cron, por exemplo `0 3 * * * cd <repo> && node scripts/clean
   `GET /api/archive`, `POST /api/archive/:taskId/restore` (409 se já existe pasta no lugar
   original).
 
+## Preview de Ambiente: por worktree ou por commit
+
+O fold **Preview de Ambiente** do run builda e sobe o app-back (:8081) e o app-front
+(:9100) do ticket. **Fonte**:
+
+- **Worktree** (padrão quando existe): `.claude/worktrees/<ticket>` e os worktrees irmãos.
+- **Commit**: um commit da branch do ticket no app-back (`origin/<ticket>`, senão a branch
+  local), escolhido numa lista dos últimos 30 (o mais recente vem marcado); o app-front
+  sobe na ponta da mesma branch (sem ela, sobe só o back). Serve depois que o watcher
+  apagou o worktree e pra voltar a um commit anterior. O código sai com `git archive` numa
+  pasta temporária (`$TMPDIR/preview-src-<ticket>`), apagada no **Parar**.
+
+O preview não mexe no seu ambiente local:
+
+- portas próprias (`PREVIEW_BACK_PORT`/`PREVIEW_FRONT_PORT`, padrão 8081/9100), então o
+  ambiente de sempre (:8080/:9000) roda junto; o app-front decide "dev" por `location.port === '9000'`, então o
+  `scripts/preview-gruntfile.js` serve essa checagem com a porta do preview (sem isso, o 401
+  recarregava `/` em loop em vez de ir para `/#/login`) — só a resposta HTTP muda, não o repo;
+- todo `mvn` do preview grava num repositório Maven só dele (`PREVIEW_M2_REPO`, padrão
+  `~/.cache/prisma-preview/m2`) e lê o `~/.m2` só para consulta (`maven.repo.local.tail`,
+  Maven 3.9+): o `install` de mo-entity/app-core nunca troca o SNAPSHOT que o seu checkout
+  usa;
+- nos repos locais, só `git fetch` (refs `origin/*`): sem checkout, worktree, índice ou
+  HEAD, mesmo com alteração não commitada.
+
+Continuam compartilhados: o banco do profile escolhido e, no front, os `node_modules`/
+`bower_components` do checkout principal (linkados quando o manifest é igual).
+
+- API: `GET /api/preview/:ticketId/commits` → `{ ref, sha, commits: [{ sha, date, subject }], front }`
+  (faz o fetch da branch do ticket no back e no front; 404 sem branch);
+  `POST /api/preview/:ticketId/start` aceita `{ source: "worktree" | "commit", commit: "<sha>" }`
+  (400 se a fonte for outra, o SHA for malformado ou não estiver na branch do ticket; sem
+  `commit`, a ponta). `status` traz `branches`, `source`, `commit` e `refs` (o que está no ar).
+
+## Preview: erro de build com lib do ~/.m2
+
+Quando `mo-entity`/`app-core` não têm worktree do ticket e nenhuma branch (`origin/<ticket>`,
+`PREVIEW_LIB_REFS`) tem a versão do app-back, o preview segue com o snapshot do `~/.m2` e
+avisa no log. Se o build do back falha nessa situação (ex.: `no suitable method found` numa
+chamada de lib), o fold **Preview de Ambiente** mostra o aviso e **Escolher branch das
+libs…**: lista as branches remotas das libs cuja versão (`pom.xml`) bate com a do back; com
+uma escolhida, **🔧 Reconstruir libs e tentar de novo** reinstala as libs dela no repositório
+Maven do preview (ignora o marcador de cache; o `~/.m2` não é tocado) e reinicia o preview. A escolha vale só para esse start.
+
+- API: `GET /api/preview/:ticketId/lib-refs` → `{ need, libs: [{ key, refs }] }`;
+  `POST /api/preview/:ticketId/start` aceita `{ libRef: "origin/<branch>" }` (400 se a ref
+  não for `origin/<branch>`). `status.libFallback` lista as libs que caíram no `~/.m2`.
+
 ## Usar na minha máquina
 
 No fold **Preview de Ambiente** do run, **💻 Usar na minha máquina** põe os checkouts
@@ -347,7 +435,7 @@ demanda aberta**, com o status do Redmine na linha e uma nota no painel do run.
 - São só leitura: o watcher não lê runs em `_archive/`, então a API recusa mensagem (409)
   e arquivar de novo (409). Detalhe, contexto, Ticket Redmine e PR Matrix funcionam.
 - Eles também aparecem nas abas (Quadro na coluna Concluído, Tabela, Tickets e PRs,
-  Métricas), marcados com `archived: true` na API. `POST /api/archived-open/refresh`
+  Relatório semanal), marcados com `archived: true` na API. `POST /api/archived-open/refresh`
   força a varredura.
 
 ## Navegação e atalhos
@@ -393,9 +481,30 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
   faixa tracejada é o tempo esperando agora, em amarelo se estiver parado esperando você.
   As cores são uma rampa ordinal de um só matiz, validada nos dois temas. Sete etapas não
   cabem distinguíveis num matiz, por isso a divisão em fases.
-- **Métricas:** contadores por status, runs ativos por etapa, mediana do tempo por etapa
+- **Relatório semanal** (antiga Métricas; chave `metricas`): contadores por status, runs ativos por etapa, mediana do tempo por etapa
   (estimada pelo `agent_log`), retrabalho (`state.retries`) e PRs por estado (real do
   Bitbucket onde já foi consultado; senão, o do `state.json`).
+  A capa abre com **as cinco métricas do acompanhamento** (F0.9) de `roadmap/ACOMPANHAMENTO.md`,
+  uma linha por métrica com valor, n e fonte: custo por ticket entregue, primeira passada e custo
+  do retrabalho, runs bloqueadas pelo teto (não medida até a F1.3/F3.4), estoque desligado e fluxo
+  (Linear, à mão). O estoque desligado vem do registro de flags (`docs/flags.md`) por
+  `GET /api/flags-summary`, só leitura, que chama `scripts/flags-read.js --json`; a tela lê a rota
+  ao abrir o relatório e a cada **↻**. Métrica sem medição, ou a rota com erro (502
+  `{ status: "UNKNOWN" }`), aparece como "desconhecido", nunca zero.
+  Depois vem a **linha de base do retrabalho** (F1.4): por nó, quanto passa de primeira e o que
+  as tentativas além da primeira custam em USD (sempre "imputado", preço de tabela), tokens e
+  tempo de parede, com n e período; ao lado, o modelo observado nos runs, o esforço (só quando o
+  run o grava) e os runs concluídos por semana. Sem dado, "desconhecido", nunca zero.
+  Logo abaixo, o **custo por ticket entregue** (F1.5): mediana e média por ticket com run concluído
+  na janela, somando todos os runs do ticket e os ciclos de recusa de QA, nas três réguas, com n,
+  separado em com e sem recusa; mais o modelo por nó. O USD do run vem do JSON da CLI
+  (`totals.cli_cost_usd`, gravado só com `WATCHER_CLI_RESULT_JSON=on`) quando nenhum nó acusa run
+  sem custo da CLI, e senão do leitor de transcript (`totals.cost_usd`), como antes da flag. A linha
+  **Fonte do custo** diz quantos runs usaram cada fonte e a diferença CLI − transcript somada nos
+  runs com as duas. **Versão da CLI** e **Hash dos prompts** (8 caracteres) saem distintos nos runs
+  da janela, com "+N desconhecido" para run que não os grava. O "Copiar resumo" traz essas linhas, o
+  bloco das cinco métricas (valor, `n =` e `fonte:`) e a linha pronta para a série de
+  `roadmap/ACOMPANHAMENTO.md`, com as sete colunas e a semana da janela.
 - **Tickets e PRs:** um cartão por ticket do Redmine, com status, responsável, % e
   estimativa; os PRs do Bitbucket por repositório, com estado real e aprovações; e os runs
   do agente. Ao abrir a aba (ou em **↻ Atualizar**), busca Redmine e Bitbucket em lote,
@@ -405,11 +514,11 @@ na aba **Runs**. A aba ativa fica na URL (`#quadro`, `#tabela`, `#timeline`, `#m
   aprovação. Os cartões com alerta vêm primeiro. Há filtros para com alerta, PR aberto e
   sem PR. Runs cujo task-id começa com data, e não com o número do ticket, ficam em "Sem
   ticket".
-- **Grafo:** rastreabilidade ticket → spec → arquivos → PR, lida de
+- **Knowledge Graph** (antigo Grafo; chave `grafo`): rastreabilidade ticket → spec → arquivos → PR, lida de
   `memory/knowledge-graph.json` (`GET /api/graph`; gravado pelo watcher a cada tick e pelo
   `/commit` — ver `scripts/lib/knowledge-graph.js`). Um cartão por ticket com a spec, os
   arquivos tocados agrupados por repositório (`.java` primeiro) e os PRs com o status do
-  polling. O campo de busca aceita número do ticket (`43425`, `TASK-43425`, task-id) ou
+  polling. O campo de busca aceita número do ticket (`10006`, `TASK-10006`, task-id) ou
   caminho/nome de arquivo; clicar num arquivo lista todos os tickets que o tocaram, clicar
   no número recorta o ticket. Não é ao vivo: **↻ Atualizar** relê o arquivo. Na linha de
   comando, o mesmo com fallback no `git log`: `node scripts/trace.js <arquivo>`.
@@ -431,7 +540,7 @@ em até 10s.
 | `completed` | `committed`/`done`/`closed`/`archived` sem PR |
 | `unknown` | sem `state.json` legível (aparece em Ativos) |
 
-A diferença para "tem PR ⇒ concluído" é proposital: o #43452 está bloqueado com PR de
+A diferença para "tem PR ⇒ concluído" é proposital: o #10021 está bloqueado com PR de
 front aberto e, com essa regra, sumiria dentro de Concluídos enquanto espera você.
 
 `state.pull_request` aparece em vários formatos nos runs reais, e todos são aceitos:
@@ -515,7 +624,7 @@ Por baixo, é `scripts/watcher-manager.js`:
 | POST | `/api/redmine/comment` | `{ "taskId": "...", "action"?: "approve" \| "reject" }` (não aceita texto). Posta no ticket a nota `<SPEC_APPROVAL_KEYWORD>` (ou `<SPEC_REJECTION_KEYWORD>` com `reject`) + linha fixa de origem; `{ ok, ticketId, action }`. 404 run/ticket, 409 fora de `spec-pending-approval`/`spec-draft`/`spec-change-pending-approval`, `reject` fora de SPEC_CHANGE, ou SPEC_CHANGE ainda não publicada pelo watcher; 503 Redmine não configurado, 502 Redmine fora. |
 | GET  | `/api/runs/:taskId/screenshots` | `{ screenshots: [{ filename, size, mtime }] }` de `memory/runs/<taskId>/screenshots/` (só `.png/.jpg/.jpeg/.webp` regulares, sem symlink). Sem diretório (ou run desconhecido) => lista vazia. |
 | GET  | `/api/runs/:taskId/screenshots/:filename` | Serve a imagem com o Content-Type da extensão. Nome fora de `^[\w-]+\.(png\|jpg\|jpeg\|webp)$` ou com `../` => 400; inexistente => 404. |
-| GET  | `/api/graph?taskId=&file=` | Knowledge Graph: `{ version, updatedAt, exists, filter, nodes, edges, tickets: [{ id, title, redmine_url, specs[], files[], prs[] }] }`. Sem filtro, tudo; `taskId` (`43425`, `TASK-43425` ou task-id) recorta o ticket; `file` (caminho ou só o nome) devolve os tickets que tocaram o arquivo. Redigido. 500 se o JSON estiver malformado. |
+| GET  | `/api/graph?taskId=&file=` | Knowledge Graph: `{ version, updatedAt, exists, filter, nodes, edges, tickets: [{ id, title, redmine_url, specs[], files[], prs[] }] }`. Sem filtro, tudo; `taskId` (`10006`, `TASK-10006` ou task-id) recorta o ticket; `file` (caminho ou só o nome) devolve os tickets que tocaram o arquivo. Redigido. 500 se o JSON estiver malformado. |
 | GET  | `/api/watcher/status` | `{ running, state (stopped\|running\|restarting\|stopping), pid, uptime_ms, restarts, restarts_last_hour, max_restarts_per_hour, error, phase (tick\|idle), tick_started_at, next_tick_at, interval_ms, ticks, orphan_pid, last_run }`. |
 | POST | `/api/watcher/start` · `/stop` · `/restart` | Executa e devolve o status. `stop` volta depois que o processo saiu (≤ 5s + SIGKILL). |
 | GET  | `/api/watcher/log-stream` | SSE: `event: hello` `{ instance }`, depois o buffer inteiro e uma mensagem `data: { seq, ts, level, source, text }` por linha nova; `: ping` a cada 15s. |
@@ -523,6 +632,7 @@ Por baixo, é `scripts/watcher-manager.js`:
 | GET  | `/api/validate-config` | Painel **Saúde do Sistema** (🔧 no topo): roda `scripts/validate-config.js --format json` (só leitura, nunca `--fix`) e devolve o relatório `{ contractVersion, valid, exitCode, message, summary: { errors, warnings, info, rules, passedRules }, results: [{ rule, severity, passed, message, details? }] }`. Exit 1 do script continua 200 com `exitCode: 1` — é o que acende o alerta **⚠ Erros de Configuração** no topo. 500 se o validador não rodou. |
 | GET  | `/api/status` | Saúde: `{ uptime_ms, ws_clients, last_file_change, runs_tracked }`. Único endpoint fora do filtro de localhost (só contadores). |
 | GET  | `/api/coordination` | Estado v1 validado de frentes/tarefas e capacidade; `empty`/`invalid` explícitos. Read-only. Contrato adjacente `coordination.openapi.json`. |
+| GET  | `/api/would-route-metrics` | Agrega `would_route` (sombra): faixas, economia potencial vs Opus-only, lista recente. Query `limit` (opcional). Não aplica S4. |
 | GET  | `/api/version` | Pin do Prisma: `{ status, current, latest, behind[], behind_truncated, fetched_at, fetch_error, update: { configured, enabled, reason, restart }, last_update }`. `?refresh=1` refaz o fetch. |
 | POST | `/api/version/update` | `{ target: <sha40> }`: roda `PRISMA_BUMP_COMMAND` e, se houver, reinicia via `PRISMA_RESTART_COMMAND`. 400 SHA inválido, 409 travado/fora da main/já na revisão, 500 bump falhou. |
 

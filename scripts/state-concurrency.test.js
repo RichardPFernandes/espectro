@@ -528,7 +528,11 @@ test('AC-02: comparação de state_version / execution_id / expected_* só em sc
             if (cmp.test(line) && !/^\s*(\/\/|\*)/.test(line)) hits.push(`${path.relative(REPO, file)}:${i + 1}: ${line.trim()}`);
         });
     }
-    assert.deepStrictEqual(hits, []);
+    // Writer SDD (PRI-266): esta linha compara o execution_id da PROMOÇÃO em registry_branch
+    // (P-1 iii), não o estado de run; a C-20 proíbe o writer de usar scripts/cas.js. Exceção
+    // restrita a esta linha (sem número), como a lista `allowed` acima.
+    const writerAllowed = "if (vr.execution_id !== pe.execution_id || pe.execution_id !== execSegment) return fail('P1', 'VALIDATION_EXECUTION');";
+    assert.deepStrictEqual(hits.filter(h => !(h.startsWith('scripts/lib/sdd-writer-decide.js:') && h.endsWith(writerAllowed))), []);
 });
 
 // ── Regressões do /review (O1–O4) ────────────────────────────────────────────────

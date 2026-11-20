@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # O merge-leve dispara a suíte na main depois de cada merge do bot (o push
+  # feito com o GITHUB_TOKEN não dispara o push acima).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -60,6 +63,8 @@ jobs:
           printf 'scripts exit=%s; dashboard exit=%s\n' "$scripts_exit" "$dashboard_exit"
           sha256sum "$EV/scripts.tap" "$EV/dashboard.tap"
           if (( scripts_exit != 0 || dashboard_exit != 0 )); then
+            # Lista os testes que falharam no log e no resumo do job; o TAP inteiro segue no artefato.
+            node "$CK/harness/tap-failures.js" "$EV/scripts.tap" "$EV/dashboard.tap" || true
             exit 1
           fi
       - name: Preserve TAP
@@ -69,3 +74,34 @@ jobs:
           name: tap-node-${{ matrix.node }}
           path: ${{ runner.temp }}/pri-213-node-${{ matrix.node }}/*.tap
           if-no-files-found: error
+
+  # Checagem estática: tipos dos dois pacotes, ESLint de scripts/src e dashboard/src e
+  # ESLint só de erros do JavaScript de produção (com base de violações que só encolhe).
+  # Um comando por passo: o que falha derruba o job e aparece pelo nome.
+  static:
+    name: Static checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            scripts/package-lock.json
+            dashboard/package-lock.json
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix scripts
+          npm ci --prefix dashboard
+      - name: Type-check scripts
+        run: npm --prefix scripts run check:js
+      - name: Type-check dashboard
+        run: npm --prefix dashboard run check:js
+      - name: Lint scripts/src and dashboard/src
+        run: npm --prefix scripts run lint:src
+      - name: Lint de erros do JavaScript de produção
+        run: npm --prefix scripts run lint:prod

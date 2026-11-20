@@ -153,7 +153,8 @@ test('CLI com config válida: exit 0 e "Configuração válida - X regras passar
     const root = makeRepo();
     const r = runCli(root, []);
     assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /Configuração válida - 6 regras passaram/);
+    // 7 = 6 regras anteriores + routing-config (PRI-233).
+    assert.match(r.stdout, /Configuração válida - 7 regras passaram/);
     assert.doesNotMatch(r.stdout, /\x1b\[/, 'saída sem ANSI (CI)');
 });
 
@@ -448,4 +449,50 @@ test('CLI: --severity error esconde avisos no texto; argumento inválido sai com
     assert.match(runCli(root, ['--severity', 'warning']).stdout, /NAO_DOCUMENTADA/);
     assert.strictEqual(runCli(root, ['--format', 'xml']).status, 2);
     assert.strictEqual(spawnSync(process.execPath, [CLI, '--config', path.join(root, 'nao-existe.json')]).status, 2);
+});
+
+// PRI-233 (PRI-205 S4) T2: regra routing-config, mesma função usada na admissão.
+test('routing-config: ausente e OFF passam; ON inválido é erro com a causa; ON válido passa', () => {
+    const crypto = require('crypto');
+    const policy = {
+        id: 'routing-sintetica', version: 'p-test-1', mode: 'ROUTED', classifier: { provider: 'cheap_rule' },
+        class_to_tier: {
+            C1: { tier: 'T1', effort: 'baixo' }, C2: { tier: 'T2', effort: 'médio' }, C3: { tier: 'T2', effort: 'alto' },
+            C4: { tier: 'T3', effort: 'alto' }, C5: { tier: 'T3', effort: 'máximo' },
+        },
+        tiers: { T1: { models: ['m-t1'] }, T2: { models: ['m-t2'] }, T3: { models: ['m-t3'] } },
+        default_route: { model_id: 'm-t3', effort: 'alto' },
+        effort_map: { baixo: 'low', 'médio': 'medium', alto: 'high', 'máximo': 'max' },
+    };
+    const only = root => v.validateAll(contractOf(root), { exec: () => '', rules: ['routing-config'] });
+
+    const absent = only(makeRepo());
+    assert.deepStrictEqual(absent.results.map(r => [r.rule, r.passed]), [['routing-config', true]]);
+    assert.match(absent.results[0].message, /OFF \(\.claude\/model-routing\.json ausente\)/);
+
+    const off = makeRepo();
+    write(off, '.claude/model-routing.json', JSON.stringify({ mode: 'OFF' }));
+    assert.strictEqual(only(off).valid, true);
+
+    const bytes = JSON.stringify(policy);
+    const ref = sha256 => JSON.stringify({ mode: 'ON', policy_ref: {
+        id: policy.id, version: policy.version, sha256, path: '.claude/routing-policy.json',
+    } });
+
+    const bad = makeRepo();
+    write(bad, '.claude/routing-policy.json', bytes);
+    write(bad, '.claude/model-routing.json', ref('f'.repeat(64)));
+    const badReport = only(bad);
+    assert.strictEqual(badReport.valid, false);
+    const [err] = failing(badReport, 'routing-config', 'error');
+    assert.match(err.message, /POLICY_HASH_MISMATCH/);
+    assert.deepStrictEqual(err.details, ['cause: POLICY_HASH_MISMATCH', `detail: expected:${'f'.repeat(64)}`, 'transient: false']);
+
+    const good = makeRepo();
+    write(good, '.claude/routing-policy.json', bytes);
+    const sha = crypto.createHash('sha256').update(bytes).digest('hex');
+    write(good, '.claude/model-routing.json', ref(sha));
+    const goodReport = only(good);
+    assert.strictEqual(goodReport.valid, true, JSON.stringify(goodReport.results));
+    assert.match(goodReport.results[0].message, new RegExp(`routing-sintetica@p-test-1.*${sha.slice(0, 12)}`));
 });

@@ -113,10 +113,10 @@ function createVersion({ prismaRoot, repoRoot, env, redact, watcherStatus, lockS
         let behind = [];
         let ahead = false;
         if (latest && latest.sha !== current.sha) {
-            const log = await git(['log', `--max-count=${MAX_COMMITS}`, '--format=%H%x09%s', `${current.sha}..${latest.sha}`]);
+            const log = await git(['log', `--max-count=${MAX_COMMITS}`, '--format=%H%x09%cI%x09%s', `${current.sha}..${latest.sha}`]);
             behind = log.code === 0 ? log.stdout.split('\n').filter(Boolean).map(line => {
-                const [sha, ...subject] = line.split('\t');
-                return { sha, subject: subject.join('\t') };
+                const [sha, date, ...subject] = line.split('\t');
+                return { sha, date, subject: subject.join('\t') };
             }) : [];
             ahead = (await git(['merge-base', '--is-ancestor', latest.sha, current.sha])).code === 0;
         }

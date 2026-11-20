@@ -1,4 +1,24 @@
 {
+  "permissions": {
+    "deny": [
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_run_code_unsafe",
+      "mcp__playwright__browser_file_upload",
+      "mcp__playwright__browser_drop",
+      "mcp__playwright__browser_route",
+      "mcp__playwright__browser_route_list",
+      "mcp__playwright__browser_unroute",
+      "mcp__playwright__browser_cookie_set",
+      "mcp__playwright__browser_cookie_get",
+      "mcp__playwright__browser_cookie_list",
+      "mcp__playwright__browser_cookie_delete",
+      "mcp__playwright__browser_cookie_clear",
+      "mcp__playwright__browser_set_storage_state",
+      "mcp__playwright__browser_storage_state",
+      "mcp__playwright__browser_localstorage_set",
+      "mcp__playwright__browser_sessionstorage_set"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -9,7 +29,75 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-graph-state.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/processo-level.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__playwright__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/playwright-fs-guard.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(gh pr create *)",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          },
+          {
+            "type": "command",
+            "if": "Bash(git commit *)",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          },
+          {
+            "type": "command",
+            "if": "Bash(git push *)",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "^(plan|implement|implement-step|implement-integrate|review|test|verify|verify-ui|commit|fetch-ticket|init-project)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pri-fluxo.mjs\""
+          }
+        ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "threejs-webgl@claude-design-skillstack": false,
+    "react-three-fiber@claude-design-skillstack": false,
+    "gsap-scrolltrigger@claude-design-skillstack": false,
+    "core-3d-animation@claude-design-skillstack": false,
+    "animation-components@claude-design-skillstack": false,
+    "extended-3d-scroll@claude-design-skillstack": false,
+    "authoring-motion@claude-design-skillstack": false,
+    "meta-skills@claude-design-skillstack": false
   }
 }
