@@ -67,7 +67,8 @@ O que nunca muda, em qualquer nível:
   se há filhas abertas.
 
 O que fazer a seguir está em `ROADMAP.md` e `roadmap/` (fases, fatias com ID
-estável, decisões). É proposta até o Richard aprovar.
+estável, decisões). Aprovado pelo Richard em 18/11/2026; a meta de custo
+segue em aberto (ver `ROADMAP.md`).
 
 Este arquivo é instrução nova do scaffold. Regras e configuração de cada
 consumidor continuam no respectivo projeto; nenhum estado vivo é definido aqui.
