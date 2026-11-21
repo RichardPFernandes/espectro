@@ -552,6 +552,37 @@ function collectCandidates(runsDir, opts = {}) {
     return out;
 }
 
+// Sem --fill-even-if-spent, só a 1ª entry do ticket entra (batchSpent).
+// Ordenar actionable por horas DESC evita que um cost.json de 0,5 h trave
+// um ciclo wall-clock maior do mesmo # (ordem de readdir era acidental).
+// Skips (ok:false) mantêm a posição relativa entre si; intercalam antes do
+// bloco actionable do mesmo índice original aproximado — na prática o sync
+// só usa ok:true pra POST, então o importante é a ordem entre actionable.
+function orderCandidatesForSync(candidates) {
+    const list = Array.isArray(candidates) ? candidates.slice() : [];
+    const actionable = [];
+    const skips = [];
+    for (let i = 0; i < list.length; i++) {
+        const c = list[i];
+        if (c && c.ok) actionable.push({ c, i });
+        else skips.push({ c, i });
+    }
+    actionable.sort((a, b) => {
+        const hb = Number(b.c.hours) || 0;
+        const ha = Number(a.c.hours) || 0;
+        if (hb !== ha) return hb - ha;
+        return a.i - b.i;
+    });
+    // Reconstrói: actionable reordenado no lugar dos slots ok; skips no slot original.
+    const out = new Array(list.length);
+    for (const s of skips) out[s.i] = s.c;
+    const okSlots = list.map((c, i) => (c && c.ok ? i : -1)).filter(i => i >= 0);
+    for (let k = 0; k < actionable.length; k++) {
+        out[okSlots[k]] = actionable[k].c;
+    }
+    return out;
+}
+
 function findExistingMarker(entries, taskId) {
     const want = String(taskId);
     for (const e of entries || []) {
@@ -634,9 +665,27 @@ async function syncCandidateHours(candidate, {
     // would_create, enquanto o apply grava 1 e skipa o resto via spent.
     batchSpentByIssue = null,
     journalCache = null,
+    // Teto por entry (remediação): skip se hours > max (não arredonda pra baixo).
+    maxEntryHours = null,
 } = {}) {
     if (!candidate?.ok) {
         return { ...candidate, dryRun };
+    }
+
+    if (maxEntryHours != null && Number.isFinite(maxEntryHours) && maxEntryHours > 0) {
+        const h = Number(candidate.hours) || 0;
+        if (h > maxEntryHours) {
+            return {
+                ok: true,
+                taskId: candidate.taskId,
+                ticketId: candidate.ticketId,
+                hours: candidate.hours,
+                action: 'skip',
+                reason: 'exceeds_max_entry_hours',
+                maxEntryHours,
+                dryRun,
+            };
+        }
     }
 
     // Enriquece presumidos com journals Redmine (moves) antes do GET spent/POST.
@@ -831,11 +880,12 @@ async function runBackfill({
     limit = null,
     fillEvenIfSpent = false,
     activityId = DEFAULT_ACTIVITY_ID,
+    maxEntryHours = null,
     onProgress = null,
 } = {}) {
     if (onProgress) onProgress({ phase: 'scan', action: 'scanning', message: 'Coletando runs…' });
 
-    const candidates = collectCandidates(runsDir, {
+    const collected = collectCandidates(runsDir, {
         includeArchive,
         includeActive,
         minHours,
@@ -843,6 +893,7 @@ async function runBackfill({
         ticketIds,
         limit,
     });
+    const candidates = orderCandidatesForSync(collected);
 
     const actionable = candidates.filter(c => c.ok);
     if (onProgress) {
@@ -880,6 +931,7 @@ async function runBackfill({
             activityId,
             batchSpentByIssue,
             journalCache,
+            maxEntryHours,
         });
         const row = { ...r, phase: 'sync', index: i, total: candidates.length };
         results.push(row);
@@ -931,6 +983,7 @@ module.exports = {
     listRunDirs,
     buildCandidate,
     collectCandidates,
+    orderCandidatesForSync,
     findExistingMarker,
     listTimeEntries,
     createTimeEntry,
