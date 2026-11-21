@@ -53,4 +53,4 @@ A decomposição do Implement (PRI-287/310/311) está pronta, mas **reservada**:
 
 ## Registro T7 (18/11/2026)
 
-Baseline monomodelo medido: 3 Runs (R1, R2, R3) no consumidor-piloto, todas até `committed`, nenhuma com `decomposition`. Média por Run completa: USD 14,18 (n = 2 de 3, indicador sem limiar). R2 tem 37 Attempts sem preço e R3 não tem o Attempt do commit. A tabela e os desvios estão na Evidência do PR que traz este registro.
+Baseline monomodelo medido: 3 Runs (R1, R2, R3) no consumidor-piloto, todas até `committed` segundo a sessão team, nenhuma com `decomposition`. Média por Run completa: USD 14,18 (R1 e R3, n = 2 de 3, indicador sem limiar). A R2 fica fora da média porque tem 37 Attempts sem preço. A R3 entra subestimada, porque não tem o Attempt do commit. A tabela e os desvios estão na Evidência do PR que traz este registro.
