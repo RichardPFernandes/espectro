@@ -35,3 +35,4 @@ O Prisma se desenvolve com as skills do plugin agent-skills (requisito: plugin `
 - Onde mora cada coisa: SPEC da fatia (`tasks/<pasta>/SPEC.md`, efêmera, vai para `docs/historico/` ao fechar), spec viva (`docs/capacidades/<id>.md`, o comportamento da capacidade), ADR (`docs/adr/`, decisão de arquitetura já tomada) e `roadmap/DECISOES.md` (decisões de roadmap).
 - Roadmap de entrega (proposta até o Richard aprovar): [`ROADMAP.md`](ROADMAP.md) e [`roadmap/`](roadmap/README.md). Trabalho de fatia cita o ID (`F1.2`) na issue, na branch e no PR; fase só abre com o critério de saída da anterior.
 - Instruções do repositório (arquitetura, separação plataforma/consumidor, gates): @AGENTS.md
+- Critérios de aceite e testes seguem a convenção do plugin `prova` (skill `prova-por-ac`): cada AC tem ID e nível de prova na spec, cada teste cita o ID do AC que prova, e `/prova:check` confere os dois.

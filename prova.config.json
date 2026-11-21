@@ -1,0 +1,8 @@
+{
+  "spec": "tasks/piloto-prova/SPEC.md",
+  "testGlobs": ["scripts/lib/redmine-hours-sync.test.js", "scripts/backfill-redmine-hours.test.js"],
+  "testCommand": "S=\"$(mktemp -d)\"; mkdir -p \"$S/home\" \"$S/tmp\"; env -i PATH=\"$(dirname \"$(command -v node)\"):/usr/bin:/bin:/usr/sbin:/sbin\" HOME=\"$S/home\" TMPDIR=\"$S/tmp\" NODE_OPTIONS=\"--require=$PWD/harness/loopback-only.cjs\" PRISMA_ROOT=\"$PWD\" REPO_PATH=\"$PWD\" node harness/run-tests.js scripts \"$PWD\"/{files}; rc=$?; rm -rf \"$S\"; exit $rc",
+  "assertionFailure": "AssertionError",
+  "base": "main",
+  "baseSetup": "npm ci --ignore-scripts --no-audit --no-fund --prefix scripts && npm ci --ignore-scripts --no-audit --no-fund --prefix dashboard"
+}
