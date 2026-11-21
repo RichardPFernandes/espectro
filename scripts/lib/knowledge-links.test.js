@@ -22,6 +22,8 @@ const base = () => ({
     'docs/capacidades/solta.md': cap('solta'),
     'docs/adr/0001-a.md': adr(1),
     'docs/adr/README.md': '# ADRs\n',
+    'docs/adr/modelo.md': '# Modelo\n',
+    'docs/capacidades/README.md': '# Mapa\n',
 });
 
 function withRepo(files, fn) {
@@ -106,6 +108,7 @@ describe('--write', () => {
         ...base(),
         'tasks/pri-1/SPEC-a.md': page({ capacidades: '[grafo, estado]', adrs: '[ADR-0001]' }, '# SPEC'),
         'docs/historico/pri-2/SPEC-b.md': '# SPEC sem cabeçalho\n',
+        'docs/historico/pri-2/SPEC-c.md': page({ capacidades: '[estado]' }, '# SPEC'),
     }, dir => {
         const before = read(dir, 'docs/capacidades/estado.md');
         kl.write(dir);
@@ -113,6 +116,7 @@ describe('--write', () => {
         assert.match(read(dir, GRAFO), /- Depende de: \[estado\]\(estado\.md\)\n<!-- ligacoes:fim -->\n$/);
         assert.match(read(dir, 'tasks/pri-1/SPEC-a.md'), /- Capacidades: \[estado\]\(\.\.\/\.\.\/docs\/capacidades\/estado\.md\)\n- Capacidades: \[grafo\].*\n- ADRs: \[ADR-0001\]\(\.\.\/\.\.\/docs\/adr\/0001-a\.md\)/);
         assert.equal(read(dir, 'docs/historico/pri-2/SPEC-b.md'), '# SPEC sem cabeçalho\n');
+        assert.match(read(dir, 'docs/historico/pri-2/SPEC-c.md'), /- Capacidades: \[estado\]\(\.\.\/\.\.\/capacidades\/estado\.md\)\n<!-- ligacoes:fim -->\n$/);
     }));
 
     it('arquivo sem newline final: seção com newline final, idempotente, e some quando a ligação some', () => withRepo({ ...base(), [GRAFO]: cap('grafo', { depende_de: '[estado]' }).trimEnd() }, dir => {
