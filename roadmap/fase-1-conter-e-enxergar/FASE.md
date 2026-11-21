@@ -87,15 +87,18 @@ desenho fica para a spec.
 - AC-06 (achado da T7, 18/11): agente morto por disco cheio (`ENOSPC`) não é tratado como
   órfão nem redespachado no mesmo tick. É bloqueio de ambiente, como o limite de uso do
   AC-05: o despacho espera e a causa fica gravada. O Attempt morto entra no `cost_tracking`
-  com custo ausente (`n/d`), nunca omitido e nunca 0. Na R3 do baseline o Attempt do verify
-  morto pelo disco não entrou no custo.
+  com custo `null` (exibido como n/d), nunca omitido e nunca 0. Na R3 do baseline o Attempt
+  do verify morto pelo disco não entrou no custo. Mesma flag da F1.3: desligada, o despacho
+  segue como hoje (Médio atrás da flag, Alto ao ligar).
 - AC-07 (achado da T7, 18/11): o `/commit` não grava `status: "draft"` nos PRs (valor fora
-  do `state.schema.json`) e o custo do Attempt do commit não se perde. Mesma classe da
-  PRI-392: validar o patch contra o schema antes de gravar recusa o valor. Snapshots já
-  gravados não são reescritos. Na R3 o estado ficou fora do schema e o Attempt do commit
-  ficou sem custo.
-- Aviso: o AC-05 a AC-07 passam a F1.3 de 3 dias e podem estourar. Se estourarem, o
-  AC-06 e o AC-07 viram fatia própria, no mesmo nível (Médio atrás de flag desligada).
+  do `state.schema.json`), e o Attempt do commit aparece no `cost_tracking` mesmo quando o
+  patch de estado é recusado. Mesma classe da PRI-392: validar o patch contra o schema antes
+  de gravar recusa o valor. Snapshots já gravados não são reescritos. Na R3 o estado ficou
+  fora do schema e o Attempt do commit ficou sem custo. Mesma flag e nível da F1.3 (Médio
+  atrás da flag desligada, Alto ao ligar). Quem escrever a SPEC confere no schema qual campo
+  de status de PR recusa o `draft`.
+- Aviso: com o AC-05 a AC-07, a F1.3 pode passar dos 3 dias. Se passar, o AC-06 e o AC-07
+  viram fatia própria, no mesmo nível (Médio atrás da flag desligada, Alto ao ligar).
 
 ### F1.4 — Linha de base: retrabalho
 
