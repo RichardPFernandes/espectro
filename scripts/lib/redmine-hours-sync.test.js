@@ -698,7 +698,7 @@ test('collectCandidates inclui memory/archive/<YYYY-MM>/ (rotação cleanup-runs
     assert.ok(!byId['13732-lixo'], 'ignora mês inválido');
 });
 
-test('orderCandidatesForSync coloca maior hours antes (mesmo ticket)', () => {
+test('AC-1 orderCandidatesForSync coloca maior hours antes (mesmo ticket)', () => {
     const ordered = orderCandidatesForSync([
         { ok: false, reason: 'no_ticket', taskId: 'x' },
         { ok: true, taskId: 't-small', ticketId: 1, hours: 0.5 },
@@ -710,7 +710,7 @@ test('orderCandidatesForSync coloca maior hours antes (mesmo ticket)', () => {
     assert.strictEqual(ordered[0].reason, 'no_ticket');
 });
 
-test('runBackfill dry-run = apply em vários runs do mesmo ticket (sem fillEvenIfSpent)', async t => {
+test('AC-2 runBackfill dry-run = apply em vários runs do mesmo ticket (sem fillEvenIfSpent)', async t => {
     const { runs, archive } = tmpRuns();
     // Grava o menor ANTES na pasta — sem orderCandidates o 0,5h/1h ganharia.
     writeRun(archive, '13740-ciclo-a', {
@@ -774,7 +774,7 @@ test('runBackfill dry-run = apply em vários runs do mesmo ticket (sem fillEvenI
     );
 });
 
-test('syncCandidateHours skipa exceeds_max_entry_hours', async t => {
+test('AC-3 syncCandidateHours skipa exceeds_max_entry_hours', async t => {
     const rm = await fakeRedmine({ entriesByIssue: { 13769: [] } });
     t.after(rm.close);
     const c = {
@@ -803,7 +803,34 @@ test('syncCandidateHours skipa exceeds_max_entry_hours', async t => {
     });
     assert.strictEqual(r.action, 'skip');
     assert.strictEqual(r.reason, 'exceeds_max_entry_hours');
+    assert.strictEqual(r.hours, 27.5);
     assert.strictEqual(rm.posts.length, 0);
+});
+
+test('AC-4 syncCandidateHours sem maxEntryHours não pula a entry pelo teto', async t => {
+    const rm = await fakeRedmine({ entriesByIssue: { 13770: [] } });
+    t.after(rm.close);
+    const comments = `x ${hoursMarker('13770-longo')}`;
+    const c = {
+        ok: true,
+        taskId: '13770-longo',
+        ticketId: 13770,
+        hours: 27.5,
+        spentOn: '2026-10-02',
+        source: 'state.cost_tracking',
+        marker: hoursMarker('13770-longo'),
+        comments,
+        payload: buildTimeEntryPayload({ issueId: 13770, hours: 27.5, spentOn: '2026-10-02', comments }),
+    };
+    const r = await syncCandidateHours(c, {
+        dryRun: true,
+        redmineFetch: rm.fetch,
+        baseUrl: rm.baseUrl,
+        apiKey: 'k',
+        fillEvenIfSpent: true,
+    });
+    assert.strictEqual(r.action, 'would_create');
+    assert.strictEqual(r.hours, 27.5);
 });
 
 test('listTimeEntries pagina além de limit=100 (marcador na 2ª página)', async t => {
