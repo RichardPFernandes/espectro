@@ -31,7 +31,7 @@ também roda ao lado desta fase, no mesmo launcher, sem tocar o consumidor (D15)
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
 | F1.1 | Registro de flags | 3 | Leve | Não | — | — | concluída | PRI-377 |
 | F1.2 | Ponto de retorno do consumidor | 4 | Alto | Sim | F1.1 | D3 | em andamento | PRI-379; inclui a PRI-372 |
-| F1.3 | Teto de turnos por run; inclui parar depois de N falhas seguidas do mesmo nó ([`DADOS.md`](../DADOS.md), item 6) | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | PRI-380; a PRI-392 (defeito do state-writer) é feita junto |
+| F1.3 | Teto de turnos por run; inclui parar depois de N falhas seguidas do mesmo nó ([`DADOS.md`](../DADOS.md), item 6) | 3 | Alto ao ligar | Sim | F1.1, F1.2 | D1 | não iniciada | PRI-380; a PRI-392 (defeito do state-writer) é feita junto; AC-06 e AC-07 vêm da T7 (18/11) |
 | F1.4 | Linha de base: retrabalho | 2 | Leve | Não | — | D1 | concluída | PRI-378; base é a PRI-327 (Done) |
 | F1.5 | Linha de base: custo por ticket | 3 | Médio | Não | F1.4 | D1, D6 | concluída | PRI-381; PRI-82 relacionada; reclassificada de Leve para Médio em 17/11 (D-PRI-381-01, na Mesa de Decisões), o 1º PR foi Leve |
 | F1.6 | Push dos repos irmãos: pulado não vira sucesso | 2 | Alto | Sim | — | — | concluída | PRI-179 |
@@ -84,6 +84,21 @@ desenho fica para a spec.
   (F1.8): 779 das 786 saídas com código 1 eram limite de uso, e as três maiores rajadas (148,
   103 e 95 erros) terminaram sozinhas no minuto do reset. Mesma região de código e mesma flag
   da F1.3 (Alto ao ligar).
+- AC-06 (achado da T7, 18/11): agente morto por disco cheio (`ENOSPC`) não é tratado como
+  órfão nem redespachado no mesmo tick. É bloqueio de ambiente, como o limite de uso do
+  AC-05: o despacho espera e a causa fica gravada. O Attempt morto entra no `cost_tracking`
+  com custo `null` (exibido como n/d), nunca omitido e nunca 0. Na R3 do baseline o Attempt
+  do verify morto pelo disco não entrou no custo. Mesma flag da F1.3: desligada, o despacho
+  segue como hoje (Médio atrás da flag, Alto ao ligar).
+- AC-07 (achado da T7, 18/11): o `/commit` não grava `status: "draft"` nos PRs (valor fora
+  do `state.schema.json`), e o Attempt do commit aparece no `cost_tracking` mesmo quando o
+  patch de estado é recusado. Mesma classe da PRI-392: validar o patch contra o schema antes
+  de gravar recusa o valor. Snapshots já gravados não são reescritos. Na R3 o estado ficou
+  fora do schema e o Attempt do commit ficou sem custo. Mesma flag e nível da F1.3 (Médio
+  atrás da flag desligada, Alto ao ligar). Quem escrever a SPEC confere no schema qual campo
+  de status de PR recusa o `draft`.
+- Aviso: com o AC-05 a AC-07, a F1.3 pode passar dos 3 dias. Se passar, o AC-06 e o AC-07
+  viram fatia própria, no mesmo nível (Médio atrás da flag desligada, Alto ao ligar).
 
 ### F1.4 — Linha de base: retrabalho
 
