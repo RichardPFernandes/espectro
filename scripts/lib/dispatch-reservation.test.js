@@ -217,9 +217,8 @@ test('e2e: watcher e dashboard em processos distintos — um só agente; o segun
     const id = 92181;
     const sb = sandbox(id);
     const rm = await fakeRedmine([issue(id)]);
-    let w;
     try {
-        w = parkedWatcher(sb, rm.url, id);
+        const w = parkedWatcher(sb, rm.url, id);
         await waitFor(() => w.parked(), 20000, `watcher parado no marcador\n${w.output()}`);
         assert.ok(fs.existsSync(reservation.reservationPath(sb.repo, id)), 'watcher segura a reserva');
         assert.strictEqual(sb.gate()?.fetch_dispatch, undefined, 'nada visível ainda: é a janela do check-then-act');
@@ -256,9 +255,8 @@ test('e2e: crash do watcher com a reserva na mão — o dashboard retoma e despa
     const id = 92182;
     const sb = sandbox(id);
     const rm = await fakeRedmine([issue(id)]);
-    let w;
     try {
-        w = parkedWatcher(sb, rm.url, id);
+        const w = parkedWatcher(sb, rm.url, id);
         await waitFor(() => w.parked(), 20000, `watcher parado no marcador\n${w.output()}`);
         w.child.kill('SIGKILL');
         await w.exited;
@@ -294,7 +292,8 @@ test('e2e: erro depois do marcador — reserva e marcador liberados; o próximo 
         assert.strictEqual(ok.result?.action, 'dispatched', ok.out);
         await waitFor(() => sb.claudeCalls() === 1, 10000, 'agente');
     } finally {
-        cleanupE2e(sb, rm, null);
+        
+  (sb, rm, null);
     }
 });
 
