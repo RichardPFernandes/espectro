@@ -17,7 +17,7 @@
     "lint:prod:shrink": "node run-eslint-prod.js --shrink"
   },
   "devDependencies": {
-    "@babel/core": "^7.28.6",
+    "@babel/core": "^8.1.2",
     "@babel/eslint-parser": "^7.28.6",
     "@babel/preset-typescript": "^7.28.5",
     "@eslint/js": "^9.39.2",
