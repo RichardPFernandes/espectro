@@ -69,7 +69,7 @@ Um sentido por termo. Nesta pasta, "gate" só nomeia nível de revisão (G0–G3
 - **portão**: a conferência que o watcher faz entre dois nós, como a nota do plano, o build e a evidência dos ACs.
 - **gate (G0–G3)**: o nível de revisão de uma mudança no desenvolvimento do Espectro; G3 é a revisão por outro agente em contexto limpo.
 - **spec de ticket**: o que entregar num ticket (`memory/spec/<ticket>-spec.md`, no consumidor); o plano diz como.
-- **spec viva**: a página de uma capacidade que descreve o que ela faz hoje e é atualizada com a mudança; `spec`, `grafo` e `estado` já têm a sua, e as outras nascem quando uma mudança as toca.
+- **spec viva**: a página de uma capacidade que descreve o que ela faz hoje e é atualizada com a mudança; `spec`, `grafo`, `estado` e `ferramentas` já têm a sua, e as outras nascem quando uma mudança as toca.
 - **SPEC de fatia**: o documento de até duas páginas que descreve uma fatia do roadmap antes de ela começar; vale até o merge.
 - **SDD**: desenvolvimento guiado por spec, o método em que a spec vem antes do código e é a fonte do que se entrega.
 - **writer de SDD**: o módulo que controla versão e ativação de uma SDD por projeto; está congelado e nenhum código de produção o chama.

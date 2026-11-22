@@ -5,6 +5,7 @@ resumo: Scripts offline fora do caminho da Run, como demo, sondas, limpeza, expo
 situacao: ligada
 spec: viva
 flags: []
+adrs: [ADR-0001, ADR-0002, ADR-0007, ADR-0008]
 modulos:
   - scripts/capability-map.js
   - scripts/lib/front-matter.js
@@ -66,3 +67,12 @@ está no registro em [`docs/flags.md`](../flags.md).
 1. [`scripts/demo.js`](../../scripts/demo.js): o ciclo simulado de `npm run demo`.
 2. [`scripts/capability-map.js`](../../scripts/capability-map.js): este mapa, com `--check` e `--of`.
 3. [`scripts/cleanup-runs.js`](../../scripts/cleanup-runs.js): rotação de Runs antigas, que só move.
+
+<!-- ligacoes:inicio -->
+## Ligações
+
+- ADRs: [ADR-0001](../adr/0001-checkout-com-ponto-de-retorno.md) — O consumidor roda de checkout, com ponto de retorno; não volta ao pin
+- ADRs: [ADR-0002](../adr/0002-monolito-modular-por-capacidade.md) — Monólito modular por capacidade, sem Arquitetura Limpa nem DDD tático
+- ADRs: [ADR-0007](../adr/0007-spec-viva-por-capacidade.md) — Spec viva de uma página por capacidade, atualizada pelo delta no PR
+- ADRs: [ADR-0008](../adr/0008-adrs-em-docs-adr-com-ligacoes.md) — Os ADRs moram em `docs/adr/`, ligados às capacidades por ID no front-matter
+<!-- ligacoes:fim -->

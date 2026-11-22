@@ -1,6 +1,12 @@
+---
+id: ADR-0006
+status: aceita
+data: 2026-11-13
+capacidades: []
+---
+
 # ADR 0006: Três níveis de processo pelo efeito, com a evidência no PR
 
-**Status:** Aceita em 2026-11-13
 **Fonte:** Mesa `D-GER-02` (Richard, 13/11/2026); `AGENTS.md`, "Níveis de processo"; `roadmap/DECISOES.md` D12
 
 ## Contexto

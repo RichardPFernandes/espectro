@@ -5,6 +5,7 @@ resumo: O watcher, que a cada tick descobre os tickets, aplica os portões e des
 situacao: ligada
 spec: sem-spec
 flags: [DRY_RUN, DISABLE_AUTO_CLEANUP, WORKTREE_CLEANUP_ON_PR_OPEN, PRISMA_CHECKOUT_GUARD]
+adrs: [ADR-0001]
 modulos:
   - scripts/readmine-watcher.js
   - scripts/watcher-manager.js
@@ -38,3 +39,9 @@ Run nova. Com `DRY_RUN=true` o ciclo roda contra fixtures, sem chamada externa. 
 2. [`scripts/watcher-manager.js`](../../scripts/watcher-manager.js): o laço de ticks e o limite de reinícios por hora.
 3. [`scripts/lib/dispatch-reservation.js`](../../scripts/lib/dispatch-reservation.js): a reserva por ticket, entre processos.
 4. [`docs/runbook.md`](../runbook.md): como operar o watcher no dia a dia.
+
+<!-- ligacoes:inicio -->
+## Ligações
+
+- ADRs: [ADR-0001](../adr/0001-checkout-com-ponto-de-retorno.md) — O consumidor roda de checkout, com ponto de retorno; não volta ao pin
+<!-- ligacoes:fim -->

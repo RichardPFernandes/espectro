@@ -1,6 +1,12 @@
+---
+id: ADR-0005
+status: aceita
+data: 2026-11-03
+capacidades: []
+---
+
 # ADR 0005: Só Claude; a revisão independente é outro agente Claude em contexto limpo
 
-**Status:** Aceita em 2026-11-03 (a regra de revisão do `docs/handoff-contract.md` foi atualizada em 06/11)
 **Fonte:** Mesa `D-GER-01` (Richard, 03/11/2026); `docs/handoff-contract.md`, regra de revisão independente G3 (troca registrada em 06/11/2026)
 
 ## Contexto
