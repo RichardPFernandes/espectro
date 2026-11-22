@@ -250,6 +250,14 @@ permanente em `memory/`.
    em `pull_request` URL de PR que não abriu de fato. Recusa QA depois recria o worktree
    sozinha (retry do dashboard). `WORKTREE_CLEANUP_ON_PR_OPEN=0` no `.env` volta a
    limpar só depois do merge.
+7.7. **Depois do merge** — o fechamento do consumidor tem um passo pós-merge
+   (`docs/redmine-fechamento-demanda.md`, seção "Depois do merge", no app-back). O watcher
+   cobre a remoção dos worktrees (7.6); o resto fica com quem fecha a demanda, e este nó só
+   avisa no resumo final:
+   - commit enviado à branch depois que o PR foi mesclado não entra nele, e a descrição não é
+     mais editável: antes de um push novo, confira se o PR segue aberto; se não, abra outro PR;
+   - branches locais do ticket (o 7.6 as mantém) e worktrees temporárias criadas para rodar testes;
+   - stack local subido fora do dashboard (back/front em :8080/:9000): pare e confira as portas.
 8. **Preencha "Apontamentos Desenvolvedor" no ticket Redmine** (habilitado
    desde 2026-09-02, ver `memory/decisions/2026-09-02-apontamentos-
    desenvolvedor.md`) pelo mesmo efeito governado, obrigação `redmine_notes`:
