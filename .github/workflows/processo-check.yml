@@ -3,6 +3,7 @@ name: processo-check
 # Barreira do Acordo de desenvolvimento v2 (seção 8): um rótulo de nível,
 # seção Evidência preenchida e, no leve, sem SPEC/handoff/evidence separado e
 # até 400 linhas, e aviso (sem reprovar) quando código de capacidade muda sem a spec dela.
+# Confere também as ligações entre specs vivas, ADRs e SPECs.
 # Limites em .github/processo.json.
 on:
   pull_request:
@@ -35,6 +36,8 @@ jobs:
             /docs/capacidades/
             /scripts/capability-map.js
             /scripts/lib/front-matter.js
+            /scripts/knowledge-links.js
+            /scripts/lib/knowledge-links.js
       # Código do PR: só para os testes do check e do hook.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -44,8 +47,13 @@ jobs:
           sparse-checkout: |
             /.github/
             /docs/capacidades/
+            /docs/adr/
+            /docs/historico/
+            /tasks/
             /scripts/capability-map.js
+            /scripts/knowledge-links.js
             /scripts/lib/front-matter.js
+            /scripts/lib/knowledge-links.js
             /.claude/settings.json
             /.claude/hooks/
             /.claude/skills/
@@ -68,3 +76,17 @@ jobs:
             echo "::notice title=processo-check::a base ainda não tem o check; usando o do PR (bootstrap)"
             node head/.github/scripts/processo-check.mjs
           fi
+      # Ligações entre specs vivas, ADRs e SPECs: o conferidor vem da base e as
+      # páginas vêm do PR. Roda mesmo se o passo anterior falhar, para reportar os dois.
+      - name: Ligações entre specs, ADRs e SPECs (regras da base)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          if [ -f base/scripts/knowledge-links.js ]; then
+            cp base/scripts/knowledge-links.js head/scripts/knowledge-links.js
+            cp base/scripts/lib/knowledge-links.js base/scripts/lib/front-matter.js head/scripts/lib/
+          else
+            # Só no PR que introduz o conferidor: a base ainda não o tem.
+            echo "::notice title=knowledge-links::a base ainda não tem o conferidor; usando o do PR (bootstrap)"
+          fi
+          node head/scripts/knowledge-links.js --check
