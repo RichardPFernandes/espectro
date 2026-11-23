@@ -630,7 +630,7 @@ describe('capability-map.js --check e --write', () => {
 });
 
 // Página de entrada e forma de cada capacidade (AC-01, AC-02, AC-07). Lê o repo real: o texto
-// só passa se a página tiver as quatro seções, os 18 termos e os tetos de linhas.
+// só passa se a página tiver as quatro seções, os 19 termos e os tetos de linhas.
 describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
     const DIR = path.join(REPO, 'docs', 'capacidades');
     const readme = fs.readFileSync(path.join(DIR, 'README.md'), 'utf8');
@@ -645,7 +645,7 @@ describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
     };
     const GLOSSARY = [
         'Espectro e Prisma', 'consumidor', 'Run', 'watcher', 'tick', 'nó', 'portão', 'gate (G0–G3)', 'spec de ticket',
-        'spec viva', 'SPEC de fatia', 'SDD', 'writer de SDD', 'flag', 'fatia', 'AUTORIZO', 'lease', 'Attempt',
+        'spec viva', 'SPEC de fatia', 'SDD', 'writer de SDD', 'flag', 'fatia', 'AUTORIZO', 'lease', 'Attempt', 'EARS leve',
     ];
 
     it('README tem até 150 linhas', () => {
@@ -676,7 +676,7 @@ describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
         assert.ok((diagram[1].match(/:::humano/g) || []).length >= 3, 'o diagrama tem menos de 3 pontos de decisão humana');
     });
 
-    it('o glossário tem os 18 termos, um por item, uma vez cada', () => {
+    it('o glossário tem os 19 termos, um por item, uma vez cada', () => {
         const items = section(readme, 'Glossário').filter(line => line.startsWith('- '));
         const terms = items.map(line => /^- \*\*(.+?)\*\*: \S/.exec(line)?.[1]);
         assert.deepEqual(terms, GLOSSARY);
