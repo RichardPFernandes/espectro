@@ -5,9 +5,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.join(HERE, '..', '..');
 const FILE = path.join(HERE, '..', 'workflows', 'processo-check.yml');
 const yml = fs.existsSync(FILE) ? fs.readFileSync(FILE, 'utf8') : '';
 const lines = yml.split('\n');
@@ -74,7 +77,43 @@ test('passo do knowledge-links: roda --check no head, mesmo se o anterior falhar
     assert.ok(copyLib >= 0, 'não copia as libs da base');
     assert.ok(exec > copyScript && exec > copyLib, 'roda antes de copiar da base');
     assert.match(run, /base\/scripts\/knowledge-links\.js\s*\]/, 'sem teste de existência na base');
-    assert.match(run, /::notice/, 'sem aviso de bootstrap');
+    assert.doesNotMatch(step, /continue-on-error/, 'o passo não pode engolir a falha');
+    assert.doesNotMatch(run, /\|\||;\s*true|\btrue\s*$/m, 'o run não pode mascarar o código de saída');
+});
+
+// Executa o run do passo como o Actions (bash -e -o pipefail) numa pasta com base/ e head/.
+function runStep({ breakPage = false, withBase = true } = {}) {
+    const step = steps().find((s) => /node head\/scripts\/knowledge-links\.js --check/.test(s));
+    const body = block(/^\s+run:/, step.split('\n')).slice(1);
+    const indent = Math.min(...body.filter((l) => l.trim()).map((l) => l.search(/\S/)));
+    const script = body.map((l) => l.slice(indent)).join('\n');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kl-step-'));
+    try {
+        const copy = (side, rel) => fs.cpSync(path.join(REPO, rel), path.join(dir, side, rel), { recursive: true });
+        for (const rel of ['docs/capacidades', 'docs/adr', 'scripts/knowledge-links.js', 'scripts/lib/knowledge-links.js', 'scripts/lib/front-matter.js']) copy('head', rel);
+        if (withBase) for (const rel of ['scripts/knowledge-links.js', 'scripts/lib/knowledge-links.js', 'scripts/lib/front-matter.js']) copy('base', rel);
+        if (breakPage) {
+            const file = path.join(dir, 'head', 'docs', 'adr', '0001-checkout-com-ponto-de-retorno.md');
+            fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('capacidades: [', 'capacidades: [nao-existe, '));
+        }
+        return spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], { cwd: dir, encoding: 'utf8' });
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+}
+
+test('o passo do knowledge-links passa com as páginas do repo e reprova com um ID inexistente (AC-03)', () => {
+    const ok = runStep();
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    const broken = runStep({ breakPage: true });
+    assert.equal(broken.status, 1, broken.stdout + broken.stderr);
+    assert.match(broken.stdout + broken.stderr, /nao-existe/);
+});
+
+test('sem o conferidor na base, o passo reprova em vez de usar o do PR', () => {
+    const result = runStep({ withBase: false });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /::error/);
 });
 
 test('o passo do knowledge-links vem depois do passo que roda o processo-check.mjs', () => {

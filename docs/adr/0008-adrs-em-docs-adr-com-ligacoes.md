@@ -1,13 +1,13 @@
 ---
 id: ADR-0008
 status: aceita
-data: 2026-11-18
+data: 2026-11-22
 capacidades: [ferramentas]
 ---
 
 # ADR 0008: Os ADRs moram em `docs/adr/`, ligados às capacidades por ID no front-matter
 
-**Fonte:** pedido do Richard na sessão da PRI-413 em 18/11/2026 (registrar a troca como ADR); PR #225 (F0.15, PRI-412), que criou `docs/adr/`; PR #235 (F0.16, PRI-413), que criou a conferência das ligações
+**Fonte:** Mesa `D-SDD-03` (22/11/2026), parte 2: front-matter com status nos ADRs e `knowledge-links --check` na CI; PR #225 (F0.15, PRI-412), que criou `docs/adr/`; PR #235 (F0.16, PRI-413), que criou a conferência das ligações; o PR da F0.16 que acrescenta este arquivo (PRI-413); no Leve, o merge do Richard é o aceite
 
 ## Contexto
 

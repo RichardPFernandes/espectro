@@ -38,7 +38,7 @@ jobs:
             /scripts/lib/front-matter.js
             /scripts/knowledge-links.js
             /scripts/lib/knowledge-links.js
-      # Código do PR: só para os testes do check e do hook.
+      # Código e páginas do PR: os testes do check e do hook e as ligações entre specs e ADRs.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: head
@@ -82,11 +82,11 @@ jobs:
         if: ${{ !cancelled() }}
         shell: bash
         run: |
-          if [ -f base/scripts/knowledge-links.js ]; then
-            cp base/scripts/knowledge-links.js head/scripts/knowledge-links.js
-            cp base/scripts/lib/knowledge-links.js base/scripts/lib/front-matter.js head/scripts/lib/
-          else
-            # Só no PR que introduz o conferidor: a base ainda não o tem.
-            echo "::notice title=knowledge-links::a base ainda não tem o conferidor; usando o do PR (bootstrap)"
+          # A base tem o conferidor desde a PR #235; sem ele, falha em vez de usar o do PR.
+          if [ ! -f base/scripts/knowledge-links.js ]; then
+            echo "::error title=knowledge-links::a base não tem scripts/knowledge-links.js; o PR não confere com o próprio script"
+            exit 1
           fi
+          cp base/scripts/knowledge-links.js head/scripts/knowledge-links.js
+          cp base/scripts/lib/knowledge-links.js base/scripts/lib/front-matter.js head/scripts/lib/
           node head/scripts/knowledge-links.js --check
