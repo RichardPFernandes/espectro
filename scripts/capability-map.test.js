@@ -124,6 +124,16 @@ describe('cabeçalho de uma capacidade', () => {
         assert.equal(map.parseHeader(doc({ tipo: 'capacidade   # base | capacidade | fluxo' })).tipo, 'capacidade');
     });
 
+    it('lista em linha seguida de comentário com dois espaços, como no modelo de ADR', () => {
+        assert.deepEqual(map.readFields('---\ncapacidades: [a, b]  # ids\nadrs: []  # nenhum\n---\n'), { capacidades: ['a', 'b'], adrs: [] });
+    });
+
+    it('o modelo de ADR e o template de SPEC são lidos sem erro', () => {
+        for (const rel of ['../docs/adr/modelo.md', '../templates/fatia-spec.md.template']) {
+            assert.doesNotThrow(() => map.readFields(fs.readFileSync(path.join(__dirname, rel), 'utf8')), rel);
+        }
+    });
+
     for (const field of Object.keys(HEADER)) {
         it(`recusa cabeçalho sem o campo ${field}`, () => {
             assert.throws(() => map.parseHeader(doc({ [field]: undefined })), new RegExp(`campo ausente: ${field}`));
@@ -709,13 +719,16 @@ describe('página de entrada e capacidades (AC-01, AC-02, AC-07)', () => {
     });
 
     // Spec viva (F0.12) cabe numa página, definida em docs/capacidades/README.md como até 80
-    // linhas de arquivo; as outras são só cabeçalho e resumo.
-    it('cada capacidade tem até 40 linhas (80 com spec viva) e até cinco arquivos por onde começar (AC-02)', () => {
+    // linhas de arquivo; as outras são só cabeçalho e resumo. A seção "Ligações", gerada pelo
+    // knowledge-links (F0.16), não conta: cresce com cada ADR, não com o texto da página.
+    it('cada capacidade tem até 40 linhas (80 com spec viva), fora a seção Ligações, e até cinco arquivos por onde começar (AC-02)', () => {
         const problems = [];
+        const withoutLinks = text => text.replace(/\n*<!-- ligacoes:inicio -->\n[\s\S]*?<!-- ligacoes:fim -->\n?/, '\n');
         for (const capability of map.readCapabilities(DIR)) {
             const text = fs.readFileSync(path.join(DIR, `${capability.id}.md`), 'utf8');
             const max = capability.spec === 'viva' ? 80 : 40;
-            if (lines(text).length > max) problems.push(`${capability.id}.md tem ${lines(text).length} linhas; o teto é ${max}`);
+            const count = lines(withoutLinks(text)).length;
+            if (count > max) problems.push(`${capability.id}.md tem ${count} linhas fora a seção Ligações; o teto é ${max}`);
             const start = section(text, 'Por onde começar');
             const items = (start || []).filter(line => /^\d+\. /.test(line));
             if (!start || items.length < 1 || items.length > 5) problems.push(`${capability.id}.md: "Por onde começar" precisa de 1 a 5 itens numerados`);

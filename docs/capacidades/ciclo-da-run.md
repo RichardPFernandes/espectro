@@ -24,11 +24,10 @@ modulos:
 
 # Ciclo da Run
 
-O `readmine-watcher.js` roda um tick e sai. A cada tick fecha as métricas pendentes, busca os
-tickets do Redmine, reidrata os que já têm Run local e, por ticket, aplica os portões e despacha
-o próximo nó (`dispatchTicket`). Uma trava de instância mantém um watcher por `REPO_PATH`; uma
-reserva por ticket impede que o watcher e o dashboard despachem o mesmo ticket juntos. O
-`watcher-manager.js` é o laço que o dashboard usa para repetir o tick.
+O `readmine-watcher.js` roda um tick e sai. A cada tick fecha as métricas pendentes, busca os tickets do
+Redmine, reidrata os que já têm Run local e, por ticket, aplica os portões e despacha o próximo nó
+(`dispatchTicket`). Uma trava de instância mantém um watcher por `REPO_PATH`; uma reserva por ticket impede
+que o watcher e o dashboard despachem o mesmo ticket juntos. O `watcher-manager.js` é o laço que o dashboard usa para repetir o tick.
 
 Cada nó executado deixa eventos em `state.json`; o replay reentra o ciclo num nó anterior, numa
 Run nova. Com `DRY_RUN=true` o ciclo roda contra fixtures, sem chamada externa. Worktrees saem quando o PR abre, salvo `WORKTREE_CLEANUP_ON_PR_OPEN=0`.

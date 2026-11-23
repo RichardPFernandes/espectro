@@ -87,7 +87,8 @@ cortado fica como "(removido em AAAA-MM-DD: motivo)". Mudança de comportamento 
 "Delta de capacidade" de [`templates/fatia-spec.md.template`](../../templates/fatia-spec.md.template))
 e atualiza a página no mesmo PR; o `processo-check` avisa, sem reprovar, quando o código de uma
 capacidade com spec muda e a página dela não. Spec viva cabe numa página, que aqui quer dizer até 80
-linhas de arquivo (as outras páginas ficam em 40); o teto é conferido por `scripts/capability-map.test.js`.
+linhas de arquivo (as outras páginas ficam em 40), sem contar a seção "Ligações", que é gerada; o teto é
+conferido por `scripts/capability-map.test.js`.
 
 <!-- capacidades:inicio -->
 | Capacidade | Tipo | Situação | Spec | O que faz |
