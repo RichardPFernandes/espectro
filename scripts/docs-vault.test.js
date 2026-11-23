@@ -10,8 +10,13 @@ const REPO = path.join(__dirname, '..');
 const DOCS = path.join(REPO, 'docs');
 const README = path.join(DOCS, 'README.md');
 
+// Só o .gitignore do repo conta: sem a config global e do sistema (um core.excludesFile com
+// .obsidian faria o teste passar sem a linha no .gitignore).
 function checkIgnore(file) {
-    return spawnSync('git', ['check-ignore', '-q', file], { cwd: REPO }).status;
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
+    const { status } = spawnSync('git', ['-c', 'core.excludesFile=', 'check-ignore', '-q', file], { cwd: REPO, env });
+    assert.ok(status === 0 || status === 1, `git check-ignore indisponível (status ${status}): precisa de git e de .git`);
+    return status;
 }
 
 describe('.obsidian/ fora do repo', () => {

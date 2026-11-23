@@ -41,7 +41,8 @@
      O texto do requisito (vira a coluna Comportamento da spec viva) segue o EARS leve, em requisito
      novo ou alterado; spec existente não se reescreve. Formas: "<sujeito> <faz>." (sempre);
      "Quando <gatilho>, <sujeito> <faz>."; "Enquanto <estado>, <sujeito> <faz>.";
-     "Se <condição indesejada>, então <sujeito> <faz>." Uma linha pode combinar formas. -->
+     "Se <condição indesejada>, então <sujeito> <faz>." Uma linha pode combinar formas, com Enquanto antes
+     de Quando: "Enquanto <estado>, quando <gatilho>, <sujeito> <faz>." -->
 - **Adicionado** · `<capacidade>` `<ID novo>`: <o requisito como vai ficar na spec viva>
 - **Modificado** · `<capacidade>` `<ID>`: <o que valia> → <o que passa a valer>
 - **Removido** · `<capacidade>` `<ID>`: <motivo; o ID não é reaproveitado>
