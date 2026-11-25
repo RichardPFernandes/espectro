@@ -382,7 +382,7 @@ test('AC-29: implement.md e review.md iguais aos de 2024597; commit.md fixado na
     const expected = {
         'implement.md': 'c58ad7440dc8a1ee0392355a1d88808944b0642545134dcd7f550512ef1c668b',
         'review.md': '0f56df42319fbd05ae9ecad1a78ee91e8ae0ede329a2f9e23bfac3903c87a89d',
-        'commit.md': '846bc168bcc4aea237cc596edcb7394feb87a66818e38aee5a0d1aba1c534841', // PRI-405: exemplos neutros
+        'commit.md': 'b4a102bdecf91878b041d6bf739c3fc2489f96cec5b21d84f7fea4470fddec62', // PRI-405: exemplos neutros; PR #238: passo 7.7
     };
     for (const [file, sha] of Object.entries(expected)) {
         const got = crypto.createHash('sha256').update(fs.readFileSync(path.join(PRISMA_ROOT, '.claude', 'commands', file))).digest('hex');
