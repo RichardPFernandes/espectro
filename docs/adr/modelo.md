@@ -1,6 +1,14 @@
+---
+id: ADR-NNNN
+status: aceita  # proposta | aceita | rejeitada | obsoleta | substituída
+data: AAAA-MM-DD
+capacidades: []  # ids de docs/capacidades/ que a decisão governa; [] se nenhuma
+substitui: []  # ADR-NNNN que esta decisão troca; apague se vazio
+substituida_por: []  # preenchido só com status substituída
+---
+
 # ADR NNNN: <decisão, em uma linha>
 
-**Status:** Aceita em AAAA-MM-DD | Substituída por NNNN
 **Fonte:** <`roadmap/DECISOES.md` Dn | Mesa `D-...` | SPEC arquivada | PR #n>, uma por linha
 
 ## Contexto

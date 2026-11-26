@@ -31,7 +31,8 @@ function readFields(text) {
     let block = null;
     for (let index = 1; index < end; index += 1) {
         const where = `linha ${index + 1}`;
-        const line = lines[index].replace(/(?:^|\s)#.*$/, '');
+        // Tira o comentário e o espaço que sobra antes dele ("[a]  # nota" vira "[a]").
+        const line = lines[index].replace(/(?:^|\s)#.*$/, '').trimEnd();
         if (!line.trim()) continue;
 
         const item = /^\s+-\s+(.+)$/.exec(line);

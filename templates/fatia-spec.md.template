@@ -1,8 +1,15 @@
+---
+capacidades: []  # ids de docs/capacidades/ que a fatia toca: a lista `capacidades` do .prisma/context.json
+adrs: []  # ADR-NNNN que a fatia segue ou cria; [] se nenhum
+---
+
 # SPEC F<fase>.<n>: <nome da fatia>
 
 <!-- SPEC de fatia da plataforma. Salve em tasks/f<fase>-<n>-<slug>/SPEC.md quando a fatia entrar
      no cycle. Leve não tem SPEC; Médio: até 1 página, só se preciso; Alto: 1 a 2 páginas
-     (CLAUDE.md, regra 5). Apague todos os comentários antes de pedir revisão. -->
+     (CLAUDE.md, regra 5). Apague todos os comentários antes de pedir revisão.
+     O front-matter só leva IDs. Depois de preenchê-lo, rode `node scripts/knowledge-links.js --write`:
+     ele gera a seção "Ligações" no fim da SPEC, e o processo-check reprova ID inexistente. -->
 
 > **Fatia:** [F<fase>.<n>](../../roadmap/fase-<fase>-<nome>/FASE.md) · **Issue:** PRI-<n> · **Nível:** Médio | Alto (motivo em uma linha)
 > **AUTORIZO:** não precisa | pendente | dado em DD/MM/AAAA · **Flag:** `<NOME_DA_FLAG>` (desligada) | nenhuma

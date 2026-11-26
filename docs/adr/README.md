@@ -15,9 +15,10 @@ Um ADR registra uma decisão de arquitetura **já tomada**: o que ficou decidido
 
 ## Regras
 
-- Modelo em [`modelo.md`](modelo.md): Contexto, Decisão, Consequências, Status, Fonte. Uma página.
+- Modelo em [`modelo.md`](modelo.md): front-matter, Fonte, Contexto, Decisão e Consequências. Uma página.
+- O front-matter traz `id` (`ADR-NNNN`, igual ao número do arquivo), `status` (MADR: proposta, aceita, rejeitada, obsoleta, substituída), `data`, `capacidades` e, quando houver, `substitui` e `substituida_por`, sempre por ID. A seção "Ligações" no fim da página é gerada: rode `node scripts/knowledge-links.js --write` e inclua o resultado no commit. O `processo-check` reprova ID inexistente, lado divergente e seção defasada (ADR 0008).
 - **Fonte é obrigatória** e aponta onde a decisão foi tomada: `roadmap/DECISOES.md`, Mesa de Decisões (ID `D-...`), SPEC arquivada ou PR. Sem fonte, não é ADR.
-- Número não muda nem é reaproveitado. Decisão trocada ganha ADR novo e o antigo passa a `Substituída por NNNN`.
+- Número não muda nem é reaproveitado. Decisão trocada ganha ADR novo, com `substitui`, e o antigo passa a `status: substituída`, com `substituida_por`.
 - Quem toma a decisão numa fatia abre o ADR no mesmo PR (o `/pri-pr` pergunta); a Evidência traz a linha "ADR: número ou nenhum".
 - Não há tipo RFC. SPEC Alto e proposta da Mesa já cumprem esse papel.
 
@@ -32,3 +33,4 @@ Um ADR registra uma decisão de arquitetura **já tomada**: o que ficou decidido
 | [0005](0005-so-claude-sem-codex.md) | Só Claude; a revisão independente é outro agente Claude em contexto limpo | Aceita |
 | [0006](0006-acordo-v2-niveis-pelo-efeito.md) | Três níveis de processo pelo efeito, com a evidência no PR | Aceita |
 | [0007](0007-spec-viva-por-capacidade.md) | Spec viva de uma página por capacidade, atualizada pelo delta no PR | Aceita |
+| [0008](0008-adrs-em-docs-adr-com-ligacoes.md) | Os ADRs moram em `docs/adr/`, ligados às capacidades por ID no front-matter | Aceita |

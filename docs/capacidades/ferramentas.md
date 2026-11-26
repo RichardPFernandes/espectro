@@ -5,6 +5,7 @@ resumo: Scripts offline fora do caminho da Run, como demo, sondas, limpeza, expo
 situacao: ligada
 spec: viva
 flags: []
+adrs: [ADR-0001, ADR-0002, ADR-0007, ADR-0008]
 modulos:
   - scripts/capability-map.js
   - scripts/lib/front-matter.js
@@ -48,7 +49,7 @@ capacidade promete. As ferramentas deste mapa existem para que essa resposta sej
 | FERRAMENTAS-R04 | Quando `--check` roda, o padrão de `modulos` sem arquivo, a flag do cabeçalho que não aparece no código da capacidade e a tabela do README defasada contam como problema. | Mapa que aponta para nada mente. |
 | FERRAMENTAS-R05 | Enquanto o README tem os marcadores da tabela, `--write` reescreve só o que está entre eles; sem mudança, não grava. | A tabela é derivada; o resto do README é de quem escreve. |
 | FERRAMENTAS-R06 | Quando `--check` roda, o link relativo inline das páginas de `docs/capacidades/` que aponta para arquivo inexistente ou para fora do repo é problema. | Página navegável é parte do contrato. |
-| FERRAMENTAS-R07 | Quando `knowledge-links --check` roda, é problema (exit 1): ID de capacidade ou de ADR que não existe, em qualquer campo; lados que divergem (`adrs` da capacidade e `capacidades` do ADR; `substitui` e `substituida_por`); ADR sem `NNNN-` no nome, sem front-matter, sem `id` igual ao nome, `capacidades` ou `status`, com `status` fora do MADR ou `substituída` sem `substituida_por`. | Ligação só vale se os dois lados concordam. |
+| FERRAMENTAS-R07 | Quando `knowledge-links --check` roda, é problema (exit 1): ID de capacidade ou de ADR que não existe, em qualquer campo; lados que divergem (`adrs` da capacidade e `capacidades` do ADR; `substitui` e `substituida_por`); ADR sem `NNNN-` no nome, sem front-matter, sem `id` igual ao nome, `capacidades` ou `status`, com `status` fora do MADR ou `substituída` sem `substituida_por`. Em todo PR, o `processo-check` roda o `--check` com o script da base sobre as páginas do PR. | Ligação só vale se os dois lados concordam, e um PR não afrouxa a própria conferência. |
 | FERRAMENTAS-R08 | A seção "Ligações" fica no fim da página, entre dois comentários HTML que ocupam uma linha cada, com links relativos e o título do ADR. Capacidade e ADR ligam nos dois sentidos; a SPEC de fatia com front-matter (`tasks/` e `docs/historico/`) só liga para a capacidade e o ADR que cita. Seção ausente, defasada (inclusive por título de ADR mudado) ou com marcador incompleto é problema; `--write` a regenera sem tocar no resto, sem mudança não grava, e com ID ou lado errado sai 1 sem escrever. Cabeçalho ilegível sai 2. | O link funciona no GitHub e no Obsidian, e o grafo mostra o que o front-matter diz. |
 
 ## Invariantes
@@ -66,3 +67,12 @@ está no registro em [`docs/flags.md`](../flags.md).
 1. [`scripts/demo.js`](../../scripts/demo.js): o ciclo simulado de `npm run demo`.
 2. [`scripts/capability-map.js`](../../scripts/capability-map.js): este mapa, com `--check` e `--of`.
 3. [`scripts/cleanup-runs.js`](../../scripts/cleanup-runs.js): rotação de Runs antigas, que só move.
+
+<!-- ligacoes:inicio -->
+## Ligações
+
+- ADRs: [ADR-0001](../adr/0001-checkout-com-ponto-de-retorno.md) — O consumidor roda de checkout, com ponto de retorno; não volta ao pin
+- ADRs: [ADR-0002](../adr/0002-monolito-modular-por-capacidade.md) — Monólito modular por capacidade, sem Arquitetura Limpa nem DDD tático
+- ADRs: [ADR-0007](../adr/0007-spec-viva-por-capacidade.md) — Spec viva de uma página por capacidade, atualizada pelo delta no PR
+- ADRs: [ADR-0008](../adr/0008-adrs-em-docs-adr-com-ligacoes.md) — Os ADRs moram em `docs/adr/`, ligados às capacidades por ID no front-matter
+<!-- ligacoes:fim -->

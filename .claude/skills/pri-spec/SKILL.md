@@ -21,6 +21,9 @@ arquivo, rode `/pri-start` antes.
 - **Tamanho.** Até 1 página no Médio; de 1 a 2 páginas no Alto.
 - **Conteúdo.** Cinco seções: Objetivo, Critérios de aceite, Delta de capacidade,
   Limites (sempre / perguntar antes / nunca) e Fora de escopo.
+  - Comece pelo front-matter do `templates/fatia-spec.md.template`: `capacidades` (a lista do
+    `.prisma/context.json`) e `adrs`, só com IDs. Depois rode `node scripts/knowledge-links.js --write`,
+    que gera a seção "Ligações" no fim da SPEC.
   - Cada critério se escreve `AC-1`, `AC-2`… e tem um estado de falha observável.
   - **Delta de capacidade.** Parta da lista `capacidades` do `.prisma/context.json` e leia
     a spec viva de cada uma (`docs/capacidades/<id>.md`) antes de escrever. Use o
