@@ -78,6 +78,7 @@ Um sentido por termo. Nesta pasta, "gate" só nomeia nível de revisão (G0–G3
 - **AUTORIZO**: a palavra do Richard que libera uma ação que afeta o consumidor, como ligar uma flag ou subir o checkout; não é a aprovação do dashboard.
 - **lease**: a marca que o watcher põe no nó em execução, para recuperar o nó que ficou órfão no tick seguinte.
 - **Attempt**: uma tentativa de executar um nó, admitida com dono e snapshot presos; retry, timeout e resume abrem outro Attempt.
+- **EARS leve**: convenção para o texto da coluna Comportamento, em requisito novo ou alterado. Cada linha diz quando vale (sempre, Quando, Enquanto, Se..., então) e o que se observa; specs existentes não se reescrevem. As formas estão em "Delta de capacidade" de `templates/fatia-spec.md.template`.
 
 ## Capacidades
 
