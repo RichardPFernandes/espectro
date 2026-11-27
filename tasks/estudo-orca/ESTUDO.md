@@ -1,7 +1,7 @@
 # Estudo: o que o Espectro pode trazer do Orca
 
-> **Status:** proposta, esperando decisão do Richard. Nada aqui entra no roadmap antes disso
-> (regra 13 do `CLAUDE.md`). Issue: PRI-422.
+> **Status:** priorizado em 27/11/2026 na D16 (`roadmap/DECISOES.md`): só o que alimenta a F3.7 entra
+> agora; o resto foi para a Fase 6 com gatilho (F6.17 a F6.21). Issue: PRI-422.
 > **Origem:** pedido do Richard em 25 e 26/11/2026 ("uso muito o Orca e acho incrível"; "seria
 > interessante conversar com o terminal em si no Espectro"). Código lido em `main` `80b07de`.
 > Orca lido no README público ([stablyai/orca](https://github.com/stablyai/orca)) em 26/11/2026.

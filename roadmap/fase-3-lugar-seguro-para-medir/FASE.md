@@ -30,7 +30,7 @@ então precisa do teto da Fase 1.
 | F3.4 | Alerta de run acima de N vezes a mediana, mais teto em dinheiro ou sonda da cota, conforme D1 | 3 | Alto ao ligar | Sim | F1.3, F1.5 | D1 | não iniciada | sem issue |
 | F3.5 | Encerrar agente vivo por tempo, com motivo registrado (sem alarme) | 5 | Alto | Sim | F1.3 | Estimativa cortada para caber | não iniciada | sem issue |
 | F3.6 | Métricas de gate no weekly: gates respondidos, espera mediana, escalations, tempo humano × máquina × espera | 2 | Leve | Não | — | Conferir a PRI-327 | não iniciada | PRI-151 |
-| F3.7 | Experimento: prova de valor antecipada com três tickets de ouro tirados de issues fechadas do próprio Espectro, Espectro contra o agente direto (Claude Code com o fluxo `/pri-*` do agent-skills). Antecipa a F5.4 | 3 | Leve | Não | PRI-391 | Aprovado em 16/11. D15: roda ao lado da Fase 1, no launcher do piloto com o Redmine local, sem esperar a F3.1; o resultado decide a ordem das Fases 4 e 5 | não iniciada | PRI-81 relacionada |
+| F3.7 | Experimento: prova de valor antecipada com três tickets de ouro tirados de issues fechadas do próprio Espectro, Espectro contra o agente direto (Claude Code com o fluxo `/pri-*` do agent-skills). Antecipa a F5.4 | 3 | Leve | Não | PRI-391 | Aprovado em 16/11. D15: roda ao lado da Fase 1, no launcher do piloto com o Redmine local, sem esperar a F3.1; o resultado decide a ordem das Fases 4 e 5. D16: desenho best-of-N e registro de intervenção (estudo Orca, PRI-422) | não iniciada | PRI-81 relacionada |
 | F3.8 | Cancelar uma run pelo operador e ver o diff dela; reaproveita o encerramento da F3.5 | 3 | Alto ao ligar | Sim | F3.5 | D13 | não iniciada | sem issue |
 
 ## Semente
@@ -45,3 +45,6 @@ então precisa do teto da Fase 1.
 - AC-03: medidas por braço, nesta ordem de peso: tempo do Richard por ticket (minutos de atenção: decisões, aceites e correções), retrabalho (tentativas e recusas), testes do gabarito que passam, arquivos fora do escopo, custo (as três réguas da D1) e turnos.
 - AC-04: o critério de "útil" é escrito antes da primeira run e não muda depois dela.
 - AC-05: o quadro é publicado com n e método mesmo se o Espectro perder, e a decisão da D15 é registrada em `DECISOES.md`.
+- AC-06: os braços de um mesmo ticket correm em paralelo, cada um na sua worktree e sobre a mesma base (best-of-N; o Orca serve para rodá-los lado a lado). Um segundo braço Espectro, se couber no orçamento, usa outro checkout do launcher e mede a variância entre runs (D16).
+- AC-07: cada braço registra as intervenções do Richard: no agente direto, as correções de rumo que ele fez; no Espectro, os pontos em que ele teria corrigido e não pôde, e quanto da run se perdeu depois disso. É o gatilho da F6.17 (D16).
+- AC-08: uma sonda curta, no padrão de `scripts/probes/`, confere se `claude --resume` abre de forma interativa uma sessão criada por `claude -p --session-id`, com o mesmo `CLAUDE_CONFIG_DIR`. O resultado vai no quadro.
